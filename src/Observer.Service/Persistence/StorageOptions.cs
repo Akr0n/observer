@@ -13,8 +13,9 @@ public sealed class StorageOptions
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// Percorso del file. Relativo, viene risolto rispetto alla cartella di lavoro del
-    /// processo. I file *.db, *.db-wal e *.db-shm sono gia' esclusi da git.
+    /// Percorso del file. Se relativo, viene risolto da <see cref="ResolveDatabasePath"/>
+    /// sotto la cartella dati dell'utente, MAI sulla cartella di lavoro del processo.
+    /// I file *.db, *.db-wal e *.db-shm sono gia' esclusi da git.
     /// </summary>
     public string DatabasePath { get; set; } = "observer.db";
 
@@ -37,7 +38,14 @@ public sealed class StorageOptions
     /// Quanto si aspetta dopo la chiusura di un bucket prima di consolidarlo. Copre il tempo
     /// che un campione passa nella coda in memoria prima di arrivare su disco.
     /// </summary>
-    public TimeSpan ConsolidationGrace { get; set; } = TimeSpan.FromSeconds(10);
+    /// <remarks>
+    /// Deve coprire il tempo che un campionamento puo' passare in coda prima di arrivare su
+    /// disco, altrimenti un campione in ritardo non entra mai nella media del suo intervallo
+    /// e poco dopo il grezzo viene cancellato: resta un numero credibile calcolato su meta'
+    /// dei campioni. Il predefinito e' allineato a <see cref="QueueCapacity"/>, che a 1 Hz
+    /// vale altrettanti secondi, e la coerenza fra i due e' imposta da <see cref="Validate"/>.
+    /// </remarks>
+    public TimeSpan ConsolidationGrace { get; set; } = TimeSpan.FromSeconds(240);
 
     /// <summary>
     /// Quanto tempo di storico si consolida al massimo in un solo giro. Serve dopo un lungo
@@ -56,6 +64,36 @@ public sealed class StorageOptions
     public int MaxHistoryPoints { get; set; } = 5000;
 
     /// <summary>
+    /// Il percorso assoluto del database. Un percorso gia' assoluto viene rispettato; uno
+    /// relativo viene risolto sotto la cartella dati dell'utente, MAI sulla cartella di lavoro.
+    /// </summary>
+    /// <remarks>
+    /// Un servizio di sistema non ha una cartella di lavoro prevedibile: su Windows parte da
+    /// system32, sotto systemd da "/" salvo direttive esplicite. Con un percorso relativo il
+    /// database finirebbe in un posto diverso a seconda di come il servizio e' stato avviato —
+    /// e in sviluppo dentro l'albero dei sorgenti — dando l'impressione di aver perso lo
+    /// storico ogni volta che cambia il modo di avvio.
+    /// </remarks>
+    /// <returns>Il percorso assoluto del file SQLite.</returns>
+    public string ResolveDatabasePath()
+    {
+        if (Path.IsPathRooted(DatabasePath))
+        {
+            return DatabasePath;
+        }
+
+        // LocalApplicationData e' scrivibile sia da un utente sia da un account di servizio,
+        // su entrambe le piattaforme: %LOCALAPPDATA% su Windows, ~/.local/share su Linux.
+        // /var/lib sarebbe piu' ortodosso per un servizio di sistema Linux, ma richiede
+        // privilegi che qui non vogliamo pretendere.
+        string baseDirectory = Environment.GetFolderPath(
+            Environment.SpecialFolder.LocalApplicationData,
+            Environment.SpecialFolderOption.Create);
+
+        return Path.Combine(baseDirectory, "Observer", DatabasePath);
+    }
+
+    /// <summary>
     /// Controlla la configurazione all'avvio. Fallisce subito e rumorosamente: una ritenzione
     /// a zero non romperebbe nulla, cancellerebbe solo tutto lo storico in silenzio.
     /// </summary>
@@ -71,25 +109,39 @@ public sealed class StorageOptions
         if (ConsolidationGrace < TimeSpan.Zero)
         {
             throw new InvalidOperationException(
-                FormattableString.Invariant($"{SectionName}:{nameof(ConsolidationGrace)} non puo' essere negativo."));
+                FormattableString.Invariant($"{SectionName}:{nameof(ConsolidationGrace)} cannot be negative."));
         }
 
         if (string.IsNullOrWhiteSpace(DatabasePath))
         {
             throw new InvalidOperationException(
-                FormattableString.Invariant($"{SectionName}:{nameof(DatabasePath)} non puo' essere vuoto."));
+                FormattableString.Invariant($"{SectionName}:{nameof(DatabasePath)} cannot be empty."));
         }
 
         if (QueueCapacity < 1)
         {
             throw new InvalidOperationException(
-                FormattableString.Invariant($"{SectionName}:{nameof(QueueCapacity)} deve essere almeno 1."));
+                FormattableString.Invariant($"{SectionName}:{nameof(QueueCapacity)} must be at least 1."));
         }
 
         if (MaxHistoryPoints < 1)
         {
             throw new InvalidOperationException(
-                FormattableString.Invariant($"{SectionName}:{nameof(MaxHistoryPoints)} deve essere almeno 1."));
+                FormattableString.Invariant($"{SectionName}:{nameof(MaxHistoryPoints)} must be at least 1."));
+        }
+
+        // La coda puo' trattenere QueueCapacity campionamenti — a 1 Hz, altrettanti secondi —
+        // prima che raggiungano il disco. Se il consolidamento chiude un intervallo prima che
+        // quei campioni siano arrivati, non ci rientrano piu' e poco dopo il grezzo viene
+        // cancellato: resta una media credibile calcolata su una parte dei campioni, senza
+        // eccezioni ne' log. E' un errore che nessuno puo' vedere guardando un grafico, quindi
+        // va impedito qui, all'avvio, dove si nota subito.
+        TimeSpan worstCaseQueueDelay = TimeSpan.FromSeconds(QueueCapacity);
+
+        if (ConsolidationGrace < worstCaseQueueDelay)
+        {
+            throw new InvalidOperationException(FormattableString.Invariant(
+                $"{SectionName}:{nameof(ConsolidationGrace)} is {ConsolidationGrace.TotalSeconds:0} s but must be at least {worstCaseQueueDelay.TotalSeconds:0} s, because {SectionName}:{nameof(QueueCapacity)} is {QueueCapacity} and a sample can wait that long before it is written to disk. A shorter grace period would leave late samples out of their own average."));
         }
     }
 
@@ -98,7 +150,7 @@ public sealed class StorageOptions
         if (value <= TimeSpan.Zero)
         {
             throw new InvalidOperationException(
-                FormattableString.Invariant($"{SectionName}:{name} deve essere positivo, invece vale {value}."));
+                FormattableString.Invariant($"{SectionName}:{name} must be positive, but is {value}."));
         }
     }
 }

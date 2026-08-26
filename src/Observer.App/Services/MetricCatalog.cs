@@ -13,7 +13,7 @@ public sealed record CollectorCatalogEntry(string CollectorId, IReadOnlyList<Met
 /// Il catalogo, in forma consultabile per identificatore di metrica.
 /// </summary>
 /// <remarks>
-/// E' cio' che permette di scrivere "Utilizzo CPU 12,3 %" invece di "cpu.usage.total 12,3":
+/// E' cio' che permette di scrivere "CPU usage 12.3 %" invece di "cpu.usage.total 12.3":
 /// il nome leggibile e l'unita' arrivano dal servizio, non da costanti compilate nel client.
 /// Una metrica assente dal catalogo non fa sparire nulla, si mostra con il suo
 /// identificatore grezzo.

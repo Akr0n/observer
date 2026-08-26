@@ -15,7 +15,7 @@ namespace Observer.App.Services;
 /// </remarks>
 public static class MetricFormatting
 {
-    private static readonly string[] PrefissiBinari = ["byte", "KiB", "MiB", "GiB", "TiB", "PiB"];
+    private static readonly string[] PrefissiBinari = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
 
     /// <summary>
     /// Descrive un valore, usando l'unita' del catalogo quando c'e'.
@@ -33,13 +33,13 @@ public static class MetricFormatting
                 return value.Text ?? string.Empty;
 
             case MetricValueKind.Flag:
-                return value.Flag ? "si'" : "no";
+                return value.Flag ? "Yes" : "No";
 
             default:
                 // Kind sconosciuto significa quasi sempre che la deserializzazione non ha
                 // agganciato il costruttore: il numero sarebbe zero e sembrerebbe una misura
                 // valida. Meglio dirlo che mostrare uno zero inventato.
-                return "valore di tipo non riconosciuto: servizio e client non parlano lo stesso formato";
+                return "unrecognized value type: service and client disagree on the data format";
         }
     }
 
@@ -61,7 +61,7 @@ public static class MetricFormatting
     {
         if (!double.IsFinite(bytes))
         {
-            return "valore non rappresentabile";
+            return "value isn't a finite number";
         }
 
         double segno = bytes < 0d ? -1d : 1d;
@@ -90,7 +90,7 @@ public static class MetricFormatting
             return numero.ToString("F1", CultureInfo.InvariantCulture) + " %";
         }
 
-        if (simbolo == "byte")
+        if (simbolo == "B")
         {
             return DescribeBytes(numero);
         }

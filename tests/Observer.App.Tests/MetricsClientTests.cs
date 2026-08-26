@@ -135,7 +135,7 @@ public class MetricsClientTests
             HttpStatusCode.OK,
             """
             [{"collectorId":"cpu","descriptors":[
-               {"metricId":"cpu.usage.total","displayName":"Utilizzo CPU",
+               {"metricId":"cpu.usage.total","displayName":"CPU usage",
                 "unit":{"symbol":"%"},"isPerInstance":false}]}]
             """)));
 
@@ -146,7 +146,7 @@ public class MetricsClientTests
         MetricDescriptor? descrittore = esito.Catalog!.Find("cpu.usage.total");
 
         Assert.NotNull(descrittore);
-        Assert.Equal("Utilizzo CPU", descrittore.DisplayName);
+        Assert.Equal("CPU usage", descrittore.DisplayName);
         Assert.Equal("%", descrittore.Unit.Symbol);
     }
 

@@ -62,7 +62,7 @@ public static class StorageEndpoints
 
         if (string.IsNullOrWhiteSpace(collector) || string.IsNullOrWhiteSpace(metric))
         {
-            return Problem("Servono sia 'collector' sia 'metric': senza, non si sa quale serie leggere.");
+            return Problem("Both 'collector' and 'metric' are required to identify the series to read.");
         }
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
@@ -71,7 +71,7 @@ public static class StorageEndpoints
 
         if (upper <= lower)
         {
-            return Problem("'to' deve venire dopo 'from': la finestra richiesta e' vuota o rovesciata.");
+            return Problem("'to' must come after 'from': the requested time range is empty or reversed.");
         }
 
         int bucketSeconds;
@@ -86,7 +86,7 @@ public static class StorageEndpoints
         else if (!TryParseResolution(resolution, out bucketSeconds))
         {
             return Problem(
-                "Risoluzione sconosciuta: sono previste 'auto', 'raw', '1m' e '5m'.");
+                "Unknown resolution: expected 'auto', 'raw', '1m' or '5m'.");
         }
 
         IReadOnlyList<HistoryPoint> points = store.ReadHistory(
@@ -195,8 +195,8 @@ public static class StorageEndpoints
     private static IResult Disabled() =>
         Results.Json(
             new ErrorResponse(
-                "Lo storico e' disattivato su questo servizio (Observer:Storage:Enabled). " +
-                "Gli endpoint /metrics/catalog e /metrics/latest continuano a funzionare."),
+                "History is disabled on this service (Observer:Storage:Enabled). " +
+                "The /metrics/catalog and /metrics/latest endpoints still work."),
             statusCode: StatusCodes.Status503ServiceUnavailable);
 }
 

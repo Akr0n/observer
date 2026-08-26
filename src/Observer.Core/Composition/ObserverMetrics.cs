@@ -40,8 +40,8 @@ public static class ObserverMetrics
                 new WindowsMemoryReadingProvider() as IMemoryReadingProvider),
 
             _ => (
-                new UnsupportedCpuTimesProvider("piattaforma non riconosciuta: sono supportate Windows e Linux"),
-                new UnsupportedMemoryReadingProvider("piattaforma non riconosciuta: sono supportate Windows e Linux")),
+                new UnsupportedCpuTimesProvider("unrecognized platform: only Windows and Linux are supported"),
+                new UnsupportedMemoryReadingProvider("unrecognized platform: only Windows and Linux are supported")),
         };
 
         return [new CpuCollector(cpu), new MemoryCollector(memory)];

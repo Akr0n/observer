@@ -7,14 +7,14 @@ namespace Observer.Core.Metrics;
 /// requisito "misurare qualsiasi parametro": il primo sensore in rpm, in volt o in giri
 /// non deve costringere a modificare Observer.Core.
 /// </summary>
-/// <param name="Symbol">Simbolo dell'unita', per esempio "%", "byte", "rpm".</param>
+/// <param name="Symbol">Simbolo dell'unita', per esempio "%", "B", "rpm".</param>
 public readonly record struct MetricUnit(string Symbol)
 {
     /// <summary>Punti percentuali, da 0 a 100.</summary>
     public static MetricUnit Percent => new("%");
 
     /// <summary>Byte.</summary>
-    public static MetricUnit Bytes => new("byte");
+    public static MetricUnit Bytes => new("B");
 
     /// <summary>Grandezza adimensionale (conteggi, flag).</summary>
     public static MetricUnit None => new(string.Empty);
@@ -85,7 +85,7 @@ public readonly record struct MetricValue
             throw new ArgumentOutOfRangeException(
                 nameof(value),
                 value,
-                "Un valore non finito non e' rappresentabile in JSON e farebbe fallire l'intera risposta.");
+                "A non-finite value can't be represented in JSON and would break the whole response.");
         }
 
         return new MetricValue(MetricValueKind.Number, value, null, false);

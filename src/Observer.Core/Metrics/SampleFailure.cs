@@ -37,13 +37,13 @@ public static class SampleFailureText
     public static string Describe(SampleFailure failure) => failure switch
     {
         SampleFailure.FirstSample =>
-            "prima lettura: serve un secondo campione per calcolare la differenza",
+            "first reading: waiting for a second sample to measure the change",
         SampleFailure.CounterWentBackwards =>
-            "contatori tornati indietro (sospensione, ripristino o migrazione della macchina)",
+            "counters went backwards (machine suspended, resumed or migrated)",
         SampleFailure.NoElapsedTime =>
-            "fra i due campioni non e' trascorso tempo misurabile",
+            "no measurable time passed between the two samples",
         SampleFailure.NotFinite =>
-            "il calcolo ha prodotto un valore non finito ed e' stato scartato",
-        _ => "motivo non diagnosticato",
+            "the computed value wasn't finite and was discarded",
+        _ => "cause unknown",
     };
 }
