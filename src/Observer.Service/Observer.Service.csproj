@@ -11,6 +11,12 @@
          che ha una vulnerabilita' nota (NU1903, GHSA-2m69-gcr7-jv3q). Con
          TreatWarningsAsErrors quel NU1903 fa fallire il RESTORE, non solo la compilazione. -->
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
+
+    <!-- Hosting come servizio di sistema, entrambi first-party. Sono innocui quando il
+         processo NON gira come servizio: si limitano a non attivarsi, quindi lo stesso
+         eseguibile va bene sia lanciato a mano sia registrato nel SCM o in systemd. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.0" />
   </ItemGroup>
 
   <PropertyGroup>

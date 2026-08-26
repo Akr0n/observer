@@ -153,24 +153,24 @@ public sealed partial class MetricPersistenceService : BackgroundService
     [LoggerMessage(
         EventId = 10,
         Level = LogLevel.Error,
-        Message = "Scrittura dello storico fallita: questo giro di campioni e' perso, il monitoraggio dal vivo continua.")]
+        Message = "History write failed: this round of samples is lost, live monitoring continues.")]
     private static partial void LogFlushFailed(ILogger logger, Exception exception);
 
     [LoggerMessage(
         EventId = 11,
         Level = LogLevel.Error,
-        Message = "Manutenzione dello storico fallita: nessun dato e' stato cancellato e il consolidamento riprendera' al giro successivo.")]
+        Message = "History maintenance failed: nothing was deleted and consolidation resumes on the next round.")]
     private static partial void LogMaintenanceFailed(ILogger logger, Exception exception);
 
     [LoggerMessage(
         EventId = 12,
         Level = LogLevel.Debug,
-        Message = "Manutenzione: {MinuteBuckets} bucket da un minuto, {FiveMinuteBuckets} da cinque, {RawPurged} campioni grezzi cancellati.")]
+        Message = "Maintenance: {MinuteBuckets} one-minute buckets, {FiveMinuteBuckets} five-minute, {RawPurged} raw samples deleted.")]
     private static partial void LogMaintenance(ILogger logger, int minuteBuckets, int fiveMinuteBuckets, int rawPurged);
 
     [LoggerMessage(
         EventId = 13,
         Level = LogLevel.Warning,
-        Message = "Lo storico ha scartato {NewDrops} campionamenti (totale {TotalDrops}): la scrittura su disco non sta al passo del campionatore.")]
+        Message = "History dropped {NewDrops} samples (total {TotalDrops}): the disk writer isn't keeping up with the sampler.")]
     private static partial void LogDropped(ILogger logger, long newDrops, long totalDrops);
 }

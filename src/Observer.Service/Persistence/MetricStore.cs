@@ -129,7 +129,7 @@ public sealed class MetricStore
         JOIN series s ON s.series_id = r.series_id
         WHERE s.collector_id = $collector AND s.metric_id = $metric AND s.instance = $instance
           AND r.captured_at >= $from AND r.captured_at < $to
-        ORDER BY r.captured_at
+        ORDER BY r.captured_at DESC
         LIMIT $limit;
         """;
 
@@ -139,7 +139,7 @@ public sealed class MetricStore
         JOIN series s ON s.series_id = b.series_id
         WHERE s.collector_id = $collector AND s.metric_id = $metric AND s.instance = $instance
           AND b.bucket_seconds = $width AND b.bucket_start >= $from AND b.bucket_start < $to
-        ORDER BY b.bucket_start
+        ORDER BY b.bucket_start DESC
         LIMIT $limit;
         """;
 
@@ -474,6 +474,13 @@ public sealed class MetricStore
                     reader.GetDouble(5)));
         }
 
+        // Le due query ordinano al CONTRARIO di proposito: con un ordinamento crescente il
+        // LIMIT terrebbe i punti piu' vecchi, e chiedendo novanta giorni si otterrebbe un
+        // grafico che finisce diciassette giorni fa, plausibile e senza alcun errore. Su una
+        // dashboard il presente e' il pezzo che non si puo' perdere. Qui si rimette l'ordine
+        // crescente promesso dal contratto, cosi' il client disegna senza riordinare nulla.
+        points.Reverse();
+
         return points;
     }
 
@@ -490,7 +497,7 @@ public sealed class MetricStore
 
         if (!reader.Read())
         {
-            throw new InvalidOperationException("Il conteggio delle righe non ha restituito nulla.");
+            throw new InvalidOperationException("The row count returned nothing.");
         }
 
         return new StorageStats(

@@ -137,7 +137,7 @@ public sealed partial class MetricSamplingService : BackgroundService
                     collector.Id,
                     CollectorStatus.Unavailable,
                     FormattableString.Invariant(
-                        $"la sorgente non ha risposto entro {CollectorTimeout.TotalMilliseconds} ms ed e' stata abbandonata per questo giro"),
+                        $"the source didn't respond within {CollectorTimeout.TotalMilliseconds} ms and was skipped for this round"),
                     []));
             }
 #pragma warning disable CA1031 // Un collector che esplode deve degradare una piastrella, non
@@ -155,12 +155,12 @@ public sealed partial class MetricSamplingService : BackgroundService
     [LoggerMessage(
         EventId = 1,
         Level = LogLevel.Error,
-        Message = "Il collector {CollectorId} ha lanciato un'eccezione: la sua metrica risulta degradata, il resto continua.")]
+        Message = "Collector {CollectorId} threw an exception: its metric is degraded, everything else continues.")]
     private static partial void LogCollectorFaulted(ILogger logger, string collectorId, Exception exception);
 
     [LoggerMessage(
         EventId = 2,
         Level = LogLevel.Warning,
-        Message = "Il collector {CollectorId} ha superato i {TimeoutMs} ms: saltato per questo giro, le altre metriche proseguono.")]
+        Message = "Collector {CollectorId} exceeded {TimeoutMs} ms: skipped for this round, the other metrics continue.")]
     private static partial void LogCollectorTimedOut(ILogger logger, string collectorId, double timeoutMs);
 }

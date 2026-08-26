@@ -30,6 +30,69 @@ public class StorageOptionsTests
     }
 
     [Fact]
+    public void ResolveDatabasePath_PercorsoRelativo_DiventaAssolutoENonDipendeDallaCartellaCorrente()
+    {
+        // Un servizio di sistema non ha una cartella di lavoro prevedibile: su Windows parte
+        // da system32, con systemd da / salvo direttive. Un percorso relativo produrrebbe un
+        // database in un posto diverso a ogni modo di avvio, e in sviluppo lo pianta dentro
+        // l'albero dei sorgenti. Deve risolversi sempre allo stesso posto.
+        StorageOptions opzioni = new() { DatabasePath = "observer.db" };
+
+        string risolto = opzioni.ResolveDatabasePath();
+
+        Assert.True(Path.IsPathRooted(risolto));
+        Assert.NotEqual(
+            Path.GetFullPath("observer.db"),
+            risolto);
+        Assert.EndsWith("observer.db", risolto, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ResolveDatabasePath_PercorsoGiaAssoluto_RestaComeE()
+    {
+        // Chi indica un percorso esplicito ha le sue ragioni (un disco diverso, un volume di
+        // dati): non va reinterpretato.
+        string esplicito = Path.Combine(Path.GetTempPath(), "observer-esplicito.db");
+        StorageOptions opzioni = new() { DatabasePath = esplicito };
+
+        Assert.Equal(esplicito, opzioni.ResolveDatabasePath());
+    }
+
+    [Fact]
+    public void Convalida_RifiutaUnaGraziaPiuCortaDellaCodaDiScrittura()
+    {
+        // Il buco che questo chiude: la coda puo' trattenere QueueCapacity campionamenti
+        // (a 1 Hz, altrettanti secondi) prima che finiscano su disco, ma il consolidamento
+        // considera chiuso un minuto dopo la sola grazia. Un campione che arriva dopo non
+        // entra piu' nella media del suo minuto, e poco dopo il grezzo viene cancellato:
+        // resta una media credibile calcolata su meta' dei campioni, senza eccezioni ne'
+        // log. E' esattamente il genere di errore che nessuno puo' diagnosticare guardando
+        // un grafico, quindi va impedito all'avvio.
+        StorageOptions incoerenti = new()
+        {
+            QueueCapacity = 240,
+            ConsolidationGrace = TimeSpan.FromSeconds(10),
+        };
+
+        InvalidOperationException errore = Assert.Throws<InvalidOperationException>(incoerenti.Validate);
+
+        Assert.Contains(nameof(StorageOptions.ConsolidationGrace), errore.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(StorageOptions.QueueCapacity), errore.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Convalida_AccettaUnaGraziaCheCopreLaCoda()
+    {
+        StorageOptions coerenti = new()
+        {
+            QueueCapacity = 60,
+            ConsolidationGrace = TimeSpan.FromSeconds(60),
+        };
+
+        coerenti.Validate();
+    }
+
+    [Fact]
     public void Convalida_RifiutaUnaRitenzioneDelGrezzoNonPositiva()
     {
         StorageOptions opzioni = new() { RawRetention = TimeSpan.Zero };

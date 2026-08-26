@@ -42,6 +42,37 @@ public class MetricStoreTests
     }
 
     [Fact]
+    public void ReadHistory_GrezzoOltreIlLimite_TieneIPuntiPiuRecentiNonIPiuVecchi()
+    {
+        // Con ORDER BY crescente + LIMIT si tengono i punti PIU' VECCHI. Una richiesta a 90
+        // giorni su bucket da 5 minuti vale 25920 punti contro un limite di 5000: il grafico
+        // sembrerebbe finire diciassette giorni fa, plausibile e senza alcun errore.
+        // Su una dashboard il presente e' il pezzo che non si puo' perdere.
+        using TempMetricStore temporaneo = new();
+
+        temporaneo.Store.WriteSamples(
+        [
+            Campione("2026-08-26T12:00:00Z", 1d),
+            Campione("2026-08-26T12:00:01Z", 2d),
+            Campione("2026-08-26T12:00:02Z", 3d),
+            Campione("2026-08-26T12:00:03Z", 4d),
+            Campione("2026-08-26T12:00:04Z", 5d),
+        ]);
+
+        IReadOnlyList<HistoryPoint> punti = temporaneo.Store.ReadHistory(
+            Serie(), BucketWidths.RawSeconds, T("2026-08-26T12:00:00Z"), T("2026-08-26T12:01:00Z"), 3);
+
+        Assert.Equal(3, punti.Count);
+
+        // Gli ultimi tre, e comunque restituiti in ordine crescente: il client disegna da
+        // sinistra a destra e non deve riordinare nulla.
+        Assert.Equal(T("2026-08-26T12:00:02Z"), punti[0].Timestamp);
+        Assert.Equal(T("2026-08-26T12:00:03Z"), punti[1].Timestamp);
+        Assert.Equal(T("2026-08-26T12:00:04Z"), punti[2].Timestamp);
+        Assert.Equal(5d, punti[2].Last);
+    }
+
+    [Fact]
     public void Scrive_ERileggeIlGrezzoConLaStessaFormaDegliAggregati()
     {
         using TempMetricStore temporaneo = new();

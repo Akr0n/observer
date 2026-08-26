@@ -21,6 +21,14 @@ builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, relo
 builder.Configuration.AddEnvironmentVariables();
 builder.Configuration.AddCommandLine(args);
 
+// Permette allo stesso eseguibile di girare come servizio di sistema: registrato nel Service
+// Control Manager su Windows, come unit systemd su Linux. Entrambe le chiamate non fanno nulla
+// quando il processo e' avviato normalmente da terminale, quindi non esistono due modalita' da
+// mantenere separate. E' cio' che rende reale il vincolo Session 0 da cui nasce l'architettura
+// a due processi: il servizio raccoglie senza che nessuno tenga aperta una finestra.
+builder.Host.UseWindowsService();
+builder.Host.UseSystemd();
+
 builder.Services.AddObserverMetrics();
 builder.Services.AddSingleton<MetricSnapshotCache>();
 builder.Services.AddHostedService<MetricSamplingService>();
@@ -37,7 +45,10 @@ builder.Services.AddSingleton(storage);
 
 // Magazzino e coda si registrano SEMPRE, anche a storico spento: costruirli non tocca il
 // disco, e cosi' gli endpoint possono rispondere "disattivato" invece di non esistere.
-builder.Services.AddSingleton(new MetricStore(storage.DatabasePath));
+// Percorso RISOLTO, mai quello grezzo: un servizio non ha una cartella di lavoro prevedibile,
+// e un percorso relativo farebbe comparire il database in posti diversi a seconda di come e'
+// stato avviato, dando l'impressione di aver perso lo storico.
+builder.Services.AddSingleton(new MetricStore(storage.ResolveDatabasePath()));
 builder.Services.AddSingleton(new SnapshotBuffer(storage.QueueCapacity));
 
 if (storage.Enabled)
@@ -61,9 +72,10 @@ string? apiToken = builder.Configuration["Observer:ApiToken"];
 if (string.IsNullOrWhiteSpace(apiToken))
 {
     throw new InvalidOperationException(
-        "Observer:ApiToken non e' configurato. Il servizio espone telemetria della macchina su " +
-        "tutta la rete e non parte senza autenticazione. Impostalo in appsettings.Local.json " +
-        "(gia' escluso da git) oppure nella variabile d'ambiente Observer__ApiToken.");
+        "Observer:ApiToken is not configured. This service exposes machine telemetry over the " +
+        "whole network and will not start without authentication. Set it in " +
+        "appsettings.Local.json (already git-ignored) or in the Observer__ApiToken " +
+        "environment variable.");
 }
 
 byte[] expectedToken = Encoding.UTF8.GetBytes(apiToken);
