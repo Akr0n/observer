@@ -5,9 +5,14 @@
 Dashboard cross-platform per il monitoraggio dei parametri vitali della macchina
 e dei dispositivi presenti sulla rete locale. Gira su Windows e Linux.
 
-> **Stato:** in sviluppo. Il servizio campiona CPU e RAM e le espone via HTTP
-> autenticato, su Windows e su Linux. Mancano ancora la persistenza, il flusso in
-> tempo reale e il client desktop, quindi non c'è ancora una dashboard da guardare.
+> **Stato:** funzionante su CPU e memoria. Il servizio campiona una volta al secondo
+> su Windows e su Linux, conserva le serie su SQLite ed espone i dati via HTTP
+> autenticato; il client desktop si collega e li mostra dal vivo. Mancano le altre
+> metriche (dischi, rete, processi), i grafici storici nel client e l'installazione
+> come servizio di sistema.
+>
+> L'interfaccia dell'applicazione è in **inglese**; questa documentazione e i commenti
+> nel codice restano in italiano.
 
 ## Architettura
 
@@ -18,9 +23,11 @@ raccolta e visualizzazione devono essere due processi distinti.
 | Progetto | Ruolo |
 | --- | --- |
 | `src/Observer.Core` | Modelli condivisi, astrazione dei collector e adattatori di piattaforma |
-| `src/Observer.Service` | Servizio headless (Windows Service / systemd): campiona a 1 Hz ed espone i dati via HTTP autenticato. La persistenza su SQLite è prevista, non ancora presente |
-| `src/Observer.App` | Client desktop Avalonia: si collegherà al servizio e visualizzerà. Ancora allo scaffolding |
-| `tests/Observer.Core.Tests` | Test unitari su `Observer.Core` |
+| `src/Observer.Service` | Servizio headless: campiona a 1 Hz, conserva le serie su SQLite con aggregazione ed espone i dati via HTTP autenticato |
+| `src/Observer.App` | Client desktop Avalonia: si collega al servizio e mostra le metriche dal vivo |
+| `tests/Observer.Core.Tests` | Test su `Observer.Core` |
+| `tests/Observer.Service.Tests` | Test su `Observer.Service`, storico compreso |
+| `tests/Observer.App.Tests` | Test sul client HTTP e sulla traduzione delle risposte |
 
 Il client può puntare al servizio in esecuzione sulla stessa macchina o su un'altra.
 
