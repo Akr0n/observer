@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <!-- Serve ad avviare il servizio VERO in memoria: e' l'unico modo di verificare che gli
+         endpoint nuovi stiano davvero dietro il bearer token e che il container sappia
+         costruire tutto cio' che serve. Un errore di registrazione non si vede in nessun
+         test di unita': si vede solo all'avvio. -->
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Riferimento al progetto ESEGUIBILE del servizio: la persistenza vive li' dentro e
+         non in una libreria a parte, quindi e' l'unico modo di testarla senza duplicarla. -->
+    <ProjectReference Include="..\..\src\Observer.Service\Observer.Service.csproj" />
+  </ItemGroup>
+
+</Project>

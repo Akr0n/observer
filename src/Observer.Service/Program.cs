@@ -4,6 +4,7 @@ using Microsoft.Extensions.Primitives;
 using Observer.Core.Composition;
 using Observer.Core.Metrics;
 using Observer.Service;
+using Observer.Service.Persistence;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -23,6 +24,33 @@ builder.Configuration.AddCommandLine(args);
 builder.Services.AddObserverMetrics();
 builder.Services.AddSingleton<MetricSnapshotCache>();
 builder.Services.AddHostedService<MetricSamplingService>();
+
+// Lo storico. Le opzioni si convalidano QUI, prima di aprire la porta: una ritenzione a zero
+// non farebbe fallire niente, cancellerebbe solo tutto in silenzio, e il guasto si
+// scoprirebbe il giorno in cui a qualcuno serve un grafico di ieri.
+StorageOptions storage =
+    builder.Configuration.GetSection(StorageOptions.SectionName).Get<StorageOptions>() ?? new StorageOptions();
+
+storage.Validate();
+
+builder.Services.AddSingleton(storage);
+
+// Magazzino e coda si registrano SEMPRE, anche a storico spento: costruirli non tocca il
+// disco, e cosi' gli endpoint possono rispondere "disattivato" invece di non esistere.
+builder.Services.AddSingleton(new MetricStore(storage.DatabasePath));
+builder.Services.AddSingleton(new SnapshotBuffer(storage.QueueCapacity));
+
+if (storage.Enabled)
+{
+    builder.Services.AddSingleton<IMetricSnapshotSink>(
+        provider => provider.GetRequiredService<SnapshotBuffer>());
+    builder.Services.AddSingleton<MetricWriter>();
+    builder.Services.AddHostedService<MetricPersistenceService>();
+}
+else
+{
+    builder.Services.AddSingleton<IMetricSnapshotSink, NullMetricSnapshotSink>();
+}
 
 // Il servizio ascolta anche fuori da localhost (vedi appsettings.json) ed espone telemetria
 // della macchina: senza token sarebbe leggibile da chiunque sia sulla stessa rete. Quindi si
@@ -65,6 +93,10 @@ app.MapGet("/metrics/latest", (MetricSnapshotCache cache) =>
     cache.Latest is { } snapshot
         ? Results.Ok(snapshot)
         : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
+
+// Mappati DOPO il middleware qui sopra, come gli altri due: lo storico dice quando la
+// macchina e' accesa e quanto lavora, cioe' piu' di quanto dica un singolo campionamento.
+app.MapStorageEndpoints();
 
 app.Run();
 

@@ -1,4 +1,5 @@
 using Observer.Core.Metrics;
+using Observer.Service.Persistence;
 
 namespace Observer.Service;
 
@@ -46,20 +47,33 @@ public sealed partial class MetricSamplingService : BackgroundService
 
     private readonly IReadOnlyList<IMetricCollector> collectors;
     private readonly MetricSnapshotCache cache;
+    private readonly IMetricSnapshotSink sink;
     private readonly ILogger<MetricSamplingService> logger;
 
     /// <summary>Crea il campionatore.</summary>
+    /// <param name="collectors">Le sorgenti da interrogare.</param>
+    /// <param name="cache">Dove pubblicare l'ultimo campionamento per gli endpoint.</param>
+    /// <param name="sink">
+    /// Dove depositare lo stesso campionamento perche' finisca nello storico. Deposita e
+    /// basta: se aspettasse il disco, un fsync lento non renderebbe il grafico lento,
+    /// falserebbe la percentuale di CPU della lettura successiva, che si calcola sulla
+    /// DISTANZA fra due campionamenti.
+    /// </param>
+    /// <param name="logger">Dove segnalare i collector lenti o guasti.</param>
     public MetricSamplingService(
         IReadOnlyList<IMetricCollector> collectors,
         MetricSnapshotCache cache,
+        IMetricSnapshotSink sink,
         ILogger<MetricSamplingService> logger)
     {
         ArgumentNullException.ThrowIfNull(collectors);
         ArgumentNullException.ThrowIfNull(cache);
+        ArgumentNullException.ThrowIfNull(sink);
         ArgumentNullException.ThrowIfNull(logger);
 
         this.collectors = collectors;
         this.cache = cache;
+        this.sink = sink;
         this.logger = logger;
     }
 
@@ -74,7 +88,14 @@ public sealed partial class MetricSamplingService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            cache.Publish(await CollectAllAsync(stoppingToken).ConfigureAwait(false));
+            MachineSnapshot snapshot = await CollectAllAsync(stoppingToken).ConfigureAwait(false);
+
+            cache.Publish(snapshot);
+
+            // Lo STESSO oggetto va anche allo storico: cosi' il grafico di un istante e la
+            // piastrella del presente non possono mostrare numeri diversi. Enqueue non
+            // aspetta il disco, per costruzione.
+            sink.Enqueue(snapshot);
 
             try
             {
