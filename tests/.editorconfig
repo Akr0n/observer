@@ -1,0 +1,7 @@
+# I test usano la convenzione Metodo_Scenario_RisultatoAtteso, che contiene underscore.
+# CA1707 (niente underscore negli identificatori) e' pensata per le API pubbliche di una
+# libreria, non per i nomi dei test, dove l'underscore e' lo standard di fatto e rende
+# leggibile il report di fallimento. Con TreatWarningsAsErrors, senza questa riga la build
+# dei test fallisce.
+[*.cs]
+dotnet_diagnostic.CA1707.severity = none

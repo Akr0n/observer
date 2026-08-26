@@ -1,9 +1,21 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+
+    <!-- Obbligatorio per [LibraryImport], il generatore di source per le P/Invoke usato
+         dagli adattatori Windows (GetSystemTimes, GlobalMemoryStatusEx). Senza, la build
+         fallisce con SYSLIB1062. Il vecchio [DllImport] non e' un'alternativa: con
+         TreatWarningsAsErrors romperebbe con SYSLIB1054.
+         Nota: vale su tutto il progetto, non solo sui due file che ne hanno bisogno. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Solo le Abstractions: sono cross-platform e non tirano dentro un container DI.
+         La radice di composizione vive qui perche' Service e App registrano gli stessi
+         collector. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+  </ItemGroup>
 
 </Project>

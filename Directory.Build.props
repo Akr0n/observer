@@ -6,6 +6,16 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <LangVersion>latest</LangVersion>
-    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- NON rimettere qui <InvariantGlobalization>true</InvariantGlobalization>.
+         Verificato sperimentalmente il 2026-08-26: quella property viene passata agli
+         analyzer (build_property.InvariantGlobalization) e SPEGNE in silenzio CA1305
+         (Parse senza IFormatProvider) e CA1310 (StartsWith senza StringComparison).
+         Nemmeno dotnet_diagnostic.CA1305.severity=error in .editorconfig li recupera.
+         Siccome qui si parsa /proc/stat e /proc/meminfo, e' esattamente la classe di bug
+         che non vogliamo lasciar passare.
+         L'invarianza a runtime resta garantita dai runtimeconfig.template.json dei
+         progetti ESEGUIBILI: ogni nuovo eseguibile deve averne uno, altrimenti su Linux
+         servono i pacchetti ICU per avviarsi. -->
   </PropertyGroup>
 </Project>
