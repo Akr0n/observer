@@ -23,7 +23,7 @@ public sealed partial class WindowsCpuTimesProvider : ICpuTimesProvider
 
     /// <inheritdoc />
     public string? UnsupportedReason =>
-        IsSupported ? null : "i contatori CPU di kernel32 esistono solo su Windows";
+        IsSupported ? null : "the kernel32 CPU counters exist only on Windows";
 
     /// <inheritdoc />
     public bool TryRead(out CpuTimes times)
@@ -67,7 +67,7 @@ public sealed partial class WindowsMemoryReadingProvider : IMemoryReadingProvide
 
     /// <inheritdoc />
     public string? UnsupportedReason =>
-        IsSupported ? null : "GlobalMemoryStatusEx esiste solo su Windows";
+        IsSupported ? null : "GlobalMemoryStatusEx exists only on Windows";
 
     /// <inheritdoc />
     public bool TryRead(out MemoryReading value)

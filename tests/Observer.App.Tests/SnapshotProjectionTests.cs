@@ -18,13 +18,13 @@ public class SnapshotProjectionTests
     [
         new CollectorCatalogEntry("cpu",
         [
-            new MetricDescriptor("cpu.usage.total", "Utilizzo CPU", MetricUnit.Percent, IsPerInstance: false),
+            new MetricDescriptor("cpu.usage.total", "CPU usage", MetricUnit.Percent, IsPerInstance: false),
         ]),
         new CollectorCatalogEntry("memory",
         [
-            new MetricDescriptor("memory.used.bytes", "Memoria usata", MetricUnit.Bytes, IsPerInstance: false),
-            new MetricDescriptor("memory.used.percent", "Memoria usata", MetricUnit.Percent, IsPerInstance: false),
-            new MetricDescriptor("memory.available.estimated", "Disponibile e' una stima", MetricUnit.None, IsPerInstance: false),
+            new MetricDescriptor("memory.used.bytes", "Used memory", MetricUnit.Bytes, IsPerInstance: false),
+            new MetricDescriptor("memory.used.percent", "Used memory", MetricUnit.Percent, IsPerInstance: false),
+            new MetricDescriptor("memory.available.estimated", "Available is estimated", MetricUnit.None, IsPerInstance: false),
         ]),
     ]);
 
@@ -37,7 +37,7 @@ public class SnapshotProjectionTests
         MetricRowState riga = Assert.Single(gruppi[0].Rows);
 
         Assert.Equal("CPU", gruppi[0].Title);
-        Assert.Equal("Utilizzo CPU", riga.Label);
+        Assert.Equal("CPU usage", riga.Label);
 
         // 64.2 e non 64.3: "F1" arrotonda il mezzo al pari. Su una percentuale di CPU la
         // differenza e' irrilevante, ma vale la pena che sia scritta invece che scoperta.
@@ -56,7 +56,7 @@ public class SnapshotProjectionTests
 
         MetricRowState riga = Assert.Single(gruppi[0].Rows);
 
-        Assert.Equal("Memoria", gruppi[0].Title);
+        Assert.Equal("Memory", gruppi[0].Title);
         Assert.Equal("31.8 GiB", riga.Display);
         Assert.Null(riga.Fraction);
     }
@@ -67,7 +67,7 @@ public class SnapshotProjectionTests
         IReadOnlyList<MetricGroupState> gruppi = Proietta(
             Ok("memory", MetricPoint.Measured("memory.available.estimated", null, MetricValue.FromFlag(true))));
 
-        Assert.Equal("si'", Assert.Single(gruppi[0].Rows).Display);
+        Assert.Equal("Yes", Assert.Single(gruppi[0].Rows).Display);
     }
 
     [Fact]
@@ -196,7 +196,7 @@ public class SnapshotProjectionTests
         MetricRowState riga = Assert.Single(SnapshotProjection.Project(snapshot!, Catalogo)[0].Rows);
 
         Assert.Equal(MetricSeverity.Problema, riga.Severity);
-        Assert.Contains("non riconosciuto", riga.Display, StringComparison.Ordinal);
+        Assert.Contains("unrecognized", riga.Display, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -251,8 +251,8 @@ public class SnapshotProjectionTests
 
         IReadOnlyList<MetricRowState> righe = SnapshotProjection.Project(snapshot, Catalogo)[0].Rows;
 
-        Assert.Equal("Memoria usata (byte)", righe[0].Label);
-        Assert.Equal("Memoria usata (%)", righe[1].Label);
+        Assert.Equal("Used memory (B)", righe[0].Label);
+        Assert.Equal("Used memory (%)", righe[1].Label);
     }
 
     [Fact]
@@ -261,12 +261,12 @@ public class SnapshotProjectionTests
         MetricRowState riga = Assert.Single(Proietta(
             Ok("cpu", MetricPoint.Measured("cpu.usage.total", null, MetricValue.FromNumber(10d)))).Single().Rows);
 
-        Assert.Equal("Utilizzo CPU", riga.Label);
+        Assert.Equal("CPU usage", riga.Label);
     }
 
     [Theory]
-    [InlineData(0d, "0 byte")]
-    [InlineData(512d, "512 byte")]
+    [InlineData(0d, "0 B")]
+    [InlineData(512d, "512 B")]
     [InlineData(1024d, "1.0 KiB")]
     [InlineData(1048576d, "1.0 MiB")]
     [InlineData(34122366976d, "31.8 GiB")]

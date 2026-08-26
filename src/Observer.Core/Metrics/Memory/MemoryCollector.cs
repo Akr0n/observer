@@ -48,13 +48,13 @@ public sealed class MemoryCollector : IMetricCollector
 
     private static readonly MetricDescriptor[] DescriptorList =
     [
-        new(TotalBytesMetricId, "Memoria totale", MetricUnit.Bytes, IsPerInstance: false),
-        new(AvailableBytesMetricId, "Memoria disponibile", MetricUnit.Bytes, IsPerInstance: false),
-        new(UsedBytesMetricId, "Memoria usata", MetricUnit.Bytes, IsPerInstance: false),
-        new(UsedPercentMetricId, "Memoria usata", MetricUnit.Percent, IsPerInstance: false),
-        new(AvailableEstimatedMetricId, "Disponibile e' una stima", MetricUnit.None, IsPerInstance: false),
-        new(SwapTotalMetricId, "Swap totale", MetricUnit.Bytes, IsPerInstance: false),
-        new(SwapUsedMetricId, "Swap usato", MetricUnit.Bytes, IsPerInstance: false),
+        new(TotalBytesMetricId, "Total memory", MetricUnit.Bytes, IsPerInstance: false),
+        new(AvailableBytesMetricId, "Available memory", MetricUnit.Bytes, IsPerInstance: false),
+        new(UsedBytesMetricId, "Used memory", MetricUnit.Bytes, IsPerInstance: false),
+        new(UsedPercentMetricId, "Used memory", MetricUnit.Percent, IsPerInstance: false),
+        new(AvailableEstimatedMetricId, "Available is estimated", MetricUnit.None, IsPerInstance: false),
+        new(SwapTotalMetricId, "Total swap", MetricUnit.Bytes, IsPerInstance: false),
+        new(SwapUsedMetricId, "Used swap", MetricUnit.Bytes, IsPerInstance: false),
     ];
 
     private readonly IMemoryReadingProvider provider;
@@ -86,12 +86,12 @@ public sealed class MemoryCollector : IMetricCollector
         {
             return Degraded(
                 CollectorStatus.Unsupported,
-                provider.UnsupportedReason ?? "sorgente non supportata su questa piattaforma");
+                provider.UnsupportedReason ?? "source not supported on this platform");
         }
 
         if (!provider.TryRead(out MemoryReading reading))
         {
-            return Degraded(CollectorStatus.Unavailable, "lettura dei valori di memoria non riuscita");
+            return Degraded(CollectorStatus.Unavailable, "couldn't read the memory values");
         }
 
         List<MetricPoint> points =

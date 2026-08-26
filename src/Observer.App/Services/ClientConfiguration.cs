@@ -112,14 +112,14 @@ public static class ClientConfiguration
         {
             return new ClientConfigurationResult(
                 null,
-                $"Il file di configurazione {FilePath} non e' un JSON valido ({ex.Message}). " +
-                $"Deve contenere esattamente: {{ \"baseAddress\": \"{DefaultBaseAddress}\", \"apiToken\": \"il-tuo-token\" }}");
+                $"The configuration file {FilePath} isn't valid JSON ({ex.Message}). " +
+                $"It must contain exactly: {{ \"baseAddress\": \"{DefaultBaseAddress}\", \"apiToken\": \"your-token\" }}");
         }
 
         string? token = Primo(tokenFromEnvironment, file?.ApiToken);
         string origine = string.IsNullOrWhiteSpace(tokenFromEnvironment)
-            ? $"dal file {FilePath}"
-            : $"dalla variabile d'ambiente {TokenVariable}";
+            ? $"from the file {FilePath}"
+            : $"from the {TokenVariable} environment variable";
 
         if (string.IsNullOrWhiteSpace(token))
         {
@@ -133,10 +133,10 @@ public static class ClientConfiguration
         {
             return new ClientConfigurationResult(
                 null,
-                $"L'indirizzo del servizio \"{indirizzo}\" non e' utilizzabile. " +
-                $"Deve essere un indirizzo http o https completo, per esempio {DefaultBaseAddress}. " +
-                $"Si imposta nella variabile d'ambiente {BaseAddressVariable} oppure nel campo " +
-                $"\"baseAddress\" del file {FilePath}.");
+                $"The service address \"{indirizzo}\" can't be used. " +
+                $"It must be a full http or https address, for example {DefaultBaseAddress}. " +
+                $"Set it in the {BaseAddressVariable} environment variable, or in the " +
+                $"\"baseAddress\" field of {FilePath}.");
         }
 
         return new ClientConfigurationResult(
@@ -146,13 +146,13 @@ public static class ClientConfiguration
 
     /// <summary>Il testo mostrato quando manca il token. Estratto perche' e' anche cio' che il test verifica.</summary>
     public static string TestoTokenMancante() =>
-        "Nessun token configurato, quindi non c'e' nemmeno da provare a collegarsi: il servizio " +
-        "rifiuta ogni richiesta senza autenticazione. Va indicato lo STESSO token con cui e' " +
-        "partito il servizio, in uno dei due modi: " +
-        $"1) nella variabile d'ambiente {TokenVariable}; " +
-        $"2) nel file {FilePath}, con dentro " +
-        $"{{ \"baseAddress\": \"{DefaultBaseAddress}\", \"apiToken\": \"il-tuo-token\" }}. " +
-        "Se ci sono entrambi vince la variabile d'ambiente.";
+        "No token is configured, so there is no point in trying to connect: the service " +
+        "rejects every request that isn't authenticated. Use the SAME token the service was " +
+        "started with, in one of two ways: " +
+        $"1) in the {TokenVariable} environment variable; " +
+        $"2) in the file {FilePath}, containing " +
+        $"{{ \"baseAddress\": \"{DefaultBaseAddress}\", \"apiToken\": \"your-token\" }}. " +
+        "If both are set, the environment variable wins.";
 
     private static string? LeggiFile(string path)
     {

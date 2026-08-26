@@ -66,12 +66,12 @@ public static class SnapshotProjection
 {
     // Il servizio non dichiara un nome leggibile per il COLLECTOR, solo per le metriche.
     // Questa tabellina serve a non intitolare un riquadro "memory": chi non programma legge
-    // "Memoria". Un collector sconosciuto tiene il proprio identificatore, quindi
+    // "Memory". Un collector sconosciuto tiene il proprio identificatore, quindi
     // aggiungerne uno nuovo al servizio non richiede di toccare questo file.
     private static readonly Dictionary<string, string> TitoliNoti = new(StringComparer.Ordinal)
     {
         ["cpu"] = "CPU",
-        ["memory"] = "Memoria",
+        ["memory"] = "Memory",
     };
 
     /// <summary>Costruisce i riquadri da mostrare.</summary>
@@ -119,7 +119,7 @@ public static class SnapshotProjection
     /// con lo stesso nome.
     /// </summary>
     /// <remarks>
-    /// Serve davvero: il collector della memoria dichiara "Memoria usata" sia per i byte sia
+    /// Serve davvero: il collector della memoria dichiara "Used memory" sia per i byte sia
     /// per la percentuale, e due righe con lo stesso nome e numeri diversi sembrano una
     /// contraddizione. La regola e' generica, quindi vale anche per un collector futuro che
     /// commetta lo stesso battesimo doppio.
@@ -153,7 +153,7 @@ public static class SnapshotProjection
     private static string Titolo(string collectorId) =>
         collectorId is not null && TitoliNoti.TryGetValue(collectorId, out string? titolo)
             ? titolo
-            : collectorId ?? "sorgente senza nome";
+            : collectorId ?? "unnamed source";
 
     private static string? Nota(MetricSnapshot collector)
     {
@@ -162,11 +162,11 @@ public static class SnapshotProjection
             // Un collector Ok che non ha prodotto nulla non e' un caso normale: senza questa
             // riga il riquadro resterebbe vuoto e muto.
             return collector.Points is null || collector.Points.Count == 0
-                ? "Il servizio dichiara questa sorgente funzionante ma non ha inviato alcun valore."
+                ? "The service reports this source as working but sent no values."
                 : null;
         }
 
-        return collector.Message ?? "Il servizio non ha spiegato perche' questa sorgente non ha prodotto valori.";
+        return collector.Message ?? "The service didn't say why this source produced no values.";
     }
 
     private static MetricRowState Riga(string collectorId, MetricPoint punto, MetricCatalog catalog)
@@ -188,7 +188,7 @@ public static class SnapshotProjection
             return new MetricRowState(
                 chiave,
                 etichetta,
-                punto.Message ?? "valore non disponibile, senza spiegazione",
+                punto.Message ?? "no value available, no reason given",
                 null,
                 Gravita(punto.Status));
         }
@@ -200,7 +200,7 @@ public static class SnapshotProjection
             return new MetricRowState(
                 chiave,
                 etichetta,
-                "il servizio ha dichiarato la misura riuscita ma non ha inviato il valore",
+                "the service reported the reading succeeded but sent no value",
                 null,
                 MetricSeverity.Problema);
         }

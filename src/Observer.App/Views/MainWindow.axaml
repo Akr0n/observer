@@ -11,7 +11,7 @@
         Icon="/Assets/avalonia-logo.ico"
         Width="720" Height="560"
         MinWidth="420" MinHeight="360"
-        Title="Observer — CPU e memoria">
+        Title="Observer — CPU and memory">
 
     <Window.Styles>
         <!-- Solo un guasto vero si colora. Un Warmup all'avvio o una metrica non misurabile

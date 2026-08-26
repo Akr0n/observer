@@ -43,14 +43,14 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             Mostra(
                 FAInfoBarSeverity.Error,
-                "Manca la configurazione",
+                "Configuration missing",
                 problemaDiConfigurazione ?? ClientConfiguration.TestoTokenMancante());
-            SottoIntestazione = "Non collegato.";
+            SottoIntestazione = "Not connected.";
         }
         else
         {
-            Mostra(FAInfoBarSeverity.Informational, "Collegamento in corso", "Prima lettura in corso…");
-            SottoIntestazione = "Collegamento in corso…";
+            Mostra(FAInfoBarSeverity.Informational, "Connecting", "Taking the first reading…");
+            SottoIntestazione = "Connecting…";
         }
     }
 
@@ -118,10 +118,10 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             Mostra(
                 FAInfoBarSeverity.Error,
-                "Aggiornamento interrotto",
-                $"L'aggiornamento automatico si e' fermato per un errore imprevisto ({ex.GetType().Name}: " +
-                $"{ex.Message}). I valori a schermo non sono piu' aggiornati: chiudi e riapri l'applicazione.");
-            SottoIntestazione = "Aggiornamento fermo.";
+                "Updates stopped",
+                $"Automatic refresh stopped after an unexpected error ({ex.GetType().Name}: " +
+                $"{ex.Message}). The values on screen have stopped updating: close and reopen the application.");
+            SottoIntestazione = "Refresh stopped.";
         }
     }
 
@@ -146,7 +146,7 @@ public sealed partial class MainViewModel : ViewModelBase
 
         // Il catalogo cambia solo quando cambia il servizio: si legge una volta sola, e si
         // ritenta al giro dopo se non riesce. Va letto PRIMA di disegnare, altrimenti il primo
-        // fotogramma mostrerebbe "cpu.usage.total" al posto di "Utilizzo CPU". Se non arriva
+        // fotogramma mostrerebbe "cpu.usage.total" al posto di "CPU usage". Se non arriva
         // mai, le metriche restano visibili con il loro identificatore grezzo invece di sparire.
         if (!catalogoLetto)
         {
@@ -165,19 +165,19 @@ public sealed partial class MainViewModel : ViewModelBase
         StatoVisibile = false;
 
         string ora = snapshot.CapturedAt.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
-        SottoIntestazione = $"Collegato · ultima lettura alle {ora} · token {client.TokenOrigin}";
+        SottoIntestazione = $"Connected · last reading at {ora} · token {client.TokenOrigin}";
     }
 
     private void SegnalaProblema(ServiceOutcome esito, string testo)
     {
         (FAInfoBarSeverity gravita, string titolo) = esito switch
         {
-            ServiceOutcome.NonAncoraPronto => (FAInfoBarSeverity.Informational, "Il servizio si sta avviando"),
-            ServiceOutcome.TokenRifiutato => (FAInfoBarSeverity.Error, "Token rifiutato"),
-            ServiceOutcome.NonRaggiungibile => (FAInfoBarSeverity.Error, "Servizio non raggiungibile"),
-            ServiceOutcome.VersioneIncompatibile => (FAInfoBarSeverity.Error, "Versioni incompatibili"),
-            ServiceOutcome.RispostaIncomprensibile => (FAInfoBarSeverity.Error, "Risposta non riconosciuta"),
-            _ => (FAInfoBarSeverity.Error, "Lettura non riuscita"),
+            ServiceOutcome.NonAncoraPronto => (FAInfoBarSeverity.Informational, "Service is starting"),
+            ServiceOutcome.TokenRifiutato => (FAInfoBarSeverity.Error, "Token rejected"),
+            ServiceOutcome.NonRaggiungibile => (FAInfoBarSeverity.Error, "Service unreachable"),
+            ServiceOutcome.VersioneIncompatibile => (FAInfoBarSeverity.Error, "Version mismatch"),
+            ServiceOutcome.RispostaIncomprensibile => (FAInfoBarSeverity.Error, "Unrecognized response"),
+            _ => (FAInfoBarSeverity.Error, "Reading failed"),
         };
 
         Mostra(gravita, titolo, testo);
@@ -185,8 +185,8 @@ public sealed partial class MainViewModel : ViewModelBase
         // I valori restano a schermo apposta: cancellarli farebbe credere che la macchina
         // abbia smesso di avere una CPU. La riga qui sotto dice che sono fermi.
         SottoIntestazione = Gruppi.Count == 0
-            ? "Non collegato."
-            : "Non collegato: i valori mostrati sono l'ultima lettura riuscita.";
+            ? "Not connected."
+            : "Not connected: the values shown are the last successful reading.";
     }
 
     private void Mostra(FAInfoBarSeverity gravita, string titolo, string messaggio)

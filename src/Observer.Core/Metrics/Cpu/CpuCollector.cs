@@ -31,7 +31,7 @@ public sealed class CpuCollector : IMetricCollector
 
     private static readonly MetricDescriptor[] DescriptorList =
     [
-        new(TotalUsageMetricId, "Utilizzo CPU", MetricUnit.Percent, IsPerInstance: false),
+        new(TotalUsageMetricId, "CPU usage", MetricUnit.Percent, IsPerInstance: false),
     ];
 
     private readonly ICpuTimesProvider provider;
@@ -66,7 +66,7 @@ public sealed class CpuCollector : IMetricCollector
             // un'informazione, "la metrica e' sparita" e' un bug apparente.
             return Degraded(
                 CollectorStatus.Unsupported,
-                provider.UnsupportedReason ?? "sorgente non supportata su questa piattaforma");
+                provider.UnsupportedReason ?? "source not supported on this platform");
         }
 
         if (!provider.TryRead(out CpuTimes current))
@@ -74,7 +74,7 @@ public sealed class CpuCollector : IMetricCollector
             // Azzera la storia: calcolare un delta a cavallo di un buco produrrebbe una
             // percentuale mediata su un intervallo sconosciuto, cioe' un numero inventato.
             previous = null;
-            return Degraded(CollectorStatus.Unavailable, "lettura dei contatori CPU non riuscita");
+            return Degraded(CollectorStatus.Unavailable, "couldn't read the CPU counters");
         }
 
         if (previous is not CpuTimes last)

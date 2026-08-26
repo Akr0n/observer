@@ -96,11 +96,11 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             // campi a zero marcati "Ok", che e' peggio di un messaggio d'errore.
             return new SnapshotFetch(
                 ServiceOutcome.VersioneIncompatibile,
-                $"Il servizio su {BaseAddress} usa la versione " +
+                $"The service at {BaseAddress} uses data format version " +
                 snapshot.SchemaVersion.ToString(CultureInfo.InvariantCulture) +
-                " del formato dati, mentre questa applicazione conosce solo la " +
+                ", but this application only understands version " +
                 MachineSnapshot.CurrentSchemaVersion.ToString(CultureInfo.InvariantCulture) +
-                ". Servizio e client vanno aggiornati insieme.",
+                ". Service and client have to be updated together.",
                 null);
         }
 
@@ -143,9 +143,9 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             {
                 return (
                     ServiceOutcome.TokenRifiutato,
-                    $"Il servizio su {BaseAddress} ha rifiutato il token ({codice}). " +
-                    $"Il token in uso arriva {TokenOrigin} e deve essere IDENTICO a quello con cui e' " +
-                    "stato avviato il servizio (Observer:ApiToken).",
+                    $"The service at {BaseAddress} rejected the token ({codice}). " +
+                    $"The token in use comes {TokenOrigin} and has to be IDENTICAL to the one the " +
+                    "service was started with (Observer:ApiToken).",
                     null);
             }
 
@@ -153,8 +153,8 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             {
                 return (
                     ServiceOutcome.NonAncoraPronto,
-                    $"Il servizio su {BaseAddress} e' in ascolto ma non ha ancora prodotto il primo " +
-                    "campionamento. Di solito passa da solo dopo un secondo o due.",
+                    $"The service at {BaseAddress} is listening but hasn't produced its first " +
+                    "reading yet. This usually clears on its own after a second or two.",
                     null);
             }
 
@@ -162,8 +162,8 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             {
                 return (
                     ServiceOutcome.RispostaInattesa,
-                    $"Il servizio su {BaseAddress} ha risposto {codice} ({risposta.ReasonPhrase}), " +
-                    "che questa applicazione non sa interpretare.",
+                    $"The service at {BaseAddress} replied {codice} ({risposta.ReasonPhrase}), " +
+                    "which this application doesn't know how to interpret.",
                     null);
             }
 
@@ -172,7 +172,7 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
                 .ConfigureAwait(false);
 
             return valore is null
-                ? (ServiceOutcome.RispostaIncomprensibile, TestoRispostaIlleggibile("la risposta era vuota"), null)
+                ? (ServiceOutcome.RispostaIncomprensibile, TestoRispostaIlleggibile("the response was empty"), null)
                 : (ServiceOutcome.Ok, string.Empty, valore);
         }
         catch (JsonException ex)
@@ -194,18 +194,18 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             // distinguere i due casi e' cio' che evita di mostrare un errore mentre si esce.
             return (
                 ServiceOutcome.NonRaggiungibile,
-                $"Il servizio su {BaseAddress} non ha risposto entro " +
-                RequestTimeout.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture) + " secondi.",
+                $"The service at {BaseAddress} didn't respond within " +
+                RequestTimeout.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture) + " seconds.",
                 null);
         }
     }
 
     private string TestoNonRaggiungibile(string dettaglio) =>
-        $"Impossibile contattare il servizio su {BaseAddress}. " +
-        "Controlla che sia avviato (dotnet run --project src/Observer.Service) e che l'indirizzo sia " +
-        $"quello giusto. Dettaglio tecnico: {dettaglio}";
+        $"Can't reach the service at {BaseAddress}. " +
+        "Check that it is running (dotnet run --project src/Observer.Service) and that the " +
+        $"address is correct. Technical detail: {dettaglio}";
 
     private string TestoRispostaIlleggibile(string dettaglio) =>
-        $"L'indirizzo {BaseAddress} ha risposto, ma non con un campionamento leggibile. " +
-        $"Probabilmente non e' Observer.Service. Dettaglio tecnico: {dettaglio}";
+        $"{BaseAddress} responded, but not with a sample this application can read. " +
+        $"It probably isn't Observer.Service. Technical detail: {dettaglio}";
 }
