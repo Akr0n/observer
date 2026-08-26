@@ -19,7 +19,9 @@ public sealed partial class MainViewModel : ViewModelBase
 {
     private static readonly TimeSpan Intervallo = TimeSpan.FromSeconds(1);
 
-    private readonly IMetricsClient? client;
+    private readonly Func<IMetricsClient?>? rileggiConfigurazione;
+
+    private IMetricsClient? client;
 
     private MetricCatalog catalogo = MetricCatalog.Empty;
     private bool catalogoLetto;
@@ -31,9 +33,18 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <param name="problemaDiConfigurazione">
     /// La frase da mostrare quando <paramref name="client"/> e' null.
     /// </param>
-    public MainViewModel(IMetricsClient? client, string? problemaDiConfigurazione)
+    /// <param name="rileggiConfigurazione">
+    /// Come riprovare a leggere la configurazione mentre l'applicazione e' aperta, oppure
+    /// null per non riprovare affatto. Restituisce un client quando la configurazione
+    /// diventa valida.
+    /// </param>
+    public MainViewModel(
+        IMetricsClient? client,
+        string? problemaDiConfigurazione,
+        Func<IMetricsClient?>? rileggiConfigurazione = null)
     {
         this.client = client;
+        this.rileggiConfigurazione = rileggiConfigurazione;
 
         Intestazione = client is null
             ? "Observer"
@@ -85,13 +96,54 @@ public sealed partial class MainViewModel : ViewModelBase
     /// Il ciclo di aggiornamento. Non lancia mai: qualunque guasto diventa testo a schermo.
     /// </summary>
     /// <param name="cancellationToken">Annullato alla chiusura dell'applicazione.</param>
+    /// <summary>
+    /// Riprova a leggere la configurazione finche' non diventa valida.
+    /// </summary>
+    /// <returns>True se un client e' stato adottato, false se non c'e' modo di riprovare.</returns>
+    private async Task<bool> AttendiConfigurazioneAsync(CancellationToken cancellationToken)
+    {
+        if (rileggiConfigurazione is null)
+        {
+            return false;
+        }
+
+        using PeriodicTimer attesa = new(Intervallo);
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            if (!await attesa.WaitForNextTickAsync(cancellationToken))
+            {
+                return false;
+            }
+
+            if (rileggiConfigurazione() is not { } comparso)
+            {
+                continue;
+            }
+
+            client = comparso;
+            Intestazione = $"Observer — {comparso.BaseAddress}";
+            Mostra(FAInfoBarSeverity.Informational, "Connecting", "Taking the first reading…");
+            SottoIntestazione = "Connecting…";
+            return true;
+        }
+
+        return false;
+    }
+
     public async Task EseguiAsync(CancellationToken cancellationToken)
     {
         if (client is null)
         {
-            // Senza token non c'e' niente da interrogare: il messaggio e' gia' a schermo dal
-            // costruttore, e martellare il servizio con richieste destinate al 401 non aiuta.
-            return;
+            // Senza token non c'e' niente da interrogare: martellare il servizio con richieste
+            // destinate al 401 non aiuta. Ma il messaggio a schermo dice all'utente di creare
+            // un file di configurazione, e se crearlo non producesse alcun effetto finche' non
+            // riavvia — cosa che il messaggio non dice — l'utente seguirebbe le istruzioni alla
+            // lettera e concluderebbe che l'applicazione e' rotta. Quindi si rilegge.
+            if (!await AttendiConfigurazioneAsync(cancellationToken))
+            {
+                return;
+            }
         }
 
         using PeriodicTimer timer = new(Intervallo);

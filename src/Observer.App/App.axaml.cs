@@ -34,7 +34,29 @@ public partial class App : Application
                 ? new MetricsClient(opzioni)
                 : null;
 
-            MainViewModel viewModel = new(client, configurazione.Problem);
+            // Variabile mutabile e non solo il parametro: se la configurazione compare mentre
+            // la finestra e' aperta, il client adottato dopo va comunque chiuso all'uscita.
+            MetricsClient? clientCorrente = client;
+
+            MainViewModel viewModel = new(
+                client,
+                configurazione.Problem,
+                rileggiConfigurazione: () =>
+                {
+                    // Rilegge dal disco: il messaggio a schermo dice all'utente di creare un
+                    // file, e crearlo deve bastare. Senza questa rilettura seguirebbe le
+                    // istruzioni alla lettera e non succederebbe nulla fino al riavvio.
+                    ClientConfigurationResult riletta = ClientConfiguration.Read();
+
+                    if (riletta.Options is not { } opzioniComparse)
+                    {
+                        return null;
+                    }
+
+                    clientCorrente = new MetricsClient(opzioniComparse);
+                    return clientCorrente;
+                });
+
             CancellationTokenSource arresto = new();
 
             desktop.MainWindow = new MainWindow
@@ -49,7 +71,7 @@ public partial class App : Application
                 // una finestra in cui il ciclo tocca un oggetto gia' distrutto. Il processo sta
                 // uscendo comunque, e non c'e' niente da recuperare.
                 arresto.Cancel();
-                client?.Dispose();
+                clientCorrente?.Dispose();
             };
 
             // Post e non chiamata diretta: qui il ciclo del dispatcher non e' ancora partito
