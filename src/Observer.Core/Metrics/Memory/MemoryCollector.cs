@@ -1,0 +1,135 @@
+using Observer.Core.Units;
+
+namespace Observer.Core.Metrics.Memory;
+
+/// <summary>
+/// Porta verso i valori di memoria della piattaforma. A differenza della CPU non serve un
+/// delta: sono valori istantanei, basta una lettura.
+/// </summary>
+public interface IMemoryReadingProvider
+{
+    /// <summary>False quando la piattaforma non espone questi valori.</summary>
+    bool IsSupported { get; }
+
+    /// <summary>Perche' non e' supportata, quando <see cref="IsSupported"/> e' false.</summary>
+    string? UnsupportedReason { get; }
+
+    /// <summary>Legge i valori di memoria. False se la lettura non riesce ora.</summary>
+    bool TryRead(out MemoryReading value);
+}
+
+/// <summary>
+/// Collector della memoria. Pubblica l'uso calcolato su "disponibile" e non su "libera":
+/// su Linux la differenza fra le due e' quella fra dire 50% e dire 99% sulla stessa
+/// macchina rilassata.
+/// </summary>
+public sealed class MemoryCollector : IMetricCollector
+{
+    /// <summary>Memoria fisica totale, in byte.</summary>
+    public const string TotalBytesMetricId = "memory.total.bytes";
+
+    /// <summary>Memoria disponibile per nuove allocazioni, in byte.</summary>
+    public const string AvailableBytesMetricId = "memory.available.bytes";
+
+    /// <summary>Memoria in uso, in byte.</summary>
+    public const string UsedBytesMetricId = "memory.used.bytes";
+
+    /// <summary>Memoria in uso, in punti percentuali.</summary>
+    public const string UsedPercentMetricId = "memory.used.percent";
+
+    /// <summary>True quando "disponibile" e' una stima e non una misura.</summary>
+    public const string AvailableEstimatedMetricId = "memory.available.estimated";
+
+    /// <summary>Swap totale, in byte. Assente su macchine senza swap.</summary>
+    public const string SwapTotalMetricId = "memory.swap.total.bytes";
+
+    /// <summary>Swap in uso, in byte. Assente su macchine senza swap.</summary>
+    public const string SwapUsedMetricId = "memory.swap.used.bytes";
+
+    private static readonly MetricDescriptor[] DescriptorList =
+    [
+        new(TotalBytesMetricId, "Memoria totale", MetricUnit.Bytes, IsPerInstance: false),
+        new(AvailableBytesMetricId, "Memoria disponibile", MetricUnit.Bytes, IsPerInstance: false),
+        new(UsedBytesMetricId, "Memoria usata", MetricUnit.Bytes, IsPerInstance: false),
+        new(UsedPercentMetricId, "Memoria usata", MetricUnit.Percent, IsPerInstance: false),
+        new(AvailableEstimatedMetricId, "Disponibile e' una stima", MetricUnit.None, IsPerInstance: false),
+        new(SwapTotalMetricId, "Swap totale", MetricUnit.Bytes, IsPerInstance: false),
+        new(SwapUsedMetricId, "Swap usato", MetricUnit.Bytes, IsPerInstance: false),
+    ];
+
+    private readonly IMemoryReadingProvider provider;
+
+    /// <summary>Crea il collector sopra la porta indicata.</summary>
+    public MemoryCollector(IMemoryReadingProvider provider)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        this.provider = provider;
+    }
+
+    /// <inheritdoc />
+    public string Id => "memory";
+
+    /// <inheritdoc />
+    public IReadOnlyList<MetricDescriptor> Descriptors => DescriptorList;
+
+    /// <inheritdoc />
+    public ValueTask<MetricSnapshot> CollectAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return ValueTask.FromResult(Collect());
+    }
+
+    private MetricSnapshot Collect()
+    {
+        if (!provider.IsSupported)
+        {
+            return Degraded(
+                CollectorStatus.Unsupported,
+                provider.UnsupportedReason ?? "sorgente non supportata su questa piattaforma");
+        }
+
+        if (!provider.TryRead(out MemoryReading reading))
+        {
+            return Degraded(CollectorStatus.Unavailable, "lettura dei valori di memoria non riuscita");
+        }
+
+        List<MetricPoint> points =
+        [
+            MetricPoint.Measured(TotalBytesMetricId, null, MetricValue.FromNumber(reading.Total.Bytes)),
+            MetricPoint.Measured(AvailableBytesMetricId, null, MetricValue.FromNumber(reading.Available.Bytes)),
+            MetricPoint.Measured(UsedBytesMetricId, null, MetricValue.FromNumber(reading.Used.Bytes)),
+            MetricPoint.Measured(
+                AvailableEstimatedMetricId,
+                null,
+                MetricValue.FromFlag(reading.AvailableWasEstimated)),
+        ];
+
+        // Il totale a zero renderebbe la percentuale una divisione per zero: si omette il
+        // punto invece di pubblicare un NaN, che oltretutto non e' JSON valido.
+        if (reading.Total.Bytes > 0L
+            && Percent.TryFromRatio((double)reading.Used.Bytes / reading.Total.Bytes, out Percent used))
+        {
+            points.Add(MetricPoint.Measured(UsedPercentMetricId, null, MetricValue.FromNumber(used.Points)));
+        }
+
+        // Una macchina senza swap e' una configurazione legittima, non un guasto: l'assenza
+        // dei punti dice "non applicabile", mentre uno zero direbbe "c'e' ed e' vuoto".
+        if (reading.SwapTotal.Bytes > 0L)
+        {
+            points.Add(MetricPoint.Measured(
+                SwapTotalMetricId,
+                null,
+                MetricValue.FromNumber(reading.SwapTotal.Bytes)));
+            points.Add(MetricPoint.Measured(
+                SwapUsedMetricId,
+                null,
+                MetricValue.FromNumber(reading.SwapTotal.SaturatingSubtract(reading.SwapFree).Bytes)));
+        }
+
+        return new MetricSnapshot(Id, CollectorStatus.Ok, Message: null, points);
+    }
+
+    private MetricSnapshot Degraded(CollectorStatus status, string message) =>
+        new(Id, status, message, []);
+}
