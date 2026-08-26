@@ -1,0 +1,6 @@
+# Stessa deroga che vale in tests/: la convenzione Metodo_Scenario_RisultatoAtteso contiene
+# underscore, e CA1707 (niente underscore negli identificatori) e' pensata per le API
+# pubbliche di una libreria, non per i nomi dei test. Con TreatWarningsAsErrors, senza questa
+# riga la build dei test fallisce.
+[*.cs]
+dotnet_diagnostic.CA1707.severity = none
