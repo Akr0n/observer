@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Observer.App.App"
              xmlns:local="using:Observer.App"
+             xmlns:sty="using:FluentAvalonia.Styling"
              RequestedThemeVariant="Default">
              <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
 
@@ -10,6 +11,9 @@
     </Application.DataTemplates>
 
     <Application.Styles>
-        <FluentTheme />
+        <!-- FluentAvaloniaTheme SOSTITUISCE FluentTheme: mettere entrambi caricherebbe due
+             volte le stesse risorse. Serve perche' i controlli FA (qui FAInfoBar) prendono
+             il proprio template da qui e senza resterebbero senza aspetto. -->
+        <sty:FluentAvaloniaTheme />
     </Application.Styles>
 </Application>

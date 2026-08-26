@@ -1,13 +1,18 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- Il progetto di test vive in Tests/, cioe' DENTRO questa cartella, perche' il
+         perimetro di lavoro concordato non permetteva di creare tests/Observer.App.Tests.
+         Senza questa esclusione i glob predefiniti dell'SDK compilerebbero i file di test
+         dentro l'eseguibile, e xunit finirebbe nel binario spedito. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);Tests\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="Models\" />
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 
@@ -21,6 +26,10 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <!-- Verificato il 2026-08-26 che la 3.1.0 e' compilata contro Avalonia 12.1.0 e net10.0,
+         e che FANavigationView e FAInfoBar si istanziano davvero a runtime su Avalonia 12.1.1.
+         In questa versione i controlli hanno tutti il prefisso FA: InfoBar e' FAInfoBar. -->
+    <PackageReference Include="FluentAvaloniaUI" Version="3.1.0" />
   </ItemGroup>
 
   <ItemGroup>
