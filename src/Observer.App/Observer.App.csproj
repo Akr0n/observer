@@ -5,11 +5,6 @@
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
 
-    <!-- Il progetto di test vive in Tests/, cioe' DENTRO questa cartella, perche' il
-         perimetro di lavoro concordato non permetteva di creare tests/Observer.App.Tests.
-         Senza questa esclusione i glob predefiniti dell'SDK compilerebbero i file di test
-         dentro l'eseguibile, e xunit finirebbe nel binario spedito. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);Tests\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

@@ -5,6 +5,7 @@
     <Project Path="src/Observer.Service/Observer.Service.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Observer.App.Tests/Observer.App.Tests.csproj" />
     <Project Path="tests/Observer.Core.Tests/Observer.Core.Tests.csproj" />
     <Project Path="tests/Observer.Service.Tests/Observer.Service.Tests.csproj" />
   </Folder>

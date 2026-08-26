@@ -3,9 +3,6 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>false</IsPackable>
-    <!-- L'eseguibile padre e' WinExe: senza questo, ereditandone nulla, il runner andrebbe
-         comunque bene, ma lo dichiariamo esplicito per non dipendere dai valori predefiniti. -->
-    <OutputType>Library</OutputType>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Observer.App.csproj" />
+    <ProjectReference Include="..\..\src\Observer.App\Observer.App.csproj" />
   </ItemGroup>
 
 </Project>
