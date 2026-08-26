@@ -67,11 +67,18 @@ public static class ClientConfiguration
 
     /// <summary>
     /// Percorso del file di configurazione del client: su Windows
-    /// <c>%APPDATA%\Observer\client.json</c>, su Linux <c>~/.config/Observer/client.json</c>.
+    /// <c>%LOCALAPPDATA%\Observer\client.json</c>, su Linux
+    /// <c>~/.local/share/Observer/client.json</c>.
     /// Sta FUORI dal repository apposta, cosi' il token non puo' finire in un commit.
     /// </summary>
+    /// <remarks>
+    /// LocalApplicationData e non ApplicationData, cioe' Local e non Roaming: su una macchina
+    /// aggiunta a un dominio la cartella Roaming viene sincronizzata con un file server, quindi
+    /// il token attraverserebbe la rete e resterebbe depositato altrove. Un segreto legato a
+    /// UNA macchina non deve seguire l'utente da un computer all'altro.
+    /// </remarks>
     public static string FilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Observer",
         "client.json");
 

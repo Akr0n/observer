@@ -152,7 +152,16 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                await AggiornaAsync(cancellationToken);
+                ServiceOutcome esito = await AggiornaAsync(cancellationToken);
+
+                // Un 401 su una finestra GIA' collegata significa quasi sempre che il token e'
+                // stato ruotato. Senza rileggere qui, la finestra resterebbe bloccata su
+                // "Token rejected" fino al riavvio: e' lo stesso incidente di "Configuration
+                // missing", su un altro percorso, e va chiuso allo stesso modo.
+                if (esito == ServiceOutcome.TokenRifiutato)
+                {
+                    AdottaConfigurazioneAggiornata();
+                }
 
                 if (!await timer.WaitForNextTickAsync(cancellationToken))
                 {
@@ -177,11 +186,35 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
-    private async Task AggiornaAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Rilegge la configurazione e adotta il client risultante, se e' cambiato.
+    /// </summary>
+    /// <remarks>
+    /// Non chiude il client precedente: chi lo ha costruito ne conserva il riferimento e lo
+    /// chiude all'uscita. Chiuderlo qui lo strapperebbe da sotto una richiesta ancora in volo.
+    /// </remarks>
+    private void AdottaConfigurazioneAggiornata()
+    {
+        if (rileggiConfigurazione?.Invoke() is not { } ricomparso || ReferenceEquals(ricomparso, client))
+        {
+            return;
+        }
+
+        client = ricomparso;
+
+        // Il catalogo appartiene al servizio precedente: va riletto, altrimenti le etichette
+        // resterebbero quelle di una macchina diversa.
+        catalogoLetto = false;
+        catalogo = MetricCatalog.Empty;
+
+        Intestazione = $"Observer — {ricomparso.BaseAddress}";
+    }
+
+    private async Task<ServiceOutcome> AggiornaAsync(CancellationToken cancellationToken)
     {
         if (client is null)
         {
-            return;
+            return ServiceOutcome.Unknown;
         }
 
         // Prima il campionamento e SOLO POI il catalogo. Verificato sperimentalmente: con il
@@ -193,7 +226,7 @@ public sealed partial class MainViewModel : ViewModelBase
         if (!fetch.IsOk)
         {
             SegnalaProblema(fetch.Outcome, fetch.Problem);
-            return;
+            return fetch.Outcome;
         }
 
         // Il catalogo cambia solo quando cambia il servizio: si legge una volta sola, e si
@@ -218,6 +251,8 @@ public sealed partial class MainViewModel : ViewModelBase
 
         string ora = snapshot.CapturedAt.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
         SottoIntestazione = $"Connected · last reading at {ora} · token {client.TokenOrigin}";
+
+        return ServiceOutcome.Ok;
     }
 
     private void SegnalaProblema(ServiceOutcome esito, string testo)
