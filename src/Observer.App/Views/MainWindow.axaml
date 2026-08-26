@@ -1,22 +1,102 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Observer.App.ViewModels"
+        xmlns:ui="using:FluentAvalonia.UI.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="560"
         x:Class="Observer.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
+        x:CompileBindings="True"
         Icon="/Assets/avalonia-logo.ico"
-        Title="Observer.App">
+        Width="720" Height="560"
+        MinWidth="420" MinHeight="360"
+        Title="Observer — CPU e memoria">
 
-    <Design.DataContext>
-        <!-- This only sets the DataContext for the previewer in an IDE,
-             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-        <vm:MainViewModel />
-    </Design.DataContext>
+    <Window.Styles>
+        <!-- Solo un guasto vero si colora. Un Warmup all'avvio o una metrica non misurabile
+             su questa piattaforma restano neutri: allarmare per una cosa normale insegna a
+             ignorare anche gli allarmi veri. -->
+        <Style Selector="TextBlock.problema">
+            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+        </Style>
+    </Window.Styles>
 
-    <TextBox Text="{Binding Greeting}"
-             HorizontalAlignment="Center"
-             VerticalAlignment="Center" />
+    <!-- Nessun Design.DataContext: MainViewModel non ha piu' un costruttore senza argomenti,
+         perche' senza client e senza configurazione non saprebbe cosa mostrare. Le binding
+         restano comunque verificate a compilazione grazie a x:DataType + x:CompileBindings. -->
+
+    <DockPanel Margin="20">
+
+        <StackPanel DockPanel.Dock="Top" Spacing="2">
+            <TextBlock Text="{Binding Intestazione}" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding SottoIntestazione}" Opacity="0.7" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <ui:FAInfoBar DockPanel.Dock="Top"
+                      Margin="0,14,0,0"
+                      IsOpen="{Binding StatoVisibile}"
+                      IsClosable="False"
+                      Severity="{Binding StatoGravita}"
+                      Title="{Binding StatoTitolo}"
+                      Message="{Binding StatoMessaggio}" />
+
+        <ScrollViewer Margin="0,14,0,0" HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl ItemsSource="{Binding Gruppi}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:MetricGroup">
+                        <Border Margin="0,0,0,12"
+                                Padding="16"
+                                CornerRadius="8"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                            <StackPanel Spacing="6">
+
+                                <TextBlock Text="{Binding Titolo}" FontSize="16" FontWeight="SemiBold" />
+
+                                <TextBlock Text="{Binding Nota}"
+                                           IsVisible="{Binding MostraNota}"
+                                           Classes.problema="{Binding Problema}"
+                                           TextWrapping="Wrap"
+                                           Opacity="0.85" />
+
+                                <ItemsControl ItemsSource="{Binding Righe}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:MetricRow">
+                                            <Grid ColumnDefinitions="*,Auto"
+                                                  RowDefinitions="Auto,Auto"
+                                                  Margin="0,6,0,0">
+                                                <TextBlock Grid.Row="0" Grid.Column="0"
+                                                           Text="{Binding Etichetta}"
+                                                           TextWrapping="Wrap"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Grid.Row="0" Grid.Column="1"
+                                                           Text="{Binding Valore}"
+                                                           Classes.problema="{Binding Problema}"
+                                                           Margin="12,0,0,0"
+                                                           FontWeight="SemiBold"
+                                                           TextWrapping="Wrap"
+                                                           TextAlignment="Right"
+                                                           MaxWidth="320"
+                                                           VerticalAlignment="Center" />
+                                                <ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                                                             Margin="0,4,0,0"
+                                                             Minimum="0" Maximum="100"
+                                                             Value="{Binding Percentuale}"
+                                                             IsVisible="{Binding MostraBarra}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+    </DockPanel>
 
 </Window>

@@ -55,6 +55,45 @@ dalla cache e non chiamano mai `CollectAsync`. Non è una scelta di prestazioni:
 collector della CPU conserva il campione precedente, e due raccolte simultanee
 produrrebbero percentuali sbagliate in modo intermittente e plausibile.
 
+### Storico e rollup
+
+Il servizio conserva le serie su SQLite con tre livelli di dettaglio: il campione grezzo a
+1 s, l'aggregato a 1 minuto e quello a 5 minuti. Senza aggregazione il file crescerebbe
+senza limite.
+
+Ogni bucket conserva **somma e conteggio**, non la media. Ricombinando bucket con un numero
+diverso di campioni — caso normale dopo un riavvio o il timeout di un collector — la media
+delle medie darebbe un numero credibile e falso.
+
+I valori predefiniti, tutti modificabili in `appsettings.json` sotto `Observer:Storage`:
+
+| Parametro | Predefinito | Cosa copre |
+| --- | --- | --- |
+| `RawRetention` | 6 ore | il dettaglio al secondo |
+| `MinuteRetention` | 7 giorni | "la settimana scorsa a quest'ora" |
+| `FiveMinuteRetention` | 90 giorni | l'andamento di lungo periodo |
+| `Enabled` | `true` | a `false` il servizio si comporta come se lo storico non esistesse |
+
+Un dato non viene mai cancellato prima di essere stato aggregato, anche se la ritenzione lo
+permetterebbe. Un punto mancante resta mancante e non diventa mai uno zero: in un grafico
+uno zero è un dato, un buco è un buco.
+
+### Endpoint
+
+Tutti richiedono il bearer token.
+
+| Endpoint | Cosa restituisce |
+| --- | --- |
+| `GET /metrics/catalog` | le metriche esistenti, con nome leggibile e unità |
+| `GET /metrics/latest` | l'ultimo campionamento |
+| `GET /metrics/series` | quali serie sono state davvero misurate su questa macchina |
+| `GET /metrics/history` | i punti storici; `resolution` accetta `auto`, `raw`, `1m`, `5m` |
+| `GET /metrics/storage` | dove scrive, quanto occupa, fin dove ha aggregato |
+
+`auto` sceglie la risoluzione più fine ancora disponibile per l'intervallo richiesto: il
+grezzo di ieri è stato cancellato, e restituire un grafico vuoto si leggerebbe come
+"macchina non monitorata".
+
 ## Requisiti
 
 - .NET SDK 10.0
