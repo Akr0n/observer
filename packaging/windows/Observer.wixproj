@@ -1,0 +1,43 @@
+<!-- Questo progetto sta DELIBERATAMENTE fuori da Observer.slnx.
+     WixToolset.Sdk porta binari nativi solo per Windows e il target WindowsInstallerValidation
+     non ha alcuna condizione sul sistema operativo: gira sempre. Dentro la soluzione, il job
+     "build (ubuntu-latest)" della CI - che e' un check OBBLIGATORIO del ruleset main-protection,
+     con bypass_actors vuoto - fallirebbe per sempre, e ogni PR resterebbe bloccata.
+     Si costruisce con un job CI a parte, condizionato a Windows. -->
+<Project Sdk="WixToolset.Sdk/6.0.2">
+
+  <PropertyGroup>
+    <OutputName>Observer</OutputName>
+    <OutputType>Package</OutputType>
+    <!-- La cartella prodotta da: dotnet publish src/Observer.Service -o payload
+         piu' dotnet publish src/Observer.App -o payload e src/Observer.Cli -o payload. -->
+    <PayloadDir Condition="'$(PayloadDir)' == ''">$(MSBuildThisFileDirectory)payload\</PayloadDir>
+    <!-- var.PayloadDir e' come il .wxs raggiunge la cartella pubblicata. I bind path
+         valgono per File/@Source ma NON per l'harvesting di Files/@Include, che vuole un
+         percorso vero. -->
+    <DefineConstants>PayloadDir=$(PayloadDir)</DefineConstants>
+    <!-- ICE60 e SOLO ICE60. Segnala file versionati senza colonna Language, e le decine di
+         .dll native di .NET e di SkiaSharp lo sono tutte: e' rumore, non un difetto.
+         NON si spegne la validazione intera (SuppressValidation), perche' e' proprio lei ad
+         aver preso ICE38/43/57 sul collegamento nel menu Start, che erano difetti veri.
+         Nota: il Directory.Build.props del repository si applica anche qui, e il suo
+         TreatWarningsAsErrors promuove gli avvisi ICE a errori. -->
+    <SuppressIces>ICE60</SuppressIces>
+  </PropertyGroup>
+
+  <!-- La guardia. L'esclusione nel .wxs da sola non basta: si dimentica il giorno in cui
+       qualcuno rinomina il file, e il vincolo del piano 6 non e' "l'installer non genera un
+       token" ma "l'installer non lo CONOSCE". Un MSI finisce su GitHub Releases. -->
+  <Target Name="RifiutaSegretiNelPayload" BeforeTargets="BeforeBuild;Compile">
+    <ItemGroup>
+      <!-- Con un carattere jolly MSBuild espande solo cio' che ESISTE. Un Include letterale
+           entrerebbe nell'elenco anche per un file assente, e la guardia griderebbe al lupo. -->
+      <SegretiTrovati Include="$(PayloadDir)appsettings*.Local.json" />
+      <SegretiTrovati Include="$(PayloadDir)credential*.json" />
+      <SegretiTrovati Include="$(PayloadDir)client*.json" />
+    </ItemGroup>
+    <Error Condition="'@(SegretiTrovati)' != ''"
+           Text="Il payload contiene file che possono portare un segreto: @(SegretiTrovati). Un MSI finisce su GitHub Releases: toglili dalla cartella pubblicata prima di impacchettare." />
+  </Target>
+
+</Project>
