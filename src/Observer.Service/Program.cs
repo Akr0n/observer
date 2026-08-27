@@ -4,6 +4,7 @@ using Microsoft.Extensions.Primitives;
 using Observer.Core.Composition;
 using Observer.Core.Metrics;
 using Observer.Service;
+using Observer.Service.LocalChannel;
 using Observer.Service.Persistence;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -40,6 +41,31 @@ StorageOptions storage =
     builder.Configuration.GetSection(StorageOptions.SectionName).Get<StorageOptions>() ?? new StorageOptions();
 
 storage.Validate();
+
+// Gli URL degli endpoint si convalidano QUI, per lo stesso motivo per cui si convalida la
+// ritenzione: non tutti i modi di sbagliare falliscono. Un percorso di socket scritto in stile
+// Windows dentro "http://unix:" non fa lanciare niente e fa ascoltare Kestrel sulla porta 80 di
+// OGNI interfaccia, con la telemetria della macchina dietro. Meglio non partire.
+foreach (IConfigurationSection endpoint in builder.Configuration.GetSection("Kestrel:Endpoints").GetChildren())
+{
+    if (endpoint["Url"] is { } url && EndpointUrl.Problema(url) is { } problema)
+    {
+        throw new InvalidOperationException(
+            $"Kestrel endpoint '{endpoint.Key}' is misconfigured. {problema}");
+    }
+}
+
+// Il canale locale: named pipe su Windows, socket unix su Linux. Il nome e il percorso sono
+// configurabili perche' un endpoint che non si binda abbatte l'INTERO host, endpoint TCP
+// compreso: con valori fissi, lanciare questo servizio a mano su una macchina dove quello
+// installato gira non fallirebbe piu' "solo sulla porta", non partirebbe affatto.
+LocalChannelOptions canaleLocale =
+    builder.Configuration.GetSection(LocalChannelOptions.SectionName).Get<LocalChannelOptions>()
+        ?? new LocalChannelOptions();
+
+canaleLocale.Validate();
+
+string? percorsoDelSocket = await LocalChannelSetup.ConfiguraAsync(builder, canaleLocale);
 
 builder.Services.AddSingleton(storage);
 
@@ -81,6 +107,16 @@ if (string.IsNullOrWhiteSpace(apiToken))
 byte[] expectedToken = Encoding.UTF8.GetBytes(apiToken);
 
 WebApplication app = builder.Build();
+
+if (OperatingSystem.IsLinux() && percorsoDelSocket is { } socketLocale)
+{
+    // Il modo del file va imposto DOPO l'avvio: prima quel file non esiste, e un chmod
+    // accanto alla creazione della directory fallirebbe.
+    // Quale percorso sia stato scelto non serve stamparlo qui: /run/observer non e' creabile
+    // da un utente normale e il ripiego cambia il percorso, ma Kestrel lo dice gia' da se'
+    // nella sua riga "Now listening on: http://unix:/...".
+    LinuxUnixSocket.RestringiDopoAvvio(app.Lifetime, socketLocale);
+}
 
 app.Use(async (context, next) =>
 {

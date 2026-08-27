@@ -20,6 +20,11 @@
   </ItemGroup>
 
   <PropertyGroup>
+    <!-- Serve al [LibraryImport] di GetNamedPipeClientComputerName, la chiamata che distingue
+         un chiamante locale da uno arrivato via SMB. Senza, la build fallisce con SYSLIB1062.
+         Il vecchio [DllImport] non e' un'alternativa: con TreatWarningsAsErrors romperebbe con
+         SYSLIB1054. Stessa scelta gia' fatta in Observer.Core per le due chiamate di sistema. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
