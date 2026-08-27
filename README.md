@@ -177,6 +177,13 @@ e creano il collegamento nel menu. **Nessuno dei due conosce alcun token**: il s
 procura da se' al primo avvio, quindi non c'e' alcun segreto da passare all'installazione, da
 registrare in un log, o da lasciarsi dietro se fallisce a meta'.
 
+Il `.deb` installa anche `man observer` e `man observer-dashboard`, ed e' verificato da
+**lintian** dentro la CI: il job `pack-linux` lo esegue con `--fail-on error` sul pacchetto
+appena costruito. L'unico tag sovrascritto e' `embedded-library` - `libSkiaSharp.so` porta
+`freetype`, `libjpeg` e `libpng` compilati dentro, e una variante collegata alle librerie di
+sistema non esiste. La ragione sta scritta in `packaging/linux/debian/lintian-overrides`,
+perche' una vulnerabilita' in una di quelle tre non si chiude aggiornando Debian.
+
 ### Nota sulla globalizzazione
 
 `InvariantGlobalization` **non** va in `Directory.Build.props`: verificato che lì spegne

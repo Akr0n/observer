@@ -160,6 +160,55 @@ Misurato su Ubuntu 24.04 vera, con i binari veri: il `.deb` pesa **839 KB**.
   (`libx11-6`, `libice6`, `libsm6`, `libfontconfig1`) e' incompleto. Sotto Xvfb la mappa del
   processo mostra anche `libXext`, `libXrandr`, `libXrender`, `libX11-xcb`, `libGL`, `libGLX`.
 
+### lintian, girato davvero
+
+Le correzioni di packaging erano rimaste **ipotesi**: lintian non gira su Windows, e nessun job
+lo eseguiva. Adesso c'e' un passo in `pack-linux` che lo installa e lo esegue sul `.deb`
+appena costruito, con `--fail-on error`: stampa tutti i tag e si ferma solo sugli errori.
+
+Delle tre correzioni fatte a memoria, **una sola serviva davvero**. Misurato:
+
+| ipotizzato | verdetto di lintian |
+| --- | --- |
+| `missing-dependency-on-libc` | **non si presenta.** `libc6` era gia' fra le `Depends` |
+| `shared-library-is-executable` | **non si presenta.** Il `chmod 0644` sulle `.so` bastava |
+| `unstripped-binary-or-object` | **si presenta**, ed e' un errore: 4 librerie native |
+
+E ne sono usciti **tre errori che nessuno aveva previsto** — `embedded-library` per `freetype`,
+`libjpeg` e `libpng`, tutti e tre dentro `libSkiaSharp.so` — piu' una fila di avvertimenti veri.
+
+Cosa e' stato corretto, e non zittito:
+
+- **`unstripped-binary-or-object`**: `strip --strip-unneeded` sulle `.so` native. Verificato
+  che non le rompa: dopo lo strip il servizio parte e risponde `200` su `/metrics/latest`
+  scrivendo il database, cioe' `libe_sqlite3.so` funziona ancora.
+- **`non-standard-executable-perm` e `executable-not-elf-or-script`**: i permessi che escono da
+  `dotnet publish` non sono quelli di un pacchetto Debian. Le `.dll` gestite arrivano `0744`,
+  e **`appsettings.json` arriva `0777`**. Quest'ultimo non e' cosmetico: un file di
+  configurazione scrivibile da chiunque, che il servizio rilegge a ogni avvio, oggi e' tappato
+  soltanto dal permesso della cartella che lo contiene. Ora e' tutto `0644` tranne i tre
+  eseguibili veri.
+- **`wrong-name-for-changelog-of-native-package`**: la versione non ha revisione Debian, quindi
+  il pacchetto e' *nativo*, e per un nativo il changelog si chiama `changelog.gz` e non
+  `changelog.Debian.gz`.
+- **`maintainer-script-has-unexpanded-debhelper-token`**: nel `postinst` c'era un `#DEBHELPER#`
+  che nessuno espandeva — il pacchetto non usa debhelper. Testo morto, spedito a tutti.
+- **`no-manual-page`**: due comandi in `/usr/bin` senza pagina di manuale. Scritte.
+
+L'unico tag **sovrascritto** e' `embedded-library`, e per una ragione che non si puo' aggirare:
+il `libSkiaSharp.so` dei pacchetti NuGet porta `freetype`, `libjpeg` e `libpng` compilati
+dentro, e una variante collegata alle librerie di sistema non esiste. Il costo va scritto
+invece che nascosto: **una vulnerabilita' in una di quelle tre non si chiude aggiornando
+Debian.** Si chiude aggiornando SkiaSharp e ricostruendo il pacchetto.
+
+Resta a vista, e di proposito, `maintainer-script-calls-systemctl`: chiamare `systemctl`
+dal `postinst` invece di `deb-systemd-invoke` significa non rispettare `policy-rc.d`, cioe'
+avviare il servizio anche dove l'amministratore ha chiesto di non farlo. La guardia
+`[ -d /run/systemd/system ]` copre i contenitori e le chroot, non quel caso. Il percorso
+attuale e' l'unico **verificato su Ubuntu vera**, e cambiarlo alla cieca per zittire un
+avvertimento sarebbe uno scambio peggiore. Va cambiato quando si potra' riprovare
+l'installazione per intero.
+
 ## Task
 
 1. `.wixproj` piu' `.wxs` **fuori** dalla soluzione, con la guardia sul payload.
@@ -177,5 +226,38 @@ Misurato su Ubuntu 24.04 vera, con i binari veri: il `.deb` pesa **839 KB**.
 - **Il servizio gia' registrato a mano.** Dove esiste un servizio `Observer` creato da
   `New-Service`, `MajorUpgrade` non lo conosce e non lo gestisce. Va disinstallato con
   `scripts/servizio-windows.ps1 -Azione Disinstalla` **prima** del primo MSI.
-- **La dashboard mostra una barra rossa** a chi la apre mentre il servizio si sta avviando.
-  Misurato. Ed e' il primo secondo di vita del programma su una macchina appena installata.
+
+## La barra rossa del primo secondo — chiusa
+
+Era l'ultima riga di "cosa resta aperto", e valeva la pena chiuderla prima di distribuire: la
+dashboard si apriva **rossa** su ogni macchina appena installata, perche' il primo tentativo
+cadeva mentre il servizio stava ancora partendo, e l'errore spariva da solo un attimo dopo. Un
+allarme che si spegne da solo insegna a ignorare anche quelli veri.
+
+La causa non era il messaggio ma **da cosa dipendeva la gravita'**: dal singolo tentativo
+andato male, invece che da quanto dura il guasto. Un servizio irraggiungibile da un secondo e'
+un servizio che sta partendo; da mezzo minuto e' un servizio che non c'e'. La decisione sta ora
+in `StatusEscalation`, funzione pura con la sua tabella provata, e il view model si limita a
+misurare il tempo e a tradurre in colore.
+
+Due cose che questa modifica **non** e':
+
+- **Non e' sopprimere l'allarme.** Scaduta la tolleranza la barra diventa rossa lo stesso, con
+  dentro il dettaglio tecnico che durante l'attesa si tace perche' e' rumore. C'e' un test per
+  ognuno dei due versi: se l'escalation smettesse di scattare, il secondo fallirebbe.
+- **Non vale per tutto.** L'attesa serve solo dove aspettare puo' cambiare l'esito. Un token
+  rifiutato, una versione incompatibile o una risposta illeggibile saranno identici fra un
+  minuto: restano rossi dal primo tentativo.
+
+La tolleranza e' **dieci secondi**, e il numero e' misurato, non scelto: dall'avvio del
+processo alla prima risposta `200` su `/metrics/latest` passano **0,9-1,4 secondi** su tre
+giri, con il servizio avviato a mano e i binari gia' scaldati. Su una macchina appena
+installata il costo e' piu' alto — cache dei file fredda, antivirus che scandisce i binari
+appena scritti, avvio mediato dal gestore dei servizi — e dieci secondi lasciano un margine
+largo senza far sembrare bloccata la finestra di chi apre la dashboard dove il servizio non c'e'.
+
+Nello stesso passaggio e' emerso il **gemello silenzioso**, altrettanto sbagliato e mai notato:
+un servizio vivo che risponde `503` senza mai campionare restava *"Service is starting"* **per
+sempre**, con un testo che promette che si risolve da solo in un secondo o due. Se non si
+risolve, quella frase e' una bugia che nessuno smentisce mai. Adesso, scaduta la stessa
+tolleranza, diventa un avvertimento che manda a `observer doctor`.

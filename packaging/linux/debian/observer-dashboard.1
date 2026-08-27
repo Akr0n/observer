@@ -1,0 +1,45 @@
+.TH OBSERVER-DASHBOARD 1 "2026-08-27" "observer 0.1.0" "User Commands"
+.SH NAME
+observer-dashboard \- watch a machine's CPU and memory
+.SH SYNOPSIS
+.B observer-dashboard
+.SH DESCRIPTION
+.B observer-dashboard
+opens a window that polls an Observer service once a second and shows what it
+reports.
+.PP
+With no configuration it talks to the service on this machine over the local
+socket, and needs no token. For that to work your account has to be in the
+.B observer
+group:
+.PP
+.RS
+.B sudo usermod \-aG observer $USER
+.RE
+.PP
+then log out and back in.
+.PP
+It can point at a service on another computer instead, and that is what makes
+watching several machines nearly free. A remote service does require a token:
+get it by running
+.B observer share
+on that machine.
+.SH ENVIRONMENT
+.TP
+.B Observer__BaseAddress
+The service to query, for example
+.IR http://other-machine:5057/ .
+Defaults to the local socket.
+.TP
+.B Observer__ApiToken
+The token for a remote service. Not needed for this machine.
+.SH FILES
+.TP
+.I ~/.local/share/Observer/client.json
+Read when the environment variables are absent. Recognised fields are
+.B baseAddress
+and
+.BR apiToken .
+It carries another machine's credential, so it is not something to share.
+.SH SEE ALSO
+.BR observer (1)

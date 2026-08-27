@@ -13,7 +13,7 @@ USCITA="$QUI/out"
 CONFIG="${1:-Release}"
 
 rm -rf "$ALBERO" "$USCITA"
-mkdir -p "$ALBERO/DEBIAN" "$ALBERO/usr/lib/observer/service" "$ALBERO/usr/lib/observer/dashboard"          "$ALBERO/usr/lib/observer/cli" "$ALBERO/usr/bin" "$ALBERO/lib/systemd/system"          "$ALBERO/usr/share/doc/observer" "$ALBERO/usr/share/applications"          "$ALBERO/usr/share/icons/hicolor/256x256/apps" "$USCITA"
+mkdir -p "$ALBERO/DEBIAN" "$ALBERO/usr/lib/observer/service" "$ALBERO/usr/lib/observer/dashboard"          "$ALBERO/usr/lib/observer/cli" "$ALBERO/usr/bin" "$ALBERO/lib/systemd/system"          "$ALBERO/usr/share/doc/observer" "$ALBERO/usr/share/applications"          "$ALBERO/usr/share/icons/hicolor/256x256/apps" "$ALBERO/usr/share/man/man1" "$ALBERO/usr/share/lintian/overrides" "$USCITA"
 
 pubblica() {
     local progetto="$1" destinazione="$2"
@@ -39,8 +39,25 @@ if find "$ALBERO" \( -name 'appsettings*.Local.json' -o -name 'credentials.json'
     exit 1
 fi
 
-# lintian segnala shared-library-is-executable: le .so native arrivano con il bit di esecuzione.
-find "$ALBERO/usr/lib/observer" -name '*.so' -exec chmod 0644 {} +
+# I permessi che escono da "dotnet publish" non sono quelli di un pacchetto Debian, e non e'
+# un'ipotesi: lintian, girato sul .deb vero, segnala le .dll gestite a 0744
+# (executable-not-elf-or-script piu' non-standard-executable-perm) e appsettings.json a 0777.
+#
+# L'ultimo non e' una rifinitura. Un file di configurazione scrivibile da CHIUNQUE, dentro un
+# albero che il servizio rilegge a ogni avvio, oggi e' tappato soltanto dal permesso della
+# cartella che lo contiene: e' l'unica cosa fra un utente qualsiasi e il contenuto della
+# sezione Kestrel del servizio.
+#
+# Si azzera tutto a 0644 e si rimette 0755 SOLO sui tre eseguibili veri. Cosi' cadono anche
+# shared-library-is-executable sulle .so native, che il bit di esecuzione non lo vogliono.
+find "$ALBERO/usr/lib/observer" -type f -exec chmod 0644 {} +
+chmod 0755 "$ALBERO/usr/lib/observer/service/Observer.Service"
+chmod 0755 "$ALBERO/usr/lib/observer/dashboard/Observer.App"
+chmod 0755 "$ALBERO/usr/lib/observer/cli/observer"
+
+# unstripped-binary-or-object, e per lintian e' un ERRORE, non un avvertimento: le librerie
+# native che arrivano dai pacchetti NuGet portano dentro la tabella dei simboli.
+find "$ALBERO/usr/lib/observer" -name '*.so' -exec strip --strip-unneeded {} +
 
 install -m 0644 "$QUI/debian/observer.service" "$ALBERO/lib/systemd/system/observer.service"
 install -m 0644 "$QUI/debian/control"          "$ALBERO/DEBIAN/control"
@@ -49,8 +66,22 @@ install -m 0755 "$QUI/debian/prerm"            "$ALBERO/DEBIAN/prerm"
 install -m 0755 "$QUI/debian/postrm"           "$ALBERO/DEBIAN/postrm"
 install -m 0644 "$QUI/debian/copyright"        "$ALBERO/usr/share/doc/observer/copyright"
 
-gzip -9n -c "$QUI/debian/changelog" > "$ALBERO/usr/share/doc/observer/changelog.Debian.gz"
-chmod 0644 "$ALBERO/usr/share/doc/observer/changelog.Debian.gz"
+# changelog.gz e NON changelog.Debian.gz: questo e' un pacchetto NATIVO - la versione non ha
+# revisione Debian - e per un pacchetto nativo il secondo nome e' sbagliato. Lo dice lintian
+# (wrong-name-for-changelog-of-native-package), e ha ragione.
+gzip -9n -c "$QUI/debian/changelog" > "$ALBERO/usr/share/doc/observer/changelog.gz"
+chmod 0644 "$ALBERO/usr/share/doc/observer/changelog.gz"
+
+# Le pagine di manuale. Non e' una formalita': i due comandi finiscono in /usr/bin, e su
+# Debian cio' che sta in /usr/bin si spiega con "man", non con "--help" e basta.
+gzip -9n -c "$QUI/debian/observer.1"           > "$ALBERO/usr/share/man/man1/observer.1.gz"
+gzip -9n -c "$QUI/debian/observer-dashboard.1" > "$ALBERO/usr/share/man/man1/observer-dashboard.1.gz"
+chmod 0644 "$ALBERO/usr/share/man/man1/observer.1.gz"            "$ALBERO/usr/share/man/man1/observer-dashboard.1.gz"
+
+# L'unico tag che resta e non si puo' correggere: le librerie che SkiaSharp porta dentro di
+# se'. Il file spiega perche', ed e' volutamente corto - un elenco lungo di eccezioni sarebbe
+# il modo di smettere di guardarle.
+install -m 0644 "$QUI/debian/lintian-overrides" "$ALBERO/usr/share/lintian/overrides/observer"
 
 if [ -f "$RADICE/src/Observer.App/Assets/observer.png" ]; then
     install -m 0644 "$RADICE/src/Observer.App/Assets/observer.png"         "$ALBERO/usr/share/icons/hicolor/256x256/apps/observer.png"

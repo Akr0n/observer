@@ -2,14 +2,15 @@
 # l'interprete e fallisce con "bad interpreter: /bin/sh^M", che e' un errore che non nomina
 # la sua causa. Nell'indice git li tiene gia' in LF, ma quella e' una garanzia che dipende
 # dalla configurazione di chi fa il checkout: qui diventa una proprieta' del repository.
-*.sh                                    text eol=lf
-packaging/linux/debian/postinst         text eol=lf
-packaging/linux/debian/prerm            text eol=lf
-packaging/linux/debian/postrm           text eol=lf
-packaging/linux/debian/control          text eol=lf
-packaging/linux/debian/changelog        text eol=lf
-packaging/linux/debian/copyright        text eol=lf
-packaging/linux/debian/observer.service text eol=lf
+*.sh text eol=lf
+
+# La regola vale sulla CARTELLA, non sui singoli file, ed e' una correzione: l'elenco
+# nominale che stava qui copriva i sette file che esistevano quel giorno, e il giorno dopo
+# ne sono arrivati altri tre - due pagine di manuale e le eccezioni per lintian - che ne
+# sono rimasti fuori in silenzio. Tutto cio' che sta in questa cartella finisce dentro il
+# .deb e lo leggono strumenti Linux: un ritorno a capo di troppo dentro lintian-overrides
+# fa fallire l'analisi del pacchetto, e dentro una pagina di manuale si vede a schermo.
+packaging/linux/debian/** text eol=lf
 
 # Gli script di PowerShell restano CRLF: e' la convenzione del loro mondo, e li' non fa danno.
 *.ps1 text eol=crlf

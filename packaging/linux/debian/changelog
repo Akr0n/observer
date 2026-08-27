@@ -1,7 +1,7 @@
 observer (0.1.0) unstable; urgency=medium
 
-  * Primo pacchetto. Servizio, dashboard e riga di comando.
-  * Il servizio genera e custodisce da solo il proprio token di macchina: il
-    pacchetto non ne conosce nessuno.
+  * First package: service, dashboard and command line.
+  * The service generates and keeps its own machine token on first start, so
+    this package carries no secret of any kind.
 
- -- Akr0n <noreply@example.invalid>  Thu, 27 Aug 2026 12:00:00 +0000
+ -- Federico Cardinali <noreply@example.invalid>  Thu, 27 Aug 2026 12:00:00 +0000

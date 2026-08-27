@@ -115,6 +115,22 @@ jobs:
           echo "Nessun segreto nel pacchetto."
           dpkg-deb --contents "$PACCHETTO" | wc -l
 
+      - name: Verifica con lintian
+        # lintian non gira su Windows, e questa e' l'unica macchina Debian che il progetto
+        # tocca: finche' questo passo non e' esistito, ogni correzione di packaging e' rimasta
+        # un'ipotesi non verificata. Adesso il pacchetto viene ispezionato dove e' costruito.
+        #
+        # --fail-on error stampa TUTTI i tag e si ferma solo sugli errori. Gli avvertimenti
+        # restano a vista di proposito: un pacchetto che ne accumula in silenzio e' un
+        # pacchetto che nessuno guarda piu'.
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lintian
+          PACCHETTO=$(ls packaging/linux/out/observer_*.deb)
+          lintian --version
+          lintian --tag-display-limit 0 --fail-on error "$PACCHETTO"
+
       - name: Pubblica l'artefatto
         uses: actions/upload-artifact@v4
         with:

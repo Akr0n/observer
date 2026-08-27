@@ -20,11 +20,22 @@ public sealed partial class MainViewModel : ViewModelBase
     private static readonly TimeSpan Intervallo = TimeSpan.FromSeconds(1);
 
     private readonly Func<IMetricsClient?>? rileggiConfigurazione;
+    private readonly Func<DateTimeOffset> adesso;
 
     private IMetricsClient? client;
 
     private MetricCatalog catalogo = MetricCatalog.Empty;
     private bool catalogoLetto;
+
+    /// <summary>
+    /// Da quando le letture falliscono di fila, oppure null se l'ultima e' andata bene.
+    /// </summary>
+    /// <remarks>
+    /// E' cio' che distingue un servizio che sta partendo da un servizio che non c'e'. Va
+    /// azzerato anche quando si cambia endpoint: a una macchina diversa spetta un'attesa
+    /// nuova, non quella gia' consumata dalla precedente.
+    /// </remarks>
+    private DateTimeOffset? guastoDa;
 
     /// <summary>
     /// Costruisce la schermata.
@@ -38,13 +49,20 @@ public sealed partial class MainViewModel : ViewModelBase
     /// null per non riprovare affatto. Restituisce un client quando la configurazione
     /// diventa valida.
     /// </param>
+    /// <param name="orologio">
+    /// Da dove si legge l'ora, oppure null per l'orologio di sistema. Serve alle prove:
+    /// l'attesa prima di dichiarare guasto un servizio dura dieci secondi, e un test che li
+    /// aspettasse davvero sarebbe un test che nessuno esegue volentieri.
+    /// </param>
     public MainViewModel(
         IMetricsClient? client,
         string? problemaDiConfigurazione,
-        Func<IMetricsClient?>? rileggiConfigurazione = null)
+        Func<IMetricsClient?>? rileggiConfigurazione = null,
+        Func<DateTimeOffset>? orologio = null)
     {
         this.client = client;
         this.rileggiConfigurazione = rileggiConfigurazione;
+        adesso = orologio ?? (static () => DateTimeOffset.UtcNow);
 
         Intestazione = client is null
             ? "Observer"
@@ -122,6 +140,7 @@ public sealed partial class MainViewModel : ViewModelBase
             }
 
             client = comparso;
+            guastoDa = null;
             Intestazione = $"Observer — {comparso.Endpoint.Descrizione}";
             Mostra(FAInfoBarSeverity.Informational, "Connecting", "Taking the first reading…");
             SottoIntestazione = "Connecting…";
@@ -202,6 +221,10 @@ public sealed partial class MainViewModel : ViewModelBase
 
         client = ricomparso;
 
+        // Attesa nuova: l'endpoint e' cambiato, e i secondi gia' consumati contro il
+        // precedente non dicono niente su questo.
+        guastoDa = null;
+
         // Il catalogo appartiene al servizio precedente: va riletto, altrimenti le etichette
         // resterebbero quelle di una macchina diversa.
         catalogoLetto = false;
@@ -212,7 +235,7 @@ public sealed partial class MainViewModel : ViewModelBase
 
     private async Task<ServiceOutcome> AggiornaAsync(CancellationToken cancellationToken)
     {
-        if (client is null)
+        if (client is not { } corrente)
         {
             return ServiceOutcome.Unknown;
         }
@@ -221,11 +244,11 @@ public sealed partial class MainViewModel : ViewModelBase
         // servizio spento, chiedere prima il catalogo raddoppia l'attesa — due timeout invece
         // di uno — e la finestra resta a dire "collegamento in corso" per sei secondi prima di
         // ammettere che non si collega.
-        SnapshotFetch fetch = await client.GetLatestAsync(cancellationToken);
+        SnapshotFetch fetch = await corrente.GetLatestAsync(cancellationToken);
 
         if (!fetch.IsOk)
         {
-            SegnalaProblema(fetch.Outcome, fetch.Problem);
+            SegnalaProblema(fetch.Outcome, fetch.Problem, corrente.Endpoint);
             return fetch.Outcome;
         }
 
@@ -235,7 +258,7 @@ public sealed partial class MainViewModel : ViewModelBase
         // mai, le metriche restano visibili con il loro identificatore grezzo invece di sparire.
         if (!catalogoLetto)
         {
-            CatalogFetch catalogFetch = await client.GetCatalogAsync(cancellationToken);
+            CatalogFetch catalogFetch = await corrente.GetCatalogAsync(cancellationToken);
 
             if (catalogFetch.IsOk)
             {
@@ -249,36 +272,51 @@ public sealed partial class MainViewModel : ViewModelBase
 
         StatoVisibile = false;
 
+        // La serie di guasti e' finita: la prossima ricomincia da capo, e ha diritto alla
+        // stessa attesa che ha avuto questa.
+        guastoDa = null;
+
         string ora = snapshot.CapturedAt.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
         // Sul canale locale non si nomina alcun token, perche' li' non ne esiste uno:
         // scriverlo manderebbe chi legge a cercare una credenziale che non serve.
-        SottoIntestazione = client.Endpoint.Kind == EndpointKind.Locale
+        SottoIntestazione = corrente.Endpoint.Kind == EndpointKind.Locale
             ? $"Connected to this machine · last reading at {ora}"
-            : $"Connected to {client.Endpoint.Descrizione} · last reading at {ora} · token {client.Endpoint.Origine}";
+            : $"Connected to {corrente.Endpoint.Descrizione} · last reading at {ora} · " +
+              $"token {corrente.Endpoint.Origine}";
 
         return ServiceOutcome.Ok;
     }
 
-    private void SegnalaProblema(ServiceOutcome esito, string testo)
+    /// <summary>
+    /// Traduce una lettura fallita in cio' che si vede a schermo.
+    /// </summary>
+    /// <remarks>
+    /// La gravita' NON dipende dal singolo tentativo andato male ma da quanto dura la serie:
+    /// e' <see cref="StatusEscalation"/> a deciderlo, ed e' li' che sta la tabella provata.
+    /// Qui resta solo la misura del tempo e la traduzione in colore.
+    /// </remarks>
+    private void SegnalaProblema(ServiceOutcome esito, string testo, ObserverEndpoint punto)
     {
-        (FAInfoBarSeverity gravita, string titolo) = esito switch
-        {
-            ServiceOutcome.NonAncoraPronto => (FAInfoBarSeverity.Informational, "Service is starting"),
-            ServiceOutcome.TokenRifiutato => (FAInfoBarSeverity.Error, "Token rejected"),
-            ServiceOutcome.NonRaggiungibile => (FAInfoBarSeverity.Error, "Service unreachable"),
-            ServiceOutcome.VersioneIncompatibile => (FAInfoBarSeverity.Error, "Version mismatch"),
-            ServiceOutcome.RispostaIncomprensibile => (FAInfoBarSeverity.Error, "Unrecognized response"),
-            _ => (FAInfoBarSeverity.Error, "Reading failed"),
-        };
+        DateTimeOffset ora = adesso();
+        guastoDa ??= ora;
 
-        Mostra(gravita, titolo, testo);
+        StatusMessage messaggio = StatusEscalation.Per(
+            esito,
+            testo,
+            ora - guastoDa.Value,
+            punto,
+            valoriGiaMostrati: Gruppi.Count > 0);
 
-        // I valori restano a schermo apposta: cancellarli farebbe credere che la macchina
-        // abbia smesso di avere una CPU. La riga qui sotto dice che sono fermi.
-        SottoIntestazione = Gruppi.Count == 0
-            ? "Not connected."
-            : "Not connected: the values shown are the last successful reading.";
+        Mostra(Gravita(messaggio.Tone), messaggio.Title, messaggio.Text);
+        SottoIntestazione = messaggio.Subheading;
     }
+
+    private static FAInfoBarSeverity Gravita(StatusTone tono) => tono switch
+    {
+        StatusTone.Informational => FAInfoBarSeverity.Informational,
+        StatusTone.Warning => FAInfoBarSeverity.Warning,
+        _ => FAInfoBarSeverity.Error,
+    };
 
     private void Mostra(FAInfoBarSeverity gravita, string titolo, string messaggio)
     {

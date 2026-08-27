@@ -1,0 +1,14 @@
+# Il .so di SkiaSharp arriva dal pacchetto NuGet con freetype, libjpeg e libpng gia' compilati
+# dentro: e' il solo modo in cui SkiaSharp viene distribuito, e non esiste una variante
+# collegata alle librerie di sistema.
+#
+# Il costo e' reale e va scritto invece che nascosto: una vulnerabilita' in una di quelle tre
+# NON si chiude aggiornando Debian. Si chiude aggiornando il pacchetto SkiaSharp e
+# ricostruendo questo .deb.
+#
+# Questo file elenca la sola cosa che non si puo' correggere. Tutto il resto che lintian
+# segnalava - simboli non rimossi, permessi non standard, changelog col nome sbagliato per un
+# pacchetto nativo, pagine di manuale mancanti - e' stato corretto in pack.sh, non zittito qui.
+observer: embedded-library freetype [usr/lib/observer/dashboard/libSkiaSharp.so]
+observer: embedded-library libjpeg [usr/lib/observer/dashboard/libSkiaSharp.so]
+observer: embedded-library libpng [usr/lib/observer/dashboard/libSkiaSharp.so]
