@@ -26,7 +26,23 @@ public static class Diagnosi
                 : "ABSENT - the service has not created it yet.";
         }
 
-        return Frase(WindowsDirectoryTrust.Verdetto(cartella));
+        DirectoryVerdict verdetto = WindowsDirectoryTrust.Verdetto(cartella);
+
+        if (verdetto == DirectoryVerdict.Sconosciuto && Directory.Exists(cartella))
+        {
+            // E' cio' che un deposito PROTETTO BENE mostra a un account qualsiasi, ed e' il
+            // caso piu' comune di tutti: leggere i permessi di una cartella richiede un
+            // permesso su quella cartella, e un deposito fatto come si deve non ne concede.
+            return
+                "UNREADABLE FROM HERE - the directory exists but this account can't read its " +
+                "permissions. That is what a correctly protected store looks like from an " +
+                "ordinary account, and it rules out the common failure: a directory that merely " +
+                "inherits its parent's permissions is readable by every user on the machine. " +
+                "It does NOT prove the owner is right. Run this from an elevated terminal for a " +
+                "definitive verdict.";
+        }
+
+        return Frase(verdetto);
     }
 
     /// <summary>Chi sta eseguendo questo comando.</summary>
@@ -60,7 +76,7 @@ public static class Diagnosi
         DirectoryVerdict.PuntoDiReparse =>
             "HIJACKED - the path is a junction or symbolic link, so the token would be written " +
             "wherever it points. A standard user can create one without any privilege. Remove it.",
-        _ => "UNKNOWN - this account cannot even list the directory. Try an elevated terminal.",
+        _ => "UNKNOWN - the directory can't be examined from here. Try an elevated terminal.",
     };
 
     [SupportedOSPlatform("windows")]

@@ -131,6 +131,7 @@ public static class Comandi
 
         Console.WriteLine("Credential store: " + percorso);
         Console.WriteLine("Protection      : " + Diagnosi.Protezione(percorso));
+        Console.WriteLine("Local channel   : " + CanaleLocale.Prova(CanaleLocale.NomePredefinito, TimeSpan.FromSeconds(3)));
         Console.WriteLine("Running as      : " + Diagnosi.ChiSono());
         Console.WriteLine("Elevated        : " + Diagnosi.Elevato());
         Console.WriteLine();
