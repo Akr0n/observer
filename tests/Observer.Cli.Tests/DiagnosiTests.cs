@@ -90,18 +90,17 @@ public class DiagnosiTests
     {
         // Non "errore": il caso normale in cui si esegue doctor e' che il servizio sia fermo,
         // e la frase deve dire cosa fare invece di mostrare un'eccezione.
-        string nome = "observer-non-esiste-" + Guid.NewGuid().ToString("N")[..10];
+        // Nome e percorso inventati, cosi' l'esito non dipende da cosa gira sulla macchina che
+        // esegue i test: col percorso predefinito, su un Linux dove Observer e' installato
+        // davvero il socket esiste e risponde.
+        string unico = Guid.NewGuid().ToString("N")[..10];
 
-        string esito = CanaleLocale.Prova(nome, TimeSpan.FromMilliseconds(700));
+        string esito = CanaleLocale.Prova(
+            "observer-non-esiste-" + unico,
+            "/tmp/observer-non-esiste-" + unico + ".sock",
+            TimeSpan.FromMilliseconds(700));
 
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.StartsWith("SILENT", esito, StringComparison.Ordinal);
-        }
-        else
-        {
-            Assert.StartsWith("not checked", esito, StringComparison.Ordinal);
-        }
+        Assert.StartsWith("SILENT", esito, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -111,6 +110,9 @@ public class DiagnosiTests
         // una riga vuota o un nome di enum grezzo varrebbero un difetto.
         Assert.False(string.IsNullOrWhiteSpace(Diagnosi.ChiSono()));
         Assert.False(string.IsNullOrWhiteSpace(Diagnosi.Elevato()));
-        Assert.False(string.IsNullOrWhiteSpace(CanaleLocale.Prova("qualunque-" + Guid.NewGuid().ToString("N")[..8], TimeSpan.FromMilliseconds(500))));
+        Assert.False(string.IsNullOrWhiteSpace(CanaleLocale.Prova(
+            "qualunque-" + Guid.NewGuid().ToString("N")[..8],
+            "/tmp/qualunque-" + Guid.NewGuid().ToString("N")[..8] + ".sock",
+            TimeSpan.FromMilliseconds(500))));
     }
 }

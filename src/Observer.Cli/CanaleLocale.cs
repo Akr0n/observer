@@ -19,17 +19,31 @@ public static class CanaleLocale
     /// <summary>Il percorso predefinito del socket unix, uguale a quello in appsettings.json.</summary>
     public const string PercorsoSocketPredefinito = "/run/observer/observer.sock";
 
-    /// <summary>Prova ad aprire il canale locale e racconta cosa succede.</summary>
+    /// <summary>Prova ad aprire il canale locale predefinito e racconta cosa succede.</summary>
     /// <param name="nomePipe">Il nome della pipe.</param>
     /// <param name="attesa">Quanto aspettare.</param>
     /// <returns>La frase da mostrare.</returns>
-    public static string Prova(string nomePipe, TimeSpan attesa)
+    public static string Prova(string nomePipe, TimeSpan attesa) =>
+        Prova(nomePipe, PercorsoSocketPredefinito, attesa);
+
+    /// <summary>Prova ad aprire un canale locale indicato e racconta cosa succede.</summary>
+    /// <param name="nomePipe">Il nome della pipe, usato su Windows.</param>
+    /// <param name="percorsoSocket">Il percorso del socket, usato altrove.</param>
+    /// <param name="attesa">Quanto aspettare.</param>
+    /// <returns>La frase da mostrare.</returns>
+    /// <remarks>
+    /// Il percorso e' un parametro e non una costante perche' altrimenti il test del caso
+    /// "nessuno risponde" non sarebbe deterministico: su una macchina Linux dove Observer e'
+    /// davvero installato, il socket predefinito esiste e risponde.
+    /// </remarks>
+    public static string Prova(string nomePipe, string percorsoSocket, TimeSpan attesa)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(nomePipe);
+        ArgumentException.ThrowIfNullOrWhiteSpace(percorsoSocket);
 
         if (!OperatingSystem.IsWindows())
         {
-            return ProvaSocket(attesa);
+            return ProvaSocket(percorsoSocket);
         }
 
         // "." e non "localhost": localhost passerebbe da SMB, e il servizio classificherebbe la
@@ -62,7 +76,7 @@ public static class CanaleLocale
     }
 
     /// <summary>La controparte Linux: il canale locale li' e' un socket unix.</summary>
-    /// <param name="attesa">Quanto aspettare.</param>
+    /// <param name="percorso">Il percorso del socket.</param>
     /// <returns>La frase da mostrare.</returns>
     /// <remarks>
     /// Prima qui non si sondava niente e si rispondeva "not checked", cioe' la riga piu' utile
@@ -70,13 +84,13 @@ public static class CanaleLocale
     /// Il rifiuto qui ha un significato preciso e diverso da Windows: il socket nasce con il
     /// gruppo del servizio, quindi "accesso negato" vuol dire che l'utente non e' in quel gruppo.
     /// </remarks>
-    private static string ProvaSocket(TimeSpan attesa)
+    private static string ProvaSocket(string percorso)
     {
         using Socket presa = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
 
         try
         {
-            presa.Connect(new UnixDomainSocketEndPoint(PercorsoSocketPredefinito));
+            presa.Connect(new UnixDomainSocketEndPoint(percorso));
 
             return "ANSWERING - the dashboard can reach this machine without any token.";
         }
@@ -89,7 +103,7 @@ public static class CanaleLocale
         catch (SocketException)
         {
             return
-                "SILENT - nothing is listening on " + PercorsoSocketPredefinito + ". The service " +
+                "SILENT - nothing is listening on " + percorso + ". The service " +
                 "may be stopped (systemctl status observer), or the local channel disabled.";
         }
     }
