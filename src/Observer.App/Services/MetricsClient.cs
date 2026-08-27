@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Authentication;
 using System.Text.Json;
 using Observer.Core.Metrics;
 
@@ -47,12 +48,24 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
     private readonly HttpClient http;
     private readonly AuthenticationHeaderValue? authorization;
 
+    /// <summary>Il confronto sull'impronta, oppure null se questo punto non ne ha una.</summary>
+    private readonly CertificatePinning? fissaggio;
+
     /// <summary>Costruisce il client sul punto letto dalla configurazione.</summary>
     /// <param name="endpoint">Il servizio da interrogare.</param>
     public MetricsClient(ObserverEndpoint endpoint)
-        : this(endpoint, HandlerPer(endpoint), disposeHandler: true)
+        : this(endpoint, FissaggioPer(endpoint))
     {
     }
+
+    private MetricsClient(ObserverEndpoint endpoint, CertificatePinning? fissaggio)
+        : this(endpoint, fissaggio?.Handler() ?? HandlerPer(endpoint), disposeHandler: true)
+    {
+        this.fissaggio = fissaggio;
+    }
+
+    private static CertificatePinning? FissaggioPer(ObserverEndpoint endpoint) =>
+        endpoint.Fingerprint is { Length: > 0 } impronta ? new CertificatePinning(impronta) : null;
 
     /// <summary>Costruisce il client su un handler fornito da fuori. Serve ai test.</summary>
     /// <param name="endpoint">Il servizio da interrogare.</param>
@@ -198,6 +211,17 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
         }
         catch (HttpRequestException ex)
         {
+            // Un fallimento di TLS su un punto con impronta fissata NON e' "non raggiungibile",
+            // e confonderli sarebbe il peggiore dei due errori: il primo si aspetta, questo no.
+            // La macchina risponde eccome - e' l'identita' a non tornare.
+            if (fissaggio is not null && ex.InnerException is AuthenticationException)
+            {
+                return (
+                    ServiceOutcome.ImprontaNonCorrisponde,
+                    fissaggio.Spiegazione(Endpoint.Descrizione),
+                    null);
+            }
+
             return (ServiceOutcome.NonRaggiungibile, TestoNonRaggiungibile(ex.Message), null);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)

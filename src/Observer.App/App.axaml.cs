@@ -28,34 +28,47 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            ClientConfigurationResult configurazione = ClientConfiguration.Read();
+            MachineListResult elenco = MachineDirectory.Read();
 
-            MetricsClient? client = configurazione.Endpoint is { } punto
-                ? new MetricsClient(punto)
-                : null;
+            // Ogni client aperto va chiuso all'uscita, compresi quelli nati cambiando macchina
+            // nella barra laterale: chiuderne solo l'ultimo lascerebbe indietro un socket per
+            // ogni macchina guardata durante la sessione.
+            List<MetricsClient> aperti = [];
 
-            // Variabile mutabile e non solo il parametro: se la configurazione compare mentre
-            // la finestra e' aperta, il client adottato dopo va comunque chiuso all'uscita.
-            MetricsClient? clientCorrente = client;
+            MetricsClient Apri(ObserverEndpoint punto)
+            {
+                MetricsClient nuovo = new(punto);
+                aperti.Add(nuovo);
 
-            MainViewModel viewModel = new(
+                return nuovo;
+            }
+
+            // La prima voce e' SEMPRE il canale locale, che non ha bisogno di configurazione:
+            // dopo l'installazione non c'e' niente da impostare perche' la finestra parta.
+            MetricsClient client = Apri(elenco.Machines[0]);
+
+            MainViewModel? viewModel = null;
+
+            viewModel = new MainViewModel(
                 client,
-                configurazione.Problem,
+                problemaDiConfigurazione: null,
                 rileggiConfigurazione: () =>
                 {
-                    // Rilegge dal disco: il messaggio a schermo dice all'utente di creare un
-                    // file, e crearlo deve bastare. Senza questa rilettura seguirebbe le
-                    // istruzioni alla lettera e non succederebbe nulla fino al riavvio.
-                    ClientConfigurationResult riletta = ClientConfiguration.Read();
-
-                    if (riletta.Endpoint is not { } puntoComparso)
+                    // Rilegge dal disco la voce della macchina che si sta guardando. Serve
+                    // quando il suo token viene ruotato: senza, la finestra resterebbe bloccata
+                    // su "Token rejected" fino al riavvio anche dopo aver corretto il file.
+                    if (viewModel?.MacchinaSelezionata is not { } corrente)
                     {
                         return null;
                     }
 
-                    clientCorrente = new MetricsClient(puntoComparso);
-                    return clientCorrente;
-                });
+                    ObserverEndpoint? aggiornata = MachineDirectory.Read().Machines.FirstOrDefault(
+                        punto => punto.Kind == corrente.Kind && punto.BaseAddress == corrente.BaseAddress);
+
+                    return aggiornata is null || aggiornata == corrente ? null : Apri(aggiornata);
+                },
+                elenco: elenco,
+                apriMacchina: Apri);
 
             CancellationTokenSource arresto = new();
 
@@ -71,7 +84,11 @@ public partial class App : Application
                 // una finestra in cui il ciclo tocca un oggetto gia' distrutto. Il processo sta
                 // uscendo comunque, e non c'e' niente da recuperare.
                 arresto.Cancel();
-                clientCorrente?.Dispose();
+
+                foreach (MetricsClient aperto in aperti)
+                {
+                    aperto.Dispose();
+                }
             };
 
             // Post e non chiamata diretta: qui il ciclo del dispatcher non e' ancora partito

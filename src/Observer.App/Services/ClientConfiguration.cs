@@ -41,7 +41,7 @@ public static class ClientConfiguration
     /// Senza indirizzo configurato il client va sul canale LOCALE, che non ha ne' porta ne'
     /// token. Un indirizzo si mette solo per guardare un ALTRO computer.
     /// </remarks>
-    public const string EsempioIndirizzo = "http://another-machine:5057/";
+    public const string EsempioIndirizzo = "https://another-machine:5058/";
 
     private static readonly JsonSerializerOptions FileOptions = new(JsonSerializerDefaults.Web);
 

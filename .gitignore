@@ -502,6 +502,7 @@ CLAUDE.md
 # copiasse uno qui per guardarlo non deve finire in un commit.
 credentials.json
 client.json
+machines.json
 
 # Payload dell'installer: e' output di dotnet publish, si rigenera.
 packaging/windows/payload/
