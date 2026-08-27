@@ -1617,9 +1617,11 @@ gh pr create --fill && gh pr merge --auto --merge --delete-branch
 Va detto qui perche' chi lo esegue non lo scopra credendo di aver finito.
 
 1. **L'autorizzazione non cambia.** Il token resta obbligatorio ovunque. E' il piano 2.
-2. **La combinazione LocalSystem + GUI dell'utente non e' mai stata eseguita**, perche' nessuna
-   sessione di misura era amministratore. E' la configurazione di produzione, e oggi regge su
-   un'inferenza fra due misure vere: va provata installando il servizio davvero.
+2. ~~**La combinazione LocalSystem + GUI dell'utente non e' mai stata eseguita.**~~
+   **CHIUSA il 2026-08-27**, installando il servizio davvero con
+   `scripts/servizio-windows.ps1` e interrogandolo da una sessione non elevata: la pipe si
+   apre, una GET senza token risponde `200`, il TCP senza token resta `401`, e il
+   campionamento produce valori veri in Session 0.
 3. **La DACL non e' stata provata contro un chiamante SMB da una SECONDA macchina.** Verso se'
    stessa Windows restituisce il token interattivo originale, quindi questa macchina non e' un
    banco valido per quella verifica. Il discriminante `GetNamedPipeClientComputerName` non ne ha
