@@ -162,6 +162,46 @@ curl -H "Authorization: Bearer $Observer__ApiToken" http://la-macchina:5057/metr
 | `observer rotate-key` | si | genera una chiave nuova; la precedente vale ancora 24 ore |
 | `observer doctor` | no | dove sta il deposito, com'e' protetto, e se il canale locale risponde |
 
+### Guardare un'altra macchina
+
+La macchina su cui sei seduto non richiede nulla: la dashboard entra dal canale locale, senza
+porta e senza token. Per guardarne un'altra servono **due** valori, e fanno lavori diversi.
+
+```bash
+observer share
+```
+
+su **quella** macchina, da un terminale con privilegi, stampa il token e l'impronta del suo
+certificato. Il token dice che il chiamante puo' entrare; l'impronta dice che la macchina e'
+quella che dichiara di essere. Vanno in `machines.json`, accanto a `client.json`:
+
+```json
+{
+  "machines": [
+    {
+      "name": "portatile",
+      "baseAddress": "https://portatile:5058/",
+      "apiToken": "il token stampato da observer share",
+      "fingerprint": "sha256:..."
+    }
+  ]
+}
+```
+
+Le macchine elencate compaiono nella barra laterale. Quella locale c'e' sempre ed e' la prima:
+non si elenca e non si puo' togliere. Una voce scritta male **non sparisce in silenzio** -
+compare sotto l'elenco con il motivo, perche' una macchina che semplicemente non c'e' e'
+indistinguibile da una che non e' stata aggiunta.
+
+**Sulla rete il servizio risponde solo in HTTPS.** Prima rispondeva in chiaro, e il token
+attraversava la rete una volta al secondo: una sola cattura di pacchetti consegnava una
+credenziale permanente, e ruotarla non serviva perche' quella nuova era sul filo un secondo
+dopo. Il certificato e' autofirmato e generato dal servizio stesso, quindi nessuna autorita' lo
+garantisce: **e' l'impronta a legare il collegamento a quella macchina**, ed e' per questo che
+senza non si va da nessuna parte. Se un giorno cambia, la dashboard si ferma e mostra la vecchia
+e la nuova. Dopo una reinstallazione e' normale e si aggiorna il file; se non hai reinstallato
+niente, non copiare il valore nuovo.
+
 ### Pacchetti
 
 ```bash

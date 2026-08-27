@@ -22,6 +22,10 @@ public sealed partial class MainViewModel : ViewModelBase
     private readonly Func<IMetricsClient?>? rileggiConfigurazione;
     private readonly Func<DateTimeOffset> adesso;
 
+    /// <summary>Come aprire un client verso una macchina scelta nell'elenco.</summary>
+    private readonly Func<ObserverEndpoint, IMetricsClient>? apriMacchina;
+
+
     private IMetricsClient? client;
 
     private MetricCatalog catalogo = MetricCatalog.Empty;
@@ -54,15 +58,38 @@ public sealed partial class MainViewModel : ViewModelBase
     /// l'attesa prima di dichiarare guasto un servizio dura dieci secondi, e un test che li
     /// aspettasse davvero sarebbe un test che nessuno esegue volentieri.
     /// </param>
+    /// <param name="elenco">
+    /// Le macchine da mettere nella barra laterale, oppure null per non mostrarla affatto.
+    /// </param>
+    /// <param name="apriMacchina">Come aprire un client verso una macchina dell'elenco.</param>
     public MainViewModel(
         IMetricsClient? client,
         string? problemaDiConfigurazione,
         Func<IMetricsClient?>? rileggiConfigurazione = null,
-        Func<DateTimeOffset>? orologio = null)
+        Func<DateTimeOffset>? orologio = null,
+        MachineListResult? elenco = null,
+        Func<ObserverEndpoint, IMetricsClient>? apriMacchina = null)
     {
         this.client = client;
         this.rileggiConfigurazione = rileggiConfigurazione;
+        this.apriMacchina = apriMacchina;
         adesso = orologio ?? (static () => DateTimeOffset.UtcNow);
+
+        foreach (ObserverEndpoint punto in elenco?.Machines ?? [])
+        {
+            Macchine.Add(punto);
+        }
+
+        foreach (string problema in elenco?.Problems ?? [])
+        {
+            ProblemiDellElenco.Add(problema);
+        }
+
+        // La selezione iniziale segue il client con cui la finestra e' stata costruita. Non
+        // serve alcun guardiano contro la propria stessa scrittura: il gestore qui sotto esce
+        // da se' quando la macchina scelta e' gia' quella aperta.
+        MacchinaSelezionata = Macchine.FirstOrDefault(
+            punto => client is not null && punto == client.Endpoint) ?? Macchine.FirstOrDefault();
 
         Intestazione = client is null
             ? "Observer"
@@ -109,6 +136,53 @@ public sealed partial class MainViewModel : ViewModelBase
 
     /// <summary>I riquadri, uno per sorgente di metriche.</summary>
     public ObservableCollection<MetricGroup> Gruppi { get; } = [];
+
+    /// <summary>Le macchine fra cui si puo' scegliere. La prima e' sempre questa.</summary>
+    public ObservableCollection<ObserverEndpoint> Macchine { get; } = [];
+
+    /// <summary>Le voci dell'elenco che sono state scartate, e perche'.</summary>
+    /// <remarks>
+    /// Mostrate accanto all'elenco invece che nascoste in un log: una macchina configurata male
+    /// che semplicemente NON COMPARE e' indistinguibile da una macchina che non e' stata
+    /// aggiunta, e chi la cerca non ha modo di sapere che cosa correggere.
+    /// </remarks>
+    public ObservableCollection<string> ProblemiDellElenco { get; } = [];
+
+    /// <summary>Vero quando c'e' qualcosa da mostrare nella barra laterale.</summary>
+    public bool MostraElenco => Macchine.Count > 1 || ProblemiDellElenco.Count > 0;
+
+    /// <summary>La macchina attualmente guardata.</summary>
+    [ObservableProperty]
+    public partial ObserverEndpoint? MacchinaSelezionata { get; set; }
+
+    /// <summary>Cambia macchina senza riavviare la finestra.</summary>
+    /// <param name="value">La macchina scelta nell'elenco.</param>
+    partial void OnMacchinaSelezionataChanged(ObserverEndpoint? value)
+    {
+        if (value is null || apriMacchina is null)
+        {
+            return;
+        }
+
+        if (client is not null && value == client.Endpoint)
+        {
+            return;
+        }
+
+        client = apriMacchina(value);
+
+        // Tutto cio' che descriveva la macchina PRECEDENTE va buttato: il catalogo, perche' le
+        // etichette appartengono a quel servizio; i riquadri, perche' sono le sue misure; e
+        // l'orologio dei guasti, perche' a una macchina nuova spetta un'attesa nuova.
+        catalogoLetto = false;
+        catalogo = MetricCatalog.Empty;
+        guastoDa = null;
+        Gruppi.Clear();
+
+        Intestazione = "Observer - " + value.Descrizione;
+        Mostra(FAInfoBarSeverity.Informational, "Connecting", "Taking the first reading...");
+        SottoIntestazione = "Connecting...";
+    }
 
     /// <summary>
     /// Il ciclo di aggiornamento. Non lancia mai: qualunque guasto diventa testo a schermo.

@@ -24,11 +24,21 @@ public enum EndpointKind
 /// </param>
 /// <param name="ApiToken">Il token, solo per i punti remoti. Null sul canale locale.</param>
 /// <param name="Origine">Da dove arriva la configurazione, senza il token dentro.</param>
+/// <param name="Fingerprint">
+/// L'impronta del certificato che quella macchina DEVE presentare. Null sul canale locale, che
+/// non attraversa la rete e non ha niente da cifrare.
+/// </param>
+/// <param name="Nome">
+/// Come chiamarla nell'elenco, se chi ha scritto la configurazione le ha dato un nome. Null
+/// significa "usa l'indirizzo".
+/// </param>
 public sealed record ObserverEndpoint(
     EndpointKind Kind,
     Uri BaseAddress,
     string? ApiToken,
-    string Origine)
+    string Origine,
+    string? Fingerprint = null,
+    string? Nome = null)
 {
     /// <summary>Il nome del canale locale, uguale al valore predefinito del servizio.</summary>
     public const string NomeCanaleLocale = "Observer";
@@ -52,8 +62,13 @@ public sealed record ObserverEndpoint(
     /// <param name="token">Il token di quella macchina.</param>
     /// <param name="origine">Da dove arriva la configurazione.</param>
     /// <returns>Il punto remoto.</returns>
-    public static ObserverEndpoint Remoto(Uri indirizzo, string token, string origine) =>
-        new(EndpointKind.Remoto, indirizzo, token, origine);
+    public static ObserverEndpoint Remoto(
+        Uri indirizzo,
+        string token,
+        string origine,
+        string? impronta = null,
+        string? nome = null) =>
+        new(EndpointKind.Remoto, indirizzo, token, origine, impronta, nome);
 
     /// <summary>Come si chiama questo punto a schermo.</summary>
     /// <remarks>
@@ -64,6 +79,17 @@ public sealed record ObserverEndpoint(
         Kind == EndpointKind.Locale
             ? "this machine"
             : BaseAddress.ToString();
+
+    /// <summary>Come si chiama questo punto NELL'ELENCO delle macchine.</summary>
+    /// <remarks>
+    /// Il nome scelto a mano vince sull'indirizzo, perche' in una barra laterale
+    /// "https://192.168.1.24:5058/" non dice a nessuno di quale macchina si tratti.
+    /// </remarks>
+    public string NomeVisibile =>
+        string.IsNullOrWhiteSpace(Nome) ? Descrizione : Nome.Trim();
+
+    /// <summary>Vero quando questo punto viaggia cifrato e con l'impronta fissata.</summary>
+    public bool ImprontaFissata => !string.IsNullOrWhiteSpace(Fingerprint);
 
     /// <summary>
     /// Nasconde il token. I record generano un ToString() con TUTTE le proprieta' dentro:

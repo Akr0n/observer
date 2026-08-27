@@ -32,6 +32,15 @@ public enum ServiceOutcome
 
     /// <summary>Codice HTTP non previsto.</summary>
     RispostaInattesa = 7,
+
+    /// <summary>Il certificato presentato non e' quello atteso, oppure ne manca l'impronta.</summary>
+    /// <remarks>
+    /// Tenuto separato da <see cref="NonRaggiungibile"/> di proposito. Sul filo si vede lo
+    /// stesso guasto - il collegamento non si stabilisce - ma le due cause chiedono gesti
+    /// opposti: la prima si aspetta, questa NO. Un'impronta che cambia e' una reinstallazione
+    /// del servizio oppure qualcuno in mezzo, e in nessuno dei due casi conviene riprovare.
+    /// </remarks>
+    ImprontaNonCorrisponde = 8,
 }
 
 /// <summary>
