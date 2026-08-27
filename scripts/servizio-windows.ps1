@@ -6,10 +6,11 @@
     Richiede una PowerShell ELEVATA: registrare un servizio modifica impostazioni di sistema.
     Lo script si rifiuta di procedere senza elevazione invece di fallire a meta'.
 
-    Non genera, non chiede e non conosce alcun token. Si limita a copiare i file gia' prodotti
-    da "dotnet publish", fra cui appsettings.Local.json se esiste, e a RESTRINGERNE i permessi:
-    la cartella di destinazione e' leggibile da chiunque, e un token di macchina non deve
-    esserlo.
+    Non genera, non chiede e non conosce alcun token: dal piano 3 il servizio se lo genera e
+    se lo custodisce da solo al primo avvio. Se nella cartella pubblicata c'e' comunque un
+    appsettings.Local.json - un token scelto a mano, che vince su quello generato - lo copia e
+    ne RESTRINGE i permessi, perche' la cartella di destinazione e' leggibile da chiunque abbia
+    un account e un token di macchina non deve esserlo.
 
 .PARAMETER Azione
     Installa, Disinstalla, Stato oppure Verifica.
@@ -148,15 +149,19 @@ if (-not (Test-Path $eseguibileSorgente)) {
     return
 }
 
+# appsettings.Local.json NON e' piu' obbligatorio. Dal piano 3 il servizio si genera e si
+# custodisce il proprio token di macchina al primo avvio, sotto C:\ProgramData\Observer: e'
+# esattamente cio' che permette a questo script di non conoscere alcun segreto.
+# Se il file c'e' comunque, viene copiato e i suoi permessi vengono ristretti, perche' un token
+# scelto a mano vince sul deposito e va protetto come quello generato.
 $configurazioneLocale = Join-Path $Sorgente 'appsettings.Local.json'
+$portaUnToken = Test-Path $configurazioneLocale
 
-if (-not (Test-Path $configurazioneLocale)) {
-    Write-Error @'
-Manca appsettings.Local.json nella cartella pubblicata, quindi il servizio non avrebbe alcun
-token e si rifiuterebbe di partire. Creane uno in src/Observer.Service (e' gia' gitignorato)
-con il campo Observer:ApiToken, poi ripubblica.
-'@
-    return
+if ($portaUnToken) {
+    Write-Host 'Trovato appsettings.Local.json: il token che contiene vincera'' su quello generato.'
+}
+else {
+    Write-Host 'Nessun appsettings.Local.json: il servizio generera'' da se'' il proprio token.'
 }
 
 $esistente = Get-Service -Name $nomeServizio -ErrorAction SilentlyContinue
@@ -180,12 +185,15 @@ if (-not (Test-Path $Destinazione)) {
 Copy-Item -Path (Join-Path $Sorgente '*') -Destination $Destinazione -Recurse -Force
 Write-Host "File copiati in '$Destinazione'."
 
-# Il token e' un segreto di questa macchina e la cartella di installazione e' leggibile da
-# chiunque abbia un account: si toglie l'ereditarieta' e si concede solo a SYSTEM, che esegue
-# il servizio, e agli amministratori, che devono poterlo cambiare.
-$configurazioneInstallata = Join-Path $Destinazione 'appsettings.Local.json'
-& icacls.exe $configurazioneInstallata /inheritance:r /grant 'NT AUTHORITY\SYSTEM:(R)' /grant 'BUILTIN\Administrators:(F)' | Out-Null
-Write-Host "Permessi ristretti su '$configurazioneInstallata' (solo SYSTEM e amministratori)."
+# Se un token scelto a mano c'e', va protetto: la cartella di installazione e' leggibile da
+# chiunque abbia un account sulla macchina. Si toglie l'ereditarieta' e si concede solo a
+# SYSTEM, che esegue il servizio, e agli amministratori, che devono poterlo cambiare.
+# Il token GENERATO dal servizio non passa di qui: vive gia' protetto sotto ProgramData.
+if ($portaUnToken) {
+    $configurazioneInstallata = Join-Path $Destinazione 'appsettings.Local.json'
+    & icacls.exe $configurazioneInstallata /inheritance:r /grant 'NT AUTHORITY\SYSTEM:(R)' /grant 'BUILTIN\Administrators:(F)' | Out-Null
+    Write-Host "Permessi ristretti su '$configurazioneInstallata' (solo SYSTEM e amministratori)."
+}
 
 $eseguibileInstallato = Join-Path $Destinazione 'Observer.Service.exe'
 
