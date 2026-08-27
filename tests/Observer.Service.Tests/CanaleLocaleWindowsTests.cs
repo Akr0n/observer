@@ -4,6 +4,8 @@ using System.Net;
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Transport.NamedPipes;
 using Observer.Service.LocalChannel;
 
@@ -82,6 +84,92 @@ public class CanaleLocaleWindowsTests
             using HttpClient client = BancoKestrelReale.ClientSu(HandlerVersoLaPipe(pipe));
             Assert.Equal("pong", await client.GetStringAsync("ping", CancellationToken.None));
         }
+    }
+
+    [SoloSuWindows]
+    public async Task ChiArrivaDalPuntoEClassificatoLocaleEIdentificato()
+    {
+        string pipe = NomeUnico();
+
+        await using BancoKestrelReale banco = await BancoKestrelReale.AvviaAsync(
+            opzioni => opzioni.ListenNamedPipe(pipe),
+            app => app.MapGet("/chi", (HttpContext contesto) =>
+            {
+                CallerOrigin origine = LocalCaller.Classifica(contesto);
+                return origine.Kind + "|" + (origine.Sid ?? "(nessuno)");
+            }));
+
+        using HttpClient client = BancoKestrelReale.ClientSu(HandlerVersoLaPipe(pipe));
+        string esito = await client.GetStringAsync("chi", CancellationToken.None);
+
+        Assert.StartsWith(nameof(CallerKind.LocaleIdentificato) + "|S-1-", esito, StringComparison.Ordinal);
+    }
+
+    [SoloSuWindows]
+    public async Task ChiSceglieAnonymousNonEIdentificabile_ENonProduceUn500()
+    {
+        // Il livello di impersonation lo sceglie il CLIENT: con Anonymous la richiesta arriva lo
+        // stesso ma il server non riesce a leggere il token. E' il caso di ATTACCO, non un caso
+        // limite. Misurato: l'eccezione e' SecurityException con HRESULT 0x80070543, NON
+        // IOException. Una guardia che catturasse solo IOException lascerebbe uscire un 500
+        // proprio sul percorso che si sta cercando di chiudere, e un 500 e' il segnale che dice
+        // a chi sonda di aver toccato qualcosa.
+        string pipe = NomeUnico();
+
+        await using BancoKestrelReale banco = await BancoKestrelReale.AvviaAsync(
+            opzioni => opzioni.ListenNamedPipe(pipe),
+            app => app.MapGet("/chi", (HttpContext contesto) => LocalCaller.Classifica(contesto).Kind.ToString()));
+
+        using HttpClient client = BancoKestrelReale.ClientSu(
+            HandlerVersoLaPipe(pipe, TokenImpersonationLevel.Anonymous));
+
+        using HttpResponseMessage risposta = await client.GetAsync("chi", CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+        Assert.Equal(
+            nameof(CallerKind.NonIdentificabile),
+            await risposta.Content.ReadAsStringAsync(CancellationToken.None));
+    }
+
+    [SoloSuWindows]
+    public async Task LocalhostNonEUnaViaLocale()
+    {
+        // Misurato: con serverName "localhost" GetNamedPipeClientComputerName RIESCE e
+        // restituisce "[::1]", cioe' la connessione e' passata da SMB. Solo "." e' locale.
+        // E' la trappola che farebbe perdere ore a chi scrivera' il client.
+        string pipe = NomeUnico();
+
+        await using BancoKestrelReale banco = await BancoKestrelReale.AvviaAsync(
+            opzioni => opzioni.ListenNamedPipe(pipe),
+            app => app.MapGet("/chi", (HttpContext contesto) => LocalCaller.Classifica(contesto).Kind.ToString()));
+
+        using HttpClient client = BancoKestrelReale.ClientSu(
+            HandlerVersoLaPipe(pipe, TokenImpersonationLevel.Identification, server: "localhost"));
+
+        Assert.Equal(
+            nameof(CallerKind.ArrivatoDallaRete),
+            await client.GetStringAsync("chi", CancellationToken.None));
+    }
+
+    [SoloSuWindows]
+    public async Task ChiArrivaDalTcpNonEMaiLocale()
+    {
+        string pipe = NomeUnico();
+
+        await using BancoKestrelReale banco = await BancoKestrelReale.AvviaAsync(
+            opzioni =>
+            {
+                opzioni.Listen(IPAddress.Loopback, 0);
+                opzioni.ListenNamedPipe(pipe);
+            },
+            app => app.MapGet("/chi", (HttpContext contesto) => LocalCaller.Classifica(contesto).Kind.ToString()));
+
+        string tcp = banco.Indirizzi.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
+        using HttpClient client = new() { BaseAddress = new Uri(tcp) };
+
+        Assert.Equal(
+            nameof(CallerKind.ArrivatoDallaRete),
+            await client.GetStringAsync("chi", CancellationToken.None));
     }
 
     internal static string NomeUnico() =>
