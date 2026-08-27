@@ -1,6 +1,4 @@
-using System.Security.Cryptography;
 using System.Text;
-using Microsoft.Extensions.Primitives;
 using Observer.Core.Composition;
 using Observer.Core.Metrics;
 using Observer.Service;
@@ -93,6 +91,8 @@ else
 // della macchina: senza token sarebbe leggibile da chiunque sia sulla stessa rete. Quindi si
 // rifiuta di partire, invece di partire in chiaro. Un servizio che non parte si nota subito;
 // uno che parte aperto no.
+// Il token resta obbligatorio per il percorso di RETE anche ora che il canale locale non lo
+// chiede: rendere facoltativo l'uno non rende facoltativo l'altro.
 string? apiToken = builder.Configuration["Observer:ApiToken"];
 
 if (string.IsNullOrWhiteSpace(apiToken))
@@ -118,17 +118,7 @@ if (OperatingSystem.IsLinux() && percorsoDelSocket is { } socketLocale)
     LinuxUnixSocket.RestringiDopoAvvio(app.Lifetime, socketLocale);
 }
 
-app.Use(async (context, next) =>
-{
-    if (!IsAuthorized(context.Request.Headers.Authorization, expectedToken))
-    {
-        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        context.Response.Headers.WWWAuthenticate = "Bearer";
-        return;
-    }
-
-    await next(context).ConfigureAwait(false);
-});
+app.UseObserverAccessControl(expectedToken);
 
 // Il catalogo descrive le metriche esistenti, comprese quelle non misurabili qui: e' cio'
 // che permette al client di disegnare una metrica che non conosceva a tempo di compilazione.
@@ -147,19 +137,3 @@ app.MapGet("/metrics/latest", (MetricSnapshotCache cache) =>
 app.MapStorageEndpoints();
 
 app.Run();
-
-// Confronto a tempo costante: un confronto normale esce al primo byte diverso, e quella
-// differenza di tempo permette di indovinare il token un carattere alla volta.
-static bool IsAuthorized(StringValues header, byte[] expectedToken)
-{
-    string? value = header.Count == 1 ? header[0] : null;
-
-    if (value is null || !value.StartsWith("Bearer ", StringComparison.Ordinal))
-    {
-        return false;
-    }
-
-    byte[] presented = Encoding.UTF8.GetBytes(value["Bearer ".Length..]);
-
-    return CryptographicOperations.FixedTimeEquals(presented, expectedToken);
-}

@@ -136,6 +136,60 @@ public class CanaleLocaleLinuxTests
         Assert.True(uint.TryParse(parti[1], out _), "uid non numerico: " + parti[1]);
     }
 
+    [SoloSuLinux]
+    public async Task SulSocketUnixIlTokenNonServePiu_MaSulTcpSi()
+    {
+        // La controparte Linux del cambiamento: sul canale locale il chiamante e' identificato
+        // dal suo uid, quindi il token non serve. Sulla rete resta obbligatorio.
+        string percorso = PercorsoBreve();
+
+        await using BancoKestrelReale banco = await BancoKestrelReale.AvviaAsync(
+            opzioni =>
+            {
+                opzioni.Listen(System.Net.IPAddress.Loopback, 0);
+                opzioni.ListenUnixSocket(percorso);
+            },
+            middleware: app => app.UseObserverAccessControl(
+                System.Text.Encoding.UTF8.GetBytes(CanaleLocaleWindowsTests.TokenTestuale)));
+
+        using HttpClient suSocket = BancoKestrelReale.ClientSu(HandlerVersoIlSocket(percorso));
+        Assert.Equal("pong", await suSocket.GetStringAsync("ping", CancellationToken.None));
+
+        string tcp = banco.Indirizzi.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
+        using HttpClient suTcp = new() { BaseAddress = new Uri(tcp) };
+        using HttpResponseMessage senzaToken = await suTcp.GetAsync("ping", CancellationToken.None);
+
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, senzaToken.StatusCode);
+    }
+
+    [SoloSuLinux]
+    public async Task UnEndpointSoloLocaleNonEsistePerChiArrivaDallaRete()
+    {
+        string percorso = PercorsoBreve();
+
+        await using BancoKestrelReale banco = await BancoKestrelReale.AvviaAsync(
+            opzioni =>
+            {
+                opzioni.Listen(System.Net.IPAddress.Loopback, 0);
+                opzioni.ListenUnixSocket(percorso);
+            },
+            app => app.MapGet("/riservato", () => "segreto").SoloDaLocale(),
+            middleware: app => app.UseObserverAccessControl(
+                System.Text.Encoding.UTF8.GetBytes(CanaleLocaleWindowsTests.TokenTestuale)));
+
+        string tcp = banco.Indirizzi.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
+        using HttpClient suTcp = new() { BaseAddress = new Uri(tcp) };
+        suTcp.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", CanaleLocaleWindowsTests.TokenTestuale);
+
+        // Col token GIUSTO, e comunque 404.
+        using HttpResponseMessage dallaRete = await suTcp.GetAsync("riservato", CancellationToken.None);
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, dallaRete.StatusCode);
+
+        using HttpClient suSocket = BancoKestrelReale.ClientSu(HandlerVersoIlSocket(percorso));
+        Assert.Equal("segreto", await suSocket.GetStringAsync("riservato", CancellationToken.None));
+    }
+
     internal static string PercorsoBreve()
     {
         // Il limite e' 107 BYTE per l'intero percorso, e il temp di un runner di CI puo' essere

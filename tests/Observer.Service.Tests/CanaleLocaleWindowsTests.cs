@@ -172,6 +172,92 @@ public class CanaleLocaleWindowsTests
             await client.GetStringAsync("chi", CancellationToken.None));
     }
 
+    [SoloSuWindows]
+    public async Task SulCanaleLocaleIlTokenNonServePiu()
+    {
+        // E' l'obiettivo dell'intero progetto, e il primo cambiamento di comportamento
+        // visibile: sulla macchina il sistema operativo sa gia' chi chiama.
+        string pipe = NomeUnico();
+
+        await using BancoKestrelReale banco = await BancoKestrelReale.AvviaAsync(
+            opzioni =>
+            {
+                opzioni.Listen(IPAddress.Loopback, 0);
+                opzioni.ListenNamedPipe(pipe);
+            },
+            middleware: app => app.UseObserverAccessControl(Token));
+
+        using HttpClient suPipe = BancoKestrelReale.ClientSu(HandlerVersoLaPipe(pipe));
+        Assert.Equal("pong", await suPipe.GetStringAsync("ping", CancellationToken.None));
+
+        // Sul TCP invece non cambia niente: rendere facoltativo il token in locale non lo
+        // rende facoltativo in rete.
+        string tcp = banco.Indirizzi.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
+        using HttpClient suTcp = new() { BaseAddress = new Uri(tcp) };
+        using HttpResponseMessage senzaToken = await suTcp.GetAsync("ping", CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, senzaToken.StatusCode);
+    }
+
+    [SoloSuWindows]
+    public async Task UnChiamanteAnonimoVieneRifiutatoANCHEColTokenGiusto()
+    {
+        // La regola "l'identita' non determinabile rifiuta" non deve avere una scappatoia. Il
+        // livello di impersonation lo sceglie il CLIENT: con Anonymous un chiamante si rende
+        // unilateralmente non identificabile pur restando capace di presentare il token. Se il
+        // token bastasse, la regola sarebbe vuota.
+        string pipe = NomeUnico();
+
+        await using BancoKestrelReale banco = await BancoKestrelReale.AvviaAsync(
+            opzioni => opzioni.ListenNamedPipe(pipe),
+            middleware: app => app.UseObserverAccessControl(Token));
+
+        using HttpClient client = BancoKestrelReale.ClientSu(
+            HandlerVersoLaPipe(pipe, TokenImpersonationLevel.Anonymous));
+
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenTestuale);
+
+        using HttpResponseMessage risposta = await client.GetAsync("ping", CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, risposta.StatusCode);
+    }
+
+    [SoloSuWindows]
+    public async Task UnEndpointSoloLocaleNonEsistePerChiArrivaDallaRete()
+    {
+        // 404 e non 403: gli endpoint di appaiamento ruoteranno le chiavi, e chi rubasse il
+        // token non deve nemmeno poter confermare che esistano.
+        string pipe = NomeUnico();
+
+        await using BancoKestrelReale banco = await BancoKestrelReale.AvviaAsync(
+            opzioni =>
+            {
+                opzioni.Listen(IPAddress.Loopback, 0);
+                opzioni.ListenNamedPipe(pipe);
+            },
+            app => app.MapGet("/riservato", () => "segreto").SoloDaLocale(),
+            middleware: app => app.UseObserverAccessControl(Token));
+
+        string tcp = banco.Indirizzi.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
+        using HttpClient suTcp = new() { BaseAddress = new Uri(tcp) };
+        suTcp.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenTestuale);
+
+        using HttpResponseMessage dallaRete = await suTcp.GetAsync("riservato", CancellationToken.None);
+
+        // Col token GIUSTO, e comunque 404.
+        Assert.Equal(HttpStatusCode.NotFound, dallaRete.StatusCode);
+
+        using HttpClient suPipe = BancoKestrelReale.ClientSu(HandlerVersoLaPipe(pipe));
+        Assert.Equal("segreto", await suPipe.GetStringAsync("riservato", CancellationToken.None));
+    }
+
+    /// <summary>Il token usato dai test di controllo d'accesso.</summary>
+    internal const string TokenTestuale = "token-del-banco";
+
+    private static byte[] Token => System.Text.Encoding.UTF8.GetBytes(TokenTestuale);
+
     internal static string NomeUnico() =>
         "observer-test-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
 

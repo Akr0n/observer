@@ -34,10 +34,15 @@ public sealed class BancoKestrelReale : IAsyncDisposable
     /// <summary>Avvia l'host con gli ascolti indicati, piu' un endpoint di prova.</summary>
     /// <param name="ascolti">Gli endpoint da aprire.</param>
     /// <param name="mappa">Endpoint aggiuntivi, per i test che ne hanno bisogno.</param>
+    /// <param name="middleware">
+    /// Middleware da installare PRIMA degli endpoint. Serve a montare il controllo d'accesso
+    /// VERO del servizio, cosi' i test lo esercitano invece di verificarne una copia.
+    /// </param>
     /// <returns>Il banco gia' avviato.</returns>
     public static async Task<BancoKestrelReale> AvviaAsync(
         Action<KestrelServerOptions> ascolti,
-        Action<WebApplication>? mappa = null)
+        Action<WebApplication>? mappa = null,
+        Action<WebApplication>? middleware = null)
     {
         ArgumentNullException.ThrowIfNull(ascolti);
 
@@ -53,6 +58,8 @@ public sealed class BancoKestrelReale : IAsyncDisposable
         builder.Logging.ClearProviders();
 
         WebApplication app = builder.Build();
+
+        middleware?.Invoke(app);
 
         app.MapGet("/ping", () => "pong");
         mappa?.Invoke(app);
