@@ -9,9 +9,9 @@ namespace Observer.Service.Tests;
 
 /// <summary>Il canale locale su Linux.</summary>
 /// <remarks>
-/// L attributo sulla CLASSE e non sui singoli metodi: CA1416 guarda il sito di chiamata, e
-/// [SoloSuLinux] e un salto a RUNTIME che l analyzer non vede. Tutti i test qui dentro sono
-/// comunque Linux, quindi annotare la classe e la forma piu onesta.
+/// L'attributo sulla CLASSE e non sui singoli metodi: CA1416 guarda il sito di chiamata, e
+/// [SoloSuLinux] e' un salto a RUNTIME che l'analyzer non vede. Tutti i test qui dentro sono
+/// comunque Linux, quindi annotare la classe e' la forma piu' onesta.
 /// </remarks>
 [Collection(AmbienteDelProcesso.Nome)]
 [SupportedOSPlatform("linux")]

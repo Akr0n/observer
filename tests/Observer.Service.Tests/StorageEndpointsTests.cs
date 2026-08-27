@@ -135,7 +135,7 @@ public class StorageEndpointsTests : IClassFixture<ServizioInMemoria>
     }
 
     [Fact]
-    public async Task Statistiche_DicendoDoveScriveEQuantoScarta()
+    public async Task Statistiche_DiconoDoveScriveEQuantoScarta()
     {
         using HttpClient client = servizio.CreateAuthorizedClient();
         using JsonDocument documento = await Leggi(client, "/metrics/storage");

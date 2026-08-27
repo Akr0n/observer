@@ -62,7 +62,4 @@ public sealed class MetricCatalog
             ? descriptor
             : null;
 
-    /// <summary>True se il catalogo conosce il collector indicato.</summary>
-    public bool KnowsCollector(string collectorId) =>
-        collectorId is not null && byCollectorId.ContainsKey(collectorId);
 }

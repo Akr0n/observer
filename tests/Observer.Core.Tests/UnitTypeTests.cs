@@ -67,7 +67,7 @@ public class UnitTypeTests
     }
 
     [Fact]
-    public void Percent_TryFromRatio_ConvertRapportoInPuntiPercentuali()
+    public void Percent_TryFromRatio_ConverteIlRapportoInPuntiPercentuali()
     {
         // Il rapporto 0..1 e i punti 0..100 sono la confusione piu' comune: 0,5 deve
         // diventare 50, non 0,5.

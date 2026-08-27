@@ -118,9 +118,12 @@ public static class Comandi
         Console.WriteLine();
 
         // Va detto, perche' altrimenti si prova la chiave nuova, non funziona, e si conclude
-        // che la rotazione e' rotta.
+        // che la rotazione e' rotta. E il comando dipende dal sistema: stamparne uno che qui
+        // non esiste manderebbe l'utente a cercare perche' non funziona.
         Console.WriteLine("The service keeps using the OLD key until it is restarted:");
-        Console.WriteLine("    Restart-Service Observer");
+        Console.WriteLine(OperatingSystem.IsWindows()
+            ? "    Restart-Service Observer"
+            : "    sudo systemctl restart observer");
 
         return 0;
     }

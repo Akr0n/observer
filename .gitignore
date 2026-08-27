@@ -497,9 +497,11 @@ appsettings.*.Local.json
 # Istruzioni locali per agenti (non pubbliche, scelta di Federico 2026-08-26)
 CLAUDE.md
 
-# Il deposito del token di macchina vive fuori dal repo (ProgramData o /etc), ma se
-# qualcuno lo copiasse qui per guardarlo non deve finire in un commit.
+# I due file che portano un token vivono fuori dal repo - il deposito di macchina sotto
+# ProgramData o /etc, la configurazione del client sotto LocalAppData - ma se qualcuno ne
+# copiasse uno qui per guardarlo non deve finire in un commit.
 credentials.json
+client.json
 
 # Payload dell'installer: e' output di dotnet publish, si rigenera.
 packaging/windows/payload/
