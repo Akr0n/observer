@@ -87,4 +87,21 @@ public static class LinuxUnixSocket
     /// <param name="percorso">Il percorso del socket.</param>
     public static void RestringiAlProprietario(string percorso) =>
         File.SetUnixFileMode(percorso, ModoSocket);
+
+    /// <summary>Registra la restrizione del modo per quando l'host sara' partito.</summary>
+    /// <param name="vita">Il ciclo di vita dell'applicazione.</param>
+    /// <param name="percorso">Il percorso del socket.</param>
+    /// <remarks>
+    /// Sta QUI e non in Program.cs perche' il corpo della lambda deve stare dentro una classe
+    /// annotata: [SupportedOSPlatform] non copre il corpo di una lambda, e CA1416 con
+    /// TreatWarningsAsErrors farebbe fallire la build su entrambi i runner.
+    /// Prima dell'avvio il file del socket non esiste ancora, quindi il chmod non puo' stare
+    /// accanto alla creazione della directory.
+    /// </remarks>
+    public static void RestringiDopoAvvio(IHostApplicationLifetime vita, string percorso)
+    {
+        ArgumentNullException.ThrowIfNull(vita);
+
+        vita.ApplicationStarted.Register(() => RestringiAlProprietario(percorso));
+    }
 }

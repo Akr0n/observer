@@ -55,6 +55,18 @@ foreach (IConfigurationSection endpoint in builder.Configuration.GetSection("Kes
     }
 }
 
+// Il canale locale: named pipe su Windows, socket unix su Linux. Il nome e il percorso sono
+// configurabili perche' un endpoint che non si binda abbatte l'INTERO host, endpoint TCP
+// compreso: con valori fissi, lanciare questo servizio a mano su una macchina dove quello
+// installato gira non fallirebbe piu' "solo sulla porta", non partirebbe affatto.
+LocalChannelOptions canaleLocale =
+    builder.Configuration.GetSection(LocalChannelOptions.SectionName).Get<LocalChannelOptions>()
+        ?? new LocalChannelOptions();
+
+canaleLocale.Validate();
+
+string? percorsoDelSocket = await LocalChannelSetup.ConfiguraAsync(builder, canaleLocale);
+
 builder.Services.AddSingleton(storage);
 
 // Magazzino e coda si registrano SEMPRE, anche a storico spento: costruirli non tocca il
@@ -95,6 +107,16 @@ if (string.IsNullOrWhiteSpace(apiToken))
 byte[] expectedToken = Encoding.UTF8.GetBytes(apiToken);
 
 WebApplication app = builder.Build();
+
+if (OperatingSystem.IsLinux() && percorsoDelSocket is { } socketLocale)
+{
+    // Il modo del file va imposto DOPO l'avvio: prima quel file non esiste, e un chmod
+    // accanto alla creazione della directory fallirebbe.
+    // Quale percorso sia stato scelto non serve stamparlo qui: /run/observer non e' creabile
+    // da un utente normale e il ripiego cambia il percorso, ma Kestrel lo dice gia' da se'
+    // nella sua riga "Now listening on: http://unix:/...".
+    LinuxUnixSocket.RestringiDopoAvvio(app.Lifetime, socketLocale);
+}
 
 app.Use(async (context, next) =>
 {
