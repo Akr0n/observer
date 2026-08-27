@@ -19,12 +19,35 @@ case "$1" in
         # quindi la cartella non va letta da nessun altro.
         install -d -o observer -g observer -m 0700 /etc/observer
 
-        # La guardia serve nei contenitori e nelle chroot, dove systemd non gira: senza,
-        # l'installazione fallirebbe su una macchina dove il pacchetto e' comunque legittimo.
+        # NON "systemctl enable" e "systemctl start", e la differenza non e' formale.
+        #
+        # deb-systemd-invoke consulta /usr/sbin/policy-rc.d, che e' il modo in cui un
+        # amministratore dice "installa pure, ma NON avviare niente": durante la preparazione
+        # di un'immagine, dentro un contenitore, in un chroot. systemctl quel file non lo
+        # guarda nemmeno, e avvia lo stesso. La guardia [ -d /run/systemd/system ] copre il
+        # caso in cui systemd NON gira affatto, non questo.
+        #
+        # deb-systemd-helper, dal canto suo, tiene lo STATO dell'abilitazione: e' cio' che
+        # permette a "dpkg --purge" di ripulire i collegamenti che ha creato, e a un
+        # aggiornamento di non riabilitare un servizio che l'amministratore aveva disabilitato
+        # a mano. "systemctl enable" a ogni configure lo riabiliterebbe ogni volta.
+        deb-systemd-helper unmask observer.service >/dev/null || true
+
+        if deb-systemd-helper --quiet was-enabled observer.service; then
+            deb-systemd-helper enable observer.service >/dev/null || true
+        else
+            deb-systemd-helper update-state observer.service >/dev/null || true
+        fi
+
         if [ -d /run/systemd/system ]; then
-            systemctl daemon-reload || true
-            systemctl enable observer.service || true
-            systemctl start observer.service || true
+            systemctl --system daemon-reload >/dev/null || true
+
+            # $2 e' la versione precedente: valorizzata solo su un aggiornamento.
+            if [ -n "$2" ]; then
+                deb-systemd-invoke restart observer.service >/dev/null || true
+            else
+                deb-systemd-invoke start observer.service >/dev/null || true
+            fi
         fi
 
         # In INGLESE: lo legge chiunque installi il pacchetto, ed e' testo visibile

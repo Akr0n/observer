@@ -120,8 +120,13 @@ jobs:
         # tocca: finche' questo passo non e' esistito, ogni correzione di packaging e' rimasta
         # un'ipotesi non verificata. Adesso il pacchetto viene ispezionato dove e' costruito.
         #
-        # --fail-on error stampa TUTTI i tag e si ferma solo sugli errori. Gli avvertimenti
-        # restano a vista di proposito: un pacchetto che ne accumula in silenzio e' un
+        # La soglia comprende gli AVVERTIMENTI, non solo gli errori. E' stata alzata quando
+        # il pacchetto e' arrivato a zero tag: tenere pulito cio' che e' pulito costa molto
+        # meno che ripulirlo, e un avvertimento lasciato passare diventa il primo di una
+        # fila che nessuno guarda piu'. Se un aggiornamento di lintian introduce un tag
+        # nuovo, questo job diventa rosso senza che sia cambiato niente qui: e' voluto, ed
+        # e' un segnale, non un falso allarme. Non blocca comunque la merge, perche'
+        # pack-linux non e' un check obbligatorio del ruleset.
         # pacchetto che nessuno guarda piu'.
         run: |
           set -euo pipefail
@@ -129,7 +134,7 @@ jobs:
           sudo apt-get install -y -qq lintian
           PACCHETTO=$(ls packaging/linux/out/observer_*.deb)
           lintian --version
-          lintian --tag-display-limit 0 --fail-on error "$PACCHETTO"
+          lintian --tag-display-limit 0 --fail-on error,warning "$PACCHETTO"
 
       - name: Pubblica l'artefatto
         uses: actions/upload-artifact@v4

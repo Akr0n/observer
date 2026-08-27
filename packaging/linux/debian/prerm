@@ -1,13 +1,11 @@
 #!/bin/sh
 set -e
 
-case "$1" in
-    remove|deconfigure)
-        if [ -d /run/systemd/system ]; then
-            systemctl stop observer.service || true
-            systemctl disable observer.service || true
-        fi
-        ;;
-esac
+# deb-systemd-invoke e non systemctl: rispetta policy-rc.d anche in fermata. Un
+# amministratore che ha vietato di toccare i servizi non vuole che li tocchi nemmeno la
+# rimozione di un pacchetto.
+if [ -d /run/systemd/system ] && [ "$1" = remove ]; then
+    deb-systemd-invoke stop observer.service >/dev/null || true
+fi
 
 exit 0
