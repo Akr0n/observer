@@ -5,11 +5,30 @@ set -e
 # observer che li possiede. Dentro ci sono il token di macchina e lo storico: cancellarli
 # sarebbe una sorpresa, e su un aggiornamento andato storto sarebbe una perdita.
 # Chi vuole liberarsene lo fa a mano, sapendo cosa sta facendo.
+#
+# Cio' che invece si ripulisce sono i collegamenti di abilitazione, e li ripulisce
+# deb-systemd-helper perche' e' l'unico che sa quali ha creato lui. "systemctl disable" non
+# tiene alcuno stato, quindi dopo un purge lascerebbe dietro di se' cio' che aveva acceso.
+
+if [ -d /run/systemd/system ]; then
+    systemctl --system daemon-reload >/dev/null || true
+fi
 
 case "$1" in
-    remove|purge)
-        if [ -d /run/systemd/system ]; then
-            systemctl daemon-reload || true
+    remove)
+        if command -v deb-systemd-helper >/dev/null 2>&1; then
+            deb-systemd-helper mask observer.service >/dev/null || true
+        fi
+        ;;
+    purge)
+        # In purge le dipendenze possono essere gia' state rimosse: da qui in poi
+        # deb-systemd-helper potrebbe non esserci piu', e il controllo non e' pedanteria.
+        # "command -v" e non "[ -x /usr/bin/... ]": lintian segnala il percorso fissato
+        # (command-with-path-in-maintainer-script), e ha ragione due volte, perche' quel
+        # percorso e' una promessa che non tocca a noi fare.
+        if command -v deb-systemd-helper >/dev/null 2>&1; then
+            deb-systemd-helper purge observer.service >/dev/null || true
+            deb-systemd-helper unmask observer.service >/dev/null || true
         fi
         ;;
 esac

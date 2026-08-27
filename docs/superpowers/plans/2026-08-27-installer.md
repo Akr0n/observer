@@ -201,13 +201,53 @@ dentro, e una variante collegata alle librerie di sistema non esiste. Il costo v
 invece che nascosto: **una vulnerabilita' in una di quelle tre non si chiude aggiornando
 Debian.** Si chiude aggiornando SkiaSharp e ricostruendo il pacchetto.
 
-Resta a vista, e di proposito, `maintainer-script-calls-systemctl`: chiamare `systemctl`
-dal `postinst` invece di `deb-systemd-invoke` significa non rispettare `policy-rc.d`, cioe'
-avviare il servizio anche dove l'amministratore ha chiesto di non farlo. La guardia
-`[ -d /run/systemd/system ]` copre i contenitori e le chroot, non quel caso. Il percorso
-attuale e' l'unico **verificato su Ubuntu vera**, e cambiarlo alla cieca per zittire un
-avvertimento sarebbe uno scambio peggiore. Va cambiato quando si potra' riprovare
-l'installazione per intero.
+### `maintainer-script-calls-systemctl`: non era un avvertimento cosmetico
+
+Era stato lasciato a vista dicendo che cambiarlo alla cieca sarebbe stato uno scambio peggiore.
+Poi si e' scoperto che **alla cieca non era necessario**: podman esegue systemd davvero
+(`podman run --systemd=always` su un'immagine `ubuntu:24.04` con `systemd systemd-sysv dbus`,
+e `systemctl is-system-running` risponde `degraded`, cioe' avviato). Quindi il confronto si e'
+potuto fare **misurando**, costruendo due `.deb` identici in tutto tranne gli script di
+manutenzione.
+
+L'immagine ufficiale di Ubuntu porta gia' `/usr/sbin/policy-rc.d` con dentro `exit 101`, che e'
+proprio lo scenario reale: *installa pure, ma non avviare niente.*
+
+| | `UnitFileState` | avviato? |
+| --- | --- | --- |
+| **vecchio** (`systemctl start`), `policy-rc.d` = 101 | `enabled` | **si, `2026-08-27 16:53:31`** |
+| **nuovo** (`deb-systemd-invoke`), `policy-rc.d` = 101 | `enabled` | **no, campo vuoto** |
+| nuovo, senza `policy-rc.d` | `enabled` | si |
+
+La riga che conta e' la prima: il `postinst` di prima **avviava il servizio dove
+l'amministratore aveva scritto di non farlo**. Non era una pedanteria di lintian, era il
+comportamento sbagliato, e la guardia `[ -d /run/systemd/system ]` non lo copriva — quella
+guardia risponde a "systemd sta girando?", che e' un'altra domanda.
+
+`deb-systemd-helper` porta in dote la seconda meta': tiene lo **stato** dell'abilitazione.
+Misurato sull'intero ciclo — installa, `dpkg -r`, `dpkg -P`, reinstalla:
+
+- dopo `dpkg -r` l'unit viene mascherata (`observer.service -> /dev/null`), perche' il file
+  dell'unit non c'e' piu' ma il collegamento in `multi-user.target.wants` resta;
+- dopo `dpkg -P` la maschera **e** lo stato salvato spariscono, e `/etc/observer` sopravvive,
+  che e' esattamente cio' che il `postrm` promette;
+- reinstallando, il servizio torna `enabled` e **riparte**.
+
+Con `systemctl disable` niente di tutto questo esisterebbe: non tiene alcuno stato, quindi
+dopo un purge lascerebbe dietro di se' cio' che aveva acceso.
+
+Correggendolo sono comparsi due tag nuovi, `command-with-path-in-maintainer-script`: il
+percorso `/usr/bin/deb-systemd-helper` scritto a mano dentro un `[ -x ... ]`. Il pattern
+generato da debhelper lo fa, ma lintian riconosce i propri script e li esenta; i nostri sono
+scritti a mano, quindi il tag scatta. Sostituito con `command -v`, che e' anche piu' corretto.
+
+### Una cosa data per vera e mai verificata, ora verificata
+
+Il piano affermava che *"Ubuntu 24.04 ha .NET 10 nel proprio archivio ufficiale, in `main`"*, ed
+e' l'affermazione su cui poggia la scelta di **non** imbarcare il runtime nel pacchetto. Non era
+mai stata controllata. `apt-cache policy` dentro il contenitore risponde
+`Candidate: 10.0.11-0ubuntu1~24.04.1` e l'installazione simulata riesce: **e' vera**, e la
+dipendenza `aspnetcore-runtime-10.0` e' soddisfacibile.
 
 ## Task
 
