@@ -75,4 +75,42 @@ public class DiagnosiTests
     {
         Assert.Equal(0, Comandi.Esegui([]));
     }
+
+    [Fact]
+    public void UnDepositoASSENTEVieneDettoTale()
+    {
+        string percorso = Path.Combine(
+            Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10], "credentials.json");
+
+        Assert.StartsWith("ABSENT", Diagnosi.Protezione(percorso), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UnaPipeCheNonESISTEVieneDettaSilenziosa()
+    {
+        // Non "errore": il caso normale in cui si esegue doctor e' che il servizio sia fermo,
+        // e la frase deve dire cosa fare invece di mostrare un'eccezione.
+        string nome = "observer-non-esiste-" + Guid.NewGuid().ToString("N")[..10];
+
+        string esito = CanaleLocale.Prova(nome, TimeSpan.FromMilliseconds(700));
+
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.StartsWith("SILENT", esito, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.StartsWith("not checked", esito, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void NessunaFraseDiDoctorEVuota()
+    {
+        // Sono cio' che l'utente legge per capire se il token della sua macchina e' al sicuro:
+        // una riga vuota o un nome di enum grezzo varrebbero un difetto.
+        Assert.False(string.IsNullOrWhiteSpace(Diagnosi.ChiSono()));
+        Assert.False(string.IsNullOrWhiteSpace(Diagnosi.Elevato()));
+        Assert.False(string.IsNullOrWhiteSpace(CanaleLocale.Prova("qualunque-" + Guid.NewGuid().ToString("N")[..8], TimeSpan.FromMilliseconds(500))));
+    }
 }
