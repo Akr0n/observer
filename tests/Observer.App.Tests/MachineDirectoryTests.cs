@@ -173,4 +173,51 @@ public class MachineDirectoryTests
 
         Assert.Contains("never left this machine", fissaggio.Spiegazione("laptop"), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void IlVecchioClientJsonNonPuoRiaprireLaStradaInChiaro()
+    {
+        // La porta di servizio piu' facile da lasciare aperta: l'elenco rifiuta http://, ma il
+        // ripiego a macchina singola entrava senza passare da alcun controllo. Il risultato
+        // sarebbe stato il token spedito in chiaro una volta al secondo, cioe' esattamente cio'
+        // che la chiusura della porta doveva impedire.
+        ObserverEndpoint inChiaro = ObserverEndpoint.Remoto(
+            new Uri("http://vecchia:5057/"), "token", "dal vecchio client.json", Impronta);
+
+        MachineListResult elenco = MachineDirectory.Resolve(
+            null, new ClientConfigurationResult(inChiaro, null));
+
+        Assert.Single(elenco.Machines);
+        Assert.Contains("https", Assert.Single(elenco.Problems), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void IlVecchioClientJsonSenzaImprontaNonEntra()
+    {
+        // Stesso buco, altra meta': cifrato ma verso nessuno in particolare.
+        ObserverEndpoint senzaImpronta = ObserverEndpoint.Remoto(
+            new Uri("https://vecchia:5058/"), "token", "dal vecchio client.json");
+
+        MachineListResult elenco = MachineDirectory.Resolve(
+            null, new ClientConfigurationResult(senzaImpronta, null));
+
+        Assert.Single(elenco.Machines);
+        Assert.Contains("fingerprint", Assert.Single(elenco.Problems), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UnFileSenzaLElencoNonFaSparireLaVecchiaConfigurazione()
+    {
+        // JSON valido ma senza "machines": non e' un file vuoto che va bene, e' un file che
+        // qualcuno credeva di aver scritto. Azzerare tutto in silenzio farebbe sparire anche la
+        // configurazione precedente, e chi guarda vedrebbe una macchina sparire senza motivo.
+        ObserverEndpoint vecchia = ObserverEndpoint.Remoto(
+            new Uri("https://altra:5058/"), "token", "dal vecchio client.json", Impronta);
+
+        MachineListResult elenco = MachineDirectory.Resolve(
+            """{ "altro": 1 }""", new ClientConfigurationResult(vecchia, null));
+
+        Assert.Equal(2, elenco.Machines.Count);
+        Assert.Contains("machines", Assert.Single(elenco.Problems), StringComparison.Ordinal);
+    }
 }

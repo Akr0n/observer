@@ -124,6 +124,22 @@ public static class MachineCertificate
         return X509CertificateLoader.LoadPkcs12(pkcs12, null, flag);
     }
 
+    /// <summary>Rilegge un certificato per GUARDARLO, senza importarne la chiave.</summary>
+    /// <param name="pkcs12">Il contenuto del file.</param>
+    /// <returns>Il certificato, utilizzabile solo per leggerne i dati.</returns>
+    /// <remarks>
+    /// Serve alla riga di comando, che del certificato vuole solo l'impronta. Con
+    /// <see cref="Carica"/> la chiave privata finirebbe nel portachiavi dell'utente che ha
+    /// lanciato il comando — un amministratore qualsiasi — mentre <c>EphemeralKeySet</c> la
+    /// tiene in memoria e la butta. Non regge un handshake TLS, e qui non deve reggerlo.
+    /// </remarks>
+    public static X509Certificate2 SoloPerLeggere(byte[] pkcs12)
+    {
+        ArgumentNullException.ThrowIfNull(pkcs12);
+
+        return X509CertificateLoader.LoadPkcs12(pkcs12, null, X509KeyStorageFlags.EphemeralKeySet);
+    }
+
     /// <summary>L'impronta con cui i client lo riconoscono.</summary>
     /// <param name="certificato">Il certificato.</param>
     /// <returns>L'impronta in forma canonica.</returns>

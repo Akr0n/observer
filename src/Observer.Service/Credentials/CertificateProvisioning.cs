@@ -74,13 +74,25 @@ public static class CertificateProvisioning
                     percorso);
             }
 
-            X509Certificate2 nuovo = MachineCertificate.Genera(nomeMacchina, adesso);
+            using X509Certificate2 generato = MachineCertificate.Genera(nomeMacchina, adesso);
 
-            Deposita(percorso, nuovo);
+            byte[] dati = MachineCertificate.Esporta(generato);
 
+            Deposita(percorso, dati);
+
+            // Cio' che va a Kestrel e' il certificato RILETTO, mai quello appena generato, e la
+            // differenza e' misurata: l'oggetto che esce da CreateSelfSigned porta la chiave
+            // privata solo in memoria, e su Windows SChannel non la sa servire - l'handshake
+            // muore con "Received an unexpected EOF or 0 bytes from the transport stream".
+            //
+            // Il primo avvio sarebbe stato l'unico rotto, e il sintomo peggiore del guasto:
+            // lato client quell'errore arriva come IOException e non come AuthenticationException,
+            // quindi la dashboard avrebbe detto "controlla che la macchina sia accesa"; e dal
+            // secondo avvio in poi si passa da Rileggi, quindi al primo riavvio del servizio
+            // sarebbe sparito tutto. Un guasto che sembra un problema di rete e si ripara da solo.
             return new ProvisionedCertificate(
-                nuovo,
-                MachineCertificate.Impronta(nuovo),
+                Servibile(dati),
+                MachineCertificate.Impronta(generato),
                 CertificateOrigin.GeneratoEDepositato,
                 percorso);
         }
@@ -93,8 +105,14 @@ public static class CertificateProvisioning
 
             return Effimero(nomeMacchina, adesso);
         }
-        catch (InvalidOperationException) when (!giraComeServizio)
+        catch (InvalidOperationException errore)
+            when (!giraComeServizio && errore.InnerException is not CryptographicException)
         {
+            // Il ripiego effimero vale per un deposito che non si riesce a METTERE IN SICUREZZA,
+            // non per un certificato che c'e' ed e' illeggibile. Quel caso va detto anche a chi
+            // lancia il servizio a mano: ripiegare in silenzio gli farebbe vedere un servizio
+            // che parte, un'impronta nuova a ogni avvio, e nessun indizio sul file rotto che ha
+            // sul disco.
             return Effimero(nomeMacchina, adesso);
         }
     }
@@ -108,14 +126,23 @@ public static class CertificateProvisioning
     /// </remarks>
     private static ProvisionedCertificate Effimero(string nomeMacchina, DateTimeOffset adesso)
     {
-        X509Certificate2 soloPerOra = MachineCertificate.Genera(nomeMacchina, adesso);
+        using X509Certificate2 generato = MachineCertificate.Genera(nomeMacchina, adesso);
 
+        // Stesso giro anche qui, anche se non tocca il disco: senza, il certificato effimero
+        // non reggerebbe alcun handshake su Windows, e il messaggio d'avvio prometterebbe
+        // un'impronta che cambia a ogni riavvio su una porta che non funziona mai.
         return new ProvisionedCertificate(
-            soloPerOra,
-            MachineCertificate.Impronta(soloPerOra),
+            Servibile(MachineCertificate.Esporta(generato)),
+            MachineCertificate.Impronta(generato),
             CertificateOrigin.Effimero,
             null);
     }
+
+    /// <summary>Il certificato in una forma che un server TLS sa davvero servire.</summary>
+    /// <param name="pkcs12">Il certificato impacchettato con la sua chiave.</param>
+    /// <returns>Il certificato ricaricato.</returns>
+    private static X509Certificate2 Servibile(byte[] pkcs12) =>
+        MachineCertificate.Carica(pkcs12);
 
     /// <summary>Rilegge il deposito, distinguendo "non c'e'" da "non riesco a leggerlo".</summary>
     /// <remarks>
@@ -163,7 +190,7 @@ public static class CertificateProvisioning
     /// <see cref="CredentialStore"/> e valgono identiche qui, perche' qui invece di un token
     /// c'e' una chiave privata.
     /// </remarks>
-    private static void Deposita(string percorso, X509Certificate2 certificato)
+    private static void Deposita(string percorso, byte[] dati)
     {
         string temporaneo = percorso + ".nuovo";
 
@@ -173,8 +200,6 @@ public static class CertificateProvisioning
             {
                 File.Delete(temporaneo);
             }
-
-            byte[] dati = MachineCertificate.Esporta(certificato);
 
             using (Stream flusso = CredentialFile.CreaProtetto(temporaneo))
             {

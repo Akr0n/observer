@@ -79,14 +79,7 @@ public static class MachineDirectory
 
         if (string.IsNullOrWhiteSpace(contenuto))
         {
-            if (ripiego.Endpoint is { Kind: EndpointKind.Remoto } singola)
-            {
-                macchine.Add(singola);
-            }
-            else if (ripiego.Problem is { Length: > 0 } problema)
-            {
-                problemi.Add(problema);
-            }
+            AggiungiRipiego(ripiego, macchine, problemi);
 
             return new MachineListResult(macchine, problemi);
         }
@@ -106,7 +99,21 @@ public static class MachineDirectory
             return new MachineListResult(macchine, problemi);
         }
 
-        foreach (MachineEntry voce in file?.Machines ?? [])
+        if (file?.Machines is null)
+        {
+            // JSON valido ma senza l'elenco: non e' un file "vuoto e va bene", e' un file che
+            // qualcuno credeva di aver scritto. Azzerare l'elenco in silenzio farebbe sparire
+            // anche la vecchia configurazione a macchina singola, e chi guarda vedrebbe solo
+            // sparire una macchina senza sapere perche'.
+            problemi.Add(
+                $"{FilePath} has no \"machines\" list, so nothing in it can be used. " + Esempio());
+
+            AggiungiRipiego(ripiego, macchine, problemi);
+
+            return new MachineListResult(macchine, problemi);
+        }
+
+        foreach (MachineEntry voce in file.Machines)
         {
             if (Converti(voce) is { } punto)
             {
@@ -119,6 +126,42 @@ public static class MachineDirectory
         }
 
         return new MachineListResult(macchine, problemi);
+    }
+
+    /// <summary>
+    /// Aggiunge la vecchia configurazione a macchina singola, se e' utilizzabile.
+    /// </summary>
+    /// <remarks>
+    /// Passa dagli STESSI requisiti delle voci elencate, e non e' ridondanza: senza questo
+    /// controllo il vecchio <c>client.json</c> sarebbe una porta di servizio che riammette
+    /// <c>http://</c> e i punti senza impronta, cioe' esattamente cio' che l'elenco rifiuta.
+    /// </remarks>
+    private static void AggiungiRipiego(
+        ClientConfigurationResult ripiego,
+        List<ObserverEndpoint> macchine,
+        List<string> problemi)
+    {
+        if (ripiego.Endpoint is not { Kind: EndpointKind.Remoto } singola)
+        {
+            if (ripiego.Problem is { Length: > 0 } problema)
+            {
+                problemi.Add(problema);
+            }
+
+            return;
+        }
+
+        if (singola.BaseAddress.Scheme != Uri.UriSchemeHttps || !singola.ImprontaFissata)
+        {
+            problemi.Add(
+                $"{singola.Descrizione} comes from the older single-machine configuration and " +
+                "can't be used as it stands: a remote machine needs an https address and a " +
+                "certificate fingerprint. " + Esempio());
+
+            return;
+        }
+
+        macchine.Add(singola);
     }
 
     /// <summary>Un esempio di file corretto, per i messaggi.</summary>

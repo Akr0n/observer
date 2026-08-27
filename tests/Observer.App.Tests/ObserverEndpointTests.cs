@@ -12,10 +12,12 @@ namespace Observer.App.Tests;
 /// </remarks>
 public class ObserverEndpointTests
 {
+    private const string Impronta = "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB";
+
     [Fact]
     public void SenzaALCUNAConfigurazioneSiVaSulCanaleLOCALE()
     {
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null);
+        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null, null);
 
         Assert.Null(esito.Problem);
         Assert.NotNull(esito.Endpoint);
@@ -34,8 +36,7 @@ public class ObserverEndpointTests
     [Fact]
     public void UnINDIRIZZOConfiguratoRendeIlPuntoREMOTO()
     {
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(
-            "un-token", "http://altra-macchina:5057/", null);
+        ClientConfigurationResult esito = ClientConfiguration.Resolve("un-token", "https://altra-macchina:5058/", Impronta, null);
 
         Assert.Null(esito.Problem);
         Assert.NotNull(esito.Endpoint);
@@ -48,8 +49,7 @@ public class ObserverEndpointTests
     {
         // Puntare a un'altra macchina senza credenziale non e' un caso da indovinare: quel
         // servizio rifiutera' ogni richiesta, e dirlo subito e' meglio che mostrare 401 a raffica.
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(
-            null, "http://altra-macchina:5057/", null);
+        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, "https://altra-macchina:5058/", Impronta, null);
 
         Assert.Null(esito.Endpoint);
         Assert.False(string.IsNullOrWhiteSpace(esito.Problem));
@@ -59,7 +59,7 @@ public class ObserverEndpointTests
     public void UnTOKENSenzaIndirizzoRestaSulLOCALE_maSenzaUsarlo()
     {
         // Un token esportato per errore non deve dirottare il client dalla macchina su cui sta.
-        ClientConfigurationResult esito = ClientConfiguration.Resolve("un-token", null, null);
+        ClientConfigurationResult esito = ClientConfiguration.Resolve("un-token", null, null, null);
 
         Assert.NotNull(esito.Endpoint);
         Assert.Equal(EndpointKind.Locale, esito.Endpoint.Kind);
