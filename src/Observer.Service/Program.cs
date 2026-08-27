@@ -14,7 +14,15 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 // un nome di ambiente: senza questa riga appsettings.Local.json non viene MAI letto, e chi
 // segue il messaggio d'errore qui sotto si ritrova la stessa frase che gli dice di fare
 // quello che ha appena fatto.
-builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+if (ConfigurazioneLocale.VaCaricato(
+    Path.Combine(builder.Environment.ContentRootPath, ConfigurazioneLocale.NomeFile)))
+{
+    // Il controllo esiste perche' optional:true tollera un file ASSENTE e non un file
+    // VUOTO: zero byte fanno fallire l'avvio con uno stack trace su "The input does not
+    // contain any JSON tokens". E svuotare quel file e' esattamente cio' che si fa per
+    // togliere il token che contiene, adesso che il servizio se lo genera da solo.
+    builder.Configuration.AddJsonFile(ConfigurazioneLocale.NomeFile, optional: true, reloadOnChange: true);
+}
 
 // Le due righe seguenti non sono ridondanti: riaggiungono ambiente e riga di comando DOPO
 // il file, per rimetterli in cima alla precedenza. Senza, il file appena aggiunto vincerebbe
