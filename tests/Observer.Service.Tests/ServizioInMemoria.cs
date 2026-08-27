@@ -22,6 +22,12 @@ public sealed class ServizioInMemoria : WebApplicationFactory<Program>
 
     private readonly string directory;
 
+    // Cio' che c'era PRIMA in ogni variabile toccata, per rimettercelo all'uscita. Le variabili
+    // d'ambiente appartengono al PROCESSO, non a questa istanza: lasciarle addosso significa
+    // che chiunque venga dopo nasce con un token e un percorso di database che non ha scelto,
+    // e un guasto del genere compare a caso su un runner di CI e non sull'altro.
+    private readonly List<(string Nome, string? Precedente)> ambiente = [];
+
     /// <summary>Prepara la cartella temporanea e la configurazione del servizio.</summary>
     public ServizioInMemoria()
     {
@@ -32,12 +38,12 @@ public sealed class ServizioInMemoria : WebApplicationFactory<Program>
         Directory.CreateDirectory(directory);
         DatabasePath = Path.Combine(directory, "storico.db");
 
-        Environment.SetEnvironmentVariable("Observer__ApiToken", Token);
-        Environment.SetEnvironmentVariable("Observer__Storage__DatabasePath", DatabasePath);
+        Imposta("Observer__ApiToken", Token);
+        Imposta("Observer__Storage__DatabasePath", DatabasePath);
 
         // La manutenzione non deve partire da sola durante i test: consoliderebbe e
         // cancellerebbe sotto ai piedi delle asserzioni.
-        Environment.SetEnvironmentVariable("Observer__Storage__MaintenanceInterval", "01:00:00");
+        Imposta("Observer__Storage__MaintenanceInterval", "01:00:00");
     }
 
     /// <summary>Percorso del database usato da questa istanza del servizio.</summary>
@@ -57,6 +63,13 @@ public sealed class ServizioInMemoria : WebApplicationFactory<Program>
     /// <returns>Il magazzino registrato nel container.</returns>
     public MetricStore Store() => Services.GetRequiredService<MetricStore>();
 
+    /// <summary>Imposta una variabile d'ambiente ricordando cosa c'era prima.</summary>
+    private void Imposta(string nome, string? valore)
+    {
+        ambiente.Add((nome, Environment.GetEnvironmentVariable(nome)));
+        Environment.SetEnvironmentVariable(nome, valore);
+    }
+
     /// <inheritdoc />
     protected override void Dispose(bool disposing)
     {
@@ -65,6 +78,14 @@ public sealed class ServizioInMemoria : WebApplicationFactory<Program>
         if (!disposing)
         {
             return;
+        }
+
+        // Dopo base.Dispose: l'host e' fermo, quindi nessuno rileggera' la configurazione.
+        // Prima della cancellazione della cartella, che puo' fallire: le variabili vanno
+        // rimesse a posto comunque.
+        foreach ((string nome, string? precedente) in ambiente)
+        {
+            Environment.SetEnvironmentVariable(nome, precedente);
         }
 
         SqliteConnection.ClearAllPools();

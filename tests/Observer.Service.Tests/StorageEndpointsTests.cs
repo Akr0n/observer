@@ -15,7 +15,12 @@ namespace Observer.Service.Tests;
 /// rete, e nessun test di unita' se ne accorgerebbe. La seconda e' il container: se manca
 /// una registrazione il servizio non parte, e anche di quello nessun test di unita' si
 /// accorge.
+/// <para>
+/// Sta nella collezione <see cref="AmbienteDelProcesso"/> perche' la sua fixture scrive
+/// variabili d'ambiente e svuota i pool di SQLite: stato del PROCESSO, non della classe.
+/// </para>
 /// </remarks>
+[Collection(AmbienteDelProcesso.Nome)]
 public class StorageEndpointsTests : IClassFixture<ServizioInMemoria>
 {
     private readonly ServizioInMemoria servizio;
