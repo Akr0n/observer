@@ -1,6 +1,10 @@
 # Token, canale locale e installer — specifica e suddivisione
 
-> **Stato:** deciso il 2026-08-27, corretto il 2026-08-27 dopo una campagna di misure.
+> **Stato:** deciso il 2026-08-27, corretto lo stesso giorno dopo una campagna di misure.
+> **Piani 1, 2 e 3 fatti e verificati in produzione** sul servizio installato come
+> LocalSystem: `doctor` da terminale elevato risponde `PROTECTED - owned by SYSTEM or
+> Administrators, and nobody else is granted access`, il canale locale risponde senza
+> alcun token, e il percorso di rete continua a pretenderlo. Restano i piani 4, 5 e 6.
 > Questo documento NON e' un piano eseguibile: e' la specifica e la suddivisione in sei piani.
 > Ogni piano va scritto quando lo si affronta, con la skill `superpowers:writing-plans`.
 

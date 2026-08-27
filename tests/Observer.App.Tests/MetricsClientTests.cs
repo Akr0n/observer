@@ -58,7 +58,7 @@ public class MetricsClientTests
         Assert.NotNull(vista);
         Assert.Equal("Bearer", vista.Headers.Authorization!.Scheme);
         Assert.Equal("il-token", vista.Headers.Authorization.Parameter);
-        Assert.Equal("http://localhost:5057/metrics/latest", vista.RequestUri!.AbsoluteUri);
+        Assert.Equal("http://altra-macchina:5057/metrics/latest", vista.RequestUri!.AbsoluteUri);
     }
 
     [Theory]
@@ -98,7 +98,7 @@ public class MetricsClientTests
         SnapshotFetch esito = await client.GetLatestAsync(CancellationToken.None);
 
         Assert.Equal(ServiceOutcome.NonRaggiungibile, esito.Outcome);
-        Assert.Contains("localhost:5057", esito.Problem, StringComparison.Ordinal);
+        Assert.Contains("altra-macchina:5057", esito.Problem, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -162,10 +162,34 @@ public class MetricsClientTests
         Assert.Null(esito.Catalog);
     }
 
+    [Fact]
+    public async Task SulCanaleLOCALENonVieneMandataAlcunaCredenziale()
+    {
+        // Mandare il token dove non serve significa continuare a esporlo senza guadagnarci
+        // niente: il servizio, sul canale locale, non lo guarda nemmeno.
+        HttpRequestMessage? vista = null;
+
+        using FintoHandler handler = new(richiesta =>
+        {
+            vista = richiesta;
+            return Json(HttpStatusCode.OK, "[]");
+        });
+
+        using MetricsClient client = CreaLocale(handler);
+        await client.GetCatalogAsync(CancellationToken.None);
+
+        Assert.NotNull(vista);
+        Assert.Null(vista.Headers.Authorization);
+    }
+
     private static MetricsClient Crea(HttpMessageHandler handler) =>
         new(
-            new ObserverClientOptions(new Uri("http://localhost:5057/"), "il-token", "dai test"),
+            ObserverEndpoint.Remoto(new Uri("http://altra-macchina:5057/"), "il-token", "dai test"),
             handler);
+
+    /// <summary>Un client sul canale locale, che NON deve mandare alcuna credenziale.</summary>
+    private static MetricsClient CreaLocale(HttpMessageHandler handler) =>
+        new(ObserverEndpoint.CanaleLocale(), handler);
 
     private static HttpResponseMessage Json(HttpStatusCode codice, string corpo) =>
         new(codice)
