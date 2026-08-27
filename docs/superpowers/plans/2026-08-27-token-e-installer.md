@@ -271,6 +271,59 @@ Perche' non e' rimandabile: oggi sul percorso remoto **il token attraversa la re
 volta al secondo**. Una singola cattura di pacchetti consegna una credenziale permanente, e
 ruotarla non aiuta perche' quella nuova e' sul filo un secondo dopo.
 
+### 5-bis. HTTPS: cosa e' stato costruito, e cosa e' stato MISURATO
+
+Fatto il lato servizio. Il certificato e' autofirmato, uno per macchina, generato al primo
+avvio e custodito **nello stesso perimetro del token** - non per comodita': la chiave
+privata vale quanto il token, perche' chi ce l'ha puo' impersonare questa macchina davanti
+a ogni dashboard che ne ha fissato l'impronta.
+
+**La validita' e' di dieci anni, ed e' una decisione, non pigrizia.** Con l'impronta fissata
+dal client, sostituire il certificato fa fallire OGNI client finche' qualcuno non riscrive
+l'impronta a mano su ognuno. Una scadenza breve non aggiungerebbe sicurezza - qui la fiducia
+non viene ne' dalla scadenza ne' da una catena - e trasformerebbe il rinnovo automatico in un
+guasto simultaneo di tutte le dashboard remote. E' la risposta alla domanda che il piano
+lasciava aperta come *"da progettare: rinnovo del certificato"*.
+
+#### La cosa che nessun test di unita' avrebbe visto
+
+`X509KeyStorageFlags.EphemeralKeySet` e' la scelta ovvia: la chiave resta in memoria e non
+tocca il portachiavi del sistema. **Su Windows non funziona.** Il certificato si carica
+benissimo, `HasPrivateKey` risponde `true`, e poi l'handshake TLS muore con
+*"Received an unexpected EOF or 0 bytes from the transport stream"* - un errore che non
+nomina la propria causa.
+
+Questo e' esattamente il buco che CLAUDE.md documentava da settimane: *nessun test esercita
+un trasporto reale*, perche' `WebApplicationFactory` sostituisce Kestrel con un `TestServer`.
+Ora `TrasportoHttpsTests` avvia **Kestrel vero** su una porta effimera di loopback e verifica
+quattro cose, di cui due sarebbero passate inosservate per sempre:
+
+1. il certificato **riletto dal deposito** - cioe' il percorso di tutti gli avvii tranne il
+   primo - regge davvero una connessione TLS;
+2. un'impronta sbagliata fa **fallire** il collegamento;
+3. senza fissare l'impronta, il certificato autofirmato viene **rifiutato** dalla validazione
+   ordinaria: e' la controprova che l'impronta e' l'unica cosa che regge il collegamento;
+4. l'impronta calcolata in memoria e' **la stessa che arriva sul filo**.
+
+Il flag e' quindi per piattaforma: portachiavi dell'utente su Windows, effimero su Linux.
+Volutamente **non** `MachineKeySet`, che finirebbe in `MachineKeys`, cartella con permessi
+molto piu' larghi; e volutamente **non** `PersistKeySet`. Il timore dell'accumulo di file di
+chiave e' stato misurato invece che temuto: quindici file nei portachiavi prima, quindici
+dopo otto caricamenti e dopo aver **ucciso** il processo del servizio senza chiusura pulita.
+
+#### Una bugia trovata scrivendo la diagnosi
+
+La prima versione di `observer doctor` diceva *"not created yet"* quando non trovava il
+certificato. Da un account non elevato, su un deposito protetto **come si deve**, quella
+frase e' falsa: non lo si trova perche' non si riesce a elencare la cartella. Ora distingue
+i due casi, come gia' faceva per la protezione del deposito.
+
+#### Cosa resta da fare, lato client
+
+Il fissaggio dell'impronta nel client, `machines.json`, la barra laterale, e la **chiusura
+della porta in chiaro sulla rete** - decisa: sulla rete deve restare solo HTTPS, e questa
+macchina continua a guardarsi dal canale locale, che non usa ne' porta ne' token.
+
 ### 6. Packaging
 
 MSI con WiX su Windows, `.deb` con unit systemd su Linux, piu' un job `pack` in CI.

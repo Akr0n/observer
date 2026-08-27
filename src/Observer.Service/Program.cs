@@ -107,9 +107,12 @@ else
 // dietro se falliva a meta'.
 bool giraComeServizio = WindowsServiceHelpers.IsWindowsService() || SystemdHelpers.IsSystemdService();
 
+string percorsoDeposito =
+    builder.Configuration["Observer:CredentialStorePath"] ?? CredentialDirectory.PercorsoPredefinito();
+
 ProvisionedCredentials credenziali = CredentialProvisioning.Provvedi(
     builder.Configuration["Observer:ApiToken"],
-    builder.Configuration["Observer:CredentialStorePath"] ?? CredentialDirectory.PercorsoPredefinito(),
+    percorsoDeposito,
     giraComeServizio);
 
 if (credenziali.Origin == CredentialOrigin.Effimero)
@@ -122,6 +125,40 @@ if (credenziali.Origin == CredentialOrigin.Effimero)
         "token that is never written to disk. To let another computer query this one during " +
         "this run, export it:");
     Console.WriteLine("    Observer__ApiToken=" + credenziali.Credentials.Current);
+}
+
+// HTTPS verso le ALTRE macchine. Il certificato se lo genera e se lo custodisce il
+// servizio, nello stesso perimetro del token e per la stessa ragione: cosi' l'installer
+// non conosce niente. La fiducia non viene da un'autorita' ne' da una catena - il
+// certificato e' autofirmato - ma dall'impronta, che si prende a mano da questa macchina
+// con "observer share" e si fissa nel client.
+NetworkOptions rete =
+    builder.Configuration.GetSection(NetworkOptions.SectionName).Get<NetworkOptions>() ?? new NetworkOptions();
+
+rete.Validate();
+
+if (rete.Https)
+{
+    ProvisionedCertificate certificato = CertificateProvisioning.Provvedi(
+        percorsoDeposito,
+        Environment.MachineName,
+        DateTimeOffset.UtcNow,
+        giraComeServizio);
+
+    if (certificato.Origin == CertificateOrigin.Effimero)
+    {
+        // Come per il token effimero: Console e non il logger, perche' questa riga serve a
+        // chi ha appena lanciato il servizio da un terminale e va vista subito.
+        Console.WriteLine(
+            "Observer could not secure a machine certificate, so this run uses a throwaway one. " +
+            "Its fingerprint changes at every start, so no dashboard that pinned the previous " +
+            "one will connect.");
+    }
+
+    // ListenAnyIP e non ListenLocalhost: il senso di questa porta e' che la usino le altre
+    // macchine. Chi guarda quella su cui e' seduto passa dal canale locale e non di qui.
+    builder.WebHost.ConfigureKestrel(kestrel =>
+        kestrel.ListenAnyIP(rete.HttpsPort, porta => porta.UseHttps(certificato.Certificate)));
 }
 
 WebApplication app = builder.Build();

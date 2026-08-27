@@ -80,6 +80,16 @@ public static class Comandi
         Console.WriteLine();
         Console.WriteLine("    " + credenziali.Current);
         Console.WriteLine();
+        Console.WriteLine();
+        Console.WriteLine("Certificate fingerprint of this computer:");
+        Console.WriteLine();
+        Console.WriteLine("    " + Diagnosi.Certificato(percorso));
+        Console.WriteLine();
+        Console.WriteLine("Both values are needed, and they do different jobs: the token says the");
+        Console.WriteLine("caller is allowed in, the fingerprint says this machine is the one it");
+        Console.WriteLine("claims to be. Without the second, anyone able to stand in the middle");
+        Console.WriteLine("presents their own certificate and collects the token.");
+        Console.WriteLine();
         Console.WriteLine("On the OTHER computer, put it in the Observer__ApiToken environment");
         Console.WriteLine("variable, or in the apiToken field of the dashboard's client.json.");
         Console.WriteLine();
@@ -135,6 +145,7 @@ public static class Comandi
         Console.WriteLine("Credential store: " + percorso);
         Console.WriteLine("Protection      : " + Diagnosi.Protezione(percorso));
         Console.WriteLine("Local channel   : " + CanaleLocale.Prova(CanaleLocale.NomePredefinito, TimeSpan.FromSeconds(3)));
+        Console.WriteLine("Certificate     : " + Diagnosi.Certificato(percorso));
         Console.WriteLine("Running as      : " + Diagnosi.ChiSono());
         Console.WriteLine("Elevated        : " + Diagnosi.Elevato());
         Console.WriteLine();
