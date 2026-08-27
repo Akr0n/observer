@@ -28,3 +28,32 @@ jobs:
 
       - name: Test
         run: dotnet test --no-build -c Release --verbosity normal
+
+  # Job AGGIUNTIVO, e va tenuto tale. I due contesti richiesti dal ruleset main-protection sono
+  # le stringhe esatte "build (ubuntu-latest)" e "build (windows-latest)": aggiungere un job
+  # nuovo e' sicuro, rinominare "build" o i valori della matrice "os" no. E NON si aggiunge una
+  # seconda dimensione alla matrice: quella cambierebbe i nomi dei contesti richiesti, ed e' la
+  # mossa che blocca ogni PR per sempre.
+  #
+  # Sta a parte anche per una seconda ragione: il progetto WiX non e' in Observer.slnx, perche'
+  # WixToolset.Sdk porta binari nativi solo per Windows e la validazione ICE gira sempre. Dentro
+  # la soluzione farebbe fallire "build (ubuntu-latest)" per sempre.
+  pack-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Costruisci il pacchetto
+        run: ./packaging/windows/pack.ps1
+        shell: pwsh
+
+      - name: Pubblica l'artefatto
+        uses: actions/upload-artifact@v4
+        with:
+          name: Observer-msi
+          path: packaging/windows/bin/Release/Observer.msi
+          if-no-files-found: error

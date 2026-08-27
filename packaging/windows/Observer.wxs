@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Il pacchetto di Observer.
+
+  Non genera, non chiede e non registra alcun token: dal piano 3 il servizio se lo procura da
+  solo al primo avvio, sotto C:\ProgramData\Observer, con permessi che escludono ogni altro
+  account. Questo installer copia file, registra un servizio e crea un collegamento.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <Package Name="Observer"
+           Manufacturer="Akr0n"
+           Version="0.1.0"
+           UpgradeCode="6F3A1B2C-9D4E-4F7A-8B1C-2E5D7A9C0F31"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <!-- Un solo pacchetto per-macchina copre entrambi i casi: il servizio DEVE essere
+         per-macchina, e con ProgramMenuFolder il collegamento finisce nel menu Start di tutti
+         gli utenti. Due pacchetti separati non servono. -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Observer is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="Observer" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <!-- Maiuscolo e minuscolo MISTI, di proposito: un Id tutto maiuscolo verrebbe
+           interpretato da MSI come proprieta' pubblica, e la validazione lo segnala (ICE90). -->
+      <Directory Id="ObserverMenuFolder" Name="Observer" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="Observer" Level="1">
+      <ComponentGroupRef Id="Servizio" />
+      <ComponentGroupRef Id="Dashboard" />
+      <ComponentGroupRef Id="RigaDiComando" />
+      <ComponentGroupRef Id="Contorno" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="Servizio" Directory="INSTALLFOLDER">
+      <Component Id="ServiceExecutable" Guid="A1C4E6B2-3F8D-4E52-9A07-5B1D2C4F6E80">
+        <File Id="ObserverServiceExe" Source="$(var.PayloadDir)Observer.Service.exe" KeyPath="yes" />
+
+        <ServiceInstall Id="ObserverServiceInstall"
+                        Name="Observer"
+                        DisplayName="Observer metrics service"
+                        Description="Samples CPU and memory and serves them over HTTP and a local named pipe."
+                        Type="ownProcess"
+                        Start="auto"
+                        Account="LocalSystem"
+                        ErrorControl="normal"
+                        Vital="yes" />
+
+        <!-- Stop="both" ferma il servizio SIA in installazione SIA in disinstallazione: e' cio'
+             che rende sicuro aggiornare mentre il servizio sta girando. E tutto questo e'
+             transazionale: se l'installazione fallisce a meta', Windows Installer rimette
+             indietro anche il servizio, cosa che uno script con sc.exe non sa fare. -->
+        <ServiceControl Id="ObserverServiceControl"
+                        Name="Observer"
+                        Start="install"
+                        Stop="both"
+                        Remove="uninstall"
+                        Wait="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="Dashboard" Directory="INSTALLFOLDER">
+      <Component Id="DashboardExecutable" Guid="B2D5F7C3-4A9E-4063-8B18-6C2E3D5A7F91">
+        <File Id="ObserverAppExe" Source="$(var.PayloadDir)Observer.App.exe" KeyPath="yes">
+          <!-- ANNIDATO dentro il File, e non in un componente a se': la forma separata con
+               KeyPath in HKLM produce ICE38, ICE43 e ICE57, perche' mescola dati per-utente e
+               per-macchina nello stesso componente. -->
+          <Shortcut Id="ObserverDashboardShortcut"
+                    Directory="ObserverMenuFolder"
+                    Name="Observer"
+                    Description="Watch this machine"
+                    Advertise="yes" />
+        </File>
+
+        <!-- Senza, dopo la disinstallazione resta nel menu Start una cartella "Observer"
+             vuota, che nessuno guardera' mai piu'. La validazione lo segnala con ICE64.
+             Sta DENTRO questo componente, e non in uno suo: un componente collocato nella
+             cartella del menu verrebbe considerato da MSI come dati di profilo utente e
+             pretenderebbe un KeyPath in HKCU (ICE38), che su un pacchetto per-macchina non
+             ha senso. RemoveFolder porta con se' la propria Directory, e questo lo risolve. -->
+        <RemoveFolder Id="RimuoviObserverMenuFolder" Directory="ObserverMenuFolder" On="uninstall" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="RigaDiComando" Directory="INSTALLFOLDER">
+      <Component Id="CliExecutable" Guid="C3E6A8D4-5B0F-4174-9C29-7D3F4E6B8A02">
+        <File Id="ObserverCliExe" Source="$(var.PayloadDir)observer.exe" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="Contorno" Directory="INSTALLFOLDER">
+      <!-- Tutto il resto della cartella pubblicata: dll, runtimeconfig, deps.
+           L'esclusione dei file che possono portare un segreto e' ESPLICITA, e in piu' il
+           .wixproj fa fallire la build se ne trova uno nel payload. Due difese, perche'
+           l'esclusione da sola si dimentica il giorno che qualcuno rinomina il file. -->
+      <Files Include="$(var.PayloadDir)**">
+        <Exclude Files="$(var.PayloadDir)Observer.Service.exe" />
+        <Exclude Files="$(var.PayloadDir)Observer.App.exe" />
+        <Exclude Files="$(var.PayloadDir)observer.exe" />
+        <Exclude Files="$(var.PayloadDir)appsettings.Local.json" />
+        <Exclude Files="$(var.PayloadDir)appsettings.*.Local.json" />
+        <Exclude Files="$(var.PayloadDir)credentials.json" />
+        <Exclude Files="$(var.PayloadDir)client.json" />
+        <Exclude Files="$(var.PayloadDir)**\*.pdb" />
+      </Files>
+    </ComponentGroup>
+  </Fragment>
+
+</Wix>

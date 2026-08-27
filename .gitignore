@@ -500,3 +500,6 @@ CLAUDE.md
 # Il deposito del token di macchina vive fuori dal repo (ProgramData o /etc), ma se
 # qualcuno lo copiasse qui per guardarlo non deve finire in un commit.
 credentials.json
+
+# Payload dell'installer: e' output di dotnet publish, si rigenera.
+packaging/windows/payload/
