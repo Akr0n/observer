@@ -7,6 +7,17 @@
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <LangVersion>latest</LangVersion>
 
+    <!-- Il titolare del copyright, in un posto solo. Da qui finisce nei metadati di OGNI
+         eseguibile prodotto: le proprieta' del file su Windows, e le stesse informazioni
+         dentro i binari che il .deb installa. L'MSI e il pacchetto Debian lo ripetono nei
+         propri formati - Manufacturer nel .wxs, Maintainer e copyright sotto
+         packaging/linux/debian - perche' nessuno dei due sa leggere questo file: se cambia
+         qui, va cambiato anche li'. -->
+    <Authors>Federico Cardinali</Authors>
+    <Company>Federico Cardinali</Company>
+    <Product>Observer</Product>
+    <Copyright>Copyright (c) 2026 Federico Cardinali</Copyright>
+
     <!-- NON rimettere qui <InvariantGlobalization>true</InvariantGlobalization>.
          Verificato sperimentalmente il 2026-08-26: quella property viene passata agli
          analyzer (build_property.InvariantGlobalization) e SPEGNE in silenzio CA1305

@@ -9,7 +9,7 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
   <Package Name="Observer"
-           Manufacturer="Akr0n"
+           Manufacturer="Federico Cardinali"
            Version="0.1.0"
            UpgradeCode="6F3A1B2C-9D4E-4F7A-8B1C-2E5D7A9C0F31"
            Scope="perMachine"
