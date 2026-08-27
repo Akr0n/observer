@@ -155,13 +155,17 @@ if (-not (Test-Path $eseguibileSorgente)) {
 # Se il file c'e' comunque, viene copiato e i suoi permessi vengono ristretti, perche' un token
 # scelto a mano vince sul deposito e va protetto come quello generato.
 $configurazioneLocale = Join-Path $Sorgente 'appsettings.Local.json'
-$portaUnToken = Test-Path $configurazioneLocale
+# Un file VUOTO conta come assente, esattamente come lo tratta il servizio: svuotarlo e'
+# il gesto naturale per togliere il token, e annunciare 'trovato un token' su zero byte
+# manderebbe fuori strada chi legge.
+$portaUnToken = (Test-Path $configurazioneLocale) -and
+    -not [string]::IsNullOrWhiteSpace((Get-Content $configurazioneLocale -Raw -ErrorAction SilentlyContinue))
 
 if ($portaUnToken) {
     Write-Host 'Trovato appsettings.Local.json: il token che contiene vincera'' su quello generato.'
 }
 else {
-    Write-Host 'Nessun appsettings.Local.json: il servizio generera'' da se'' il proprio token.'
+    Write-Host 'Nessun token scelto a mano: il servizio generera'' da se'' il proprio, sotto ProgramData.'
 }
 
 $esistente = Get-Service -Name $nomeServizio -ErrorAction SilentlyContinue
