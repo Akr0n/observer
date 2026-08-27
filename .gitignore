@@ -496,3 +496,7 @@ appsettings.*.Local.json
 
 # Istruzioni locali per agenti (non pubbliche, scelta di Federico 2026-08-26)
 CLAUDE.md
+
+# Il deposito del token di macchina vive fuori dal repo (ProgramData o /etc), ma se
+# qualcuno lo copiasse qui per guardarlo non deve finire in un commit.
+credentials.json
