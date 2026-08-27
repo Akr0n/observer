@@ -58,7 +58,7 @@ public static class Diagnosi
             : (Environment.UserName == "root").ToString();
 
     /// <summary>La frase che spiega un verdetto a chi legge lo schermo.</summary>
-    /// <param name="verdetto">L esito della valutazione della cartella.</param>
+    /// <param name="verdetto">L'esito della valutazione della cartella.</param>
     /// <returns>La frase, in inglese.</returns>
     public static string Frase(DirectoryVerdict verdetto) => verdetto switch
     {

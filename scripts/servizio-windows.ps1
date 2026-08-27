@@ -92,7 +92,7 @@ if ($Azione -eq 'Verifica') {
         # connessione come proveniente dalla rete.
         $tubo.Connect(3000)
         Write-Host 'ESITO: la pipe si apre. La DACL lascia entrare questo utente.' -ForegroundColor Green
-        Write-Host 'Il token resta comunque obbligatorio: aprire la pipe non e'' essere autorizzati.'
+        Write-Host 'Su questo canale il token NON serve: un chiamante locale identificato passa senza.'
     }
     catch [System.UnauthorizedAccessException] {
         Write-Host 'ESITO: ACCESSO NEGATO alla pipe.' -ForegroundColor Red

@@ -27,19 +27,21 @@ case "$1" in
             systemctl start observer.service || true
         fi
 
-        cat <<'NOTA'
+        # In INGLESE: lo legge chiunque installi il pacchetto, ed e' testo visibile
+        # all'utente. I commenti di questo script restano in italiano.
+        cat <<'NOTE'
 
-Observer e' installato.
+Observer is installed.
 
-Per guardare QUESTA macchina non serve alcun token: la dashboard entra dal socket locale.
-Perche' il tuo utente possa usarlo, deve stare nel gruppo observer:
+To watch THIS machine you need no token: the dashboard comes in through the local
+socket. For your account to use it, it has to be in the observer group:
 
     sudo usermod -aG observer $USER
 
-e poi uscire e rientrare. Il token serve solo perche' un ALTRO computer possa interrogare
-questa macchina: lo si ottiene con "observer share", da un terminale con privilegi.
+then log out and back in. The token exists only so ANOTHER computer can query this
+machine; get it with "observer share", from a terminal with privileges.
 
-NOTA
+NOTE
         ;;
 esac
 

@@ -180,7 +180,7 @@ public class MetricStoreTests
     }
 
     [Fact]
-    public void Consolida_NonTocaIlMinutoInCorso()
+    public void Consolida_NonToccaIlMinutoInCorso()
     {
         using TempMetricStore temporaneo = new();
 
@@ -317,7 +317,7 @@ public class MetricStoreTests
     }
 
     [Fact]
-    public void CancellaGrezzo_NonTocaCioCheNessunoHaAncoraAggregato()
+    public void CancellaGrezzo_NonToccaCioCheNessunoHaAncoraAggregato()
     {
         using TempMetricStore temporaneo = new();
 
@@ -351,7 +351,7 @@ public class MetricStoreTests
     }
 
     [Fact]
-    public void CancellaGrezzo_NonTocaCioCheEAncoraDentroLaFinestra()
+    public void CancellaGrezzo_NonToccaCioCheEAncoraDentroLaFinestra()
     {
         using TempMetricStore temporaneo = new();
 

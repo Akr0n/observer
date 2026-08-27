@@ -39,6 +39,7 @@ jobs:
   # WixToolset.Sdk porta binari nativi solo per Windows e la validazione ICE gira sempre. Dentro
   # la soluzione farebbe fallire "build (ubuntu-latest)" per sempre.
   pack-windows:
+    needs: build
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -51,6 +52,32 @@ jobs:
         run: ./packaging/windows/pack.ps1
         shell: pwsh
 
+      - name: Nessun segreto dentro il pacchetto
+        # Il .wixproj ha gia' una guardia sul PAYLOAD, ma questa guarda il PACCHETTO FINITO,
+        # che e' la cosa che finisce su GitHub Releases. E' la stessa difesa che pack-linux ha
+        # gia': senza, l'MSI sarebbe l'unico dei due che nessuno ricontrolla dopo averlo fatto.
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem packaging/windows/bin/Release/Observer.msi
+          $inst = New-Object -ComObject WindowsInstaller.Installer
+          $db = $inst.GetType().InvokeMember('OpenDatabase','InvokeMethod',$null,$inst,@($msi.FullName,0))
+          $v = $db.GetType().InvokeMember('OpenView','InvokeMethod',$null,$db,@('SELECT FileName FROM File'))
+          $v.GetType().InvokeMember('Execute','InvokeMethod',$null,$v,$null)
+          $sospetti = @()
+          $n = 0
+          while ($true) {
+            $r = $v.GetType().InvokeMember('Fetch','InvokeMethod',$null,$v,$null)
+            if (-not $r) { break }
+            $n++
+            $nome = $r.GetType().InvokeMember('StringData','GetProperty',$null,$r,@(1))
+            if ($nome -match 'Local\.json|credential|client\.json|\.pdb') { $sospetti += $nome }
+          }
+          if ($sospetti) {
+            Write-Error "Il pacchetto contiene: $($sospetti -join ', ')"
+            exit 1
+          }
+          Write-Host "Nessun segreto fra i $n file impacchettati."
+
       - name: Pubblica l'artefatto
         uses: actions/upload-artifact@v4
         with:
@@ -61,6 +88,7 @@ jobs:
   # Anche questo e' un job AGGIUNTIVO: vale la stessa regola. La matrice del job "build" resta
   # a una sola dimensione, e i due contesti richiesti dal ruleset non cambiano nome.
   pack-linux:
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

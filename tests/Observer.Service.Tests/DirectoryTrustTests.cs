@@ -41,7 +41,7 @@ public class DirectoryTrustTests
     }
 
     [Fact]
-    public void UnDescrittoreIllegibileENonSicuro_NonSconosciutoEBasta()
+    public void UnDescrittoreIlleggibileENonSicuro_NonSconosciutoEBasta()
     {
         Assert.Equal(
             DirectoryVerdict.Sconosciuto,

@@ -5,11 +5,12 @@
 Dashboard cross-platform per il monitoraggio dei parametri vitali della macchina
 e dei dispositivi presenti sulla rete locale. Gira su Windows e Linux.
 
-> **Stato:** funzionante su CPU e memoria. Il servizio campiona una volta al secondo
-> su Windows e su Linux, conserva le serie su SQLite ed espone i dati via HTTP
-> autenticato; il client desktop si collega e li mostra dal vivo. Mancano le altre
-> metriche (dischi, rete, processi), i grafici storici nel client e l'installazione
-> come servizio di sistema.
+> **Stato:** funzionante su CPU e memoria, e installabile. Il servizio campiona una volta
+> al secondo su Windows e su Linux, conserva le serie su SQLite, si genera da solo il
+> proprio token di macchina, ed espone i dati sia sulla rete sia su un canale locale che
+> non richiede credenziali; il client desktop si collega e li mostra dal vivo. Ci sono un
+> pacchetto MSI per Windows e un `.deb` per Linux, che registrano il servizio e installano
+> la dashboard. Mancano le altre metriche (dischi, rete, processi) e i grafici storici.
 >
 > L'interfaccia dell'applicazione è in **inglese**; questa documentazione e i commenti
 > nel codice restano in italiano.
@@ -25,9 +26,11 @@ raccolta e visualizzazione devono essere due processi distinti.
 | `src/Observer.Core` | Modelli condivisi, astrazione dei collector e adattatori di piattaforma |
 | `src/Observer.Service` | Servizio headless: campiona a 1 Hz, conserva le serie su SQLite con aggregazione ed espone i dati via HTTP autenticato |
 | `src/Observer.App` | Client desktop Avalonia: si collega al servizio e mostra le metriche dal vivo |
+| `src/Observer.Cli` | Riga di comando `observer`: condivide la chiave, la ruota, diagnostica |
 | `tests/Observer.Core.Tests` | Test su `Observer.Core` |
-| `tests/Observer.Service.Tests` | Test su `Observer.Service`, storico compreso |
+| `tests/Observer.Service.Tests` | Test su `Observer.Service`, storico e canale locale compresi |
 | `tests/Observer.App.Tests` | Test sul client HTTP e sulla traduzione delle risposte |
+| `tests/Observer.Cli.Tests` | Test sui messaggi della riga di comando |
 
 Il client può puntare al servizio in esecuzione sulla stessa macchina o su un'altra.
 
@@ -87,7 +90,9 @@ uno zero è un dato, un buco è un buco.
 
 ### Endpoint
 
-Tutti richiedono il bearer token.
+Un chiamante **locale identificato** li raggiunge tutti **senza alcun token**: sulla macchina
+il sistema operativo sa gia' chi sta chiamando, e un segreto condiviso sarebbe lo strumento
+sbagliato. Dalla **rete** il bearer token resta obbligatorio.
 
 | Endpoint | Cosa restituisce |
 | --- | --- |
@@ -116,16 +121,12 @@ dotnet build
 dotnet test
 ```
 
-Il servizio ascolta su `0.0.0.0:5057` ed espone la telemetria della macchina, quindi
-**ogni endpoint richiede un bearer token** e senza token configurato il servizio si
-rifiuta di partire. Il token non va committato: si mette in
-`src/Observer.Service/appsettings.Local.json` (già escluso da `.gitignore`)
-
-```json
-{ "Observer": { "ApiToken": "un-valore-lungo-e-casuale" } }
-```
-
-oppure nella variabile d'ambiente `Observer__ApiToken`.
+**Non serve configurare niente.** Il servizio ascolta su `0.0.0.0:5057` e, in piu', apre un
+canale locale — una named pipe su Windows, un socket unix su Linux — su cui un chiamante
+locale identificato entra senza credenziali. Il token di macchina, che serve solo perche' un
+ALTRO computer possa interrogare questo, se lo genera il servizio al primo avvio e se lo
+custodisce sotto `C:\ProgramData\Observer` oppure `/etc/observer`, con permessi che
+escludono ogni altro account.
 
 Avvio di servizio e client, in due terminali separati:
 
@@ -137,11 +138,44 @@ dotnet run --project src/Observer.Service
 dotnet run --project src/Observer.App
 ```
 
-Lettura delle metriche:
+La dashboard non ha bisogno di sapere niente: senza configurazione va sul canale locale della
+macchina su cui gira.
+
+Per leggere le metriche **dalla rete** serve invece il token di quella macchina, che si ottiene
+su quella macchina, da un terminale amministrativo:
 
 ```bash
-curl -H "Authorization: Bearer $Observer__ApiToken" http://localhost:5057/metrics/latest
+observer share
 ```
+
+e poi, dall'altro computer:
+
+```bash
+curl -H "Authorization: Bearer $Observer__ApiToken" http://la-macchina:5057/metrics/latest
+```
+
+### Riga di comando
+
+| Verbo | Elevazione | Cosa fa |
+| --- | --- | --- |
+| `observer share` | si | mostra il token di macchina, per configurare un ALTRO computer |
+| `observer rotate-key` | si | genera una chiave nuova; la precedente vale ancora 24 ore |
+| `observer doctor` | no | dove sta il deposito, com'e' protetto, e se il canale locale risponde |
+
+### Pacchetti
+
+```bash
+./packaging/windows/pack.ps1
+```
+
+```bash
+./packaging/linux/pack.sh
+```
+
+Il primo produce un MSI, il secondo un `.deb`. Registrano il servizio, installano la dashboard
+e creano il collegamento nel menu. **Nessuno dei due conosce alcun token**: il servizio se lo
+procura da se' al primo avvio, quindi non c'e' alcun segreto da passare all'installazione, da
+registrare in un log, o da lasciarsi dietro se fallisce a meta'.
 
 ### Nota sulla globalizzazione
 
