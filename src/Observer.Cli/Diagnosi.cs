@@ -1,5 +1,8 @@
 using System.Runtime.Versioning;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Security.Principal;
+using Observer.Core.Security;
 using Observer.Service.Credentials;
 
 namespace Observer.Cli;
@@ -43,6 +46,65 @@ public static class Diagnosi
         }
 
         return Frase(verdetto);
+    }
+
+    /// <summary>L'impronta del certificato di macchina, in una frase.</summary>
+    /// <param name="percorsoDelFile">Il percorso del deposito del token.</param>
+    /// <returns>L'impronta leggibile, oppure il motivo per cui non si vede.</returns>
+    /// <remarks>
+    /// Distingue i tre casi come fa <see cref="Protezione"/>, e per lo stesso motivo:
+    /// "non riesco a leggerlo da qui" e "non esiste" portano a due gesti diversi, e
+    /// confonderli manda chi legge a cercare un guasto che non c'e'.
+    /// </remarks>
+    public static string Certificato(string percorsoDelFile)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(percorsoDelFile);
+
+        string percorso = MachineCertificate.PercorsoAccantoA(percorsoDelFile);
+
+        try
+        {
+            using X509Certificate2 certificato =
+                MachineCertificate.Carica(File.ReadAllBytes(percorso));
+
+            return CertificateFingerprint.PerLUomo(MachineCertificate.Impronta(certificato));
+        }
+        catch (Exception errore) when (errore is FileNotFoundException or DirectoryNotFoundException)
+        {
+            // "Non l'ho trovato" non e' "non c'e'". Su una cartella che questo account non
+            // riesce nemmeno a elencare - cioe' su un deposito protetto come si deve - le due
+            // cose sono indistinguibili dall'esterno, e spacciare la prima per la seconda
+            // manderebbe chi legge a cercare un guasto che non esiste.
+            return Elencabile(percorso)
+                ? "not created yet - the service writes it the first time it starts."
+                : "NOT VISIBLE FROM HERE - this account can't list the directory, so this is " +
+                  "not proof that the certificate is missing. Run this from an elevated terminal.";
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return "UNREADABLE FROM HERE - run this from an elevated terminal.";
+        }
+        catch (CryptographicException errore)
+        {
+            return "DAMAGED - " + errore.Message;
+        }
+    }
+
+    /// <summary>Se questo account riesce anche solo a elencare la cartella del deposito.</summary>
+    private static bool Elencabile(string percorsoDelCertificato)
+    {
+        try
+        {
+            string cartella = Path.GetDirectoryName(percorsoDelCertificato) ?? ".";
+
+            _ = Directory.EnumerateFileSystemEntries(cartella).GetEnumerator().MoveNext();
+
+            return true;
+        }
+        catch (Exception errore) when (errore is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Chi sta eseguendo questo comando.</summary>

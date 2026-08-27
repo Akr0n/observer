@@ -41,6 +41,13 @@ public sealed class ServizioInMemoria : WebApplicationFactory<Program>
         Imposta("Observer__ApiToken", Token);
         Imposta("Observer__Storage__DatabasePath", DatabasePath);
 
+        // HTTPS spento: qui il trasporto e' finto, perche' WebApplicationFactory
+        // sostituisce Kestrel con un TestServer. Generare una chiave RSA da 3072 bit e
+        // provare a depositarla in una cartella di sistema costerebbe secondi a ogni
+        // istanza, per una porta che non verra' mai aperta. Il TLS vero ha la sua classe
+        // di prove: TrasportoHttpsTests.
+        Imposta("Observer__Network__Https", "false");
+
         // La manutenzione non deve partire da sola durante i test: consoliderebbe e
         // cancellerebbe sotto ai piedi delle asserzioni.
         Imposta("Observer__Storage__MaintenanceInterval", "01:00:00");
