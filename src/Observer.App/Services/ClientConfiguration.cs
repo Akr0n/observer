@@ -4,36 +4,12 @@ using System.Text.Json.Serialization;
 namespace Observer.App.Services;
 
 /// <summary>
-/// Indirizzo del servizio e token con cui autenticarsi, gia' validati.
+/// Esito della lettura della configurazione: o il punto da interrogare, o la frase da
+/// mostrare a schermo. Mai entrambi nulli.
 /// </summary>
-/// <param name="BaseAddress">
-/// Radice del servizio, sempre con la barra finale: senza, <see cref="Uri"/> risolverebbe
-/// "metrics/latest" cancellando l'ultimo segmento di un indirizzo tipo
-/// "http://host:5057/observer/", e la richiesta finirebbe sull'URL sbagliato.
-/// </param>
-/// <param name="ApiToken">Il token da mettere nell'header Authorization.</param>
-/// <param name="TokenOrigin">
-/// Da dove arriva il token, in italiano e senza il token dentro. Serve per dire a chi
-/// legge lo schermo QUALE token il servizio ha rifiutato, senza stamparlo.
-/// </param>
-public sealed record ObserverClientOptions(Uri BaseAddress, string ApiToken, string TokenOrigin)
-{
-    /// <summary>
-    /// Nasconde il token. I record generano un ToString() con TUTTE le proprieta' dentro:
-    /// senza questo override basterebbe un binding distratto o una riga di log per
-    /// stampare il segreto sullo schermo di chi passa.
-    /// </summary>
-    public override string ToString() =>
-        FormattableString.Invariant($"ObserverClientOptions {{ BaseAddress = {BaseAddress}, TokenOrigin = {TokenOrigin} }}");
-}
-
-/// <summary>
-/// Esito della lettura della configurazione: o le opzioni, o la frase da mostrare a
-/// schermo. Mai entrambe nulle.
-/// </summary>
-/// <param name="Options">Le opzioni valide, oppure null.</param>
-/// <param name="Problem">La spiegazione in italiano quando <paramref name="Options"/> e' null.</param>
-public sealed record ClientConfigurationResult(ObserverClientOptions? Options, string? Problem);
+/// <param name="Endpoint">Il servizio da interrogare, oppure null.</param>
+/// <param name="Problem">La spiegazione quando <paramref name="Endpoint"/> e' null.</param>
+public sealed record ClientConfigurationResult(ObserverEndpoint? Endpoint, string? Problem);
 
 /// <summary>
 /// Contenuto del file di configurazione locale del client.
@@ -60,8 +36,12 @@ public static class ClientConfiguration
     /// <summary>Variabile d'ambiente con l'indirizzo del servizio.</summary>
     public const string BaseAddressVariable = "Observer__BaseAddress";
 
-    /// <summary>Indirizzo usato quando non ne viene indicato nessuno.</summary>
-    public const string DefaultBaseAddress = "http://localhost:5057/";
+    /// <summary>Un indirizzo di esempio, per i messaggi. NON e' piu' un valore predefinito.</summary>
+    /// <remarks>
+    /// Senza indirizzo configurato il client va sul canale LOCALE, che non ha ne' porta ne'
+    /// token. Un indirizzo si mette solo per guardare un ALTRO computer.
+    /// </remarks>
+    public const string EsempioIndirizzo = "http://another-machine:5057/";
 
     private static readonly JsonSerializerOptions FileOptions = new(JsonSerializerDefaults.Web);
 
@@ -120,20 +100,19 @@ public static class ClientConfiguration
             return new ClientConfigurationResult(
                 null,
                 $"The configuration file {FilePath} isn't valid JSON ({ex.Message}). " +
-                $"It must contain exactly: {{ \"baseAddress\": \"{DefaultBaseAddress}\", \"apiToken\": \"your-token\" }}");
+                $"It must contain exactly: {{ \"baseAddress\": \"{EsempioIndirizzo}\", \"apiToken\": \"the other machine's token\" }}");
         }
 
-        string? token = Primo(tokenFromEnvironment, file?.ApiToken);
-        string origine = string.IsNullOrWhiteSpace(tokenFromEnvironment)
-            ? $"from the file {FilePath}"
-            : $"from the {TokenVariable} environment variable";
+        string? indirizzo = Primo(baseAddressFromEnvironment, file?.BaseAddress);
 
-        if (string.IsNullOrWhiteSpace(token))
+        if (indirizzo is null)
         {
-            return new ClientConfigurationResult(null, TestoTokenMancante());
+            // NESSUN indirizzo configurato significa "guarda la macchina su cui stai", e su
+            // quella il servizio non chiede alcun token. E' cio' che rende installabile la
+            // dashboard: dopo l'installazione non c'e' niente da configurare.
+            // Un token esportato per errore NON dirotta il client: qui viene ignorato.
+            return new ClientConfigurationResult(ObserverEndpoint.CanaleLocale(), null);
         }
-
-        string indirizzo = Primo(baseAddressFromEnvironment, file?.BaseAddress) ?? DefaultBaseAddress;
 
         if (!Uri.TryCreate(ConBarraFinale(indirizzo), UriKind.Absolute, out Uri? baseAddress)
             || (baseAddress.Scheme != Uri.UriSchemeHttp && baseAddress.Scheme != Uri.UriSchemeHttps))
@@ -141,25 +120,42 @@ public static class ClientConfiguration
             return new ClientConfigurationResult(
                 null,
                 $"The service address \"{indirizzo}\" can't be used. " +
-                $"It must be a full http or https address, for example {DefaultBaseAddress}. " +
+                $"It must be a full http or https address, for example {EsempioIndirizzo}. " +
                 $"Set it in the {BaseAddressVariable} environment variable, or in the " +
-                $"\"baseAddress\" field of {FilePath}.");
+                $"\"baseAddress\" field of {FilePath}. " +
+                "Remove it entirely to watch the machine you are sitting at.");
         }
 
+        string? token = Primo(tokenFromEnvironment, file?.ApiToken);
+
+        if (token is null)
+        {
+            // Un indirizzo remoto senza credenziale non e' un caso da indovinare: quel
+            // servizio rifiutera' ogni richiesta, e dirlo subito e' meglio che mostrare 401
+            // a raffica una volta al secondo.
+            return new ClientConfigurationResult(null, TestoTokenMancante(indirizzo));
+        }
+
+        string origine = string.IsNullOrWhiteSpace(tokenFromEnvironment)
+            ? $"from the file {FilePath}"
+            : $"from the {TokenVariable} environment variable";
+
         return new ClientConfigurationResult(
-            new ObserverClientOptions(baseAddress, token, origine),
+            ObserverEndpoint.Remoto(baseAddress, token, origine),
             null);
     }
 
-    /// <summary>Il testo mostrato quando manca il token. Estratto perche' e' anche cio' che il test verifica.</summary>
-    public static string TestoTokenMancante() =>
-        "No token is configured, so there is no point in trying to connect: the service " +
-        "rejects every request that isn't authenticated. Use the SAME token the service was " +
-        "started with, in one of two ways: " +
-        $"1) in the {TokenVariable} environment variable; " +
-        $"2) in the file {FilePath}, containing " +
-        $"{{ \"baseAddress\": \"{DefaultBaseAddress}\", \"apiToken\": \"your-token\" }}. " +
-        "If both are set, the environment variable wins.";
+    /// <summary>Il testo mostrato quando manca il token per un servizio REMOTO.</summary>
+    /// <param name="indirizzo">L'indirizzo configurato.</param>
+    /// <returns>La frase da mostrare.</returns>
+    public static string TestoTokenMancante(string indirizzo) =>
+        $"No token is configured for {indirizzo}, so there is no point in trying to connect: " +
+        "another machine's Observer rejects every request that isn't authenticated. Get its " +
+        "token by running \"observer share\" on THAT machine, from an elevated terminal, then " +
+        $"put it in the {TokenVariable} environment variable, or in the \"apiToken\" field of " +
+        $"{FilePath}. " +
+        "To watch the machine you are sitting at instead, remove the address entirely: no token " +
+        "is needed for that.";
 
     private static string? LeggiFile(string path)
     {

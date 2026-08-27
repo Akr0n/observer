@@ -13,11 +13,8 @@ namespace Observer.App.Services;
 /// </summary>
 public interface IMetricsClient
 {
-    /// <summary>Indirizzo del servizio interrogato, da mostrare a schermo.</summary>
-    Uri BaseAddress { get; }
-
-    /// <summary>Da dove arriva il token, senza il token dentro.</summary>
-    string TokenOrigin { get; }
+    /// <summary>Il punto interrogato, da mostrare a schermo. Non stampa mai il token.</summary>
+    ObserverEndpoint Endpoint { get; }
 
     /// <summary>Legge l'ultimo campionamento.</summary>
     Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken);
@@ -48,36 +45,48 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
     private static readonly JsonSerializerOptions WireOptions = new(JsonSerializerDefaults.Web);
 
     private readonly HttpClient http;
-    private readonly AuthenticationHeaderValue authorization;
+    private readonly AuthenticationHeaderValue? authorization;
 
-    /// <summary>Costruisce il client sulle opzioni lette dalla configurazione.</summary>
-    public MetricsClient(ObserverClientOptions options)
-        : this(options, new SocketsHttpHandler(), disposeHandler: true)
+    /// <summary>Costruisce il client sul punto letto dalla configurazione.</summary>
+    /// <param name="endpoint">Il servizio da interrogare.</param>
+    public MetricsClient(ObserverEndpoint endpoint)
+        : this(endpoint, HandlerPer(endpoint), disposeHandler: true)
     {
     }
 
     /// <summary>Costruisce il client su un handler fornito da fuori. Serve ai test.</summary>
-    public MetricsClient(ObserverClientOptions options, HttpMessageHandler handler)
-        : this(options, handler, disposeHandler: false)
+    /// <param name="endpoint">Il servizio da interrogare.</param>
+    /// <param name="handler">L'handler da usare.</param>
+    public MetricsClient(ObserverEndpoint endpoint, HttpMessageHandler handler)
+        : this(endpoint, handler, disposeHandler: false)
     {
     }
 
-    private MetricsClient(ObserverClientOptions options, HttpMessageHandler handler, bool disposeHandler)
+    private MetricsClient(ObserverEndpoint endpoint, HttpMessageHandler handler, bool disposeHandler)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(endpoint);
         ArgumentNullException.ThrowIfNull(handler);
 
-        BaseAddress = options.BaseAddress;
-        TokenOrigin = options.TokenOrigin;
-        authorization = new AuthenticationHeaderValue("Bearer", options.ApiToken);
+        Endpoint = endpoint;
+
+        // Nessun header Authorization sul canale locale, e non e' una svista: mandare il token
+        // dove non serve significa continuare a esporlo senza guadagnarci niente.
+        authorization = endpoint.ApiToken is { Length: > 0 } token
+            ? new AuthenticationHeaderValue("Bearer", token)
+            : null;
+
         http = new HttpClient(handler, disposeHandler) { Timeout = RequestTimeout };
     }
 
     /// <inheritdoc />
-    public Uri BaseAddress { get; }
+    public ObserverEndpoint Endpoint { get; }
 
-    /// <inheritdoc />
-    public string TokenOrigin { get; }
+    private Uri BaseAddress => Endpoint.BaseAddress;
+
+    private static SocketsHttpHandler HandlerPer(ObserverEndpoint endpoint) =>
+        endpoint.Kind == EndpointKind.Locale
+            ? LocalChannelHandler.Crea()
+            : new SocketsHttpHandler();
 
     /// <inheritdoc />
     public async Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken)
@@ -96,7 +105,7 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             // campi a zero marcati "Ok", che e' peggio di un messaggio d'errore.
             return new SnapshotFetch(
                 ServiceOutcome.VersioneIncompatibile,
-                $"The service at {BaseAddress} uses data format version " +
+                $"The service on {Endpoint.Descrizione} uses data format version " +
                 snapshot.SchemaVersion.ToString(CultureInfo.InvariantCulture) +
                 ", but this application only understands version " +
                 MachineSnapshot.CurrentSchemaVersion.ToString(CultureInfo.InvariantCulture) +
@@ -131,7 +140,10 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
         try
         {
             using HttpRequestMessage richiesta = new(HttpMethod.Get, indirizzo);
-            richiesta.Headers.Authorization = authorization;
+            if (authorization is not null)
+            {
+                richiesta.Headers.Authorization = authorization;
+            }
 
             using HttpResponseMessage risposta =
                 await http.SendAsync(richiesta, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
@@ -143,9 +155,9 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             {
                 return (
                     ServiceOutcome.TokenRifiutato,
-                    $"The service at {BaseAddress} rejected the token ({codice}). " +
-                    $"The token in use comes {TokenOrigin} and has to be IDENTICAL to the one the " +
-                    "service was started with (Observer:ApiToken).",
+                    Endpoint.Kind == EndpointKind.Locale
+                        ? TestoRifiutoLocale(codice)
+                        : TestoTokenRifiutato(codice),
                     null);
             }
 
@@ -153,7 +165,7 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             {
                 return (
                     ServiceOutcome.NonAncoraPronto,
-                    $"The service at {BaseAddress} is listening but hasn't produced its first " +
+                    $"The service on {Endpoint.Descrizione} is listening but hasn't produced its first " +
                     "reading yet. This usually clears on its own after a second or two.",
                     null);
             }
@@ -162,7 +174,7 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             {
                 return (
                     ServiceOutcome.RispostaInattesa,
-                    $"The service at {BaseAddress} replied {codice} ({risposta.ReasonPhrase}), " +
+                    $"The service on {Endpoint.Descrizione} replied {codice} ({risposta.ReasonPhrase}), " +
                     "which this application doesn't know how to interpret.",
                     null);
             }
@@ -194,18 +206,37 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             // distinguere i due casi e' cio' che evita di mostrare un errore mentre si esce.
             return (
                 ServiceOutcome.NonRaggiungibile,
-                $"The service at {BaseAddress} didn't respond within " +
+                $"The service on {Endpoint.Descrizione} didn't respond within " +
                 RequestTimeout.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture) + " seconds.",
                 null);
         }
     }
 
     private string TestoNonRaggiungibile(string dettaglio) =>
-        $"Can't reach the service at {BaseAddress}. " +
-        "Check that it is running (dotnet run --project src/Observer.Service) and that the " +
-        $"address is correct. Technical detail: {dettaglio}";
+        Endpoint.Kind == EndpointKind.Locale
+            ? "The Observer service isn't answering on this machine. Check that it is running, " +
+              "or start it by hand. Technical detail: " + dettaglio
+            : $"Can't reach the service on {Endpoint.Descrizione}. Check that the machine is on, " +
+              "that Observer is running there, and that the address is correct. " +
+              $"Technical detail: {dettaglio}";
 
     private string TestoRispostaIlleggibile(string dettaglio) =>
-        $"{BaseAddress} responded, but not with a sample this application can read. " +
-        $"It probably isn't Observer.Service. Technical detail: {dettaglio}";
+        $"{Endpoint.Descrizione} responded, but not with a sample this application can read. " +
+        $"It probably isn't Observer. Technical detail: {dettaglio}";
+
+    /// <summary>Il 401 sul canale locale: non c'e' alcun token da correggere.</summary>
+    /// <remarks>
+    /// Il testo del percorso remoto manderebbe l'utente a cercare un token che sulla propria
+    /// macchina non esiste. Questo caso non dovrebbe accadere: quando accade, il posto giusto
+    /// dove guardare e' la diagnosi del servizio, non un file di configurazione.
+    /// </remarks>
+    private static string TestoRifiutoLocale(string codice) =>
+        $"The Observer service on this machine refused the request ({codice}), even though it " +
+        "came in on the local channel. It should not: the service serves local, identified " +
+        "callers without any credential. Run \"observer doctor\" to see what it reports.";
+
+    private string TestoTokenRifiutato(string codice) =>
+        $"The service on {Endpoint.Descrizione} rejected the token ({codice}). The token in use " +
+        $"comes {Endpoint.Origine}, and it has to be the one that machine reports when you run " +
+        "\"observer share\" on it.";
 }

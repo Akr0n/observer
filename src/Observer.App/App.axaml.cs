@@ -30,8 +30,8 @@ public partial class App : Application
         {
             ClientConfigurationResult configurazione = ClientConfiguration.Read();
 
-            MetricsClient? client = configurazione.Options is { } opzioni
-                ? new MetricsClient(opzioni)
+            MetricsClient? client = configurazione.Endpoint is { } punto
+                ? new MetricsClient(punto)
                 : null;
 
             // Variabile mutabile e non solo il parametro: se la configurazione compare mentre
@@ -48,12 +48,12 @@ public partial class App : Application
                     // istruzioni alla lettera e non succederebbe nulla fino al riavvio.
                     ClientConfigurationResult riletta = ClientConfiguration.Read();
 
-                    if (riletta.Options is not { } opzioniComparse)
+                    if (riletta.Endpoint is not { } puntoComparso)
                     {
                         return null;
                     }
 
-                    clientCorrente = new MetricsClient(opzioniComparse);
+                    clientCorrente = new MetricsClient(puntoComparso);
                     return clientCorrente;
                 });
 

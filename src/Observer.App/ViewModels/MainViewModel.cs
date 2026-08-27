@@ -48,14 +48,14 @@ public sealed partial class MainViewModel : ViewModelBase
 
         Intestazione = client is null
             ? "Observer"
-            : $"Observer — {client.BaseAddress}";
+            : $"Observer — {client.Endpoint.Descrizione}";
 
         if (client is null)
         {
             Mostra(
                 FAInfoBarSeverity.Error,
                 "Configuration missing",
-                problemaDiConfigurazione ?? ClientConfiguration.TestoTokenMancante());
+                problemaDiConfigurazione ?? "The configuration could not be read.");
             SottoIntestazione = "Not connected.";
         }
         else
@@ -122,7 +122,7 @@ public sealed partial class MainViewModel : ViewModelBase
             }
 
             client = comparso;
-            Intestazione = $"Observer — {comparso.BaseAddress}";
+            Intestazione = $"Observer — {comparso.Endpoint.Descrizione}";
             Mostra(FAInfoBarSeverity.Informational, "Connecting", "Taking the first reading…");
             SottoIntestazione = "Connecting…";
             return true;
@@ -207,7 +207,7 @@ public sealed partial class MainViewModel : ViewModelBase
         catalogoLetto = false;
         catalogo = MetricCatalog.Empty;
 
-        Intestazione = $"Observer — {ricomparso.BaseAddress}";
+        Intestazione = $"Observer — {ricomparso.Endpoint.Descrizione}";
     }
 
     private async Task<ServiceOutcome> AggiornaAsync(CancellationToken cancellationToken)
@@ -250,7 +250,11 @@ public sealed partial class MainViewModel : ViewModelBase
         StatoVisibile = false;
 
         string ora = snapshot.CapturedAt.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
-        SottoIntestazione = $"Connected · last reading at {ora} · token {client.TokenOrigin}";
+        // Sul canale locale non si nomina alcun token, perche' li' non ne esiste uno:
+        // scriverlo manderebbe chi legge a cercare una credenziale che non serve.
+        SottoIntestazione = client.Endpoint.Kind == EndpointKind.Locale
+            ? $"Connected to this machine · last reading at {ora}"
+            : $"Connected to {client.Endpoint.Descrizione} · last reading at {ora} · token {client.Endpoint.Origine}";
 
         return ServiceOutcome.Ok;
     }

@@ -37,12 +37,12 @@ public class MainViewModelReconnectTests
 
         // Attende che il view model adotti il client comparso, senza dipendere da un ritardo fisso.
         while (!arresto.IsCancellationRequested
-            && !viewModel.Intestazione.Contains("localhost", StringComparison.Ordinal))
+            && !viewModel.Intestazione.Contains("this machine", StringComparison.Ordinal))
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.Contains("localhost", viewModel.Intestazione, StringComparison.Ordinal);
+        Assert.Contains("this machine", viewModel.Intestazione, StringComparison.Ordinal);
         Assert.True(letture >= 1);
 
         await arresto.CancelAsync();
@@ -56,8 +56,12 @@ public class MainViewModelReconnectTests
         // Una finestra gia' collegata che riceve 401 — perche' il token e' stato ruotato —
         // restava bloccata su "Token rejected" fino al riavvio, e nessun messaggio lo diceva.
         // E' lo stesso incidente di "Configuration missing", su un altro percorso.
-        FakeMetricsClient vecchio = new(new Uri("http://localhost:5057/"), ServiceOutcome.TokenRifiutato);
-        FakeMetricsClient nuovo = new(new Uri("http://localhost:9999/"), ServiceOutcome.NonRaggiungibile);
+        FakeMetricsClient vecchio = new(
+            ObserverEndpoint.Remoto(new Uri("http://vecchia:5057/"), "t", "dalla prova"),
+            ServiceOutcome.TokenRifiutato);
+        FakeMetricsClient nuovo = new(
+            ObserverEndpoint.Remoto(new Uri("http://nuova:9999/"), "t", "dalla prova"),
+            ServiceOutcome.NonRaggiungibile);
 
         MainViewModel viewModel = new(
             vecchio,
@@ -68,12 +72,12 @@ public class MainViewModelReconnectTests
         Task ciclo = viewModel.EseguiAsync(arresto.Token);
 
         while (!arresto.IsCancellationRequested
-            && !viewModel.Intestazione.Contains("9999", StringComparison.Ordinal))
+            && !viewModel.Intestazione.Contains("nuova", StringComparison.Ordinal))
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.Contains("9999", viewModel.Intestazione, StringComparison.Ordinal);
+        Assert.Contains("nuova", viewModel.Intestazione, StringComparison.Ordinal);
 
         await arresto.CancelAsync();
         await ciclo.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
@@ -91,16 +95,14 @@ public class MainViewModelReconnectTests
         Assert.Equal("Observer", viewModel.Intestazione);
     }
 
-    private sealed class FakeMetricsClient(Uri baseAddress, ServiceOutcome esito) : IMetricsClient
+    private sealed class FakeMetricsClient(ObserverEndpoint endpoint, ServiceOutcome esito) : IMetricsClient
     {
         public FakeMetricsClient()
-            : this(new Uri("http://localhost:5057/"), ServiceOutcome.NonRaggiungibile)
+            : this(ObserverEndpoint.CanaleLocale(), ServiceOutcome.NonRaggiungibile)
         {
         }
 
-        public Uri BaseAddress { get; } = baseAddress;
-
-        public string TokenOrigin => "from the test";
+        public ObserverEndpoint Endpoint { get; } = endpoint;
 
         public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new SnapshotFetch(esito, "no service in this test", null));
