@@ -1,0 +1,65 @@
+.TH OBSERVER 1 "2026-08-27" "observer 0.1.0" "User Commands"
+.SH NAME
+observer \- manage this machine's Observer service
+.SH SYNOPSIS
+.B observer
+.RI [ command ]
+.SH DESCRIPTION
+.B observer
+manages the machine token of the Observer service running on this computer.
+.PP
+To watch the machine you are sitting at you need no token at all: the dashboard
+comes in through the local socket, and membership of the
+.B observer
+group is what grants access to it. The token exists only so that
+.I another
+computer can query this one.
+.PP
+The service generates its own token the first time it starts and keeps it in the
+credential store, so nothing has to be configured after installation. This
+command never takes a token as an argument, which is why no token ever reaches
+your shell history.
+.SH COMMANDS
+.TP
+.B share " [\-\-stdout]"
+Print the machine token, with the context needed to install it on another
+computer. Requires privileges, because the credential store is readable only by
+the service account and by root.
+.IP
+With
+.B \-\-stdout
+it prints the token alone, with no trailing newline, for capture in a shell
+variable. The newline matters: a trailing one would enter the value and be
+rejected byte by byte by the constant-time comparison.
+.TP
+.B rotate\-key
+Replace the machine token. The previous one keeps working for 24 hours, so
+remote clients are not cut off all at once. Requires privileges.
+.TP
+.B doctor
+Report where the credential store is, how well it is protected, what identity
+this terminal has, and what a client would see on the local channel. Requires
+nothing, and it is the command that explains the other two when they fail.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+The credential store could not be read or written.
+.TP
+.B 2
+The command was not recognised.
+.SH FILES
+.TP
+.I /etc/observer/credentials.json
+The credential store. Mode 0600, owned by the
+.B observer
+system user.
+.TP
+.I /run/observer/observer.sock
+The local channel. Callers that are local and identifiable are served without
+any token.
+.SH SEE ALSO
+.BR observer-dashboard (1),
+.BR systemctl (1)

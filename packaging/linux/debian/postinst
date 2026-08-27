@@ -45,6 +45,5 @@ NOTE
         ;;
 esac
 
-#DEBHELPER#
 
 exit 0
