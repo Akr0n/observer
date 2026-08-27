@@ -330,9 +330,15 @@ di avviare host Kestrel veri (nessuno dei 201 test attuali ne avvia uno), e i no
 
 Elencato perche' sono lacune note, non perche' siano state dimenticate.
 
-1. **Servizio installato sotto LocalSystem con la GUI dell'utente interattivo.** Nessuna delle
-   sessioni di misura era amministratore, quindi questa combinazione — che e' la configurazione
-   di produzione — non e' mai stata eseguita. Regge su un'inferenza fra due misure vere.
+1. ~~**Servizio installato sotto LocalSystem con la GUI dell'utente interattivo.**~~
+   **CHIUSA il 2026-08-27.** Il servizio e' stato installato davvero (`Running`, `Automatic`,
+   account `LocalSystem`, da `C:\Program Files\Observer`) e interrogato da una sessione
+   NON elevata dell'utente interattivo. Quattro misure: la pipe si apre, cioe' la ACE per
+   `INTERACTIVE` funziona; una GET sulla pipe **senza alcun token** risponde `200`, quindi
+   `RunAsClient` legge davvero il token del chiamante anche quando il server e' LocalSystem;
+   sul TCP senza token resta `401`; e il campionamento funziona in Session 0, con valori veri
+   di CPU e memoria. In piu' `appsettings.Local.json` installato **non e' leggibile** da un
+   utente normale, quindi la restrizione della ACL fa il suo lavoro.
 2. **Un chiamante SMB da una SECONDA macchina.** Verso se' stessa, Windows restituisce il token
    interattivo originale: questa macchina non e' un banco di prova valido per la difesa basata
    sul SID `NETWORK`. Il discriminante `GetNamedPipeClientComputerName` non ne ha bisogno, ma la
