@@ -324,6 +324,59 @@ Il fissaggio dell'impronta nel client, `machines.json`, la barra laterale, e la 
 della porta in chiaro sulla rete** - decisa: sulla rete deve restare solo HTTPS, e questa
 macchina continua a guardarsi dal canale locale, che non usa ne' porta ne' token.
 
+### 5-ter. Cosa ha trovato la revisione avversariale
+
+Il codice HTTPS e' stato riletto da quattro lenti indipendenti, e ogni reperto passato a due
+scettici con compiti opposti: uno doveva confutarlo, l'altro riprodurlo. Sedici reperti,
+quattordici sopravvissuti. **Due erano gravi, e uno era invisibile a tutta la suite.**
+
+#### Il primo avvio non funzionava affatto, su Windows
+
+`CertificateProvisioning` restituiva l'oggetto uscito da `CreateSelfSigned`. Quella chiave
+privata sta **solo in memoria**, cioe' nella condizione che il commento di `Carica` gia'
+dichiarava rotta: su Windows SChannel non la sa servire e l'handshake muore con *"Received an
+unexpected EOF or 0 bytes from the transport stream"*.
+
+La correzione precedente aveva sistemato il percorso del **secondo** avvio e lasciato rotto
+quello del **primo** - cioe' l'unico che conta su una macchina appena installata.
+
+Tre cose lo rendevano difficile da vedere, e vale la pena elencarle:
+
+- `CertificateProvisioningTests` verificava `HasPrivateKey == true`, che e' vero **anche** su un
+  certificato che non regge un handshake: un test verde su un difetto aperto;
+- `TrasportoHttpsTests` diceva nel proprio commento di classe che usava il certificato
+  *"esportato e riletto, perche' quello e' il percorso del SECONDO avvio"*. La lacuna era
+  scritta a chiare lettere, e nessuno l'aveva letta come tale;
+- lato client il sintomo era **sbagliato**: quell'errore arriva come `IOException` e non come
+  `AuthenticationException`, quindi la dashboard diceva *"controlla che la macchina sia
+  accesa"*. E dal secondo avvio in poi spariva tutto. Un guasto che sembra un problema di rete
+  e si ripara da solo.
+
+#### Il vecchio `client.json` era una porta di servizio
+
+L'elenco rifiuta `http://` e le voci senza impronta, ma il ripiego a macchina singola entrava
+**senza passare da alcun controllo**: bastava un `client.json` vecchio per rispedire il token in
+chiaro una volta al secondo, e per collegarsi senza fissare alcuna identita'. Adesso il ripiego
+passa dagli stessi requisiti, e `client.json` ha il campo `fingerprint`.
+
+Rendere obbligatoria l'impronta avrebbe pero' ucciso la via delle variabili d'ambiente, che e'
+l'unica praticabile dove il file non si puo' scrivere: c'e' quindi anche `Observer__Fingerprint`.
+
+#### Le altre, in breve
+
+- una `AuthenticationException` qualunque veniva raccontata come *"qualcuno si sta mettendo in
+  mezzo"*: un'accusa pesante fatta senza prove. Ora il fissaggio ricorda se ha **davvero**
+  respinto un certificato;
+- `ImprontaNonCorrisponde` bloccava la finestra fino al riavvio anche dopo aver corretto il
+  file. E' il **terzo** percorso su cui si presenta lo stesso incidente, dopo *Configuration
+  missing* e *Token rejected*;
+- cambiando macchina mentre una richiesta era in volo, la risposta della macchina precedente
+  finiva sotto il nome di quella nuova;
+- con un token che il servizio rifiuta, la dashboard apriva un client al secondo per sempre;
+- un `machines.json` valido ma senza l'elenco azzerava tutto in silenzio;
+- un certificato danneggiato veniva inghiottito quando il servizio e' lanciato a mano;
+- `observer share` e `doctor` importavano la chiave privata nel portachiavi di chi li lanciava.
+
 ### 6. Packaging
 
 MSI con WiX su Windows, `.deb` con unit systemd su Linux, piu' un job `pack` in CI.

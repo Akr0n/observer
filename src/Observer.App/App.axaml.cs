@@ -37,6 +37,15 @@ public partial class App : Application
 
             MetricsClient Apri(ObserverEndpoint punto)
             {
+                // Se per quel punto ne esiste gia' uno, si riusa. Senza, un token che il
+                // servizio continua a rifiutare farebbe nascere un client al secondo per
+                // sempre: la rilettura scatta a ogni 401, e ogni client si porta dietro il
+                // proprio pool di connessioni.
+                if (aperti.FirstOrDefault(aperto => aperto.Endpoint == punto) is { } gia)
+                {
+                    return gia;
+                }
+
                 MetricsClient nuovo = new(punto);
                 aperti.Add(nuovo);
 

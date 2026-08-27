@@ -214,7 +214,11 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             // Un fallimento di TLS su un punto con impronta fissata NON e' "non raggiungibile",
             // e confonderli sarebbe il peggiore dei due errori: il primo si aspetta, questo no.
             // La macchina risponde eccome - e' l'identita' a non tornare.
-            if (fissaggio is not null && ex.InnerException is AuthenticationException)
+            // HaRifiutato e non solo "c'e' un fissaggio": una AuthenticationException puo'
+            // arrivare da molti guasti TLS che col certificato non c'entrano, e raccontarli
+            // all'utente come "qualcuno si sta mettendo in mezzo" sarebbe un'accusa pesante
+            // fatta senza prove.
+            if (fissaggio is { HaRifiutato: true } && ex.InnerException is AuthenticationException)
             {
                 return (
                     ServiceOutcome.ImprontaNonCorrisponde,

@@ -64,8 +64,11 @@ public static class Diagnosi
 
         try
         {
+            // SoloPerLeggere e non Carica: qui serve l'impronta, non un certificato da servire,
+            // e Carica lascerebbe la chiave privata nel portachiavi di chi ha lanciato il
+            // comando.
             using X509Certificate2 certificato =
-                MachineCertificate.Carica(File.ReadAllBytes(percorso));
+                MachineCertificate.SoloPerLeggere(File.ReadAllBytes(percorso));
 
             return CertificateFingerprint.PerLUomo(MachineCertificate.Impronta(certificato));
         }

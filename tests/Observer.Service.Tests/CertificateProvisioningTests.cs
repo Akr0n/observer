@@ -160,4 +160,21 @@ public class CertificateProvisioningTests : IDisposable
             provvisto.Certificate.Dispose();
         }
     }
+
+    [Fact]
+    public void UnCertificatoDanneggiatoSiDiceANCHEaChiLanciaIlServizioAMano()
+    {
+        // Il ripiego effimero vale per un deposito che non si riesce a METTERE IN SICUREZZA,
+        // non per un certificato che c'e' ed e' illeggibile. Ripiegare in silenzio mostrerebbe
+        // un servizio che parte, un'impronta nuova a ogni avvio, e nessun indizio sul file
+        // rotto che sta sul disco.
+        File.WriteAllText(MachineCertificate.PercorsoAccantoA(deposito), "non sono un PKCS#12");
+
+        Assert.Throws<InvalidOperationException>(
+            () => CertificateProvisioning.Provvedi(
+                deposito,
+                "macchina-di-prova",
+                DateTimeOffset.UtcNow,
+                giraComeServizio: false));
+    }
 }

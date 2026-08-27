@@ -251,7 +251,11 @@ public sealed partial class MainViewModel : ViewModelBase
                 // stato ruotato. Senza rileggere qui, la finestra resterebbe bloccata su
                 // "Token rejected" fino al riavvio: e' lo stesso incidente di "Configuration
                 // missing", su un altro percorso, e va chiuso allo stesso modo.
-                if (esito == ServiceOutcome.TokenRifiutato)
+                // Anche ImprontaNonCorrisponde, e per la stessa ragione: il messaggio dice
+                // all'utente di correggere machines.json, e correggerlo deve BASTARE. E' il
+                // terzo percorso su cui questo incidente si presenta - dopo "Configuration
+                // missing" e "Token rejected" - e chiuderne due su tre non serve a niente.
+                if (esito is ServiceOutcome.TokenRifiutato or ServiceOutcome.ImprontaNonCorrisponde)
                 {
                     AdottaConfigurazioneAggiornata();
                 }
@@ -320,6 +324,15 @@ public sealed partial class MainViewModel : ViewModelBase
         // ammettere che non si collega.
         SnapshotFetch fetch = await corrente.GetLatestAsync(cancellationToken);
 
+        // Fra la partenza della richiesta e la sua risposta l'utente puo' aver cambiato
+        // macchina nella barra laterale. Applicare qui i valori appena arrivati significherebbe
+        // mostrare le misure della macchina PRECEDENTE sotto il nome di quella nuova, e
+        // riempirne il catalogo con etichette che non sono le sue.
+        if (!ReferenceEquals(client, corrente))
+        {
+            return ServiceOutcome.Unknown;
+        }
+
         if (!fetch.IsOk)
         {
             SegnalaProblema(fetch.Outcome, fetch.Problem, corrente.Endpoint);
@@ -334,7 +347,7 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             CatalogFetch catalogFetch = await corrente.GetCatalogAsync(cancellationToken);
 
-            if (catalogFetch.IsOk)
+            if (catalogFetch.IsOk && ReferenceEquals(client, corrente))
             {
                 catalogo = catalogFetch.Catalog!;
                 catalogoLetto = true;

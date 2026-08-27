@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Observer.Core.Security;
 using System.Text.Json.Serialization;
 
 namespace Observer.App.Services;
@@ -16,9 +17,14 @@ public sealed record ClientConfigurationResult(ObserverEndpoint? Endpoint, strin
 /// </summary>
 /// <param name="BaseAddress">Indirizzo del servizio. Facoltativo.</param>
 /// <param name="ApiToken">Token di accesso. Facoltativo se presente nell'ambiente.</param>
+/// <param name="Fingerprint">
+/// L'impronta del certificato di quella macchina. Obbligatoria per un punto remoto: senza,
+/// il collegamento sarebbe cifrato ma non saprebbe con CHI.
+/// </param>
 public sealed record ObserverClientFile(
     [property: JsonPropertyName("baseAddress")] string? BaseAddress,
-    [property: JsonPropertyName("apiToken")] string? ApiToken);
+    [property: JsonPropertyName("apiToken")] string? ApiToken,
+    [property: JsonPropertyName("fingerprint")] string? Fingerprint);
 
 /// <summary>
 /// Decide da dove il client prende indirizzo e token.
@@ -35,6 +41,14 @@ public static class ClientConfiguration
 
     /// <summary>Variabile d'ambiente con l'indirizzo del servizio.</summary>
     public const string BaseAddressVariable = "Observer__BaseAddress";
+
+    /// <summary>Variabile d'ambiente con l'impronta del certificato di quella macchina.</summary>
+    /// <remarks>
+    /// Esiste per simmetria con le altre due, e non e' una comodita': senza, rendere obbligatoria
+    /// l'impronta avrebbe reso inutilizzabile l'intera via delle variabili d'ambiente, che e'
+    /// l'unica praticabile dove il file di configurazione non si puo' scrivere.
+    /// </remarks>
+    public const string FingerprintVariable = "Observer__Fingerprint";
 
     /// <summary>Un indirizzo di esempio, per i messaggi. NON e' piu' un valore predefinito.</summary>
     /// <remarks>
@@ -69,6 +83,7 @@ public static class ClientConfiguration
         Resolve(
             Environment.GetEnvironmentVariable(TokenVariable),
             Environment.GetEnvironmentVariable(BaseAddressVariable),
+            Environment.GetEnvironmentVariable(FingerprintVariable),
             LeggiFile(FilePath));
 
     /// <summary>
@@ -76,6 +91,7 @@ public static class ClientConfiguration
     /// </summary>
     /// <param name="tokenFromEnvironment">Valore di <see cref="TokenVariable"/>, se presente.</param>
     /// <param name="baseAddressFromEnvironment">Valore di <see cref="BaseAddressVariable"/>, se presente.</param>
+    /// <param name="fingerprintFromEnvironment">Valore di <see cref="FingerprintVariable"/>, se presente.</param>
     /// <param name="fileContent">Contenuto grezzo del file di configurazione, se esiste.</param>
     /// <remarks>
     /// L'ambiente VINCE sul file, per lo stesso motivo per cui vince nel servizio: un token
@@ -85,6 +101,7 @@ public static class ClientConfiguration
     public static ClientConfigurationResult Resolve(
         string? tokenFromEnvironment,
         string? baseAddressFromEnvironment,
+        string? fingerprintFromEnvironment,
         string? fileContent)
     {
         ObserverClientFile? file;
@@ -115,12 +132,18 @@ public static class ClientConfiguration
         }
 
         if (!Uri.TryCreate(ConBarraFinale(indirizzo), UriKind.Absolute, out Uri? baseAddress)
-            || (baseAddress.Scheme != Uri.UriSchemeHttp && baseAddress.Scheme != Uri.UriSchemeHttps))
+            || baseAddress.Scheme != Uri.UriSchemeHttps)
         {
+            // http:// NON e' piu' accettato, e non e' un irrigidimento gratuito: il servizio
+            // non risponde piu' in chiaro sulla rete. Accettarlo qui vorrebbe dire spedire il
+            // token una volta al secondo verso una porta che non c'e', oppure - peggio - verso
+            // qualcosa che risponde al posto suo.
             return new ClientConfigurationResult(
                 null,
                 $"The service address \"{indirizzo}\" can't be used. " +
-                $"It must be a full http or https address, for example {EsempioIndirizzo}. " +
+                $"It must be a full https address, for example {EsempioIndirizzo}. " +
+                "Observer no longer answers in the clear over the network: the token used to " +
+                "cross it once a second. " +
                 $"Set it in the {BaseAddressVariable} environment variable, or in the " +
                 $"\"baseAddress\" field of {FilePath}. " +
                 "Remove it entirely to watch the machine you are sitting at.");
@@ -136,14 +159,33 @@ public static class ClientConfiguration
             return new ClientConfigurationResult(null, TestoTokenMancante(indirizzo));
         }
 
+        string? impronta = Primo(fingerprintFromEnvironment, file?.Fingerprint);
+
+        if (CertificateFingerprint.Normalizza(impronta) is null)
+        {
+            // Cifrato non basta. Senza impronta il collegamento e' protetto da chi ascolta ma
+            // non da chi si mette in mezzo, e quello e' il caso peggiore perche' sembra sicuro.
+            return new ClientConfigurationResult(null, TestoImprontaMancante(indirizzo));
+        }
+
         string origine = string.IsNullOrWhiteSpace(tokenFromEnvironment)
             ? $"from the file {FilePath}"
             : $"from the {TokenVariable} environment variable";
 
         return new ClientConfigurationResult(
-            ObserverEndpoint.Remoto(baseAddress, token, origine),
+            ObserverEndpoint.Remoto(baseAddress, token, origine, impronta),
             null);
     }
+
+    /// <summary>Il testo mostrato quando manca l'impronta per un servizio REMOTO.</summary>
+    /// <param name="indirizzo">L'indirizzo configurato.</param>
+    /// <returns>La frase da mostrare.</returns>
+    public static string TestoImprontaMancante(string indirizzo) =>
+        $"No certificate fingerprint is configured for {indirizzo}. Observer's certificate is " +
+        "self-signed, so without a fingerprint there is nothing to tell that machine apart from " +
+        "anyone able to stand in the middle of the connection: the traffic would be encrypted, " +
+        "but not to a known machine. Run \"observer share\" on THAT machine and put the value it " +
+        $"prints in the \"fingerprint\" field of {FilePath}, next to the token.";
 
     /// <summary>Il testo mostrato quando manca il token per un servizio REMOTO.</summary>
     /// <param name="indirizzo">L'indirizzo configurato.</param>

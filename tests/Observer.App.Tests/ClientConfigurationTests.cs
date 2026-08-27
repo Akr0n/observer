@@ -11,12 +11,14 @@ namespace Observer.App.Tests;
 /// </remarks>
 public class ClientConfigurationTests
 {
+    private const string Impronta = "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB";
+
     [Fact]
     public void NienteConfigurazione_SiGuardaLaMacchinaSuCuiSiSTA()
     {
         // Il caso di una macchina appena installata. Prima questo era "Configuration missing",
         // e chiedeva un token che il servizio locale non pretende nemmeno.
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null);
+        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null, null);
 
         Assert.Null(esito.Problem);
         Assert.Equal(EndpointKind.Locale, esito.Endpoint!.Kind);
@@ -26,23 +28,22 @@ public class ClientConfigurationTests
     public void IndirizzoETokenDallAMBIENTE()
     {
         ClientConfigurationResult esito =
-            ClientConfiguration.Resolve("dal-ambiente", "http://altra:5057", null);
+            ClientConfiguration.Resolve("dal-ambiente", "https://altra:5058", Impronta, null);
 
         Assert.Null(esito.Problem);
         Assert.Equal(EndpointKind.Remoto, esito.Endpoint!.Kind);
         Assert.Equal("dal-ambiente", esito.Endpoint.ApiToken);
-        Assert.Equal(new Uri("http://altra:5057/"), esito.Endpoint.BaseAddress);
+        Assert.Equal(new Uri("https://altra:5058/"), esito.Endpoint.BaseAddress);
     }
 
     [Fact]
     public void IndirizzoETokenDalFILE()
     {
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(
-            null, null, """{ "baseAddress": "http://altra:7000/", "apiToken": "dal-file" }""");
+        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null, """{ "baseAddress": "https://altra:7000/", "apiToken": "dal-file", "fingerprint": "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB" }""");
 
         Assert.Null(esito.Problem);
         Assert.Equal("dal-file", esito.Endpoint!.ApiToken);
-        Assert.Equal(new Uri("http://altra:7000/"), esito.Endpoint.BaseAddress);
+        Assert.Equal(new Uri("https://altra:7000/"), esito.Endpoint.BaseAddress);
     }
 
     [Fact]
@@ -51,13 +52,13 @@ public class ClientConfigurationTests
         // Stesso motivo per cui vince nel servizio: un valore vecchio dimenticato nel file
         // sovrascriverebbe in silenzio quello nuovo appena esportato, e il sintomo sarebbe un
         // 401 inspiegabile.
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(
-            "vince-questo",
-            "http://vince-questa:9000",
-            """{ "baseAddress": "http://vecchia:7000/", "apiToken": "vecchio" }""");
+        ClientConfigurationResult esito = ClientConfiguration.Resolve("vince-questo",
+            "https://vince-questa:9000",
+            Impronta,
+            """{ "baseAddress": "https://vecchia:7000/", "apiToken": "vecchio", "fingerprint": "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB" }""");
 
         Assert.Equal("vince-questo", esito.Endpoint!.ApiToken);
-        Assert.Equal(new Uri("http://vince-questa:9000/"), esito.Endpoint.BaseAddress);
+        Assert.Equal(new Uri("https://vince-questa:9000/"), esito.Endpoint.BaseAddress);
     }
 
     [Fact]
@@ -66,16 +67,16 @@ public class ClientConfigurationTests
         // Senza, Uri risolverebbe "metrics/latest" cancellando l'ultimo segmento di un
         // indirizzo tipo "http://host:5057/observer/", e la richiesta finirebbe altrove.
         ClientConfigurationResult esito =
-            ClientConfiguration.Resolve("t", "http://altra:5057/observer", null);
+            ClientConfiguration.Resolve("t", "https://altra:5058/observer", Impronta, null);
 
-        Assert.Equal(new Uri("http://altra:5057/observer/"), esito.Endpoint!.BaseAddress);
+        Assert.Equal(new Uri("https://altra:5058/observer/"), esito.Endpoint!.BaseAddress);
     }
 
     [Fact]
     public void GliSpaziVengonoTolti()
     {
         ClientConfigurationResult esito =
-            ClientConfiguration.Resolve("  con-spazi  ", "  http://altra:5057  ", null);
+            ClientConfiguration.Resolve("  con-spazi  ", "  https://altra:5058  ", Impronta, null);
 
         Assert.Equal("con-spazi", esito.Endpoint!.ApiToken);
     }
@@ -83,7 +84,7 @@ public class ClientConfigurationTests
     [Fact]
     public void UnIndirizzoREMOTOSenzaTokenSpiegaCosaFare()
     {
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, "http://altra:5057", null);
+        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, "https://altra:5058", Impronta, null);
 
         Assert.Null(esito.Endpoint);
         Assert.Contains("observer share", esito.Problem!, StringComparison.Ordinal);
@@ -95,7 +96,7 @@ public class ClientConfigurationTests
     [InlineData("://rotto")]
     public void UnIndirizzoINUTILIZZABILEVieneSpiegato(string indirizzo)
     {
-        ClientConfigurationResult esito = ClientConfiguration.Resolve("t", indirizzo, null);
+        ClientConfigurationResult esito = ClientConfiguration.Resolve("t", indirizzo, Impronta, null);
 
         Assert.Null(esito.Endpoint);
         Assert.False(string.IsNullOrWhiteSpace(esito.Problem));
@@ -104,7 +105,7 @@ public class ClientConfigurationTests
     [Fact]
     public void UnFileDiCONFIGURAZIONERottoVieneSpiegato()
     {
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, "{ non e' json");
+        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null, "{ non e' json");
 
         Assert.Null(esito.Endpoint);
         Assert.Contains("isn't valid JSON", esito.Problem!, StringComparison.Ordinal);
@@ -114,7 +115,7 @@ public class ClientConfigurationTests
     public void UnFileVUOTOEquivaleAllAssenzaDiConfigurazione()
     {
         // Cioe' si guarda la macchina su cui si sta: e' il comportamento utile, e non un errore.
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, "   ");
+        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null, "   ");
 
         Assert.Null(esito.Problem);
         Assert.Equal(EndpointKind.Locale, esito.Endpoint!.Kind);

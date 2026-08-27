@@ -27,6 +27,7 @@ namespace Observer.App.Services;
 public sealed class CertificatePinning
 {
     private string? ultimaVista;
+    private int rifiutato;
 
     /// <summary>Costruisce il confronto su un'impronta attesa.</summary>
     /// <param name="impronta">L'impronta che quella macchina deve presentare.</param>
@@ -43,6 +44,21 @@ public sealed class CertificatePinning
     /// <summary>L'ultima impronta arrivata dalla rete, oppure null se non ne e' arrivata.</summary>
     public string? UltimaVista => Volatile.Read(ref ultimaVista);
 
+    /// <summary>Vero se l'ultima volta che un certificato e' stato esaminato e' stato respinto.</summary>
+    /// <remarks>
+    /// Serve a non attribuire al fissaggio guasti che non sono suoi. Una connessione TLS puo'
+    /// fallire per molte ragioni - protocolli incompatibili, un intermediario che chiude, un
+    /// server che non parla TLS affatto - e tutte arrivano come la stessa eccezione. Senza
+    /// questo, un guasto qualunque verrebbe raccontato all'utente come "qualcuno si sta
+    /// mettendo in mezzo", che e' un'accusa pesante da fare senza prove.
+    /// <para>
+    /// Il callback NON viene invocato quando la connessione viene riusata, quindi la sola
+    /// <see cref="UltimaVista"/> potrebbe essere vecchia: e' questo indicatore, azzerato a ogni
+    /// esame riuscito, a dire se il rifiuto e' di adesso.
+    /// </para>
+    /// </remarks>
+    public bool HaRifiutato => Volatile.Read(ref rifiutato) != 0;
+
     /// <summary>Un handler che accetta solo quella macchina.</summary>
     /// <returns>L'handler, gia' configurato.</returns>
     public SocketsHttpHandler Handler()
@@ -54,15 +70,18 @@ public sealed class CertificatePinning
             if (presentato is not X509Certificate2 certificato)
             {
                 Volatile.Write(ref ultimaVista, null);
+                Volatile.Write(ref rifiutato, 1);
 
                 return false;
             }
 
             string vista = CertificateFingerprint.Da(certificato.RawDataMemory.Span);
+            bool corrisponde = CertificateFingerprint.Uguali(Attesa, vista);
 
             Volatile.Write(ref ultimaVista, vista);
+            Volatile.Write(ref rifiutato, corrisponde ? 0 : 1);
 
-            return CertificateFingerprint.Uguali(Attesa, vista);
+            return corrisponde;
         };
 
         return handler;

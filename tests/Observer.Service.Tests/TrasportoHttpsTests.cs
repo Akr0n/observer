@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
@@ -105,6 +106,54 @@ public class TrasportoHttpsTests
         await client.GetStringAsync(new Uri(servizio.Indirizzo, "prova"));
 
         Assert.Equal(certificato.Impronta, vistaDalClient);
+    }
+
+    [Fact]
+    public async Task IlCertificatoDelPRIMOAvvioReggeUnaConnessioneTls()
+    {
+        // Il gemello mancante, e l'assenza costava caro: il primo avvio NON rilegge dal
+        // deposito, usa l'oggetto appena generato. Su Windows quella chiave privata sta solo
+        // in memoria, e SChannel non la sa servire: l'handshake muore con lo stesso
+        // "unexpected EOF" gia' misurato per EphemeralKeySet.
+        //
+        // Il sintomo era peggiore del guasto. Lato client l'eccezione interna e' una
+        // IOException e non una AuthenticationException, quindi la dashboard diceva
+        // "Service unreachable - check that the machine is on"; e al primo riavvio del
+        // servizio spariva tutto, perche' dal secondo avvio in poi si passa dal deposito.
+        // Un guasto che sembra un problema di rete e che si ripara da solo.
+        string cartella = Path.Combine(
+            Path.GetTempPath(),
+            "observer-primo-avvio-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
+
+        Directory.CreateDirectory(cartella);
+
+        try
+        {
+            ProvisionedCertificate provvisto = CertificateProvisioning.Provvedi(
+                Path.Combine(cartella, CredentialDirectory.NomeFile),
+                "primo-avvio",
+                DateTimeOffset.UtcNow,
+                giraComeServizio: false);
+
+            Assert.Equal(CertificateOrigin.GeneratoEDepositato, provvisto.Origin);
+
+            try
+            {
+                await using Servizio servizio = await Servizio.AvviaAsync(provvisto.Certificate);
+
+                using HttpClient client = ClientCheFissa(provvisto.Fingerprint);
+
+                Assert.Equal(Risposta, await client.GetStringAsync(new Uri(servizio.Indirizzo, "prova")));
+            }
+            finally
+            {
+                provvisto.Certificate.Dispose();
+            }
+        }
+        finally
+        {
+            Directory.Delete(cartella, recursive: true);
+        }
     }
 
     private static HttpClient ClientCheFissa(string impronta)
