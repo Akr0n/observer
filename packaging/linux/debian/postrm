@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+
+# NON si cancellano /etc/observer ne' /var/lib/observer, nemmeno su purge, e nemmeno l'utente
+# observer che li possiede. Dentro ci sono il token di macchina e lo storico: cancellarli
+# sarebbe una sorpresa, e su un aggiornamento andato storto sarebbe una perdita.
+# Chi vuole liberarsene lo fa a mano, sapendo cosa sta facendo.
+
+case "$1" in
+    remove|purge)
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload || true
+        fi
+        ;;
+esac
+
+exit 0

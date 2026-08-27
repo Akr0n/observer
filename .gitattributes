@@ -1,0 +1,21 @@
+# Gli script che girano su Linux devono avere fine riga LF. Con CRLF il kernel non trova
+# l'interprete e fallisce con "bad interpreter: /bin/sh^M", che e' un errore che non nomina
+# la sua causa. Nell'indice git li tiene gia' in LF, ma quella e' una garanzia che dipende
+# dalla configurazione di chi fa il checkout: qui diventa una proprieta' del repository.
+*.sh                                    text eol=lf
+packaging/linux/debian/postinst         text eol=lf
+packaging/linux/debian/prerm            text eol=lf
+packaging/linux/debian/postrm           text eol=lf
+packaging/linux/debian/control          text eol=lf
+packaging/linux/debian/changelog        text eol=lf
+packaging/linux/debian/copyright        text eol=lf
+packaging/linux/debian/observer.service text eol=lf
+
+# Gli script di PowerShell restano CRLF: e' la convenzione del loro mondo, e li' non fa danno.
+*.ps1 text eol=crlf
+
+# Binari: git non deve toccarli, ne' per le fini riga ne' per il diff.
+*.ico binary
+*.png binary
+*.msi binary
+*.deb binary
