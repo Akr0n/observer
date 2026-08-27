@@ -22,11 +22,11 @@ public class WindowsDirectoryTrustTests
     {
         string percorso = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
 
-        Assert.Equal(DirectoryVerdict.Assente, DirectoryTrust.Valuta(WindowsDirectoryTrust.Osserva(percorso)));
+        Assert.Equal(DirectoryVerdict.Assente, WindowsDirectoryTrust.Verdetto(percorso));
     }
 
     [SoloSuWindows]
-    public void UnaCartellaCreataDaUnUtenteHaUnProprietarioNonFIDATO()
+    public void UnaCartellaCreataDaUnUtenteNonEFidataPerIlSERVIZIO_maLoEPerChiLaCrea()
     {
         // E' il caso dello sviluppatore, ed e' anche il caso dell'attaccante che prepara la
         // cartella prima che il servizio parta: dall'esterno sono identici, ed e' giusto che
@@ -36,10 +36,14 @@ public class WindowsDirectoryTrustTests
 
         try
         {
-            DirectoryVerdict verdetto = DirectoryTrust.Valuta(WindowsDirectoryTrust.Osserva(percorso));
+            // Contro i soli SYSTEM e amministratori NON e' fidata: e' il caso
+            // dell'attaccante che prepara la cartella prima che il servizio parta.
+            Assert.False(DirectoryTrust.Valuta(WindowsDirectoryTrust.Osserva(percorso)).PuoOspitareUnSegreto());
 
-            Assert.NotEqual(DirectoryVerdict.Sicura, verdetto);
-            Assert.False(verdetto.PuoOspitareUnSegreto());
+            // Ma il processo che l'ha creata puo' fidarsene, ed e' il caso dello
+            // sviluppatore che lancia il servizio a mano.
+            WindowsDirectoryTrust.Prepara(percorso);
+            Assert.True(WindowsDirectoryTrust.Verdetto(percorso).PuoOspitareUnSegreto());
         }
         finally
         {

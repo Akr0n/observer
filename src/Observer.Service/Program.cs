@@ -1,7 +1,10 @@
 using System.Text;
 using Observer.Core.Composition;
 using Observer.Core.Metrics;
+using Microsoft.Extensions.Hosting.Systemd;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using Observer.Service;
+using Observer.Service.Credentials;
 using Observer.Service.LocalChannel;
 using Observer.Service.Persistence;
 
@@ -88,23 +91,30 @@ else
 }
 
 // Il servizio ascolta anche fuori da localhost (vedi appsettings.json) ed espone telemetria
-// della macchina: senza token sarebbe leggibile da chiunque sia sulla stessa rete. Quindi si
-// rifiuta di partire, invece di partire in chiaro. Un servizio che non parte si nota subito;
-// uno che parte aperto no.
-// Il token resta obbligatorio per il percorso di RETE anche ora che il canale locale non lo
-// chiede: rendere facoltativo l'uno non rende facoltativo l'altro.
-string? apiToken = builder.Configuration["Observer:ApiToken"];
+// della macchina: sul percorso di RETE il token resta obbligatorio, e non averlo significa
+// non poter essere interrogati da un altro computer.
+// Ma NON viene piu' preteso in configurazione: il servizio se lo genera e se lo custodisce.
+// E' cio' che rende possibile un installer - finche' il token andava configurato, chi
+// installava doveva generarlo, cioe' conoscerlo, registrarlo nel proprio log e lasciarselo
+// dietro se falliva a meta'.
+bool giraComeServizio = WindowsServiceHelpers.IsWindowsService() || SystemdHelpers.IsSystemdService();
 
-if (string.IsNullOrWhiteSpace(apiToken))
+ProvisionedCredentials credenziali = CredentialProvisioning.Provvedi(
+    builder.Configuration["Observer:ApiToken"],
+    builder.Configuration["Observer:CredentialStorePath"] ?? CredentialDirectory.PercorsoPredefinito(),
+    giraComeServizio);
+
+if (credenziali.Origin == CredentialOrigin.Effimero)
 {
-    throw new InvalidOperationException(
-        "Observer:ApiToken is not configured. This service exposes machine telemetry over the " +
-        "whole network and will not start without authentication. Set it in " +
-        "appsettings.Local.json (already git-ignored) or in the Observer__ApiToken " +
-        "environment variable.");
+    // Console e non il logger: questa riga serve a chi ha appena lanciato il servizio da un
+    // terminale, e va vista subito. Come servizio di sistema questo ramo non si raggiunge
+    // nemmeno, perche' li' il rifiuto di partire e' l'unica risposta accettabile.
+    Console.WriteLine(
+        "Observer could not secure a credential store, so this run uses a throwaway machine " +
+        "token that is never written to disk. To let another computer query this one during " +
+        "this run, export it:");
+    Console.WriteLine("    Observer__ApiToken=" + credenziali.Credentials.Current);
 }
-
-byte[] expectedToken = Encoding.UTF8.GetBytes(apiToken);
 
 WebApplication app = builder.Build();
 
@@ -118,7 +128,7 @@ if (OperatingSystem.IsLinux() && percorsoDelSocket is { } socketLocale)
     LinuxUnixSocket.RestringiDopoAvvio(app.Lifetime, socketLocale);
 }
 
-app.UseObserverAccessControl(expectedToken);
+app.UseObserverAccessControl(credenziali.Credentials);
 
 // Il catalogo descrive le metriche esistenti, comprese quelle non misurabili qui: e' cio'
 // che permette al client di disegnare una metrica che non conosceva a tempo di compilazione.

@@ -1,6 +1,5 @@
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.Extensions.Primitives;
+using Observer.Service.Credentials;
 
 namespace Observer.Service.LocalChannel;
 
@@ -14,7 +13,7 @@ public static class AccessMiddleware
 {
     /// <summary>Installa l'istradamento e il controllo d'accesso, in quest'ordine.</summary>
     /// <param name="app">L'applicazione.</param>
-    /// <param name="expectedToken">Il token atteso, gia' in byte UTF-8.</param>
+    /// <param name="credenziali">Le credenziali di macchina in uso.</param>
     /// <remarks>
     /// UseRouting lo chiama QUESTO metodo, di proposito. Il controllo legge la portata
     /// dell'endpoint da <c>GetEndpoint()</c>, che prima dell'istradamento e' null: e con null
@@ -22,10 +21,10 @@ public static class AccessMiddleware
     /// silenzio invece di fallire. Tenere le due chiamate insieme rende quell'errore
     /// impossibile da commettere.
     /// </remarks>
-    public static void UseObserverAccessControl(this WebApplication app, byte[] expectedToken)
+    public static void UseObserverAccessControl(this WebApplication app, MachineCredentials credenziali)
     {
         ArgumentNullException.ThrowIfNull(app);
-        ArgumentNullException.ThrowIfNull(expectedToken);
+        ArgumentNullException.ThrowIfNull(credenziali);
 
         app.UseRouting();
 
@@ -33,7 +32,7 @@ public static class AccessMiddleware
         {
             CallerOrigin chiamante = LocalCaller.Classifica(context);
             EndpointScope portata = EndpointScopeExtensions.PortataDi(context);
-            bool tokenValido = TokenValido(context.Request.Headers.Authorization, expectedToken);
+            bool tokenValido = TokenValido(context.Request.Headers.Authorization, credenziali, DateTimeOffset.UtcNow);
 
             switch (AccessPolicy.Decidi(chiamante.Kind, portata, tokenValido))
             {
@@ -60,27 +59,25 @@ public static class AccessMiddleware
         });
     }
 
-    /// <summary>Se l'header Authorization porta esattamente il token atteso.</summary>
+    /// <summary>Se l'header Authorization porta una chiave che il servizio accetta.</summary>
     /// <param name="header">Il valore dell'header, eventualmente assente.</param>
-    /// <param name="expectedToken">Il token atteso, in byte UTF-8.</param>
-    /// <returns>Vero se corrisponde.</returns>
+    /// <param name="credenziali">Le credenziali di macchina in uso.</param>
+    /// <param name="adesso">L'istante corrente, per la scadenza della chiave precedente.</param>
+    /// <returns>Vero se corrisponde alla corrente o alla precedente non ancora scaduta.</returns>
     /// <remarks>
-    /// Confronto a tempo costante: un confronto normale esce al primo byte diverso, e quella
-    /// differenza di tempo permette di indovinare il token un carattere alla volta.
+    /// Le credenziali sono una FOTOGRAFIA presa all'avvio: una rotazione fatta dalla riga di
+    /// comando riscrive il deposito, e il servizio comincia a usare la chiave nuova solo al
+    /// riavvio. E' voluto - rileggere il deposito a ogni richiesta significherebbe toccare il
+    /// disco una volta al secondo per macchina collegata - ed e' documentato nel verbo che ruota.
     /// </remarks>
-    public static bool TokenValido(StringValues header, byte[] expectedToken)
+    public static bool TokenValido(StringValues header, MachineCredentials credenziali, DateTimeOffset adesso)
     {
-        ArgumentNullException.ThrowIfNull(expectedToken);
+        ArgumentNullException.ThrowIfNull(credenziali);
 
         string? valore = header.Count == 1 ? header[0] : null;
 
-        if (valore is null || !valore.StartsWith("Bearer ", StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        byte[] presentato = Encoding.UTF8.GetBytes(valore["Bearer ".Length..]);
-
-        return CryptographicOperations.FixedTimeEquals(presentato, expectedToken);
+        return valore is not null
+            && valore.StartsWith("Bearer ", StringComparison.Ordinal)
+            && credenziali.Accetta(valore["Bearer ".Length..], adesso);
     }
 }

@@ -70,12 +70,29 @@ public static class DirectoryTrust
     /// <summary>BUILTIN\Administrators.</summary>
     public const string SidAmministratori = "S-1-5-32-544";
 
-    /// <summary>Valuta la cartella a partire da cio' che si e' osservato.</summary>
+    /// <summary>I proprietari fidati quando non se ne indicano altri.</summary>
+    public static readonly IReadOnlyList<string> FidatiPredefiniti = [SidSistema, SidAmministratori];
+
+    /// <summary>Valuta la cartella contro SYSTEM e gli amministratori.</summary>
     /// <param name="fatti">I fatti raccolti dal sistema operativo.</param>
     /// <returns>Il verdetto.</returns>
-    public static DirectoryVerdict Valuta(DirectoryFacts fatti)
+    public static DirectoryVerdict Valuta(DirectoryFacts fatti) => Valuta(fatti, FidatiPredefiniti);
+
+    /// <summary>Valuta la cartella contro un insieme esplicito di principal fidati.</summary>
+    /// <param name="fatti">I fatti raccolti dal sistema operativo.</param>
+    /// <param name="fidati">
+    /// I SID che possono possedere la cartella e comparire nella sua DACL. In produzione
+    /// sono SYSTEM e gli amministratori, piu' l'account che ESEGUE il servizio - il quale
+    /// in produzione coincide con SYSTEM e quindi non concede nulla di nuovo. Lanciato a
+    /// mano in sviluppo e' cio' che permette al servizio di fidarsi della cartella che ha
+    /// creato lui. Un utente standard non puo' in alcun modo creare una cartella posseduta
+    /// da SYSTEM, verificato: SetOwner fallisce. L'estensione non apre strade a nessuno.
+    /// </param>
+    /// <returns>Il verdetto.</returns>
+    public static DirectoryVerdict Valuta(DirectoryFacts fatti, IReadOnlyList<string> fidati)
     {
         ArgumentNullException.ThrowIfNull(fatti);
+        ArgumentNullException.ThrowIfNull(fidati);
 
         if (!fatti.Esiste)
         {
@@ -98,7 +115,7 @@ public static class DirectoryTrust
             return DirectoryVerdict.Sconosciuto;
         }
 
-        if (!Fidato(fatti.ProprietarioSid))
+        if (!Fidato(fatti.ProprietarioSid, fidati))
         {
             // SECONDO, e prima della DACL. Il proprietario ha WRITE_DAC implicito: una DACL
             // perfetta su una cartella posseduta da un utente e' un "finto protetto", e quel
@@ -114,12 +131,11 @@ public static class DirectoryTrust
             return DirectoryVerdict.DaclAperta;
         }
 
-        return fatti.SidNellaDacl.All(Fidato)
+        return fatti.SidNellaDacl.All(sid => Fidato(sid, fidati))
             ? DirectoryVerdict.Sicura
             : DirectoryVerdict.DaclAperta;
     }
 
-    private static bool Fidato(string? sid) =>
-        string.Equals(sid, SidSistema, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(sid, SidAmministratori, StringComparison.OrdinalIgnoreCase);
+    private static bool Fidato(string? sid, IReadOnlyList<string> fidati) =>
+        sid is not null && fidati.Contains(sid, StringComparer.OrdinalIgnoreCase);
 }

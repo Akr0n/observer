@@ -16,6 +16,28 @@ public static class WindowsDirectoryTrust
 {
     private static readonly DirectoryFacts Assente = new(false, false, true, null, false, []);
 
+    /// <summary>SYSTEM, gli amministratori, e l'account che esegue questo processo.</summary>
+    /// <returns>I SID di cui fidarsi come proprietari e dentro la DACL.</returns>
+    /// <remarks>
+    /// In produzione il servizio gira come LocalSystem, quindi il terzo coincide col primo
+    /// e non allarga niente. Lanciato a mano in sviluppo e' cio' che gli permette di
+    /// fidarsi della cartella che ha creato lui.
+    /// </remarks>
+    public static IReadOnlyList<string> Fidati()
+    {
+        using WindowsIdentity corrente = WindowsIdentity.GetCurrent();
+
+        return corrente.User is { } account
+            ? [DirectoryTrust.SidSistema, DirectoryTrust.SidAmministratori, account.Value]
+            : DirectoryTrust.FidatiPredefiniti;
+    }
+
+    /// <summary>Il verdetto su questa cartella, coi principal fidati di questo processo.</summary>
+    /// <param name="percorso">Il percorso da esaminare.</param>
+    /// <returns>Il verdetto.</returns>
+    public static DirectoryVerdict Verdetto(string percorso) =>
+        DirectoryTrust.Valuta(Osserva(percorso), Fidati());
+
     /// <summary>Osserva la cartella senza giudicarla.</summary>
     /// <param name="percorso">Il percorso da esaminare.</param>
     /// <returns>I fatti, da passare a <see cref="DirectoryTrust.Valuta"/>.</returns>
@@ -87,6 +109,18 @@ public static class WindowsDirectoryTrust
                 AccessControlType.Allow));
         }
 
+        using WindowsIdentity corrente = WindowsIdentity.GetCurrent();
+
+        if (corrente.User is { } account && !account.IsWellKnown(WellKnownSidType.LocalSystemSid))
+        {
+            sicurezza.AddAccessRule(new FileSystemAccessRule(
+                account,
+                FileSystemRights.FullControl,
+                InheritanceFlags.ObjectInherit | InheritanceFlags.ContainerInherit,
+                PropagationFlags.None,
+                AccessControlType.Allow));
+        }
+
         return sicurezza;
     }
 
@@ -99,7 +133,7 @@ public static class WindowsDirectoryTrust
     /// </remarks>
     public static void Prepara(string percorso)
     {
-        DirectoryVerdict verdetto = DirectoryTrust.Valuta(Osserva(percorso));
+        DirectoryVerdict verdetto = Verdetto(percorso);
 
         if (verdetto.PuoOspitareUnSegreto())
         {
@@ -140,7 +174,7 @@ public static class WindowsDirectoryTrust
     /// </remarks>
     private static void Conferma(string percorso)
     {
-        DirectoryVerdict verdetto = DirectoryTrust.Valuta(Osserva(percorso));
+        DirectoryVerdict verdetto = Verdetto(percorso);
 
         if (!verdetto.PuoOspitareUnSegreto())
         {
@@ -157,11 +191,14 @@ public static class WindowsDirectoryTrust
 
         try
         {
-            // La PROPRIETA' per prima. Correggere la DACL lasciando il proprietario com'e'
-            // non serve a niente: il proprietario ha WRITE_DAC implicito e la disfa subito.
-            DirectorySecurity proprieta = new();
-            proprieta.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
-            info.SetAccessControl(proprieta);
+            if (verdetto == DirectoryVerdict.ProprietarioNonFidato)
+            {
+                // La PROPRIETA' per prima. Correggere la DACL lasciando il proprietario
+                // com'e' non serve a niente: ha WRITE_DAC implicito e la disfa subito.
+                DirectorySecurity proprieta = new();
+                proprieta.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
+                info.SetAccessControl(proprieta);
+            }
 
             info.SetAccessControl(Sicurezza());
         }

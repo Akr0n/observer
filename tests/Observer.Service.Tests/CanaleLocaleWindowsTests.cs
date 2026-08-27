@@ -7,6 +7,7 @@ using System.Security.Principal;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Transport.NamedPipes;
+using Observer.Service.Credentials;
 using Observer.Service.LocalChannel;
 
 namespace Observer.Service.Tests;
@@ -256,7 +257,8 @@ public class CanaleLocaleWindowsTests
     /// <summary>Il token usato dai test di controllo d'accesso.</summary>
     internal const string TokenTestuale = "token-del-banco";
 
-    private static byte[] Token => System.Text.Encoding.UTF8.GetBytes(TokenTestuale);
+    internal static MachineCredentials Token =>
+        new(TokenTestuale, null, null);
 
     internal static string NomeUnico() =>
         "observer-test-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);

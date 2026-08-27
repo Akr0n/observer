@@ -149,8 +149,7 @@ public class CanaleLocaleLinuxTests
                 opzioni.Listen(System.Net.IPAddress.Loopback, 0);
                 opzioni.ListenUnixSocket(percorso);
             },
-            middleware: app => app.UseObserverAccessControl(
-                System.Text.Encoding.UTF8.GetBytes(CanaleLocaleWindowsTests.TokenTestuale)));
+            middleware: app => app.UseObserverAccessControl(CanaleLocaleWindowsTests.Token));
 
         using HttpClient suSocket = BancoKestrelReale.ClientSu(HandlerVersoIlSocket(percorso));
         Assert.Equal("pong", await suSocket.GetStringAsync("ping", CancellationToken.None));
@@ -174,8 +173,7 @@ public class CanaleLocaleLinuxTests
                 opzioni.ListenUnixSocket(percorso);
             },
             app => app.MapGet("/riservato", () => "segreto").SoloDaLocale(),
-            middleware: app => app.UseObserverAccessControl(
-                System.Text.Encoding.UTF8.GetBytes(CanaleLocaleWindowsTests.TokenTestuale)));
+            middleware: app => app.UseObserverAccessControl(CanaleLocaleWindowsTests.Token));
 
         string tcp = banco.Indirizzi.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
         using HttpClient suTcp = new() { BaseAddress = new Uri(tcp) };
