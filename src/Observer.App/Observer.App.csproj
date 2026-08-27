@@ -4,6 +4,11 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Incorporata nell'eseguibile: e' cio' che il collegamento nel menu Start mostra,
+         e senza mostrerebbe l'icona generica di apphost. Il file lo genera
+         tools/genera_icona.py, che sta nel repository proprio per non lasciare in giro
+         un binario che nessuno sa piu' come rifare. -->
+    <ApplicationIcon>Assets\observer.ico</ApplicationIcon>
 
   </PropertyGroup>
 

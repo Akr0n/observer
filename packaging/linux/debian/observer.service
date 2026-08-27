@@ -1,0 +1,50 @@
+[Unit]
+Description=Observer metrics service
+Documentation=https://github.com/Akr0n/observer
+After=network.target
+
+[Service]
+# Type=notify e non simple: il servizio segnala la propria prontezza attraverso
+# Microsoft.Extensions.Hosting.Systemd, che e' gia' referenziato. Con simple, systemd
+# considererebbe il servizio pronto appena il processo esiste, cioe' prima che Kestrel abbia
+# legato le porte.
+Type=notify
+
+# NON root. Un utente di sistema dedicato basta e avanza: e' il postinst a creare /etc/observer
+# con il proprietario giusto, e da li' in poi il servizio ci scrive da se'.
+User=observer
+Group=observer
+
+# OBBLIGATORIO, e non e' una rifinitura. Senza, il servizio non trova appsettings.json, perde in
+# SILENZIO la sezione Kestrel e ripiega su localhost:5000: smette di ascoltare sulla rete e
+# nessuno se ne accorge. Misurato.
+WorkingDirectory=/usr/lib/observer/service
+ExecStart=/usr/lib/observer/service/Observer.Service
+
+# /run/observer, dove nasce il socket del canale locale. Lo crea systemd col proprietario del
+# servizio, cosi' il servizio non deve avere il permesso di scrivere in /run.
+RuntimeDirectory=observer
+RuntimeDirectoryMode=0755
+
+# /var/lib/observer, dove vive lo storico.
+StateDirectory=observer
+StateDirectoryMode=0750
+
+# ASSOLUTO, di proposito: un percorso relativo farebbe finire il database nella home di root,
+# che ProtectHome=yes poi nasconde, e lo storico sparirebbe senza un errore.
+Environment=Observer__Storage__DatabasePath=/var/lib/observer/observer.db
+
+Restart=on-failure
+RestartSec=5
+
+# Irrobustimento. ProtectSystem=strict rende /usr e /etc di sola lettura, quindi serve
+# riaprire esplicitamente la sola cartella delle credenziali: e' li' che il servizio genera e
+# custodisce il proprio token al primo avvio.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/etc/observer
+
+[Install]
+WantedBy=multi-user.target

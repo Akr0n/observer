@@ -1,0 +1,48 @@
+#!/bin/sh
+set -e
+
+# Questo script NON genera, non chiede e non scrive alcun token: il servizio se lo procura da
+# solo al primo avvio, dentro /etc/observer, e lo protegge con i permessi del file.
+# Qui si crea soltanto l'utente e la cartella che gli servono per farlo.
+
+case "$1" in
+    configure)
+        if ! getent group observer >/dev/null; then
+            addgroup --system observer
+        fi
+
+        if ! getent passwd observer >/dev/null; then
+            adduser --system --ingroup observer --no-create-home                     --home /nonexistent --shell /usr/sbin/nologin observer
+        fi
+
+        # 0700: solo il servizio. Il token che ci finira' dentro vale DALLA RETE e non scade,
+        # quindi la cartella non va letta da nessun altro.
+        install -d -o observer -g observer -m 0700 /etc/observer
+
+        # La guardia serve nei contenitori e nelle chroot, dove systemd non gira: senza,
+        # l'installazione fallirebbe su una macchina dove il pacchetto e' comunque legittimo.
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload || true
+            systemctl enable observer.service || true
+            systemctl start observer.service || true
+        fi
+
+        cat <<'NOTA'
+
+Observer e' installato.
+
+Per guardare QUESTA macchina non serve alcun token: la dashboard entra dal socket locale.
+Perche' il tuo utente possa usarlo, deve stare nel gruppo observer:
+
+    sudo usermod -aG observer $USER
+
+e poi uscire e rientrare. Il token serve solo perche' un ALTRO computer possa interrogare
+questa macchina: lo si ottiene con "observer share", da un terminale con privilegi.
+
+NOTA
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

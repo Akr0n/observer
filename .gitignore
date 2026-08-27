@@ -503,3 +503,7 @@ credentials.json
 
 # Payload dell'installer: e' output di dotnet publish, si rigenera.
 packaging/windows/payload/
+
+# Alberi di costruzione dei pacchetti: output rigenerabile.
+packaging/linux/root/
+packaging/linux/out/

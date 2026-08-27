@@ -57,3 +57,39 @@ jobs:
           name: Observer-msi
           path: packaging/windows/bin/Release/Observer.msi
           if-no-files-found: error
+
+  # Anche questo e' un job AGGIUNTIVO: vale la stessa regola. La matrice del job "build" resta
+  # a una sola dimensione, e i due contesti richiesti dal ruleset non cambiano nome.
+  pack-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Costruisci il pacchetto
+        run: ./packaging/linux/pack.sh
+
+      - name: Nessun segreto dentro il pacchetto
+        # La guardia c'e' gia' dentro lo script, ma questa la ripete sul PACCHETTO FINITO e non
+        # sull'albero da cui e' stato costruito. Un .deb che imbarcasse appsettings.Local.json
+        # darebbe a OGNI macchina lo stesso token, perche' la configurazione esplicita vince sul
+        # deposito: annullerebbe da sola il meccanismo che genera una chiave per macchina.
+        run: |
+          set -euo pipefail
+          PACCHETTO=$(ls packaging/linux/out/observer_*.deb)
+          if dpkg-deb --contents "$PACCHETTO" | grep -E 'appsettings.*Local\.json|credentials\.json|client\.json|\.pdb$'; then
+            echo "Il pacchetto contiene un file che puo' portare un segreto." >&2
+            exit 1
+          fi
+          echo "Nessun segreto nel pacchetto."
+          dpkg-deb --contents "$PACCHETTO" | wc -l
+
+      - name: Pubblica l'artefatto
+        uses: actions/upload-artifact@v4
+        with:
+          name: Observer-deb
+          path: packaging/linux/out/observer_*.deb
+          if-no-files-found: error
