@@ -17,7 +17,13 @@ namespace Observer.App.ViewModels;
 /// </remarks>
 public sealed partial class MainViewModel : ViewModelBase
 {
-    private static readonly TimeSpan Intervallo = TimeSpan.FromSeconds(1);
+    /// <summary>Ogni quanto si interroga il servizio.</summary>
+    /// <remarks>
+    /// Pubblico perche' un test possa confrontarlo con <see cref="Controls.Gauge.Corsa"/>: la
+    /// corsa della lancetta deve restare piu' breve di questo, altrimenti non finirebbe mai e
+    /// il quadrante non starebbe fermo su un valore misurato nemmeno per un istante.
+    /// </remarks>
+    public static readonly TimeSpan Intervallo = TimeSpan.FromSeconds(1);
 
     private readonly Func<IMetricsClient?>? rileggiConfigurazione;
     private readonly Func<DateTimeOffset> adesso;
@@ -137,6 +143,22 @@ public sealed partial class MainViewModel : ViewModelBase
 
     /// <summary>I riquadri, uno per sorgente di metriche.</summary>
     public ObservableCollection<MetricGroup> Gruppi { get; } = [];
+
+    /// <summary>I quadranti, raccolti in cima da tutte le sorgenti.</summary>
+    /// <remarks>
+    /// Contiene le STESSE istanze che stanno dentro i gruppi, non delle copie: le righe si
+    /// aggiornano sul posto una volta al secondo, e due copie divergerebbero senza che niente
+    /// lo segnali. Qui si raccolgono soltanto per mostrarle insieme.
+    /// </remarks>
+    public ObservableCollection<MetricRow> Quadranti { get; } = [];
+
+    /// <summary>True quando c'e' almeno un quadrante da mostrare.</summary>
+    /// <remarks>
+    /// Senza, un riquadro vuoto col suo titolo resterebbe a schermo quando nessuna metrica e'
+    /// misurabile - che e' proprio il momento in cui non deve sembrare che vada tutto bene.
+    /// </remarks>
+    [ObservableProperty]
+    public partial bool MostraQuadranti { get; set; }
 
     /// <summary>Le macchine fra cui si puo' scegliere. La prima e' sempre questa.</summary>
     public ObservableCollection<ObserverEndpoint> Macchine { get; } = [];
@@ -437,13 +459,45 @@ public sealed partial class MainViewModel : ViewModelBase
             {
                 Gruppi.Add(new MetricGroup(stato));
             }
+        }
 
+        else
+        {
+            for (int i = 0; i < stati.Count; i++)
+            {
+                Gruppi[i].Aggiorna(stati[i]);
+            }
+        }
+
+        AggiornaQuadranti();
+    }
+
+    /// <summary>Rifa' l'elenco dei quadranti solo quando cambia davvero.</summary>
+    /// <remarks>
+    /// Il confronto e' per RIFERIMENTO, e deve restarlo: le righe sono le stesse istanze che
+    /// stanno nei gruppi e si aggiornano da sole, quindi svuotare e riempire la collezione a
+    /// ogni giro ricostruirebbe ogni quadrante una volta al secondo, facendo lampeggiare la
+    /// finestra. Si ricostruisce quando un collector va o viene, oppure quando una metrica
+    /// smette di essere misurabile e il suo quadrante non ha piu' senso.
+    /// </remarks>
+    private void AggiornaQuadranti()
+    {
+        List<MetricRow> attesi =
+            [.. Gruppi.SelectMany(gruppo => gruppo.Righe).Where(riga => riga.HaQuadrante)];
+
+        MostraQuadranti = attesi.Count > 0;
+
+        if (attesi.Count == Quadranti.Count
+            && !attesi.Where((riga, i) => !ReferenceEquals(riga, Quadranti[i])).Any())
+        {
             return;
         }
 
-        for (int i = 0; i < stati.Count; i++)
+        Quadranti.Clear();
+
+        foreach (MetricRow riga in attesi)
         {
-            Gruppi[i].Aggiorna(stati[i]);
+            Quadranti.Add(riga);
         }
     }
 

@@ -24,8 +24,17 @@ public sealed partial class MetricRow : ObservableObject
         Key = stato.Key;
         Etichetta = stato.Label;
         Valore = stato.Display;
-        Percentuale = (stato.Fraction ?? 0d) * 100d;
-        MostraBarra = stato.Fraction.HasValue;
+        HaQuadrante = stato.Fraction.HasValue;
+
+        // Quando la frazione manca, l'ultima resta dov'e' invece di azzerarsi. Non e' per
+        // conservarla - il quadrante sparisce comunque, perche' HaQuadrante e' falso - ma
+        // perche' la lancetta si anima: scrivere zero le darebbe un bersaglio, e per qualche
+        // decimo di secondo si vedrebbe scendere a fondo scala prima di sparire, come se la
+        // macchina si fosse svuotata invece che smettere di rispondere.
+        if (stato.Fraction is { } misurata)
+        {
+            Frazione = misurata;
+        }
         Gravita = stato.Severity;
     }
 
@@ -40,13 +49,18 @@ public sealed partial class MetricRow : ObservableObject
     [ObservableProperty]
     public partial string Valore { get; set; }
 
-    /// <summary>Valore della barra, da 0 a 100.</summary>
+    /// <summary>Quanto e' pieno il quadrante, da 0 a 1.</summary>
+    /// <remarks>
+    /// La stessa frazione che arriva dal servizio, non moltiplicata per cento. Prima veniva
+    /// portata a 0..100 per la barra di avanzamento che stava qui; il quadrante lavora sulla
+    /// frazione, e la conversione in mezzo era solo un posto in piu' dove sbagliare.
+    /// </remarks>
     [ObservableProperty]
-    public partial double Percentuale { get; set; }
+    public partial double Frazione { get; set; }
 
-    /// <summary>True quando la metrica e' una percentuale e la barra ha senso.</summary>
+    /// <summary>True quando la metrica e' una frazione e il quadrante ha senso.</summary>
     [ObservableProperty]
-    public partial bool MostraBarra { get; set; }
+    public partial bool HaQuadrante { get; set; }
 
     /// <summary>Gravita' di cio' che la riga dice.</summary>
     [ObservableProperty]
@@ -67,8 +81,17 @@ public sealed partial class MetricRow : ObservableObject
 
         Etichetta = stato.Label;
         Valore = stato.Display;
-        Percentuale = (stato.Fraction ?? 0d) * 100d;
-        MostraBarra = stato.Fraction.HasValue;
+        HaQuadrante = stato.Fraction.HasValue;
+
+        // Quando la frazione manca, l'ultima resta dov'e' invece di azzerarsi. Non e' per
+        // conservarla - il quadrante sparisce comunque, perche' HaQuadrante e' falso - ma
+        // perche' la lancetta si anima: scrivere zero le darebbe un bersaglio, e per qualche
+        // decimo di secondo si vedrebbe scendere a fondo scala prima di sparire, come se la
+        // macchina si fosse svuotata invece che smettere di rispondere.
+        if (stato.Fraction is { } misurata)
+        {
+            Frazione = misurata;
+        }
         Gravita = stato.Severity;
     }
 }
@@ -94,6 +117,8 @@ public sealed partial class MetricGroup : ObservableObject
         {
             Righe.Add(new MetricRow(riga));
         }
+
+        ContaLeRigheDaScrivere();
     }
 
     /// <summary>Identificatore del collector.</summary>
@@ -122,6 +147,15 @@ public sealed partial class MetricGroup : ObservableObject
     /// <summary>Le righe misurate.</summary>
     public ObservableCollection<MetricRow> Righe { get; } = [];
 
+    /// <summary>True quando questo riquadro ha almeno una riga da SCRIVERE.</summary>
+    /// <remarks>
+    /// Le metriche che sono una frazione si leggono sul quadrante, in cima, e non vengono
+    /// ripetute qui sotto. Un collector che ne emette soltanto di quelle lascerebbe un titolo
+    /// sospeso sopra il vuoto: questa proprieta' e' cio' che lo fa sparire.
+    /// </remarks>
+    [ObservableProperty]
+    public partial bool MostraRighe { get; set; }
+
     /// <summary>Aggiorna il riquadro sul posto.</summary>
     public void Aggiorna(MetricGroupState stato)
     {
@@ -143,6 +177,8 @@ public sealed partial class MetricGroup : ObservableObject
                 Righe.Add(new MetricRow(riga));
             }
 
+            ContaLeRigheDaScrivere();
+
             return;
         }
 
@@ -150,7 +186,12 @@ public sealed partial class MetricGroup : ObservableObject
         {
             Righe[i].Aggiorna(stato.Rows[i]);
         }
+
+        ContaLeRigheDaScrivere();
     }
+
+    private void ContaLeRigheDaScrivere() =>
+        MostraRighe = Righe.Any(riga => !riga.HaQuadrante);
 
     private bool StesseChiavi(IReadOnlyList<MetricRowState> stati)
     {
