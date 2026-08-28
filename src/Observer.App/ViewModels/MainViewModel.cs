@@ -446,12 +446,15 @@ public sealed partial class MainViewModel : ViewModelBase
         guastoDa = null;
 
         string ora = snapshot.CapturedAt.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
-        // Sul canale locale non si nomina alcun token, perche' li' non ne esiste uno:
-        // scriverlo manderebbe chi legge a cercare una credenziale che non serve.
-        SottoIntestazione = corrente.Endpoint.Kind == EndpointKind.Locale
-            ? $"Connected to this machine · last reading at {ora}"
-            : $"Connected to {corrente.Endpoint.Descrizione} · last reading at {ora} · " +
-              $"token {corrente.Endpoint.Origine}";
+        // DOVE e QUANDO, non come ci si e' entrati. Da dove viene il token e' una nota di
+        // configurazione: serve quando qualcosa non va e bisogna sapere quale file
+        // correggere - ed e' li' che sta, nel messaggio dell'impronta che non corrisponde -
+        // ma a regime e' rumore che si rilegge a ogni sguardo senza mai cambiare.
+        string dove = corrente.Endpoint.Kind == EndpointKind.Locale
+            ? "this machine"
+            : corrente.Endpoint.Descrizione;
+
+        SottoIntestazione = $"Connected to {dove} · last reading at {ora}";
 
         return ServiceOutcome.Ok;
     }
