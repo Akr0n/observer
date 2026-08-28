@@ -99,6 +99,8 @@ public sealed partial class MetricGroup : ObservableObject
         {
             Righe.Add(new MetricRow(riga));
         }
+
+        ContaLeRigheDaScrivere();
     }
 
     /// <summary>Identificatore del collector.</summary>
@@ -127,6 +129,15 @@ public sealed partial class MetricGroup : ObservableObject
     /// <summary>Le righe misurate.</summary>
     public ObservableCollection<MetricRow> Righe { get; } = [];
 
+    /// <summary>True quando questo riquadro ha almeno una riga da SCRIVERE.</summary>
+    /// <remarks>
+    /// Le metriche che sono una frazione si leggono sul quadrante, in cima, e non vengono
+    /// ripetute qui sotto. Un collector che ne emette soltanto di quelle lascerebbe un titolo
+    /// sospeso sopra il vuoto: questa proprieta' e' cio' che lo fa sparire.
+    /// </remarks>
+    [ObservableProperty]
+    public partial bool MostraRighe { get; set; }
+
     /// <summary>Aggiorna il riquadro sul posto.</summary>
     public void Aggiorna(MetricGroupState stato)
     {
@@ -148,6 +159,8 @@ public sealed partial class MetricGroup : ObservableObject
                 Righe.Add(new MetricRow(riga));
             }
 
+            ContaLeRigheDaScrivere();
+
             return;
         }
 
@@ -155,7 +168,12 @@ public sealed partial class MetricGroup : ObservableObject
         {
             Righe[i].Aggiorna(stato.Rows[i]);
         }
+
+        ContaLeRigheDaScrivere();
     }
+
+    private void ContaLeRigheDaScrivere() =>
+        MostraRighe = Righe.Any(riga => !riga.HaQuadrante);
 
     private bool StesseChiavi(IReadOnlyList<MetricRowState> stati)
     {

@@ -100,82 +100,109 @@
         </Border>
 
         <ScrollViewer Margin="0,14,0,0" HorizontalScrollBarVisibility="Disabled">
-            <ItemsControl ItemsSource="{Binding Gruppi}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:MetricGroup">
-                        <Border Margin="0,0,0,12"
-                                Padding="16"
-                                CornerRadius="8"
-                                BorderThickness="1"
-                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
-                            <StackPanel Spacing="6">
+            <StackPanel Spacing="12">
 
-                                <TextBlock Text="{Binding Titolo}" FontSize="16" FontWeight="SemiBold" />
+                <!-- I quadranti, tutti insieme in cima e staccati dal resto. Sono le sole
+                     metriche che si leggono con un'occhiata invece che con una lettura, e
+                     mescolarle alle righe scritte costringeva a cercarle. -->
+                <Border Padding="16"
+                        CornerRadius="8"
+                        BorderThickness="1"
+                        IsVisible="{Binding MostraQuadranti}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                    <StackPanel Spacing="4">
 
-                                <TextBlock Text="{Binding Nota}"
-                                           IsVisible="{Binding MostraNota}"
-                                           Classes.problema="{Binding Problema}"
-                                           TextWrapping="Wrap"
-                                           Opacity="0.85" />
+                        <TextBlock Text="At a glance" FontSize="16" FontWeight="SemiBold" />
 
-                                <!-- I quadranti: solo le metriche che sono una frazione di un
-                                     massimo, cioe' quelle per cui "quanto pieno" vuol dire
-                                     qualcosa. Un totale in byte su un quadrante direbbe che il
-                                     valore e' vicino a un limite che non esiste. -->
-                                <ItemsControl ItemsSource="{Binding Righe}" Margin="0,8,0,0">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <WrapPanel />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:MetricRow">
-                                            <ctl:Gauge Width="148" Height="148"
-                                                       Margin="0,0,18,6"
-                                                       IsVisible="{Binding HaQuadrante}"
-                                                       Fraction="{Binding Frazione}"
-                                                       Display="{Binding Valore}"
-                                                       Caption="{Binding Etichetta}"
-                                                       TrackBrush="{DynamicResource ControlStrongFillColorDefaultBrush}"
-                                                       ValueBrush="{DynamicResource AccentFillColorDefaultBrush}"
-                                                       RedlineBrush="{DynamicResource SystemFillColorCriticalBrush}"
-                                                       NeedleBrush="{DynamicResource TextFillColorPrimaryBrush}" />
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                        <ItemsControl ItemsSource="{Binding Quadranti}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:MetricRow">
+                                    <ctl:Gauge Width="148" Height="148"
+                                               Margin="0,4,18,0"
+                                               Fraction="{Binding Frazione}"
+                                               Display="{Binding Valore}"
+                                               Caption="{Binding Etichetta}"
+                                               TrackBrush="{DynamicResource ControlStrongFillColorDefaultBrush}"
+                                               ValueBrush="{DynamicResource AccentFillColorDefaultBrush}"
+                                               RedlineBrush="{DynamicResource SystemFillColorCriticalBrush}"
+                                               NeedleBrush="{DynamicResource TextFillColorPrimaryBrush}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
 
-                                <!-- Tutto il resto resta scritto. Un valore che non e' una
-                                     frazione si legge, non si guarda. -->
-                                <ItemsControl ItemsSource="{Binding Righe}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:MetricRow">
-                                            <Grid ColumnDefinitions="*,Auto"
-                                                  Margin="0,6,0,0"
-                                                  IsVisible="{Binding !HaQuadrante}">
-                                                <TextBlock Grid.Column="0"
-                                                           Text="{Binding Etichetta}"
-                                                           TextWrapping="Wrap"
-                                                           VerticalAlignment="Center" />
-                                                <TextBlock Grid.Column="1"
-                                                           Text="{Binding Valore}"
-                                                           Classes.problema="{Binding Problema}"
-                                                           Margin="12,0,0,0"
-                                                           FontWeight="SemiBold"
-                                                           TextWrapping="Wrap"
-                                                           TextAlignment="Right"
-                                                           MaxWidth="320"
-                                                           VerticalAlignment="Center" />
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                    </StackPanel>
+                </Border>
 
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                <!-- Tutto il resto, scritto. Un valore che non e' una frazione di un massimo
+                     si legge, non si guarda: su un quadrante suggerirebbe un limite che non
+                     esiste. -->
+                <Border Padding="16"
+                        CornerRadius="8"
+                        BorderThickness="1"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                    <StackPanel Spacing="4">
+
+                        <TextBlock Text="Usage" FontSize="16" FontWeight="SemiBold" />
+
+                        <ItemsControl ItemsSource="{Binding Gruppi}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:MetricGroup">
+                                    <StackPanel Margin="0,10,0,0" Spacing="2">
+
+                                        <!-- Il nome della sorgente resta, ma da sottotitolo:
+                                             serve a sapere DA DOVE viene un numero, non a
+                                             separare due riquadri che ormai sono uno. -->
+                                        <TextBlock Text="{Binding Titolo}"
+                                                   IsVisible="{Binding MostraRighe}"
+                                                   FontWeight="SemiBold"
+                                                   Opacity="0.75" />
+
+                                        <TextBlock Text="{Binding Nota}"
+                                                   IsVisible="{Binding MostraNota}"
+                                                   Classes.problema="{Binding Problema}"
+                                                   TextWrapping="Wrap"
+                                                   Opacity="0.85" />
+
+                                        <ItemsControl ItemsSource="{Binding Righe}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:MetricRow">
+                                                    <Grid ColumnDefinitions="*,Auto"
+                                                          Margin="0,4,0,0"
+                                                          IsVisible="{Binding !HaQuadrante}">
+                                                        <TextBlock Grid.Column="0"
+                                                                   Text="{Binding Etichetta}"
+                                                                   TextWrapping="Wrap"
+                                                                   VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="1"
+                                                                   Text="{Binding Valore}"
+                                                                   Classes.problema="{Binding Problema}"
+                                                                   Margin="12,0,0,0"
+                                                                   FontWeight="SemiBold"
+                                                                   TextWrapping="Wrap"
+                                                                   TextAlignment="Right"
+                                                                   MaxWidth="320"
+                                                                   VerticalAlignment="Center" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
         </ScrollViewer>
 
     </DockPanel>
