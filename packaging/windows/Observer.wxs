@@ -10,7 +10,7 @@
 
   <Package Name="Observer"
            Manufacturer="Federico Cardinali"
-           Version="0.1.0"
+           Version="0.1.1"
            UpgradeCode="6F3A1B2C-9D4E-4F7A-8B1C-2E5D7A9C0F31"
            Scope="perMachine"
            Compressed="yes">
@@ -20,6 +20,24 @@
          gli utenti. Due pacchetti separati non servono. -->
     <MajorUpgrade DowngradeErrorMessage="A newer version of Observer is already installed." />
     <MediaTemplate EmbedCab="yes" />
+
+    <!-- SENZA questa voce il collegamento nel menu Start mostra l'icona generica di un
+         documento, e non e' un dettaglio estetico: e' l'unica cosa che distingue il programma
+         nell'elenco. Un collegamento PUBBLICIZZATO (Advertise="yes") non punta al file ma a un
+         descrittore, quindi Windows non ha da dove ricavare l'icona e prende quella del tipo
+         di file. Misurato: nell'MSI precedente la tabella Icon non esisteva affatto, mentre
+         l'eseguibile la sua icona ce l'ha - la finestra e la barra delle applicazioni la
+         mostrano - ma per un collegamento pubblicizzato quella non basta.
+         
+         DUE VINCOLI, entrambi presi da ICE50 al primo tentativo, con un .ico del repository:
+         l'ID di questa voce deve FINIRE con .exe o .ico, e l'estensione deve COINCIDERE con
+         quella del file chiave del componente che ospita il collegamento. Il file chiave qui
+         e' Observer.App.exe, quindi l'icona si estrae dall'eseguibile stesso: e' la stessa
+         immagine, perche' il csproj la incorpora con ApplicationIcon. -->
+    <Icon Id="ObserverIcon.exe" SourceFile="$(var.PayloadDir)Observer.App.exe" />
+
+    <!-- La stessa icona anche in "App e funzionalita". -->
+    <Property Id="ARPPRODUCTICON" Value="ObserverIcon.exe" />
 
     <StandardDirectory Id="ProgramFiles6432Folder">
       <Directory Id="INSTALLFOLDER" Name="Observer" />
@@ -77,6 +95,7 @@
                     Directory="ObserverMenuFolder"
                     Name="Observer"
                     Description="Watch this machine"
+                    Icon="ObserverIcon.exe"
                     Advertise="yes" />
         </File>
 
@@ -93,6 +112,20 @@
     <ComponentGroup Id="RigaDiComando" Directory="INSTALLFOLDER">
       <Component Id="CliExecutable" Guid="C3E6A8D4-5B0F-4174-9C29-7D3F4E6B8A02">
         <File Id="ObserverCliExe" Source="$(var.PayloadDir)observer.exe" KeyPath="yes" />
+
+        <!-- La cartella finisce nel PATH di sistema, altrimenti l'unico modo di invocare la
+             riga di comando sarebbe scriverne il percorso completo - e in PowerShell un
+             percorso fra virgolette all'inizio della riga non e' un comando ma una stringa,
+             quindi il tentativo ovvio fallisce con un errore di sintassi che non nomina la
+             propria causa. Part="last" e Permanent="no": si aggiunge in coda e si toglie
+             disinstallando, senza mai riscrivere cio' che c'era. -->
+        <Environment Id="ObserverNelPath"
+                     Name="PATH"
+                     Value="[INSTALLFOLDER]"
+                     Part="last"
+                     Action="set"
+                     System="yes"
+                     Permanent="no" />
       </Component>
     </ComponentGroup>
 
