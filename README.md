@@ -43,8 +43,23 @@ tutte le sorgenti. La dimensione per istanza — il core, il disco, l'interfacci
 per-processo passano dalla stessa interfaccia senza modificarla. Le unità di misura sono
 un tipo aperto, quindi un sensore in `rpm` o in `V` non richiede di toccare il Core.
 
-In pratica: si scrive una classe nuova e la si registra in
-`src/Observer.Core/Composition/ObserverMetrics.cs`. Nessun altro file va modificato.
+In pratica si scrive una classe nuova, ma i file da toccare sono cinque, e vale la pena
+saperlo prima:
+
+| file | perche' |
+|---|---|
+| `src/Observer.Core/Metrics/<Nome>/<Nome>Collector.cs` | il collector |
+| `src/Observer.Core/Composition/ObserverMetrics.cs` | la registrazione |
+| `src/Observer.Core/Platform/HostPlatform.cs` | quale provider su quale sistema |
+| `src/Observer.Core/Platform/Windows/WindowsProviders.cs` | come si misura su Windows |
+| `src/Observer.Core/Platform/Linux/LinuxProviders.cs` | come si misura su Linux |
+
+Piu' la tabella dei titoli leggibili in `src/Observer.App/Services/SnapshotProjection.cs`,
+senza la quale il riquadro si intitola `disk` invece di `Disk`.
+
+Quello che **non** va toccato e' l'interfaccia: `IMetricCollector` regge una sorgente nuova
+cosi' com'e', e le due righe che contano - la dimensione per istanza come campo del punto e
+l'unita' come tipo aperto - sono cio' che lo rende vero.
 
 Una metrica non misurabile su una piattaforma **resta nel catalogo** e si dichiara
 `Unsupported` con il motivo, invece di sparire: "non si può misurare qui" e "me la sono
@@ -121,7 +136,7 @@ dotnet build
 dotnet test
 ```
 
-**Non serve configurare niente.** Il servizio ascolta su `0.0.0.0:5057` e, in piu', apre un
+**Non serve configurare niente.** Il servizio ascolta in HTTPS su `0.0.0.0:5058` e, in piu', apre un
 canale locale — una named pipe su Windows, un socket unix su Linux — su cui un chiamante
 locale identificato entra senza credenziali. Il token di macchina, che serve solo perche' un
 ALTRO computer possa interrogare questo, se lo genera il servizio al primo avvio e se lo
@@ -148,11 +163,25 @@ su quella macchina, da un terminale amministrativo:
 observer share
 ```
 
-e poi, dall'altro computer:
+`observer share` stampa **due** valori, e servono entrambi: il token dice che chi chiama e'
+autorizzato, l'impronta del certificato dice che quella macchina e' chi dichiara di essere.
+Senza la seconda, chi riesce a mettersi in mezzo presenta il proprio certificato e il token
+gli arriva addosso.
+
+Il modo normale di usarli e' la dashboard, che li legge da `machines.json` e confronta
+l'impronta da se'. Da riga di comando il certificato e' autofirmato, quindi `curl` non ha
+un'autorita' a cui appoggiarsi: l'impronta va confrontata **a mano**, e solo dopo si procede.
 
 ```bash
-curl -H "Authorization: Bearer $Observer__ApiToken" http://la-macchina:5057/metrics/latest
+# 1. che impronta presenta quella macchina, vista da qui
+openssl s_client -connect la-macchina:5058 </dev/null 2>/dev/null   | openssl x509 -noout -fingerprint -sha256
+
+# 2. se e SOLO se coincide con quella stampata da "observer share" la':
+curl --insecure -H "Authorization: Bearer $Observer__ApiToken"   https://la-macchina:5058/metrics/latest
 ```
+
+`--insecure` disattiva ogni verifica, quindi da solo non va mai usato: qui vale perche' il
+passo 1 ha gia' fatto a mano il controllo che conta.
 
 ### Riga di comando
 
