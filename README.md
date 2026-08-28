@@ -222,7 +222,16 @@ niente, non copiare il valore nuovo.
 ```
 
 Il primo produce un MSI, il secondo un `.deb`. Registrano il servizio, installano la dashboard
-e creano il collegamento nel menu. **Nessuno dei due conosce alcun token**: il servizio se lo
+e creano il collegamento nel menu.
+
+**Disinstallando l'MSI dal Pannello di controllo se ne va tutto**: il servizio, i file, il
+deposito delle credenziali sotto `ProgramData` e lo storico, che vive nel profilo dell'account
+di sistema e non e' un posto che qualcuno andrebbe a cercare a mano. Un **aggiornamento** e'
+escluso da questa pulizia, e la distinzione non e' una sottigliezza: Windows disinstalla la
+versione precedente prima di installare la nuova, quindi senza quella condizione ogni
+aggiornamento porterebbe via token e certificato - e con un'impronta nuova ogni dashboard
+remota si fermerebbe mostrando un messaggio che parla di qualcuno in mezzo alla connessione.
+Un aggiornamento non deve somigliare a un attacco. **Nessuno dei due conosce alcun token**: il servizio se lo
 procura da se' al primo avvio, quindi non c'e' alcun segreto da passare all'installazione, da
 registrare in un log, o da lasciarsi dietro se fallisce a meta'.
 

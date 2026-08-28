@@ -43,6 +43,33 @@
       <Directory Id="INSTALLFOLDER" Name="Observer" />
     </StandardDirectory>
 
+    <!-- Il deposito delle credenziali: token di macchina e certificato. L'installer non lo
+         crea e non lo tocca - lo fa il servizio, con una DACL che esclude ogni altro account -
+         ma la disinstallazione lo porta via. -->
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DepositoObserver" Name="Observer" />
+    </StandardDirectory>
+
+    <!-- Lo storico. Finisce qui e non altrove perche' il servizio gira come LocalSystem e
+         chiede la cartella dati LOCALE dell'account: per SYSTEM e' dentro il profilo, sotto
+         System32. Non e' un posto che qualcuno andrebbe a cercare a mano, ed e' esattamente
+         il motivo per cui deve pulirlo l'installer. -->
+    <!-- System64Folder e NON SystemFolder, e la differenza e' capovolta rispetto a come suona:
+         in un pacchetto a 64 bit "SystemFolder" e' SysWOW64, cioe' la cartella a 32 bit, e
+         System64Folder e' System32. Il servizio gira a 64 bit, quindi il suo profilo sta sotto
+         System32. Preso da ICE80 al primo tentativo: "64BitComponent uses 32BitDirectory". -->
+    <StandardDirectory Id="System64Folder">
+      <Directory Id="CartellaConfig" Name="config">
+        <Directory Id="CartellaSystemProfile" Name="systemprofile">
+          <Directory Id="CartellaAppData" Name="AppData">
+            <Directory Id="CartellaLocal" Name="Local">
+              <Directory Id="StoricoObserver" Name="Observer" />
+            </Directory>
+          </Directory>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
     <StandardDirectory Id="ProgramMenuFolder">
       <!-- Maiuscolo e minuscolo MISTI, di proposito: un Id tutto maiuscolo verrebbe
            interpretato da MSI come proprieta' pubblica, e la validazione lo segnala (ICE90). -->
@@ -54,10 +81,75 @@
       <ComponentGroupRef Id="Dashboard" />
       <ComponentGroupRef Id="RigaDiComando" />
       <ComponentGroupRef Id="Contorno" />
+      <ComponentGroupRef Id="Pulizia" />
     </Feature>
   </Package>
 
   <Fragment>
+    <!-- ==================================================================================
+         La pulizia alla disinstallazione.
+
+         LA CONDIZIONE E' LA PARTE IMPORTANTE, non i RemoveFile. Un aggiornamento maggiore
+         DISINSTALLA la versione precedente prima di installare la nuova: senza
+         "NOT UPGRADINGPRODUCTCODE" ogni aggiornamento porterebbe via token, certificato e
+         storico. E il certificato nuovo avrebbe un'impronta nuova, quindi ogni dashboard
+         remota si fermerebbe di colpo mostrando un messaggio che parla di qualcuno in mezzo
+         alla connessione. Un aggiornamento non deve somigliare a un attacco.
+
+         Ogni componente ha un valore di registro come file chiave: un componente che non
+         installa nulla ne ha comunque bisogno, e quel valore sparisce con la disinstallazione.
+         ================================================================================== -->
+    <ComponentGroup Id="Pulizia">
+
+      <Component Id="PuliziaDeposito"
+                 Directory="DepositoObserver"
+                 Guid="D4F7B9E1-6C2A-4285-AD3B-8E4F5A7C9B13"
+                 Condition="NOT UPGRADINGPRODUCTCODE">
+        <RegistryValue Root="HKLM"
+                       Key="Software\Observer\Pulizia"
+                       Name="Deposito"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+        <!-- credentials.json, certificate.pfx e un eventuale temporaneo rimasto indietro. -->
+        <RemoveFile Id="FileDelDeposito" Name="*" On="uninstall" />
+        <RemoveFolder Id="CartellaDelDeposito" On="uninstall" />
+      </Component>
+
+      <Component Id="PuliziaStorico"
+                 Directory="StoricoObserver"
+                 Guid="E5A8C1F2-7D3B-4396-BE4C-9F5A6B8D0C24"
+                 Condition="NOT UPGRADINGPRODUCTCODE">
+        <RegistryValue Root="HKLM"
+                       Key="Software\Observer\Pulizia"
+                       Name="Storico"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+        <!-- observer.db piu' i suoi -wal e -shm, che SQLite lascia accanto. -->
+        <RemoveFile Id="FileDelloStorico" Name="*" On="uninstall" />
+        <RemoveFolder Id="CartellaDelloStorico" On="uninstall" />
+      </Component>
+
+      <Component Id="PuliziaCartellaDiInstallazione"
+                 Directory="INSTALLFOLDER"
+                 Guid="F6B9D2A3-8E4C-44A7-CF5D-0A6B7C9E1D35"
+                 Condition="NOT UPGRADINGPRODUCTCODE">
+        <RegistryValue Root="HKLM"
+                       Key="Software\Observer\Pulizia"
+                       Name="Installazione"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+        <!-- I file che l'installer ha messo li' se ne vanno da soli. Questo prende cio' che e'
+             nato DOPO, a programma in funzione, e che altrimenti terrebbe in piedi la cartella
+             vuota per sempre. -->
+        <RemoveFile Id="FileNatiDopo" Name="*" On="uninstall" />
+        <RemoveFolder Id="CartellaDiInstallazione" On="uninstall" />
+      </Component>
+
+    </ComponentGroup>
+
     <ComponentGroup Id="Servizio" Directory="INSTALLFOLDER">
       <Component Id="ServiceExecutable" Guid="A1C4E6B2-3F8D-4E52-9A07-5B1D2C4F6E80">
         <File Id="ObserverServiceExe" Source="$(var.PayloadDir)Observer.Service.exe" KeyPath="yes" />
