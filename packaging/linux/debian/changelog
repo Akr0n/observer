@@ -1,3 +1,24 @@
+observer (0.3.0) unstable; urgency=medium
+
+  * New metric: disk space, one gauge per mounted volume. It is the first
+    per-instance source, so a machine with three drives now shows three
+    gauges instead of one number.
+  * A volume that reports a size of zero is not reported as empty: the
+    capacity is unknown, and saying 0% would be the most reassuring possible
+    way to be wrong. It says so, on that volume only.
+  * Read and write activity is deliberately not included yet, and neither is
+    the SSD/spinning distinction: the latter was measured to lie, reporting
+    spinning disks inside a virtual machine whose backing store is NVMe.
+  * The service now queries its metric sources together instead of one after
+    another. In sequence a round lasted the sum of the timeouts, and a round
+    longer than the sampling period drops a sample silently - which downstream
+    is indistinguishable from a machine that was switched off.
+  * The heading no longer says where the token came from. That belongs in the
+    message shown when a fingerprint does not match, where it tells you which
+    file to correct, and not in a line reread at every glance.
+
+ -- Federico Cardinali <noreply@example.invalid>  Fri, 28 Aug 2026 19:00:00 +0000
+
 observer (0.2.1) unstable; urgency=medium
 
   * Windows: the installer now carries the .NET runtime with it. Until 0.2.0 it
