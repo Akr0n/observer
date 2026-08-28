@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Observer.Core.Metrics;
 using Observer.Service.Persistence;
 
@@ -88,7 +89,20 @@ public sealed partial class MetricSamplingService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            long inizio = Stopwatch.GetTimestamp();
+
             MachineSnapshot snapshot = await CollectAllAsync(stoppingToken).ConfigureAwait(false);
+
+            // Un giro piu' lungo del periodo fa cadere un tick, e PeriodicTimer lo lascia
+            // cadere in SILENZIO: il campione non c'e', e a valle si legge come un momento in
+            // cui non si stava misurando - indistinguibile da una macchina spenta. Se succede,
+            // che almeno resti scritto da qualche parte quale sorgente ha allungato il giro.
+            TimeSpan durata = Stopwatch.GetElapsedTime(inizio);
+
+            if (durata > Interval)
+            {
+                LogGiroTroppoLungo(logger, durata.TotalMilliseconds, Interval.TotalMilliseconds);
+            }
 
             cache.Publish(snapshot);
 
@@ -109,47 +123,74 @@ public sealed partial class MetricSamplingService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Interroga TUTTE le sorgenti insieme e aspetta che abbiano finito.
+    /// </summary>
+    /// <remarks>
+    /// <b>Insieme, non una dopo l'altra, e la differenza cresce con ogni sorgente nuova.</b>
+    /// In sequenza il giro dura la SOMMA dei tempi, quindi il caso peggiore e' il numero di
+    /// collector moltiplicato per <see cref="CollectorTimeout"/>: con due gia' supera il
+    /// secondo, con cinque lo quadruplica. E un giro piu' lungo del periodo non fa rumore -
+    /// <see cref="PeriodicTimer"/> lascia cadere i tick in silenzio, i campioni spariscono, e
+    /// la striscia dello storico dichiara "non misurato" un'ora in cui la macchina era accesa
+    /// e sana. Insieme, il caso peggiore e' il collector piu' lento, e resta sotto il periodo
+    /// per costruzione.
+    /// <para>
+    /// Non introduce la concorrenza che <see cref="MetricSnapshotCache"/> teme: quella nasce
+    /// da due raccolte <i>dello stesso</i> collector che si sovrappongono, e qui ogni sorgente
+    /// viene interrogata una volta sola per giro. E' il ciclo a restare unico, non la fila.
+    /// </para>
+    /// </remarks>
     private async Task<MachineSnapshot> CollectAllAsync(CancellationToken cancellationToken)
     {
-        List<MetricSnapshot> results = new(collectors.Count);
-
-        foreach (IMetricCollector collector in collectors)
-        {
-            using CancellationTokenSource attempt =
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-            attempt.CancelAfter(CollectorTimeout);
-
-            try
-            {
-                results.Add(await collector.CollectAsync(attempt.Token).ConfigureAwait(false));
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                // Arresto del servizio: propaga, non e' un guasto della metrica.
-                throw;
-            }
-            catch (OperationCanceledException)
-            {
-                // Scaduto il tempo: la sorgente e' lenta, non rotta. Le altre proseguono.
-                LogCollectorTimedOut(logger, collector.Id, CollectorTimeout.TotalMilliseconds);
-                results.Add(new MetricSnapshot(
-                    collector.Id,
-                    CollectorStatus.Unavailable,
-                    FormattableString.Invariant(
-                        $"the source didn't respond within {CollectorTimeout.TotalMilliseconds} ms and was skipped for this round"),
-                    []));
-            }
-#pragma warning disable CA1031 // Un collector che esplode deve degradare una piastrella, non
-            catch (Exception ex) // abbattere il campionamento di tutte le altre metriche.
-#pragma warning restore CA1031
-            {
-                LogCollectorFaulted(logger, collector.Id, ex);
-                results.Add(new MetricSnapshot(collector.Id, CollectorStatus.Faulted, ex.Message, []));
-            }
-        }
+        // L'ordine dei risultati resta quello dei collector, perche' WhenAll conserva
+        // l'ordine dei task: i riquadri a schermo non si scambiano di posto a ogni giro.
+        MetricSnapshot[] results = await Task.WhenAll(
+            collectors.Select(collector => CollectOneAsync(collector, cancellationToken)))
+            .ConfigureAwait(false);
 
         return new MachineSnapshot(MachineSnapshot.CurrentSchemaVersion, DateTimeOffset.UtcNow, results);
+    }
+
+    /// <summary>Interroga una sorgente, e non lascia mai passare un guasto suo.</summary>
+    private async Task<MetricSnapshot> CollectOneAsync(
+        IMetricCollector collector,
+        CancellationToken cancellationToken)
+    {
+        using CancellationTokenSource attempt =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        attempt.CancelAfter(CollectorTimeout);
+
+        try
+        {
+            return await collector.CollectAsync(attempt.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Arresto del servizio: propaga, non e' un guasto della metrica.
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            // Scaduto il tempo: la sorgente e' lenta, non rotta. Le altre proseguono.
+            LogCollectorTimedOut(logger, collector.Id, CollectorTimeout.TotalMilliseconds);
+
+            return new MetricSnapshot(
+                collector.Id,
+                CollectorStatus.Unavailable,
+                FormattableString.Invariant(
+                    $"the source didn't respond within {CollectorTimeout.TotalMilliseconds} ms and was skipped for this round"),
+                []);
+        }
+#pragma warning disable CA1031 // Un collector che esplode deve degradare una piastrella, non
+        catch (Exception ex) // abbattere il campionamento di tutte le altre metriche.
+#pragma warning restore CA1031
+        {
+            LogCollectorFaulted(logger, collector.Id, ex);
+
+            return new MetricSnapshot(collector.Id, CollectorStatus.Faulted, ex.Message, []);
+        }
     }
 
     [LoggerMessage(
@@ -157,6 +198,12 @@ public sealed partial class MetricSamplingService : BackgroundService
         Level = LogLevel.Error,
         Message = "Collector {CollectorId} threw an exception: its metric is degraded, everything else continues.")]
     private static partial void LogCollectorFaulted(ILogger logger, string collectorId, Exception exception);
+
+    [LoggerMessage(
+        EventId = 3,
+        Level = LogLevel.Warning,
+        Message = "A sampling round took {ElapsedMs} ms, longer than the {IntervalMs} ms period: at least one sample was skipped, and a skipped sample is indistinguishable from a machine that was off.")]
+    private static partial void LogGiroTroppoLungo(ILogger logger, double elapsedMs, double intervalMs);
 
     [LoggerMessage(
         EventId = 2,
