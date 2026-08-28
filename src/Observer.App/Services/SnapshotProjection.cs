@@ -1,4 +1,5 @@
 using Observer.Core.Metrics;
+using Observer.Core.Metrics.Memory;
 
 namespace Observer.App.Services;
 
@@ -102,6 +103,7 @@ public static class SnapshotProjection
             }
 
             Disambigua(righe, catalog);
+            RipiegaLaStima(righe);
 
             gruppi.Add(new MetricGroupState(
                 collector.CollectorId,
@@ -113,6 +115,63 @@ public static class SnapshotProjection
 
         return gruppi;
     }
+
+    /// <summary>
+    /// Toglie la riga "Available memory is an estimate" e, quando la risposta e' si', la
+    /// attacca al numero che qualifica.
+    /// </summary>
+    /// <remarks>
+    /// Quella riga rispondeva a una domanda che nessuno aveva fatto, e su Windows rispondeva
+    /// sempre "No": la memoria disponibile la' e' esposta dal sistema, quindi il flag e'
+    /// cablato a falso e quella riga non avrebbe mai detto altro. Una riga che ripete
+    /// all'infinito la stessa risposta insegna a saltarla, e la salterebbe anche il giorno in
+    /// cui dicesse qualcosa.
+    /// <para>
+    /// L'intenzione era giusta e resta: una memoria disponibile RICOSTRUITA - su Linux, quando
+    /// il kernel non espone MemAvailable e la si somma da memoria libera, buffer, cache e
+    /// memoria recuperabile - non e' una misura, e spacciarla per tale sarebbe una bugia
+    /// silenziosa. Ma si dichiara dove serve: attaccata al valore, e solo quando c'e'
+    /// qualcosa da dichiarare.
+    /// </para>
+    /// <para>
+    /// Se il punto NON e' ne' si' ne' no, la riga resta dov'e': vuol dire che quella lettura
+    /// e' fallita, e un guasto che sparisce dallo schermo e' peggio di una riga di troppo.
+    /// </para>
+    /// </remarks>
+    private static void RipiegaLaStima(List<MetricRowState> righe)
+    {
+        int quale = righe.FindIndex(riga => MetricaDi(riga) == MemoryCollector.AvailableEstimatedMetricId);
+
+        if (quale < 0)
+        {
+            return;
+        }
+
+        string risposta = righe[quale].Display;
+
+        if (!string.Equals(risposta, MetricFormatting.Si, StringComparison.Ordinal)
+            && !string.Equals(risposta, MetricFormatting.No, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        righe.RemoveAt(quale);
+
+        if (!string.Equals(risposta, MetricFormatting.Si, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        int valore = righe.FindIndex(riga => MetricaDi(riga) == MemoryCollector.AvailableBytesMetricId);
+
+        if (valore >= 0)
+        {
+            righe[valore] = righe[valore] with { Display = righe[valore].Display + " (estimated)" };
+        }
+    }
+
+    private static string MetricaDi(MetricRowState riga) =>
+        riga.Key.Split('|').ElementAtOrDefault(1) ?? string.Empty;
 
     /// <summary>
     /// Aggiunge l'unita' fra parentesi alle righe che, dentro lo stesso riquadro, finirebbero
