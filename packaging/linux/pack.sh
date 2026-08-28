@@ -114,7 +114,7 @@ chmod 0644 "$ALBERO/usr/share/applications/observer.desktop"
 # Compressione predefinita, cioe' zstd su Ubuntu 24.04. Misurato: bookworm (dpkg 1.21.23) la
 # installa senza storie; fallisce solo da bullseye in giu'. E li' il punto e' comunque teorico,
 # perche' aspnetcore-runtime-10.0 su bookworm non esiste.
-dpkg-deb --root-owner-group --build "$ALBERO" "$USCITA/observer_0.1.1_amd64.deb"
+dpkg-deb --root-owner-group --build "$ALBERO" "$USCITA/observer_0.1.2_amd64.deb"
 
 echo
 dpkg-deb --info "$USCITA"/observer_*.deb | head -20

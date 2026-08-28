@@ -91,9 +91,10 @@ public sealed partial class MainViewModel : ViewModelBase
         MacchinaSelezionata = Macchine.FirstOrDefault(
             punto => client is not null && punto == client.Endpoint) ?? Macchine.FirstOrDefault();
 
-        Intestazione = client is null
-            ? "Observer"
-            : $"Observer — {client.Endpoint.Descrizione}";
+        // Solo il nome dell'applicazione. QUALE macchina si sta guardando lo dicono gia' la
+        // riga sotto il titolo e la voce evidenziata nella barra laterale: ripeterlo nel
+        // titolo grande e' rumore che si legge a ogni sguardo.
+        Intestazione = "Observer";
 
         if (client is null)
         {
@@ -196,7 +197,6 @@ public sealed partial class MainViewModel : ViewModelBase
         guastoDa = null;
         Gruppi.Clear();
 
-        Intestazione = "Observer - " + value.Descrizione;
         Mostra(FAInfoBarSeverity.Informational, "Connecting", "Taking the first reading...");
         SottoIntestazione = "Connecting...";
     }
@@ -232,7 +232,6 @@ public sealed partial class MainViewModel : ViewModelBase
 
             client = comparso;
             guastoDa = null;
-            Intestazione = $"Observer — {comparso.Endpoint.Descrizione}";
             Mostra(FAInfoBarSeverity.Informational, "Connecting", "Taking the first reading…");
             SottoIntestazione = "Connecting…";
             return true;
@@ -324,8 +323,6 @@ public sealed partial class MainViewModel : ViewModelBase
         // resterebbero quelle di una macchina diversa.
         catalogoLetto = false;
         catalogo = MetricCatalog.Empty;
-
-        Intestazione = $"Observer — {ricomparso.Endpoint.Descrizione}";
     }
 
     private async Task<ServiceOutcome> AggiornaAsync(CancellationToken cancellationToken)

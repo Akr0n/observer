@@ -85,8 +85,15 @@ public sealed record ObserverEndpoint(
     /// Il nome scelto a mano vince sull'indirizzo, perche' in una barra laterale
     /// "https://192.168.1.24:5058/" non dice a nessuno di quale macchina si tratti.
     /// </remarks>
+    /// <remarks>
+    /// Non coincide con <see cref="Descrizione"/>, e la differenza non e' un capriccio: quella
+    /// vive DENTRO una frase ("Connected to this machine"), questo e' una voce di elenco a se'
+    /// stante e vuole l'iniziale maiuscola.
+    /// </remarks>
     public string NomeVisibile =>
-        string.IsNullOrWhiteSpace(Nome) ? Descrizione : Nome.Trim();
+        string.IsNullOrWhiteSpace(Nome)
+            ? (Kind == EndpointKind.Locale ? "This machine" : Descrizione)
+            : Nome.Trim();
 
     /// <summary>Vero quando questo punto viaggia cifrato e con l'impronta fissata.</summary>
     public bool ImprontaFissata => !string.IsNullOrWhiteSpace(Fingerprint);
