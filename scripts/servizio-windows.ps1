@@ -133,9 +133,24 @@ if ($Azione -eq 'Disinstalla') {
         Write-Host "Il servizio '$nomeServizio' non era registrato."
     }
 
-    # I file NON vengono cancellati: contengono il database dello storico, e cancellarli
-    # sarebbe una sorpresa. Rimuovili a mano se e quando vuoi.
-    Write-Host "I file in '$Destinazione' sono stati lasciati dove sono."
+    # I file VENGONO cancellati, e prima non era cosi'. Il commento che stava qui diceva che
+    # contenevano il database dello storico: era FALSO. Lo storico sta nel profilo dell'account
+    # del servizio e le credenziali sotto ProgramData, quindi qui restavano soltanto binari.
+    #
+    # Lasciarli e' costato caro. Questa e' la STESSA cartella in cui installa l'MSI, e i binari
+    # copiati a mano vengono da "dotnet publish" senza identificatore di piattaforma: portano
+    # una System.ServiceProcess.ServiceController.dll che su Windows lancia
+    # PlatformNotSupportedException. A parita' di versione Windows Installer NON sostituisce un
+    # file gia' presente, quindi l'MSI ereditava quella copia rotta, il servizio non partiva, e
+    # l'installazione si fermava con l'errore 1920 - che parla di privilegi insufficienti e non
+    # nomina la vera causa.
+    if (Test-Path $Destinazione) {
+        Remove-Item -Path (Join-Path $Destinazione '*') -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "Rimossi i binari da '$Destinazione'."
+    }
+
+    Write-Host 'Storico e credenziali NON sono qui e restano dove sono: lo storico nel profilo'
+    Write-Host "dell'account del servizio, le credenziali sotto C:\ProgramData\Observer."
     return
 }
 
