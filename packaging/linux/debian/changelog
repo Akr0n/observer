@@ -1,3 +1,26 @@
+observer (0.2.0) unstable; urgency=medium
+
+  * CPU and memory usage are now shown on dashboard gauges, with a needle, a
+    graduated arc and a redline, instead of progress bars. Values that are not a
+    fraction of a maximum stay written out, under "Usage".
+  * New "Last hour" strip under the gauges: one bar per minute, drawn from the
+    history the service has been recording all along. Each bar shows the average
+    of the minute, with a translucent extension up to the peak it reached.
+  * Periods when the service was not running are drawn as gaps, with a dashed
+    marker and a broken baseline - never as low usage. A machine that was off is
+    not a machine that was idle, and the strip has to say which one it was.
+  * Released packages now carry a GitHub build provenance attestation, tying each
+    file to the commit and workflow that produced it. Verify with:
+    gh attestation verify Observer.msi --repo Akr0n/observer
+  * The release notes no longer conflate the two warnings Windows shows. A
+    signature removes "Unknown publisher" immediately; it does not remove the
+    SmartScreen warning, which depends on downloads and not on the certificate.
+  * "Available memory is an estimate" is no longer a row of its own. The note now
+    appears on the value it qualifies, and only when the value really is an
+    estimate.
+
+ -- Federico Cardinali <noreply@example.invalid>  Fri, 28 Aug 2026 16:00:00 +0000
+
 observer (0.1.3) unstable; urgency=medium
 
   * Windows: uninstalling now removes the credential store, the history database
