@@ -288,24 +288,26 @@ public sealed class Gauge : Control
     {
         double corpo = Math.Max(9d, raggio * 0.34d);
 
+        // DrawText posiziona l'ANGOLO IN ALTO A SINISTRA del testo, non la sua linea di base.
+        // La didascalia parte quindi da dove il numero finisce davvero, e non da un multiplo
+        // scelto a occhio del corpo del numero: quel multiplo era giusto per un corpo solo, e
+        // a quadrante piu' piccolo le due scritte si sovrapponevano.
+        double sotto = centro.Y + (raggio * 0.28d);
+
         if (!string.IsNullOrEmpty(Display))
         {
             FormattedText numero = Testo(Display, corpo, colore);
 
-            context.DrawText(
-                numero,
-                new Point(centro.X - (numero.Width / 2d), centro.Y + (raggio * 0.28d)));
+            context.DrawText(numero, new Point(centro.X - (numero.Width / 2d), sotto));
+
+            sotto += numero.Height;
         }
 
         if (!string.IsNullOrEmpty(Caption))
         {
             FormattedText didascalia = Testo(Caption, Math.Max(8d, corpo * 0.46d), colore);
 
-            context.DrawText(
-                didascalia,
-                new Point(
-                    centro.X - (didascalia.Width / 2d),
-                    centro.Y + (raggio * 0.28d) + (corpo * 1.15d)));
+            context.DrawText(didascalia, new Point(centro.X - (didascalia.Width / 2d), sotto));
         }
     }
 
