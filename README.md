@@ -249,6 +249,45 @@ in silenzio gli analyzer CA1305 e CA1310, cioè proprio quelli che impediscono i
 dipendente dalla cultura in `/proc`. L'invarianza a runtime è garantita dai
 `runtimeconfig.template.json`, che ogni progetto **eseguibile** deve avere.
 
+## Code signing policy
+
+Questa e' l'unica sezione del README in inglese, e non e' una svista: e' una
+dichiarazione formale, con una parte a testo obbligato, che SignPath Foundation
+richiede a chi chiede la firma gratuita per un progetto open source. Tradurla la
+renderebbe inutile.
+
+The packages published by this project are **not code signed**. Windows will say so
+twice, in two different ways, and the two are not fixed by the same thing:
+
+- User Account Control will show **"Unknown publisher"**. A signature removes this
+  immediately, from the first download.
+- **SmartScreen** will warn on first run of the installer. A signature does *not*
+  remove this: since March 2024 not even an EV certificate bypasses it. It depends on
+  how many clean downloads the file has accumulated, not on the certificate it carries.
+
+What is available today instead: every released package carries a **GitHub build
+provenance attestation**, which ties it to the commit and the workflow that produced
+it. Windows does not look at it, but it answers a different and equally useful
+question — *does this file really come from that source code*:
+
+```bash
+gh attestation verify Observer.msi --repo Akr0n/observer
+```
+
+**Roles.** Committers, reviewers and approvers: Federico Cardinali
+([@Akr0n](https://github.com/Akr0n)). Every change reaches `main` through a pull
+request; direct pushes are refused by a repository ruleset. Release packages are built
+only by GitHub-hosted runners, from a tag, by
+[`release.yml`](.github/workflows/release.yml), which refuses to publish when the
+version inside a package disagrees with the tag.
+
+**Privacy.** This program will not transfer any information to other networked systems
+unless specifically requested by the user or the person installing or operating it. The
+service exposes measurements over HTTP on request and makes no outbound connections of
+its own; the dashboard connects only to the addresses the user writes into its own
+configuration file. There is no telemetry, no usage reporting and no automatic update
+check.
+
 ## Licenza
 
 [MIT](LICENSE)
