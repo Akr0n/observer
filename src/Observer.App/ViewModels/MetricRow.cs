@@ -24,8 +24,17 @@ public sealed partial class MetricRow : ObservableObject
         Key = stato.Key;
         Etichetta = stato.Label;
         Valore = stato.Display;
-        Frazione = stato.Fraction ?? 0d;
         HaQuadrante = stato.Fraction.HasValue;
+
+        // Quando la frazione manca, l'ultima resta dov'e' invece di azzerarsi. Non e' per
+        // conservarla - il quadrante sparisce comunque, perche' HaQuadrante e' falso - ma
+        // perche' la lancetta si anima: scrivere zero le darebbe un bersaglio, e per qualche
+        // decimo di secondo si vedrebbe scendere a fondo scala prima di sparire, come se la
+        // macchina si fosse svuotata invece che smettere di rispondere.
+        if (stato.Fraction is { } misurata)
+        {
+            Frazione = misurata;
+        }
         Gravita = stato.Severity;
     }
 
@@ -72,8 +81,17 @@ public sealed partial class MetricRow : ObservableObject
 
         Etichetta = stato.Label;
         Valore = stato.Display;
-        Frazione = stato.Fraction ?? 0d;
         HaQuadrante = stato.Fraction.HasValue;
+
+        // Quando la frazione manca, l'ultima resta dov'e' invece di azzerarsi. Non e' per
+        // conservarla - il quadrante sparisce comunque, perche' HaQuadrante e' falso - ma
+        // perche' la lancetta si anima: scrivere zero le darebbe un bersaglio, e per qualche
+        // decimo di secondo si vedrebbe scendere a fondo scala prima di sparire, come se la
+        // macchina si fosse svuotata invece che smettere di rispondere.
+        if (stato.Fraction is { } misurata)
+        {
+            Frazione = misurata;
+        }
         Gravita = stato.Severity;
     }
 }

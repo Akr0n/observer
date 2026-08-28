@@ -17,7 +17,13 @@ namespace Observer.App.ViewModels;
 /// </remarks>
 public sealed partial class MainViewModel : ViewModelBase
 {
-    private static readonly TimeSpan Intervallo = TimeSpan.FromSeconds(1);
+    /// <summary>Ogni quanto si interroga il servizio.</summary>
+    /// <remarks>
+    /// Pubblico perche' un test possa confrontarlo con <see cref="Controls.Gauge.Corsa"/>: la
+    /// corsa della lancetta deve restare piu' breve di questo, altrimenti non finirebbe mai e
+    /// il quadrante non starebbe fermo su un valore misurato nemmeno per un istante.
+    /// </remarks>
+    public static readonly TimeSpan Intervallo = TimeSpan.FromSeconds(1);
 
     private readonly Func<IMetricsClient?>? rileggiConfigurazione;
     private readonly Func<DateTimeOffset> adesso;

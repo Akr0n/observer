@@ -1,3 +1,4 @@
+using Observer.App.Controls;
 using Observer.App.Services;
 using Observer.App.ViewModels;
 
@@ -93,5 +94,28 @@ public class QuadrantiTests
 
         Assert.False(riquadro.Righe[0].HaQuadrante);
         Assert.True(riquadro.MostraRighe);
+
+        // E la frazione resta l'ultima misurata invece di azzerarsi. Non serve a conservarla
+        // - il quadrante sparisce comunque - ma la lancetta si anima: uno zero le darebbe un
+        // bersaglio, e per qualche decimo di secondo si vedrebbe correre a fondo scala prima
+        // di sparire, come se la macchina si fosse svuotata invece che smettere di rispondere.
+        Assert.Equal(0.12d, riquadro.Righe[0].Frazione);
+    }
+
+    [Fact]
+    public void LaCorsaDellaLancettaFinisceEntroUnCampione()
+    {
+        // L'invariante che tiene insieme due numeri scritti in due file diversi. Una corsa
+        // lunga quanto l'intervallo non finirebbe MAI: ogni campione la farebbe ripartire da
+        // una posizione interpolata, e il quadrante non starebbe fermo su un valore misurato
+        // nemmeno per un istante - mostrerebbe sempre e solo qualcosa di mezzo.
+        Assert.True(
+            Gauge.Corsa < MainViewModel.Intervallo,
+            $"La corsa della lancetta ({Gauge.Corsa.TotalMilliseconds} ms) deve restare piu' "
+                + $"breve dell'intervallo di campionamento ({MainViewModel.Intervallo.TotalMilliseconds} ms).");
+
+        // E con un margine vero: a filo, la lancetta arriverebbe giusto mentre parte il
+        // campione dopo, e resterebbe ferma zero tempo.
+        Assert.True(Gauge.Corsa <= MainViewModel.Intervallo / 2d);
     }
 }
