@@ -22,35 +22,36 @@ public class CampionamentoParalleloTests
     private static readonly TimeSpan Lentezza = TimeSpan.FromMilliseconds(300);
 
     [Fact]
-    public async Task TreSorgentiLenteNonSommanoIProprioTempi()
+    public async Task LeSorgentiSonoInVoloTutteInsieme()
     {
-        // Tre sorgenti da 300 ms. In fila fanno 900 ms, insieme 300: la soglia sta in mezzo
-        // con margine da entrambe le parti, cosi' il test non diventa fragile su una macchina
-        // lenta ne' indulgente su una veloce.
+        // Si CONTA quante raccolte sono aperte nello stesso momento, invece di cronometrare
+        // il giro. Un tempo assoluto qui non dimostra niente: su un runner carico 1320 ms
+        // sono compatibili sia con tre raccolte in fila sia con tre raccolte insieme piu'
+        // l'avvio del servizio, e infatti la prima stesura di questo test falliva accusando
+        // il codice di una cosa che non poteva dimostrare. Il numero di raccolte
+        // contemporanee, invece, e' tre oppure uno, e non dipende da quanto va veloce la
+        // macchina.
+        Contatore contatore = new();
         SinkRegistrante sink = new();
         MetricSnapshotCache cache = new();
 
         using MetricSamplingService campionatore = new(
-            [new CollettoreLento("uno"), new CollettoreLento("due"), new CollettoreLento("tre")],
+            [
+                new CollettoreLento("uno", contatore: contatore),
+                new CollettoreLento("due", contatore: contatore),
+                new CollettoreLento("tre", contatore: contatore),
+            ],
             cache,
             sink,
             NullLogger<MetricSamplingService>.Instance);
-
-        long inizio = Stopwatch.GetTimestamp();
 
         await campionatore.StartAsync(CancellationToken.None);
 
         try
         {
-            MachineSnapshot primo = await sink.PrimoSnapshot.WaitAsync(TimeSpan.FromSeconds(15));
-            TimeSpan trascorso = Stopwatch.GetElapsedTime(inizio);
+            await sink.PrimoSnapshot.WaitAsync(TimeSpan.FromSeconds(30));
 
-            Assert.Equal(3, primo.Collectors.Count);
-
-            Assert.True(
-                trascorso < TimeSpan.FromMilliseconds(600),
-                $"Il giro ha impiegato {trascorso.TotalMilliseconds:F0} ms: con tre sorgenti da "
-                    + $"{Lentezza.TotalMilliseconds:F0} ms sono state interrogate in fila, non insieme.");
+            Assert.Equal(3, contatore.Massimo);
         }
         finally
         {
@@ -106,7 +107,48 @@ public class CampionamentoParalleloTests
         public void Enqueue(MachineSnapshot snapshot) => primo.TrySetResult(snapshot);
     }
 
-    private sealed class CollettoreLento(string id, TimeSpan? quanto = null) : IMetricCollector
+    /// <summary>Quante raccolte sono state aperte nello stesso momento, al massimo.</summary>
+    private sealed class Contatore
+    {
+        private int aperte;
+        private int massimo;
+
+        public int Massimo => Volatile.Read(ref massimo);
+
+        public IDisposable Entra()
+        {
+            int adesso = Interlocked.Increment(ref aperte);
+
+            // Alza il massimo finche' qualcun altro non lo alza di piu': senza il ciclo, due
+            // raccolte che entrano insieme possono sovrascriversi a vicenda e il conteggio
+            // resterebbe indietro proprio nel caso che interessa.
+            int visto = Volatile.Read(ref massimo);
+
+            while (adesso > visto)
+            {
+                int precedente = Interlocked.CompareExchange(ref massimo, adesso, visto);
+
+                if (precedente == visto)
+                {
+                    break;
+                }
+
+                visto = precedente;
+            }
+
+            return new Uscita(this);
+        }
+
+        private void Esce() => Interlocked.Decrement(ref aperte);
+
+        private sealed class Uscita(Contatore contatore) : IDisposable
+        {
+            public void Dispose() => contatore.Esce();
+        }
+    }
+
+    private sealed class CollettoreLento(string id, TimeSpan? quanto = null, Contatore? contatore = null)
+        : IMetricCollector
     {
         private readonly TimeSpan attesa = quanto ?? Lentezza;
 
@@ -117,6 +159,8 @@ public class CampionamentoParalleloTests
 
         public async ValueTask<MetricSnapshot> CollectAsync(CancellationToken cancellationToken)
         {
+            using IDisposable? presenza = contatore?.Entra();
+
             if (attesa > TimeSpan.Zero)
             {
                 await Task.Delay(attesa, cancellationToken);
