@@ -30,19 +30,17 @@ public class MainViewModelReconnectTests
                 return client;
             });
 
-        Assert.Equal("Observer", viewModel.Intestazione);
-
         using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(10));
         Task ciclo = viewModel.EseguiAsync(arresto.Token);
 
-        // Attende che il view model adotti il client comparso, senza dipendere da un ritardo fisso.
-        while (!arresto.IsCancellationRequested
-            && !viewModel.Intestazione.Contains("this machine", StringComparison.Ordinal))
+        // Attende che il client comparso venga davvero INTERROGATO, senza dipendere da un
+        // ritardo fisso: e' la prova che il view model lo ha adottato.
+        while (!arresto.IsCancellationRequested && client.Interrogazioni == 0)
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.Contains("this machine", viewModel.Intestazione, StringComparison.Ordinal);
+        Assert.True(client.Interrogazioni >= 1, "il client comparso deve essere interrogato");
         Assert.True(letture >= 1);
 
         await arresto.CancelAsync();
@@ -71,13 +69,12 @@ public class MainViewModelReconnectTests
         using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(15));
         Task ciclo = viewModel.EseguiAsync(arresto.Token);
 
-        while (!arresto.IsCancellationRequested
-            && !viewModel.Intestazione.Contains("nuova", StringComparison.Ordinal))
+        while (!arresto.IsCancellationRequested && nuovo.Interrogazioni == 0)
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.Contains("nuova", viewModel.Intestazione, StringComparison.Ordinal);
+        Assert.True(nuovo.Interrogazioni >= 1, "dopo un 401 il client riletto deve essere interrogato");
 
         await arresto.CancelAsync();
         await ciclo.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
@@ -104,8 +101,23 @@ public class MainViewModelReconnectTests
 
         public ObserverEndpoint Endpoint { get; } = endpoint;
 
-        public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new SnapshotFetch(esito, "no service in this test", null));
+        private int interrogazioni;
+
+        /// <summary>Quante volte questo client e' stato interrogato.</summary>
+        /// <remarks>
+        /// E' il segnale con cui i test riconoscono che il view model ha ADOTTATO questo
+        /// client. Prima guardavano l'intestazione, che conteneva il nome della macchina; ora
+        /// l'intestazione e' sempre "Observer", e comunque era un indizio indiretto: diceva
+        /// che una stringa era cambiata, non che il client nuovo venisse davvero usato.
+        /// </remarks>
+        public int Interrogazioni => Volatile.Read(ref interrogazioni);
+
+        public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref interrogazioni);
+
+            return Task.FromResult(new SnapshotFetch(esito, "no service in this test", null));
+        }
 
         public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new CatalogFetch(esito, "no service in this test", null));

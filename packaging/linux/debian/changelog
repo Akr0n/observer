@@ -1,3 +1,11 @@
+observer (0.1.2) unstable; urgency=medium
+
+  * Window title and heading carry only the application name.
+  * Memory rows renamed: no more two rows called "Used memory", and the unit
+    shown in the label no longer disagrees with the one in the value.
+
+ -- Federico Cardinali <noreply@example.invalid>  Fri, 28 Aug 2026 10:30:00 +0000
+
 observer (0.1.1) unstable; urgency=medium
 
   * The Windows package is now 64-bit and puts the command line on PATH.

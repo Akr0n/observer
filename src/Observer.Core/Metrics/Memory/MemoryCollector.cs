@@ -51,8 +51,15 @@ public sealed class MemoryCollector : IMetricCollector
         new(TotalBytesMetricId, "Total memory", MetricUnit.Bytes, IsPerInstance: false),
         new(AvailableBytesMetricId, "Available memory", MetricUnit.Bytes, IsPerInstance: false),
         new(UsedBytesMetricId, "Used memory", MetricUnit.Bytes, IsPerInstance: false),
-        new(UsedPercentMetricId, "Used memory", MetricUnit.Percent, IsPerInstance: false),
-        new(AvailableEstimatedMetricId, "Available is estimated", MetricUnit.None, IsPerInstance: false),
+        // "Memory usage" e non un secondo "Used memory": due righe con lo STESSO nome
+        // costringevano la proiezione a distinguerle con il simbolo dell'unita', e quel
+        // simbolo non e' quello che si legge nel valore - la riga diceva "Used memory (B)"
+        // mentre a destra c'era "11.2 GiB", perche' le dimensioni si mostrano scalate.
+        // Il nome fa anche il paio con "CPU usage", che e' la stessa cosa per l'altro riquadro.
+        new(UsedPercentMetricId, "Memory usage", MetricUnit.Percent, IsPerInstance: false),
+        // Per esteso: "Available is estimated" non dice a chi legge di COSA si sta parlando.
+        // Vale "Yes" quando il sistema non riporta la memoria disponibile e va dedotta.
+        new(AvailableEstimatedMetricId, "Available memory is an estimate", MetricUnit.None, IsPerInstance: false),
         new(SwapTotalMetricId, "Total swap", MetricUnit.Bytes, IsPerInstance: false),
         new(SwapUsedMetricId, "Used swap", MetricUnit.Bytes, IsPerInstance: false),
     ];
@@ -99,10 +106,6 @@ public sealed class MemoryCollector : IMetricCollector
             MetricPoint.Measured(TotalBytesMetricId, null, MetricValue.FromNumber(reading.Total.Bytes)),
             MetricPoint.Measured(AvailableBytesMetricId, null, MetricValue.FromNumber(reading.Available.Bytes)),
             MetricPoint.Measured(UsedBytesMetricId, null, MetricValue.FromNumber(reading.Used.Bytes)),
-            MetricPoint.Measured(
-                AvailableEstimatedMetricId,
-                null,
-                MetricValue.FromFlag(reading.AvailableWasEstimated)),
         ];
 
         // Il totale a zero renderebbe la percentuale una divisione per zero: si omette il
@@ -126,6 +129,13 @@ public sealed class MemoryCollector : IMetricCollector
                 null,
                 MetricValue.FromNumber(reading.SwapTotal.SaturatingSubtract(reading.SwapFree).Bytes)));
         }
+
+        // In FONDO, e non fra le quantita': e' l'unica riga che non e' una misura ma una nota
+        // su un'altra riga, e in mezzo alle altre spezzava la lettura.
+        points.Add(MetricPoint.Measured(
+            AvailableEstimatedMetricId,
+            null,
+            MetricValue.FromFlag(reading.AvailableWasEstimated)));
 
         return new MetricSnapshot(Id, CollectorStatus.Ok, Message: null, points);
     }
