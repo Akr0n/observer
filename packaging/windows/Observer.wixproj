@@ -9,6 +9,10 @@
   <PropertyGroup>
     <OutputName>Observer</OutputName>
     <OutputType>Package</OutputType>
+    <!-- x64, e non il valore predefinito x86. Il payload e' pubblicato per win-x64: un
+         pacchetto marcato Intel finiva in "Program Files (x86)", cioe' nella cartella che per
+         convenzione ospita software a 32 bit, con dentro binari a 64 bit. -->
+    <InstallerPlatform>x64</InstallerPlatform>
     <!-- La cartella prodotta da: dotnet publish src/Observer.Service -o payload
          piu' dotnet publish src/Observer.App -o payload e src/Observer.Cli -o payload. -->
     <PayloadDir Condition="'$(PayloadDir)' == ''">$(MSBuildThisFileDirectory)payload\</PayloadDir>

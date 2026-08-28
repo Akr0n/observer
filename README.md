@@ -156,9 +156,15 @@ curl -H "Authorization: Bearer $Observer__ApiToken" http://la-macchina:5057/metr
 
 ### Riga di comando
 
+Dopo l'installazione con l'MSI, `observer` e' gia' nel `PATH` di sistema: basta aprire un
+terminale **nuovo**. Senza installare, l'eseguibile va invocato col percorso, e in PowerShell
+serve l'operatore di chiamata `&` - un percorso fra virgolette a inizio riga per PowerShell e'
+una stringa, non un comando, e il tentativo ovvio fallisce con un errore di sintassi che non
+nomina la propria causa.
+
 | Verbo | Elevazione | Cosa fa |
 | --- | --- | --- |
-| `observer share` | si | mostra il token di macchina, per configurare un ALTRO computer |
+| `observer share` | si | mostra il token di macchina e l'impronta, per configurare un ALTRO computer |
 | `observer rotate-key` | si | genera una chiave nuova; la precedente vale ancora 24 ore |
 | `observer doctor` | no | dove sta il deposito, com'e' protetto, e se il canale locale risponde |
 
@@ -188,10 +194,13 @@ quella che dichiara di essere. Vanno in `machines.json`, accanto a `client.json`
 }
 ```
 
-Le macchine elencate compaiono nella barra laterale. Quella locale c'e' sempre ed e' la prima:
-non si elenca e non si puo' togliere. Una voce scritta male **non sparisce in silenzio** -
-compare sotto l'elenco con il motivo, perche' una macchina che semplicemente non c'e' e'
-indistinguibile da una che non e' stata aggiunta.
+La **barra laterale c'e' sempre**, anche quando la macchina e' una sola: li' dentro trovi il
+percorso esatto di `machines.json` da scrivere. Nasconderla finche' non ci sono due macchine
+significherebbe annunciare la funzione solo a chi sa gia' che esiste.
+
+Quella locale e' sempre la prima: non si elenca e non si puo' togliere. Una voce scritta male
+**non sparisce in silenzio** - compare sotto l'elenco con il motivo, perche' una macchina che
+semplicemente non c'e' e' indistinguibile da una che non e' stata aggiunta.
 
 **Sulla rete il servizio risponde solo in HTTPS.** Prima rispondeva in chiaro, e il token
 attraversava la rete una volta al secondo: una sola cattura di pacchetti consegnava una

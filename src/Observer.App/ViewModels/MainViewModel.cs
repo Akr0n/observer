@@ -148,8 +148,25 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </remarks>
     public ObservableCollection<string> ProblemiDellElenco { get; } = [];
 
-    /// <summary>Vero quando c'e' qualcosa da mostrare nella barra laterale.</summary>
-    public bool MostraElenco => Macchine.Count > 1 || ProblemiDellElenco.Count > 0;
+    /// <summary>
+    /// Vero quando l'elenco contiene solo questa macchina e non c'e' niente da correggere.
+    /// </summary>
+    /// <remarks>
+    /// La barra laterale si vede SEMPRE, e prima non era cosi': compariva solo quando c'era
+    /// gia' una seconda macchina. Il risultato e' che nessuno poteva scoprire di poterne
+    /// aggiungere una, perche' l'unico posto dove la funzione si annuncia e' la funzione
+    /// stessa. Una funzione che si mostra solo a chi sa gia' che esiste non esiste.
+    /// <para>
+    /// Al suo posto, quando c'e' una macchina sola, si spiega come aggiungerne un'altra e si
+    /// dice il percorso esatto del file da scrivere.
+    /// </para>
+    /// </remarks>
+    public bool MostraSuggerimento => Macchine.Count <= 1 && ProblemiDellElenco.Count == 0;
+
+    /// <summary>Come si aggiunge una macchina, col percorso del file da scrivere.</summary>
+    public string SuggerimentoElenco { get; } =
+        "Only this machine so far. To watch another one, run \"observer share\" on it and put " +
+        "what it prints into " + MachineDirectory.FilePath;
 
     /// <summary>La macchina attualmente guardata.</summary>
     [ObservableProperty]

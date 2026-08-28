@@ -42,11 +42,11 @@
                       Title="{Binding StatoTitolo}"
                       Message="{Binding StatoMessaggio}" />
 
-        <!-- L'elenco delle macchine. Compare solo quando c'e' qualcosa da scegliere o da
-             correggere: su una macchina appena installata non c'e' ne' l'uno ne' l'altro, e una
-             barra laterale con dentro una voce sola sarebbe spazio tolto ai valori. -->
+        <!-- L'elenco delle macchine, SEMPRE visibile. Prima compariva solo quando ce n'era
+             gia' una seconda, e cosi' nessuno poteva scoprire di poterne aggiungere: l'unico
+             posto in cui la funzione si annunciava era la funzione stessa. Con una macchina
+             sola, al suo posto c'e' la frase che dice come aggiungerne un'altra. -->
         <Border DockPanel.Dock="Left"
-                IsVisible="{Binding MostraElenco}"
                 Width="210"
                 Margin="0,14,16,0"
                 Padding="12"
@@ -63,6 +63,14 @@
                 <!-- I problemi stanno SOTTO l'elenco, non in un log: una macchina configurata
                      male che semplicemente non compare e' indistinguibile da una che non e'
                      stata aggiunta, e chi la cerca non saprebbe cosa correggere. -->
+                <TextBlock DockPanel.Dock="Bottom"
+                           Text="{Binding SuggerimentoElenco}"
+                           IsVisible="{Binding MostraSuggerimento}"
+                           FontSize="11"
+                           Opacity="0.7"
+                           TextWrapping="Wrap"
+                           Margin="0,12,0,0" />
+
                 <ItemsControl DockPanel.Dock="Bottom"
                               ItemsSource="{Binding ProblemiDellElenco}"
                               Margin="0,8,0,0">
