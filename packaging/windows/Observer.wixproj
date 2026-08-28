@@ -19,7 +19,7 @@
     <!-- var.PayloadDir e' come il .wxs raggiunge la cartella pubblicata. I bind path
          valgono per File/@Source ma NON per l'harvesting di Files/@Include, che vuole un
          percorso vero. -->
-    <DefineConstants>PayloadDir=$(PayloadDir)</DefineConstants>
+    <DefineConstants>PayloadDir=$(PayloadDir);Version=$(Version)</DefineConstants>
     <!-- ICE60 e SOLO ICE60. Segnala file versionati senza colonna Language, e le decine di
          .dll native di .NET e di SkiaSharp lo sono tutte: e' rumore, non un difetto.
          NON si spegne la validazione intera (SuppressValidation), perche' e' proprio lei ad

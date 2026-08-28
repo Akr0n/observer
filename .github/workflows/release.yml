@@ -1,0 +1,169 @@
+# Pubblica una release quando arriva un tag "v*".
+#
+# File SEPARATO da build.yml, e deve restare tale. I due contesti richiesti dal ruleset
+# main-protection sono le stringhe esatte "build (ubuntu-latest)" e "build (windows-latest)":
+# questo workflow non gira sulle pull request, quindi non aggiunge contesti e non puo' lasciarne
+# nessuna in attesa per sempre.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Costruisci l'MSI
+        run: ./packaging/windows/pack.ps1
+        shell: pwsh
+
+      # LA guardia che rende affidabile una release. Il tag e la versione dentro il pacchetto
+      # sono due valori scritti da due mani diverse: se divergono, chi scarica "v0.2.0" installa
+      # un programma che dice di essere un'altra cosa, e non se ne accorge nessuno finche' non
+      # serve davvero - cioe' nel momento peggiore.
+      - name: La versione nell'MSI coincide col tag
+        shell: pwsh
+        run: |
+          $atteso = "${{ github.ref_name }}" -replace '^v', ''
+          $msi = Get-ChildItem packaging/windows/bin/Release/Observer.msi
+          $inst = New-Object -ComObject WindowsInstaller.Installer
+          $db = $inst.GetType().InvokeMember('OpenDatabase','InvokeMethod',$null,$inst,@($msi.FullName,0))
+          $v = $db.GetType().InvokeMember('OpenView','InvokeMethod',$null,$db,@("SELECT Value FROM Property WHERE Property='ProductVersion'"))
+          $v.GetType().InvokeMember('Execute','InvokeMethod',$null,$v,$null)
+          $r = $v.GetType().InvokeMember('Fetch','InvokeMethod',$null,$v,$null)
+          $trovato = $r.GetType().InvokeMember('StringData','GetProperty',$null,$r,@(1))
+          if ($trovato -ne $atteso) {
+            Write-Error "Il tag dice $atteso ma l'MSI dice $trovato. Allinea <Version> in Directory.Build.props al tag."
+            exit 1
+          }
+          Write-Host "MSI: versione $trovato, come il tag."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msi
+          path: packaging/windows/bin/Release/Observer.msi
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Costruisci il .deb
+        run: ./packaging/linux/pack.sh
+
+      - name: La versione nel .deb coincide col tag
+        run: |
+          set -euo pipefail
+          ATTESO="${GITHUB_REF_NAME#v}"
+          PACCHETTO=$(ls packaging/linux/out/observer_*.deb)
+          TROVATO=$(dpkg-deb --field "$PACCHETTO" Version)
+          if [ "$TROVATO" != "$ATTESO" ]; then
+            echo "Il tag dice $ATTESO ma il pacchetto dice $TROVATO." >&2
+            exit 1
+          fi
+          echo "deb: versione $TROVATO, come il tag."
+
+      # Le stesse due guardie del workflow ordinario. Una release e' il posto in cui un errore
+      # costa di piu': quello che finisce qui lo scarica gente che non lo ricostruira' mai.
+      - name: Nessun segreto dentro il pacchetto
+        run: |
+          set -euo pipefail
+          PACCHETTO=$(ls packaging/linux/out/observer_*.deb)
+          if dpkg-deb --contents "$PACCHETTO" | grep -E 'appsettings.*Local\.json|credentials\.json|client\.json|\.pdb$'; then
+            echo "Il pacchetto contiene un file che puo' portare un segreto." >&2
+            exit 1
+          fi
+          echo "Nessun segreto nel pacchetto."
+
+      - name: Verifica con lintian
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lintian
+          lintian --tag-display-limit 0 --fail-on error,warning packaging/linux/out/observer_*.deb
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: packaging/linux/out/observer_*.deb
+          if-no-files-found: error
+
+  pubblica:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: pacchetti
+
+      - name: Crea la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSIONE="${GITHUB_REF_NAME#v}"
+
+          # Le note dicono per prima cosa cio' che l'utente incontrera' per primo. I pacchetti
+          # non sono firmati: nasconderlo trasformerebbe un avviso previsto in un sospetto.
+          cat > note.md <<NOTE
+          Observer $VERSIONE.
+
+          ## I pacchetti NON sono firmati
+
+          Windows mostrera' un avviso di SmartScreen al primo avvio dell'installer, e la
+          finestra di controllo dell'account dira' "editore sconosciuto". E' atteso: firmare
+          richiederebbe un certificato a pagamento che, dal 2024, **non evita comunque
+          l'avviso** - la reputazione si costruisce con i download, non si compra.
+
+          Per procedere: *Ulteriori informazioni* e poi *Esegui comunque*.
+
+          ## Windows
+
+          Installa servizio, dashboard e riga di comando. Serve un terminale con privilegi:
+
+          \`\`\`
+          msiexec /i Observer.msi
+          \`\`\`
+
+          Se su quella macchina esiste gia' un servizio Observer registrato a mano, va rimosso
+          prima, e va svuotata la cartella di installazione.
+
+          ## Linux
+
+          \`\`\`
+          sudo apt install ./observer_${VERSIONE}_amd64.deb
+          \`\`\`
+
+          Serve Ubuntu 24.04 o successiva: \`aspnetcore-runtime-10.0\` viene dall'archivio
+          ufficiale, quindi il runtime non e' imbarcato e si aggiorna col sistema.
+
+          ## Dopo l'installazione
+
+          Per guardare la macchina su cui sei seduto non serve configurare niente, e non serve
+          alcun token: la dashboard entra dal canale locale. Il token e l'impronta del
+          certificato servono soltanto perche' un ALTRO computer possa interrogare questo, e si
+          ottengono con \`observer share\`.
+          NOTE
+
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Observer $VERSIONE" \
+            --notes-file note.md \
+            pacchetti/msi/Observer.msi \
+            pacchetti/deb/observer_*.deb

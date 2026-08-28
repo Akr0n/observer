@@ -4,6 +4,12 @@
 # dalla configurazione di chi fa il checkout: qui diventa una proprieta' del repository.
 *.sh text eol=lf
 
+# Anche i workflow: dentro "run:" ci sono script di shell che girano su Linux, e release.yml
+# contiene un heredoc. Un ritorno a capo di troppo renderebbe il delimitatore finale diverso da
+# se stesso, e lo script fallirebbe in un modo che non nomina la propria causa - lo stesso
+# guasto gia' visto sui file sotto packaging/linux/debian.
+.github/workflows/*.yml text eol=lf
+
 # La regola vale sulla CARTELLA, non sui singoli file, ed e' una correzione: l'elenco
 # nominale che stava qui copriva i sette file che esistevano quel giorno, e il giorno dopo
 # ne sono arrivati altri tre - due pagine di manuale e le eccezioni per lintian - che ne
