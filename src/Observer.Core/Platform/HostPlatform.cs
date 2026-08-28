@@ -1,4 +1,5 @@
 using Observer.Core.Metrics.Cpu;
+using Observer.Core.Metrics.Disk;
 using Observer.Core.Metrics.Memory;
 
 namespace Observer.Core.Platform;
@@ -122,6 +123,31 @@ public sealed class UnsupportedMemoryReadingProvider : IMemoryReadingProvider
     public bool TryRead(out MemoryReading value)
     {
         value = default;
+        return false;
+    }
+}
+
+/// <summary>Porta dei dischi per una piattaforma che non si sa misurare.</summary>
+public sealed class UnsupportedDiskReadingProvider : IDiskReadingProvider
+{
+    /// <summary>Crea la porta con il motivo da mostrare.</summary>
+    public UnsupportedDiskReadingProvider(string reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        UnsupportedReason = reason;
+    }
+
+    /// <inheritdoc />
+    public bool IsSupported => false;
+
+    /// <inheritdoc />
+    public string? UnsupportedReason { get; }
+
+    /// <inheritdoc />
+    public bool TryRead(out IReadOnlyList<DiskReading> readings)
+    {
+        readings = [];
+
         return false;
     }
 }

@@ -73,6 +73,7 @@ public static class SnapshotProjection
     {
         ["cpu"] = "CPU",
         ["memory"] = "Memory",
+        ["disk"] = "Disks",
     };
 
     /// <summary>Costruisce i riquadri da mostrare.</summary>

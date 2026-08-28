@@ -155,3 +155,101 @@ public class ProcParserTests
         Assert.Equal(0L, lettura.SwapTotal.Bytes);
     }
 }
+/// <summary>
+/// Quali filesystem finiscono a schermo, letti da /proc/self/mountinfo.
+/// </summary>
+/// <remarks>
+/// E' il punto in cui questa metrica puo' sbagliare senza far rumore. Un filtro troppo largo
+/// mostra come dischi la memoria condivisa e gli strati dei container — spazio che non esiste,
+/// presentato come se esistesse. Un filtro troppo stretto fa sparire un disco vero, e chi
+/// guarda non ha modo di sapere che manca.
+/// </remarks>
+public class ProcMountInfoParserTests
+{
+    private static readonly HashSet<string> Ammessi =
+        new(StringComparer.Ordinal) { "ext4", "xfs", "btrfs", "vfat" };
+
+    [Fact]
+    public void TieneSoloIFilesystemAmmessi()
+    {
+        // Righe vere di una macchina Linux: fra i montaggi reali ce ne sono decine di virtuali.
+        // In un container ne sono stati misurati 34, di cui UNO solo era un filesystem vero.
+        const string mountinfo = """
+            21 27 0:20 / /sys rw,nosuid,relatime - sysfs sysfs rw
+            22 27 0:5 / /proc rw,nosuid,relatime - proc proc rw
+            23 27 0:6 / /dev rw,nosuid - devtmpfs udev rw,size=8130636k
+            27 1 8:2 / / rw,relatime - ext4 /dev/sda2 rw,errors=remount-ro
+            48 27 0:44 / /run/user/1000 rw,nosuid,relatime - tmpfs tmpfs rw,size=1631048k
+            60 27 259:1 / /boot/efi rw,relatime - vfat /dev/nvme0n1p1 rw,fmask=0077
+            """;
+
+        IReadOnlyList<string> punti = ProcMountInfoParser.MountPoints(mountinfo, Ammessi);
+
+        Assert.Equal(["/", "/boot/efi"], punti);
+    }
+
+    [Fact]
+    public void IlTipoSiCercaDOPOIlSeparatoreEnonContandoICampi()
+    {
+        // LA trappola del formato: fra il settimo campo e il "-" ce ne sono ZERO O PIU'
+        // facoltativi. Contare le posizioni dall'inizio funziona sulle righe senza campi
+        // facoltativi e smette di funzionare appena compare un montaggio condiviso, che e' la
+        // normalita' su qualunque sistema con systemd.
+        const string conFacoltativi = """
+            27 1 8:2 / / rw,relatime shared:1 master:2 - ext4 /dev/sda2 rw
+            """;
+
+        Assert.Equal(["/"], ProcMountInfoParser.MountPoints(conFacoltativi, Ammessi));
+
+        // La stessa riga senza i campi facoltativi deve dare lo stesso risultato.
+        const string senzaFacoltativi = """
+            27 1 8:2 / / rw,relatime - ext4 /dev/sda2 rw
+            """;
+
+        Assert.Equal(["/"], ProcMountInfoParser.MountPoints(senzaFacoltativi, Ammessi));
+    }
+
+    [Fact]
+    public void LoStessoFilesystemInnestatoDueVolteCompareUnaVolta()
+    {
+        // I bind mount sono normali, e senza toglierli lo stesso disco comparirebbe due volte
+        // a schermo con gli stessi identici numeri, come se fossero due dischi.
+        const string mountinfo = """
+            27 1 8:2 / /dati rw,relatime - ext4 /dev/sda2 rw
+            81 27 8:2 /sotto /dati rw,relatime - ext4 /dev/sda2 rw
+            """;
+
+        Assert.Equal(["/dati"], ProcMountInfoParser.MountPoints(mountinfo, Ammessi));
+    }
+
+    [Fact]
+    public void UnPuntoDiInnestoConUnoSpazioNonSparisce()
+    {
+        // mountinfo scrive lo spazio come  . Senza tradurlo il percorso non esiste, e
+        // DriveInfo fallirebbe: il volume sparirebbe dall'elenco senza un errore e senza un
+        // motivo. Succede coi dischi esterni, che spesso hanno spazi nel nome.
+        const string mountinfo = """
+            27 1 8:2 / /media/feder/Disco\040Esterno rw,relatime - vfat /dev/sdb1 rw
+            """;
+
+        Assert.Equal(["/media/feder/Disco Esterno"], ProcMountInfoParser.MountPoints(mountinfo, Ammessi));
+    }
+
+    [Fact]
+    public void UnaRigaMalscrittaVieneSaltataSenzaPortarsiDietroLeAltre()
+    {
+        const string mountinfo = """
+            questa non e' una riga di mountinfo
+            27 1 8:2 / / rw,relatime - ext4 /dev/sda2 rw
+            36 27
+            """;
+
+        Assert.Equal(["/"], ProcMountInfoParser.MountPoints(mountinfo, Ammessi));
+    }
+
+    [Fact]
+    public void UnFileVuotoDaUnElencoVuotoENonUnErrore()
+    {
+        Assert.Empty(ProcMountInfoParser.MountPoints(string.Empty, Ammessi));
+    }
+}

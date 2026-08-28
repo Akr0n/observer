@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Observer.Core.Metrics;
 using Observer.Core.Metrics.Cpu;
+using Observer.Core.Metrics.Disk;
 using Observer.Core.Metrics.Memory;
 using Observer.Core.Platform;
 using Observer.Core.Platform.Linux;
@@ -29,22 +30,27 @@ public static class ObserverMetrics
     {
         ArgumentNullException.ThrowIfNull(fileReader);
 
-        (ICpuTimesProvider cpu, IMemoryReadingProvider memory) = platform switch
+        const string sconosciuta = "unrecognized platform: only Windows and Linux are supported";
+
+        (ICpuTimesProvider cpu, IMemoryReadingProvider memory, IDiskReadingProvider disk) = platform switch
         {
             HostPlatform.Linux => (
                 new LinuxCpuTimesProvider(fileReader) as ICpuTimesProvider,
-                new LinuxMemoryReadingProvider(fileReader) as IMemoryReadingProvider),
+                new LinuxMemoryReadingProvider(fileReader) as IMemoryReadingProvider,
+                new LinuxDiskReadingProvider(fileReader) as IDiskReadingProvider),
 
             HostPlatform.Windows => (
                 new WindowsCpuTimesProvider(),
-                new WindowsMemoryReadingProvider() as IMemoryReadingProvider),
+                new WindowsMemoryReadingProvider() as IMemoryReadingProvider,
+                new WindowsDiskReadingProvider() as IDiskReadingProvider),
 
             _ => (
-                new UnsupportedCpuTimesProvider("unrecognized platform: only Windows and Linux are supported"),
-                new UnsupportedMemoryReadingProvider("unrecognized platform: only Windows and Linux are supported")),
+                new UnsupportedCpuTimesProvider(sconosciuta),
+                new UnsupportedMemoryReadingProvider(sconosciuta),
+                new UnsupportedDiskReadingProvider(sconosciuta)),
         };
 
-        return [new CpuCollector(cpu), new MemoryCollector(memory)];
+        return [new CpuCollector(cpu), new MemoryCollector(memory), new DiskCollector(disk)];
     }
 
     /// <summary>

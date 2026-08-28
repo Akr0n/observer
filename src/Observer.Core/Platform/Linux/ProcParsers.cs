@@ -1,3 +1,4 @@
+using System.Text;
 using System.Globalization;
 using Observer.Core.Metrics.Cpu;
 using Observer.Core.Metrics.Memory;
@@ -223,5 +224,99 @@ public static class ProcMeminfoParser
         ReadOnlySpan<char> number = space < 0 ? rest : rest[..space];
 
         return long.TryParse(number, NumberStyles.Integer, CultureInfo.InvariantCulture, out kibibytes);
+    }
+}
+
+/// <summary>Lettura di /proc/self/mountinfo: quali filesystem sono innestati e dove.</summary>
+public static class ProcMountInfoParser
+{
+    /// <summary>I punti di innesto dei filesystem ammessi, letti da /proc/self/mountinfo.</summary>
+    /// <param name="content">Il contenuto del file.</param>
+    /// <param name="ammessi">I tipi di filesystem da tenere.</param>
+    /// <returns>I punti di innesto, senza ripetizioni, nell'ordine in cui compaiono.</returns>
+    /// <remarks>
+    /// Il formato ha un numero VARIABILE di campi: fra il sesto e il separatore <c>-</c> ci
+    /// sono zero o piu' campi facoltativi, e il tipo di filesystem sta subito DOPO quel
+    /// separatore. Contare i campi dall'inizio funziona finche' non c'e' un montaggio
+    /// condiviso, e allora smette — quindi il tipo si cerca a partire dal separatore, che e'
+    /// l'unico punto fermo della riga.
+    /// <para>
+    /// Lo stesso filesystem puo' essere innestato piu' volte (bind mount): senza togliere le
+    /// ripetizioni comparirebbe piu' volte a schermo, ogni volta con gli stessi numeri, come
+    /// se fossero dischi diversi.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<string> MountPoints(string content, ISet<string> ammessi)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        ArgumentNullException.ThrowIfNull(ammessi);
+
+        List<string> punti = [];
+        HashSet<string> visti = new(StringComparer.Ordinal);
+
+        foreach (string riga in content.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            string[] pezzi = riga.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            int separatore = Array.LastIndexOf(pezzi, "-");
+
+            // Serve il campo dopo il separatore (il tipo) e il quinto dall'inizio (il punto
+            // di innesto): sotto queste misure la riga non e' un montaggio.
+            if (separatore < 4 || separatore + 1 >= pezzi.Length)
+            {
+                continue;
+            }
+
+            if (!ammessi.Contains(pezzi[separatore + 1]))
+            {
+                continue;
+            }
+
+            string punto = Ottali(pezzi[4]);
+
+            if (visti.Add(punto))
+            {
+                punti.Add(punto);
+            }
+        }
+
+        return punti;
+    }
+
+    /// <summary>Rimette i caratteri che mountinfo scrive in ottale.</summary>
+    /// <remarks>
+    /// Uno spazio in un punto di innesto arriva come <c> </c>, e senza tradurlo il
+    /// percorso non esiste: il volume sparirebbe dall'elenco senza un errore. Succede con i
+    /// dischi esterni, che spesso hanno spazi nel nome.
+    /// </remarks>
+    private static string Ottali(string percorso)
+    {
+        if (!percorso.Contains('\\', StringComparison.Ordinal))
+        {
+            return percorso;
+        }
+
+        StringBuilder costruito = new(percorso.Length);
+
+        for (int i = 0; i < percorso.Length; i++)
+        {
+            if (percorso[i] == '\\'
+                && i + 3 < percorso.Length
+                && int.TryParse(
+                    percorso.AsSpan(i + 1, 3),
+                    NumberStyles.None,
+                    CultureInfo.InvariantCulture,
+                    out int ottale))
+            {
+                costruito.Append((char)Convert.ToInt32(ottale.ToString(CultureInfo.InvariantCulture), 8));
+                i += 3;
+
+                continue;
+            }
+
+            costruito.Append(percorso[i]);
+        }
+
+        return costruito.ToString();
     }
 }
