@@ -47,7 +47,25 @@ public sealed class Gauge : Control
     /// </remarks>
     public static readonly TimeSpan Corsa = TimeSpan.FromMilliseconds(200);
 
-    /// <summary>Il valore misurato, da 0 a 1.</summary>
+    /// <summary>Il valore misurato, da 0 a 1. E' anche cio' che si anima.</summary>
+    /// <remarks>
+    /// <b>Fra un campione e il successivo la lancetta attraversa posizioni che nessuno ha
+    /// misurato</b>, e vale la pena dirlo perche' altrove questo programma non lo fa mai. Qui
+    /// e' ammesso per una ragione precisa: una lancetta analogica ha un'inerzia che chi guarda
+    /// si aspetta, e la corsa fra due letture si legge come inerzia, non come misura. Il
+    /// NUMERO al centro non si anima affatto, ed e' li' che si legge il valore.
+    /// <para>
+    /// Un tentativo di tenere separate le due cose - una seconda proprieta' animata che
+    /// inseguisse questa - e' stato fatto e MISURATO, e va peggio in tutti e due i modi in cui
+    /// si puo' scriverlo. Scrivendola a mano da <c>OnPropertyChanged</c>, fra la scrittura del
+    /// valore e l'avvio della transizione passa un fotogramma: la lancetta viene disegnata
+    /// subito sul valore nuovo, l'animazione la riporta sul vecchio e la fa risalire - avanti,
+    /// indietro, avanti, a ogni campione, anche con valori fermi. Tracciato:
+    /// <c>"Posizione 0.7657 -> 0.7363 prio=Animation"</c> subito dopo che <c>Fraction</c> era
+    /// passata da 0.7363 a 0.7657. Legandola con un <c>Bind</c> nel costruttore, invece,
+    /// l'applicazione non si apre proprio.
+    /// </para>
+    /// </remarks>
     public static readonly StyledProperty<double> FractionProperty =
         AvaloniaProperty.Register<Gauge, double>(nameof(Fraction));
 
@@ -79,25 +97,6 @@ public sealed class Gauge : Control
     public static readonly StyledProperty<IBrush?> NeedleBrushProperty =
         AvaloniaProperty.Register<Gauge, IBrush?>(nameof(NeedleBrush));
 
-    /// <summary>
-    /// Dove sta la lancetta <b>adesso</b>. Non e' una misura, ed e' l'unica cosa che si anima.
-    /// </summary>
-    /// <remarks>
-    /// La separazione da <see cref="FractionProperty"/> e' il punto di questo controllo, non un
-    /// dettaglio di implementazione. Fra un campione e il successivo la lancetta attraversa
-    /// posizioni che <b>nessuno ha mai misurato</b>: chiamarle ancora "frazione" vorrebbe dire
-    /// far passare per misura un'interpolazione, che e' esattamente cio' che questo programma
-    /// non fa da nessun'altra parte. <c>Fraction</c> resta la misura, resta il bersaglio del
-    /// binding, e non si anima mai; questa la insegue.
-    /// <para>
-    /// Per la stessa ragione il NUMERO al centro non si anima: una lancetta analogica ha
-    /// un'inerzia che chi guarda si aspetta, una cifra no. Se il numero fosse interpolato,
-    /// mostrerebbe valori mai letti scritti come se fossero letture.
-    /// </para>
-    /// </remarks>
-    private static readonly StyledProperty<double> PosizioneProperty =
-        AvaloniaProperty.Register<Gauge, double>(nameof(Posizione));
-
     // Cio' che non cambia da un fotogramma all'altro, tenuto da parte. Durante la corsa questo
     // Render() gira una sessantina di volte al secondo, e arco di fondo, zona rossa, tacche e
     // testi sono identici in tutti quei fotogrammi: ricostruirli ogni volta significa rifare
@@ -122,7 +121,7 @@ public sealed class Gauge : Control
         // cose ci sta l'animazione, e agganciare qui Fraction farebbe un fotogramma solo per
         // campione, cioe' lo scatto che l'animazione serve a togliere.
         AffectsRender<Gauge>(
-            PosizioneProperty,
+            FractionProperty,
             DisplayProperty,
             CaptionProperty,
             RedlineProperty,
@@ -139,7 +138,7 @@ public sealed class Gauge : Control
         [
             new DoubleTransition
             {
-                Property = PosizioneProperty,
+                Property = FractionProperty,
                 Duration = Corsa,
 
                 // Parte subito e arriva morbida. Volutamente NON un easing che sorpassa
@@ -207,8 +206,6 @@ public sealed class Gauge : Control
         set => SetValue(NeedleBrushProperty, value);
     }
 
-    private double Posizione => GetValue(PosizioneProperty);
-
     /// <inheritdoc />
     public override void Render(DrawingContext context)
     {
@@ -239,7 +236,7 @@ public sealed class Gauge : Control
         IBrush rossa = RedlineBrush ?? Brushes.IndianRed;
         IBrush lancetta = NeedleBrush ?? Brushes.DimGray;
 
-        double dove = GaugeScale.Frazione(Posizione);
+        double dove = GaugeScale.Frazione(Fraction);
         double soglia = GaugeScale.Frazione(Redline);
 
         RifaiCioCheNonCambia(centro, raggio, spessore, soglia);
@@ -266,22 +263,6 @@ public sealed class Gauge : Control
 
         DisegnaLancetta(context, centro, raggio, spessore, dove, lancetta);
         DisegnaScritte(context, centro, raggio, lancetta);
-    }
-
-    /// <inheritdoc />
-    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
-    {
-        ArgumentNullException.ThrowIfNull(change);
-
-        base.OnPropertyChanged(change);
-
-        if (change.Property == FractionProperty)
-        {
-            // SetCurrentValue e non SetValue: questa proprieta' e' scritta anche dal motore
-            // delle animazioni, e scriverla come valore locale schiaccerebbe l'animazione in
-            // corso invece di darle un bersaglio nuovo.
-            SetCurrentValue(PosizioneProperty, GaugeScale.Frazione(Fraction));
-        }
     }
 
     private static Pen Penna(IBrush colore, double spessore) =>
