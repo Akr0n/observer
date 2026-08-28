@@ -24,8 +24,8 @@ public sealed partial class MetricRow : ObservableObject
         Key = stato.Key;
         Etichetta = stato.Label;
         Valore = stato.Display;
-        Percentuale = (stato.Fraction ?? 0d) * 100d;
-        MostraBarra = stato.Fraction.HasValue;
+        Frazione = stato.Fraction ?? 0d;
+        HaQuadrante = stato.Fraction.HasValue;
         Gravita = stato.Severity;
     }
 
@@ -40,13 +40,18 @@ public sealed partial class MetricRow : ObservableObject
     [ObservableProperty]
     public partial string Valore { get; set; }
 
-    /// <summary>Valore della barra, da 0 a 100.</summary>
+    /// <summary>Quanto e' pieno il quadrante, da 0 a 1.</summary>
+    /// <remarks>
+    /// La stessa frazione che arriva dal servizio, non moltiplicata per cento. Prima veniva
+    /// portata a 0..100 per la barra di avanzamento che stava qui; il quadrante lavora sulla
+    /// frazione, e la conversione in mezzo era solo un posto in piu' dove sbagliare.
+    /// </remarks>
     [ObservableProperty]
-    public partial double Percentuale { get; set; }
+    public partial double Frazione { get; set; }
 
-    /// <summary>True quando la metrica e' una percentuale e la barra ha senso.</summary>
+    /// <summary>True quando la metrica e' una frazione e il quadrante ha senso.</summary>
     [ObservableProperty]
-    public partial bool MostraBarra { get; set; }
+    public partial bool HaQuadrante { get; set; }
 
     /// <summary>Gravita' di cio' che la riga dice.</summary>
     [ObservableProperty]
@@ -67,8 +72,8 @@ public sealed partial class MetricRow : ObservableObject
 
         Etichetta = stato.Label;
         Valore = stato.Display;
-        Percentuale = (stato.Fraction ?? 0d) * 100d;
-        MostraBarra = stato.Fraction.HasValue;
+        Frazione = stato.Fraction ?? 0d;
+        HaQuadrante = stato.Fraction.HasValue;
         Gravita = stato.Severity;
     }
 }

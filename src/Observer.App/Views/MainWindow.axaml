@@ -3,6 +3,7 @@
         xmlns:vm="using:Observer.App.ViewModels"
         xmlns:ui="using:FluentAvalonia.UI.Controls"
         xmlns:svc="using:Observer.App.Services"
+        xmlns:ctl="using:Observer.App.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="560"
@@ -118,17 +119,45 @@
                                            TextWrapping="Wrap"
                                            Opacity="0.85" />
 
+                                <!-- I quadranti: solo le metriche che sono una frazione di un
+                                     massimo, cioe' quelle per cui "quanto pieno" vuol dire
+                                     qualcosa. Un totale in byte su un quadrante direbbe che il
+                                     valore e' vicino a un limite che non esiste. -->
+                                <ItemsControl ItemsSource="{Binding Righe}" Margin="0,8,0,0">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:MetricRow">
+                                            <ctl:Gauge Width="148" Height="148"
+                                                       Margin="0,0,18,6"
+                                                       IsVisible="{Binding HaQuadrante}"
+                                                       Fraction="{Binding Frazione}"
+                                                       Display="{Binding Valore}"
+                                                       Caption="{Binding Etichetta}"
+                                                       TrackBrush="{DynamicResource ControlStrongFillColorDefaultBrush}"
+                                                       ValueBrush="{DynamicResource AccentFillColorDefaultBrush}"
+                                                       RedlineBrush="{DynamicResource SystemFillColorCriticalBrush}"
+                                                       NeedleBrush="{DynamicResource TextFillColorPrimaryBrush}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!-- Tutto il resto resta scritto. Un valore che non e' una
+                                     frazione si legge, non si guarda. -->
                                 <ItemsControl ItemsSource="{Binding Righe}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:MetricRow">
                                             <Grid ColumnDefinitions="*,Auto"
-                                                  RowDefinitions="Auto,Auto"
-                                                  Margin="0,6,0,0">
-                                                <TextBlock Grid.Row="0" Grid.Column="0"
+                                                  Margin="0,6,0,0"
+                                                  IsVisible="{Binding !HaQuadrante}">
+                                                <TextBlock Grid.Column="0"
                                                            Text="{Binding Etichetta}"
                                                            TextWrapping="Wrap"
                                                            VerticalAlignment="Center" />
-                                                <TextBlock Grid.Row="0" Grid.Column="1"
+                                                <TextBlock Grid.Column="1"
                                                            Text="{Binding Valore}"
                                                            Classes.problema="{Binding Problema}"
                                                            Margin="12,0,0,0"
@@ -137,11 +166,6 @@
                                                            TextAlignment="Right"
                                                            MaxWidth="320"
                                                            VerticalAlignment="Center" />
-                                                <ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                                                             Margin="0,4,0,0"
-                                                             Minimum="0" Maximum="100"
-                                                             Value="{Binding Percentuale}"
-                                                             IsVisible="{Binding MostraBarra}" />
                                             </Grid>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
