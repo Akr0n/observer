@@ -247,6 +247,14 @@ public sealed partial class MainViewModel : ViewModelBase
         guastoDa = null;
         Gruppi.Clear();
 
+        // E i quadranti, che sono una SECONDA collezione sulle stesse righe. Svuotare solo i
+        // riquadri lasciava a schermo le lancette e le strisce della macchina precedente,
+        // sotto il nome di quella nuova: numeri veri, attribuiti alla macchina sbagliata. Si
+        // vedeva a colpo d'occhio proprio perche' meta' della finestra si svuotava e meta' no.
+        // Chi aggiunge una terza collezione derivata la aggiunga QUI.
+        Quadranti.Clear();
+        MostraQuadranti = false;
+
         Mostra(FAInfoBarSeverity.Informational, "Connecting", "Taking the first reading...");
         SottoIntestazione = "Connecting...";
     }

@@ -36,8 +36,23 @@ foreach ($progetto in 'Observer.Service', 'Observer.App', 'Observer.Cli') {
 
     # Mirato a win-x64: senza, SkiaSharp spedisce le librerie native di OGNI piattaforma e il
     # pacchetto passa da una decina di megabyte a oltre cento.
+    # E --self-contained true, misurato su una macchina vera. Con "false" l'MSI installa
+    # binari che pretendono ASP.NET Core 10 e non verifica che ci sia: su un PC con .NET 8 il
+    # servizio parte, non trova il runtime, muore in silenzio, il gestore servizi aspetta
+    # trenta secondi e riporta un timeout, e Windows Installer traduce tutto in "privilegi
+    # insufficienti". Tre messaggi, e nessuno che nomini la causa. Su Linux non succede,
+    # perche' il .deb dichiara aspnetcore-runtime-10.0 e apt si rifiuta di installare senza;
+    # su Windows non c'e' nessuno che risolva una dipendenza, quindi la si porta dentro.
+    # Costo misurato: payload 242 MB, MSI da 12,8 a 51 MB dopo la compressione. Contropartita
+    # da sapere: le correzioni di sicurezza del runtime non arrivano piu' da Windows Update,
+    # arrivano con una release di Observer.
+    #
+    # I commenti stanno QUI e non fra gli argomenti: un commento dentro una continuazione con
+    # il backtick la interrompe, e PowerShell legge la riga seguente come un comando nuovo -
+    # "il termine '-c' non e' riconosciuto". Successo scrivendo proprio questo commento, e il
+    # controllo di sintassi non lo vede: e' un errore di esecuzione, non di analisi.
     & dotnet publish (Join-Path $radice "src\$progetto") `
-        -c $Configurazione -r win-x64 --self-contained false `
+        -c $Configurazione -r win-x64 --self-contained true `
         -o $payload --nologo | Out-Null
 
     if ($LASTEXITCODE -ne 0) {

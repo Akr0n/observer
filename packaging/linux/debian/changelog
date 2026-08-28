@@ -1,3 +1,20 @@
+observer (0.2.1) unstable; urgency=medium
+
+  * Windows: the installer now carries the .NET runtime with it. Until 0.2.0 it
+    installed binaries that required ASP.NET Core 10 without checking it was
+    there: on a machine with an older runtime the service died on startup and
+    the installer reported "insufficient privileges", which named the wrong
+    cause entirely. The package is now 51 MB instead of 12.8 MB and installs
+    with no prerequisites.
+  * Linux is unchanged and stays framework-dependent: the package declares
+    aspnetcore-runtime-10.0 and apt refuses to install without it, so the
+    runtime keeps being updated by the system.
+  * Note for Windows: since the runtime now ships inside the package, its
+    security updates no longer arrive through Windows Update. They arrive with
+    a new release of Observer.
+
+ -- Federico Cardinali <noreply@example.invalid>  Fri, 28 Aug 2026 17:30:00 +0000
+
 observer (0.2.0) unstable; urgency=medium
 
   * CPU and memory usage are now shown on dashboard gauges, with a needle, a

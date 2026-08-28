@@ -176,6 +176,15 @@ jobs:
           msiexec /i Observer.msi
           \`\`\`
 
+          Non serve installare altro: il pacchetto **porta con se' il runtime .NET**, ed e'
+          il motivo per cui pesa una cinquantina di megabyte. Fino alla 0.2.0 pretendeva
+          ASP.NET Core 10 senza verificare che ci fosse, e su una macchina che non l'aveva
+          il servizio moriva all'avvio mentre l'installer parlava di privilegi
+          insufficienti - una causa che con quella vera non c'entrava niente.
+
+          Da sapere: cosi' le correzioni di sicurezza del runtime **non** arrivano piu' da
+          Windows Update. Arrivano con una release nuova di Observer.
+
           Se su quella macchina esiste gia' un servizio Observer registrato a mano, va rimosso
           prima, e va svuotata la cartella di installazione.
 
