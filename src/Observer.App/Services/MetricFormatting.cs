@@ -15,6 +15,17 @@ namespace Observer.App.Services;
 /// </remarks>
 public static class MetricFormatting
 {
+    /// <summary>Come si scrive un s&#236; a schermo.</summary>
+    /// <remarks>
+    /// Costante e non letterale perche' <c>SnapshotProjection</c> la confronta: le due parole
+    /// devono restare le stesse, e se un giorno cambiano deve cambiarle il compilatore e non
+    /// la memoria di chi modifica.
+    /// </remarks>
+    public const string Si = "Yes";
+
+    /// <summary>Come si scrive un no a schermo.</summary>
+    public const string No = "No";
+
     private static readonly string[] PrefissiBinari = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
 
     /// <summary>
@@ -33,7 +44,7 @@ public static class MetricFormatting
                 return value.Text ?? string.Empty;
 
             case MetricValueKind.Flag:
-                return value.Flag ? "Yes" : "No";
+                return value.Flag ? Si : No;
 
             default:
                 // Kind sconosciuto significa quasi sempre che la deserializzazione non ha

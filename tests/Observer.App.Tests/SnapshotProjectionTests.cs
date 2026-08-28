@@ -64,10 +64,60 @@ public class SnapshotProjectionTests
     [Fact]
     public void Project_ConUnFlag_LoScriveAParole()
     {
+        // Una metrica a bandiera QUALUNQUE: memory.available.estimated non serve piu' come
+        // esempio, perche' quella ha un trattamento suo (vedi i test qui sotto).
         IReadOnlyList<MetricGroupState> gruppi = Proietta(
-            Ok("memory", MetricPoint.Measured("memory.available.estimated", null, MetricValue.FromFlag(true))));
+            Ok("memory", MetricPoint.Measured("memory.swap.enabled", null, MetricValue.FromFlag(true))));
 
         Assert.Equal("Yes", Assert.Single(gruppi[0].Rows).Display);
+    }
+
+    [Fact]
+    public void Project_QuandoLaMemoriaDisponibileEMisurata_NonScriveUnaRigaPerDirlo()
+    {
+        // Su Windows quel flag e' cablato a falso: quella riga direbbe "No" per sempre, su
+        // qualunque macchina Windows. Una riga che ripete all'infinito la stessa risposta
+        // insegna a saltarla, e verrebbe saltata anche il giorno in cui dicesse altro.
+        IReadOnlyList<MetricGroupState> gruppi = Proietta(Ok(
+            "memory",
+            MetricPoint.Measured("memory.available.bytes", null, MetricValue.FromNumber(17_179_869_184d)),
+            MetricPoint.Measured("memory.available.estimated", null, MetricValue.FromFlag(false))));
+
+        MetricRowState riga = Assert.Single(gruppi[0].Rows);
+
+        Assert.Equal("memory|memory.available.bytes|", riga.Key);
+        Assert.DoesNotContain("estimate", riga.Display, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Project_QuandoLaMemoriaDisponibileERicostruita_LoDiceSulValore()
+    {
+        // Il caso per cui quel flag esiste: su Linux, se il kernel non espone MemAvailable,
+        // il numero viene sommato da memoria libera, buffer, cache e memoria recuperabile.
+        // Non e' sbagliato, ma non e' una misura, e va detto DOVE si legge il numero.
+        IReadOnlyList<MetricGroupState> gruppi = Proietta(Ok(
+            "memory",
+            MetricPoint.Measured("memory.available.bytes", null, MetricValue.FromNumber(3_435_973_836d)),
+            MetricPoint.Measured("memory.available.estimated", null, MetricValue.FromFlag(true))));
+
+        MetricRowState riga = Assert.Single(gruppi[0].Rows);
+
+        Assert.Equal("memory|memory.available.bytes|", riga.Key);
+        Assert.EndsWith("(estimated)", riga.Display, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Project_SeLaLetturaDelFlagEfallita_LaRigaResta()
+    {
+        // Non e' ne' si' ne' no: e' un guasto, e un guasto che sparisce dallo schermo e'
+        // peggio di una riga di troppo.
+        IReadOnlyList<MetricGroupState> gruppi = Proietta(Ok(
+            "memory",
+            MetricPoint.Unavailable("memory.available.estimated", null, "the reading failed")));
+
+        MetricRowState riga = Assert.Single(gruppi[0].Rows);
+
+        Assert.Contains("failed", riga.Display, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -280,4 +330,7 @@ public class SnapshotProjectionTests
 
     private static MetricSnapshot Ok(string collectorId, MetricPoint punto) =>
         new(collectorId, CollectorStatus.Ok, null, [punto]);
+
+    private static MetricSnapshot Ok(string collectorId, params MetricPoint[] punti) =>
+        new(collectorId, CollectorStatus.Ok, null, punti);
 }

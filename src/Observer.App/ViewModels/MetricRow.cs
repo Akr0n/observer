@@ -60,7 +60,36 @@ public sealed partial class MetricRow : ObservableObject
 
     /// <summary>True quando la metrica e' una frazione e il quadrante ha senso.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MostraStorico))]
+    [NotifyPropertyChangedFor(nameof(MostraNotaStorico))]
     public partial bool HaQuadrante { get; set; }
+
+    /// <summary>Gli intervalli dello storico, dal piu' vecchio al piu' recente.</summary>
+    /// <remarks>
+    /// Nullo finche' lo storico non e' stato letto. La striscia si mostra solo quando c'e'
+    /// qualcosa da mostrare: una striscia tutta vuota sotto un quadrante vivo sarebbe una
+    /// domanda senza risposta.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MostraStorico))]
+    public partial IReadOnlyList<HistoryBar>? Storico { get; set; }
+
+    /// <summary>Perche' lo storico non c'e', quando non c'e'.</summary>
+    /// <remarks>
+    /// Sta qui e non nella barra di stato di proposito: un guasto dello storico NON e' un
+    /// guasto della macchina. La macchina puo' rispondere benissimo al campionamento e avere
+    /// la persistenza spenta, e colorare di rosso la finestra per questo insegnerebbe a
+    /// ignorare anche gli allarmi veri.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MostraNotaStorico))]
+    public partial string NotaStorico { get; set; } = string.Empty;
+
+    /// <summary>True quando c'e' una striscia da disegnare.</summary>
+    public bool MostraStorico => HaQuadrante && Storico is { Count: > 0 };
+
+    /// <summary>True quando c'e' un motivo da scrivere al posto della striscia.</summary>
+    public bool MostraNotaStorico => HaQuadrante && NotaStorico.Length > 0;
 
     /// <summary>Gravita' di cio' che la riga dice.</summary>
     [ObservableProperty]

@@ -22,7 +22,71 @@ public interface IMetricsClient
 
     /// <summary>Legge il catalogo delle metriche.</summary>
     Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken);
+
+    /// <summary>Legge lo storico di una serie.</summary>
+    /// <param name="richiesta">Quale serie, da quando, con che risoluzione.</param>
+    /// <param name="cancellationToken">Annullato alla chiusura.</param>
+    /// <returns>I punti, oppure il motivo per cui non ci sono.</returns>
+    Task<HistoryFetch> GetHistoryAsync(HistoryQuery richiesta, CancellationToken cancellationToken);
 }
+
+/// <summary>Che pezzo di storico si vuole.</summary>
+/// <param name="Collector">Identificatore del collector.</param>
+/// <param name="Metric">Identificatore della metrica.</param>
+/// <param name="Instance">L'istanza, quando la metrica ne ha piu' d'una.</param>
+/// <param name="Da">L'inizio della finestra.</param>
+/// <param name="Risoluzione">"raw", "1m", "5m". <b>Mai "auto"</b>: vedi le note.</param>
+/// <remarks>
+/// La risoluzione va sempre dichiarata. Con "auto" il servizio sceglie in base all'ampiezza
+/// della finestra, e su un'ora sceglie il grezzo: tremilaseicento punti per disegnarne
+/// sessanta, cioe' mezzo megabyte sul filo a ogni ricarica per buttarne via il 98 per cento.
+/// </remarks>
+public sealed record HistoryQuery(
+    string Collector,
+    string Metric,
+    string? Instance,
+    DateTimeOffset Da,
+    string Risoluzione);
+
+/// <summary>Un intervallo dello storico, come arriva dal servizio.</summary>
+/// <param name="Timestamp">L'inizio dell'intervallo.</param>
+/// <param name="Count">Quanti campioni ci sono caduti dentro.</param>
+/// <param name="Avg">La media dei campioni presenti.</param>
+/// <param name="Min">Il minimo.</param>
+/// <param name="Max">Il massimo.</param>
+/// <param name="Last">L'ultimo campione dell'intervallo.</param>
+/// <remarks>
+/// <b>Gli intervalli senza campioni non arrivano affatto</b>: non esiste un punto con
+/// <c>Count</c> a zero. Chi disegna deve costruire la propria griglia dei tempi e cercarci
+/// dentro questi punti — vedi <see cref="HistoryStrip"/>.
+/// </remarks>
+public sealed record HistoryPoint(
+    DateTimeOffset Timestamp,
+    int Count,
+    double Avg,
+    double Min,
+    double Max,
+    double Last);
+
+/// <summary>La risposta di /metrics/history, come arriva sul filo.</summary>
+/// <param name="Resolution">La risoluzione effettivamente usata.</param>
+/// <param name="BucketSeconds">Quanti secondi copre un intervallo.</param>
+/// <param name="Truncated">Vero quando il servizio ha tagliato i punti piu' vecchi.</param>
+/// <param name="Points">Gli intervalli che hanno almeno un campione.</param>
+public sealed record HistoryResponse(
+    string Resolution,
+    int BucketSeconds,
+    bool Truncated,
+    IReadOnlyList<HistoryPoint> Points);
+
+/// <summary>L'esito di una lettura dello storico.</summary>
+/// <param name="Outcome">Com'e' andata.</param>
+/// <param name="Problem">Che cosa dire a chi guarda, quando e' andata male.</param>
+/// <param name="Points">I punti, quando e' andata bene.</param>
+public sealed record HistoryFetch(
+    ServiceOutcome Outcome,
+    string Problem,
+    IReadOnlyList<HistoryPoint>? Points);
 
 /// <summary>
 /// Client HTTP verso Observer.Service.
@@ -138,6 +202,37 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
         return outcome == ServiceOutcome.Ok && entries is not null
             ? new CatalogFetch(ServiceOutcome.Ok, string.Empty, new MetricCatalog(entries))
             : new CatalogFetch(outcome, problem, null);
+    }
+
+    /// <inheritdoc />
+    public async Task<HistoryFetch> GetHistoryAsync(
+        HistoryQuery richiesta,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(richiesta);
+
+        // Passa dallo stesso LeggiAsync di latest e catalog, e non e' pigrizia: token,
+        // fissaggio dell'impronta, scadenze e traduzione degli errori restano un pezzo di
+        // codice solo. Una seconda strada verso il servizio sarebbe una seconda strada da
+        // sbagliare, e sbagliarla qui vorrebbe dire spedire il token senza controllare a chi.
+        // Tutte le parti sono gia' stringhe, e l'istante e' formattato con "O" e la cultura
+        // invariante: qui non passa nessun numero che una cultura possa scrivere diverso.
+        string percorso = "metrics/history?collector=" + Uri.EscapeDataString(richiesta.Collector)
+            + "&metric=" + Uri.EscapeDataString(richiesta.Metric)
+            + "&from=" + Uri.EscapeDataString(richiesta.Da.UtcDateTime.ToString("O", CultureInfo.InvariantCulture))
+            + "&resolution=" + Uri.EscapeDataString(richiesta.Risoluzione);
+
+        if (!string.IsNullOrEmpty(richiesta.Instance))
+        {
+            percorso += "&instance=" + Uri.EscapeDataString(richiesta.Instance);
+        }
+
+        (ServiceOutcome outcome, string problem, HistoryResponse? risposta) =
+            await LeggiAsync<HistoryResponse>(percorso, cancellationToken).ConfigureAwait(false);
+
+        return outcome == ServiceOutcome.Ok && risposta is not null
+            ? new HistoryFetch(ServiceOutcome.Ok, string.Empty, risposta.Points)
+            : new HistoryFetch(outcome, problem, null);
     }
 
     /// <inheritdoc />

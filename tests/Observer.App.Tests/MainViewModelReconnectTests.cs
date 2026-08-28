@@ -119,6 +119,12 @@ public class MainViewModelReconnectTests
             return Task.FromResult(new SnapshotFetch(esito, "no service in this test", null));
         }
 
+        // Lo storico NON incrementa il contatore: quel contatore dice se il view model ha
+        // adottato questo client per il CAMPIONAMENTO, e mescolarci dentro una seconda
+        // chiamata renderebbe il segnale ambiguo proprio nei test della riconnessione.
+        public Task<HistoryFetch> GetHistoryAsync(HistoryQuery richiesta, CancellationToken cancellationToken) =>
+            Task.FromResult(new HistoryFetch(esito, "no service in this test", null));
+
         public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new CatalogFetch(esito, "no service in this test", null));
 

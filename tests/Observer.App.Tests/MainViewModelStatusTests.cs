@@ -128,6 +128,8 @@ public class MainViewModelStatusTests
 
         public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new CatalogFetch(esito, Testo(esito), null));
+        public Task<HistoryFetch> GetHistoryAsync(HistoryQuery richiesta, CancellationToken cancellationToken) =>
+            Task.FromResult(new HistoryFetch(esito, Testo(esito), null));
 
         // Ricalca le frasi vere di MetricsClient: i test aspettano cio' che si vede a schermo,
         // e una frase inventata qui renderebbe l'attesa una tautologia.
