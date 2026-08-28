@@ -30,6 +30,23 @@ if ! head -1 "$QUI/debian/changelog" | grep -q "($VERSIONE)"; then
     exit 1
 fi
 
+# E nessuna riga puo' superare le 80 colonne. Non e' pignoleria di stile: lintian emette
+# debian-changelog-line-too-long, il job di release gira con --fail-on error,warning, e una
+# riga di 81 caratteri ferma la pubblicazione DOPO che l'MSI e' gia' stato costruito. E'
+# successo: v0.2.0, due righe a 81. Costa un confronto e si scopre qui.
+# SOLO la voce nuova, cioe' fino alla riga di firma: lintian guarda quella, e le voci
+# storiche restano come sono state scritte invece di dover essere riaperte a ogni release.
+# L'uscita PRIMA del controllo, e non dopo: la riga di firma e' a formato obbligato - nome
+# piu' indirizzo piu' data - e supera gli 80 da sempre, ma lintian non la conta. Con i due
+# blocchi nell'ordine sbagliato questa guardia bloccherebbe ogni singola build.
+LUNGHE="$(awk '/^ -- / { exit } length($0) > 80 { print FNR ": " length($0) " colonne" }' "$QUI/debian/changelog")"
+
+if [ -n "$LUNGHE" ]; then
+    echo "Righe troppo lunghe nel changelog (lintian ne ammette 80):" >&2
+    echo "$LUNGHE" >&2
+    exit 1
+fi
+
 echo "Versione $VERSIONE"
 
 rm -rf "$ALBERO" "$USCITA"
