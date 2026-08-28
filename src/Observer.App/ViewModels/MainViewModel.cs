@@ -25,6 +25,32 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </remarks>
     public static readonly TimeSpan Intervallo = TimeSpan.FromSeconds(1);
 
+    /// <summary>Quanto storico mostra la striscia.</summary>
+    private static readonly TimeSpan FinestraStorico = TimeSpan.FromHours(1);
+
+    /// <summary>Quanto dura un intervallo della striscia.</summary>
+    private static readonly TimeSpan PassoStorico = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// Ogni quanto si rilegge lo storico.
+    /// </summary>
+    /// <remarks>
+    /// Non a ogni giro: interrogare tutto lo storico una volta al secondo sarebbe assurdo su
+    /// dati che si muovono ogni minuto, e questa e' una finestra che esiste per NON disturbare
+    /// la macchina che misura. Un minuto e' anche il passo della striscia: piu' spesso non
+    /// aggiungerebbe una barretta, aggiungerebbe solo traffico.
+    /// </remarks>
+    private static readonly TimeSpan RicaricaStorico = TimeSpan.FromMinutes(1);
+
+    /// <summary>Da quanto indietro si rilegge il grezzo per la coda della striscia.</summary>
+    /// <remarks>
+    /// Il consolidamento degli aggregati ha una grazia di quattro minuti: il livello a un
+    /// minuto e' indietro di cinque o sei rispetto ad adesso. Senza questa seconda lettura le
+    /// ultime barrette sarebbero SEMPRE vuote, e la striscia direbbe "non misurato" proprio
+    /// sull'adesso, mentre il quadrante sopra mostra un valore vivo.
+    /// </remarks>
+    private static readonly TimeSpan CodaStorico = TimeSpan.FromMinutes(10);
+
     private readonly Func<IMetricsClient?>? rileggiConfigurazione;
     private readonly Func<DateTimeOffset> adesso;
 
@@ -151,6 +177,8 @@ public sealed partial class MainViewModel : ViewModelBase
     /// lo segnali. Qui si raccolgono soltanto per mostrarle insieme.
     /// </remarks>
     public ObservableCollection<MetricRow> Quadranti { get; } = [];
+
+    private DateTimeOffset prossimoStorico = DateTimeOffset.MinValue;
 
     /// <summary>True quando c'e' almeno un quadrante da mostrare.</summary>
     /// <remarks>
@@ -284,6 +312,16 @@ public sealed partial class MainViewModel : ViewModelBase
             while (!cancellationToken.IsCancellationRequested)
             {
                 ServiceOutcome esito = await AggiornaAsync(cancellationToken);
+
+                // Lo storico dopo il campionamento e solo se il campionamento e' andato: se
+                // la macchina non risponde, insistere sullo storico aggiungerebbe attese a una
+                // finestra che sta gia' aspettando, senza poter dire niente di nuovo.
+                if (esito == ServiceOutcome.Ok && adesso() >= prossimoStorico)
+                {
+                    prossimoStorico = adesso() + RicaricaStorico;
+
+                    await AggiornaStoricoAsync(cancellationToken);
+                }
 
                 // Un 401 su una finestra GIA' collegata significa quasi sempre che il token e'
                 // stato ruotato. Senza rileggere qui, la finestra resterebbe bloccata su
@@ -471,6 +509,83 @@ public sealed partial class MainViewModel : ViewModelBase
 
         AggiornaQuadranti();
     }
+
+    /// <summary>Rilegge lo storico di ogni metrica che ha un quadrante.</summary>
+    /// <param name="cancellationToken">Annullato alla chiusura.</param>
+    /// <remarks>
+    /// Non lancia e non tocca <c>guastoDa</c> ne' la barra di stato, di proposito: <b>un
+    /// guasto dello storico non e' un guasto della macchina</b>. Il servizio puo' rispondere
+    /// benissimo al campionamento e avere la persistenza spenta, e colorare di rosso la
+    /// finestra per questo insegnerebbe a ignorare anche gli allarmi veri. Il motivo finisce
+    /// accanto alla striscia, dove riguarda.
+    /// </remarks>
+    private async Task AggiornaStoricoAsync(CancellationToken cancellationToken)
+    {
+        if (client is not { } corrente)
+        {
+            return;
+        }
+
+        DateTimeOffset ora = adesso();
+
+        foreach (MetricRow riga in Quadranti.ToList())
+        {
+            string[] pezzi = riga.Key.Split('|');
+
+            if (pezzi.Length < 2)
+            {
+                continue;
+            }
+
+            string? istanza = pezzi.Length > 2 && pezzi[2].Length > 0 ? pezzi[2] : null;
+
+            HistoryFetch aggregato = await corrente.GetHistoryAsync(
+                new HistoryQuery(pezzi[0], pezzi[1], istanza, ora - FinestraStorico, "1m"),
+                cancellationToken).ConfigureAwait(true);
+
+            if (aggregato.Outcome != ServiceOutcome.Ok || aggregato.Points is null)
+            {
+                riga.Storico = null;
+                riga.NotaStorico = "No history: " + aggregato.Problem;
+
+                continue;
+            }
+
+            HistoryFetch coda = await corrente.GetHistoryAsync(
+                new HistoryQuery(pezzi[0], pezzi[1], istanza, ora - CodaStorico, "raw"),
+                cancellationToken).ConfigureAwait(true);
+
+            IReadOnlyList<HistoryPoint> punti = coda.Outcome == ServiceOutcome.Ok && coda.Points is not null
+                ? HistoryStrip.Unisci(aggregato.Points, HistoryStrip.Raggruppa(coda.Points, PassoStorico))
+                : aggregato.Points;
+
+            riga.NotaStorico = punti.Count > 0
+                ? string.Empty
+                : "No history recorded for this metric yet.";
+
+            riga.Storico = HistoryStrip.Costruisci(
+                InFrazioni(punti),
+                ora,
+                (int)(FinestraStorico / PassoStorico),
+                PassoStorico);
+        }
+    }
+
+    /// <summary>Porta i valori dello storico nella scala 0..1 dei quadranti.</summary>
+    /// <remarks>
+    /// Lo storico conserva i valori come sono stati misurati, quindi una percentuale arriva
+    /// da 0 a 100. E' la stessa divisione che <c>MetricFormatting.Fraction</c> fa per la riga
+    /// a schermo: se le due divergessero, quadrante e striscia racconterebbero due storie
+    /// diverse della stessa metrica.
+    /// </remarks>
+    private static IReadOnlyList<HistoryPoint> InFrazioni(IReadOnlyList<HistoryPoint> punti) =>
+        [.. punti.Select(punto => punto with
+        {
+            Avg = Math.Clamp(punto.Avg / 100d, 0d, 1d),
+            Min = Math.Clamp(punto.Min / 100d, 0d, 1d),
+            Max = Math.Clamp(punto.Max / 100d, 0d, 1d),
+            Last = Math.Clamp(punto.Last / 100d, 0d, 1d),
+        })];
 
     /// <summary>Rifa' l'elenco dei quadranti solo quando cambia davvero.</summary>
     /// <remarks>

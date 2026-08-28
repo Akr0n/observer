@@ -136,6 +136,49 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
+                        <!-- Lo storico. Il servizio lo registra da sempre e fino a oggi non
+                             l'aveva mai guardato nessuno. Sta a larghezza piena e non sotto
+                             ogni quadrante: sessanta barrette in centocinquanta pixel non si
+                             leggono. -->
+                        <TextBlock Text="Last hour"
+                                   Margin="0,14,0,0"
+                                   FontWeight="SemiBold"
+                                   Opacity="0.75"
+                                   IsVisible="{Binding MostraQuadranti}" />
+
+                        <ItemsControl ItemsSource="{Binding Quadranti}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:MetricRow">
+                                    <StackPanel Margin="0,6,0,0" Spacing="2">
+
+                                        <TextBlock Text="{Binding Etichetta}"
+                                                   FontSize="11"
+                                                   Opacity="0.65" />
+
+                                        <ctl:HistoryBars Height="34"
+                                                         IsVisible="{Binding MostraStorico}"
+                                                         Bars="{Binding Storico}"
+                                                         TrackBrush="{DynamicResource ControlFillColorDefaultBrush}"
+                                                         ValueBrush="{DynamicResource AccentFillColorDefaultBrush}"
+                                                         RedlineBrush="{DynamicResource SystemFillColorCriticalBrush}"
+                                                         MissingBrush="{DynamicResource TextFillColorTertiaryBrush}" />
+
+                                        <!-- Il motivo per cui la striscia non c'e' sta QUI e
+                                             non nella barra di stato: la persistenza spenta e'
+                                             una scelta di configurazione, non un guasto della
+                                             macchina, e colorare di rosso la finestra per
+                                             questo insegnerebbe a ignorare gli allarmi veri. -->
+                                        <TextBlock Text="{Binding NotaStorico}"
+                                                   IsVisible="{Binding MostraNotaStorico}"
+                                                   FontSize="11"
+                                                   Opacity="0.7"
+                                                   TextWrapping="Wrap" />
+
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
                     </StackPanel>
                 </Border>
 
