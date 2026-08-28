@@ -1,3 +1,11 @@
+observer (0.1.3) unstable; urgency=medium
+
+  * Windows: uninstalling now removes the credential store, the history database
+    and the installation folder, not just the files the installer put there.
+    An upgrade is explicitly excluded, so it never destroys the machine token.
+
+ -- Federico Cardinali <noreply@example.invalid>  Fri, 28 Aug 2026 12:00:00 +0000
+
 observer (0.1.2) unstable; urgency=medium
 
   * Window title and heading carry only the application name.
