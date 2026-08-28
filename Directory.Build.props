@@ -7,6 +7,13 @@
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <LangVersion>latest</LangVersion>
 
+    <!-- LA versione, in un posto solo. Prima era scritta a mano in tre file - il .wxs, il
+         control del .deb e il nome del pacchetto in pack.sh - e alzarla voleva dire ricordarsi
+         di tutti e tre. Da qui raggiunge anche i metadati dei binari, che prima dichiaravano
+         tutti 1.0.0.0 qualunque fosse la versione del pacchetto che li conteneva.
+         Il .wixproj la riceve perche' questo file si applica anche a lui. -->
+    <Version>0.1.2</Version>
+
     <!-- Il titolare del copyright, in un posto solo. Da qui finisce nei metadati di OGNI
          eseguibile prodotto: le proprieta' del file su Windows, e le stesse informazioni
          dentro i binari che il .deb installa. L'MSI e il pacchetto Debian lo ripetono nei

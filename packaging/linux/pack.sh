@@ -12,6 +12,26 @@ ALBERO="$QUI/root"
 USCITA="$QUI/out"
 CONFIG="${1:-Release}"
 
+# LA versione viene da Directory.Build.props, che e' l'unica fonte. Prima era scritta a mano
+# qui, nel control e nel .wxs: alzarla voleva dire ricordarsi di tre posti.
+VERSIONE="$(sed -n "s:.*<Version>\(.*\)</Version>.*:\1:p" "$RADICE/Directory.Build.props" | head -1)"
+
+if [ -z "$VERSIONE" ]; then
+    echo "Non trovo <Version> in Directory.Build.props." >&2
+    exit 1
+fi
+
+# E il changelog deve concordare. Un pacchetto la cui versione non corrisponde alla prima voce
+# del changelog e' un pacchetto che mente sulla propria storia, e lintian lo dice; ma dirlo qui
+# costa un confronto e si scopre prima.
+if ! head -1 "$QUI/debian/changelog" | grep -q "($VERSIONE)"; then
+    echo "Il changelog non parla della versione $VERSIONE:" >&2
+    head -1 "$QUI/debian/changelog" >&2
+    exit 1
+fi
+
+echo "Versione $VERSIONE"
+
 rm -rf "$ALBERO" "$USCITA"
 mkdir -p "$ALBERO/DEBIAN" "$ALBERO/usr/lib/observer/service" "$ALBERO/usr/lib/observer/dashboard"          "$ALBERO/usr/lib/observer/cli" "$ALBERO/usr/bin" "$ALBERO/lib/systemd/system"          "$ALBERO/usr/share/doc/observer" "$ALBERO/usr/share/applications"          "$ALBERO/usr/share/icons/hicolor/256x256/apps" "$ALBERO/usr/share/man/man1" "$ALBERO/usr/share/lintian/overrides" "$USCITA"
 
@@ -60,7 +80,9 @@ chmod 0755 "$ALBERO/usr/lib/observer/cli/observer"
 find "$ALBERO/usr/lib/observer" -name '*.so' -exec strip --strip-unneeded {} +
 
 install -m 0644 "$QUI/debian/observer.service" "$ALBERO/lib/systemd/system/observer.service"
-install -m 0644 "$QUI/debian/control"          "$ALBERO/DEBIAN/control"
+# Il control e' un modello: la versione ci entra da fuori, da Directory.Build.props.
+sed "s/@VERSIONE@/$VERSIONE/" "$QUI/debian/control" > "$ALBERO/DEBIAN/control"
+chmod 0644 "$ALBERO/DEBIAN/control"
 install -m 0755 "$QUI/debian/postinst"         "$ALBERO/DEBIAN/postinst"
 install -m 0755 "$QUI/debian/prerm"            "$ALBERO/DEBIAN/prerm"
 install -m 0755 "$QUI/debian/postrm"           "$ALBERO/DEBIAN/postrm"
@@ -114,7 +136,7 @@ chmod 0644 "$ALBERO/usr/share/applications/observer.desktop"
 # Compressione predefinita, cioe' zstd su Ubuntu 24.04. Misurato: bookworm (dpkg 1.21.23) la
 # installa senza storie; fallisce solo da bullseye in giu'. E li' il punto e' comunque teorico,
 # perche' aspnetcore-runtime-10.0 su bookworm non esiste.
-dpkg-deb --root-owner-group --build "$ALBERO" "$USCITA/observer_0.1.2_amd64.deb"
+dpkg-deb --root-owner-group --build "$ALBERO" "$USCITA/observer_${VERSIONE}_amd64.deb"
 
 echo
 dpkg-deb --info "$USCITA"/observer_*.deb | head -20

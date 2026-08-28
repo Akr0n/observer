@@ -510,3 +510,9 @@ packaging/windows/payload/
 # Alberi di costruzione dei pacchetti: output rigenerabile.
 packaging/linux/root/
 packaging/linux/out/
+
+# I piani di lavoro restano LOCALI, come CLAUDE.md. Contengono l'impalcatura di un lavoro
+# gia' fatto - elenchi di task, ordini di esecuzione - mescolata a misure che valgono ancora,
+# e in qualche punto descrivono uno stato ormai superato. Cio' che di quelle misure serve a
+# chi tocca il codice sta nei commenti del codice stesso, che sono versionati.
+docs/
