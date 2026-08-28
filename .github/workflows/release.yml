@@ -11,8 +11,13 @@ on:
     tags:
       - 'v*'
 
+# contents: per creare la release. id-token e attestations: per l'attestazione di
+# provenienza, che e' firmata con un token OIDC effimero del workflow e non con un
+# segreto del repository - non c'e' nessuna chiave da custodire, e nessuna da perdere.
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   windows:
@@ -48,6 +53,14 @@ jobs:
             exit 1
           }
           Write-Host "MSI: versione $trovato, come il tag."
+
+      # L'attestazione di provenienza. NON e' una firma Authenticode e Windows non la
+      # guarda: risponde alla domanda "questo file viene davvero da quel codice
+      # sorgente", non a "Windows si fida di chi l'ha fatto". E' l'unica delle due che
+      # oggi si puo' avere, e costa zero su un repository pubblico.
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: packaging/windows/bin/Release/Observer.msi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -98,6 +111,10 @@ jobs:
           sudo apt-get install -y -qq lintian
           lintian --tag-display-limit 0 --fail-on error,warning packaging/linux/out/observer_*.deb
 
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: packaging/linux/out/observer_*.deb
+
       - uses: actions/upload-artifact@v4
         with:
           name: deb
@@ -126,12 +143,30 @@ jobs:
 
           ## I pacchetti NON sono firmati
 
-          Windows mostrera' un avviso di SmartScreen al primo avvio dell'installer, e la
-          finestra di controllo dell'account dira' "editore sconosciuto". E' atteso: firmare
-          richiederebbe un certificato a pagamento che, dal 2024, **non evita comunque
-          l'avviso** - la reputazione si costruisce con i download, non si compra.
+          Windows lo dira' due volte, in due modi diversi, e le due cose non si
+          risolvono con lo stesso rimedio:
+
+          - la finestra di controllo dell'account dira' **"Editore sconosciuto"**.
+            Questo lo toglie una firma, subito, dal primo download;
+          - **SmartScreen** mostrera' un avviso al primo avvio dell'installer. Questo
+            una firma NON lo toglie: da marzo 2024 nemmeno un certificato EV lo evita
+            piu'. Dipende da quanti download puliti il file ha accumulato, non dal
+            certificato che porta.
 
           Per procedere: *Ulteriori informazioni* e poi *Esegui comunque*.
+
+          ## Da dove viene questo pacchetto
+
+          Ogni file allegato porta un'attestazione di provenienza firmata da GitHub,
+          che lo lega al commit e al workflow che l'hanno prodotto:
+
+          \`\`\`
+          gh attestation verify Observer.msi --repo $GITHUB_REPOSITORY
+          \`\`\`
+
+          Non e' una firma Authenticode e Windows non la guarda. Risponde a una
+          domanda diversa, e altrettanto utile: *questo file viene davvero da quel
+          codice sorgente*, invece di *Windows si fida di chi l'ha fatto*.
 
           ## Windows
 
