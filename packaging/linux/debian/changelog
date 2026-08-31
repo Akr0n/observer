@@ -1,3 +1,17 @@
+observer (0.4.1) unstable; urgency=medium
+
+  * The request timeout rises from 6 to 8 seconds. Six was the first
+    attempt and the margin was too thin: a refused connection reached
+    through a dual-stack host name costs about 4.1 seconds, and on a busy
+    machine that overran the budget - which turns a stopped service back
+    into "no answer".
+  * The value of each gauge is written below the dial instead of inside it.
+    It used to sit just above the hub, which is exactly where the needle
+    passes while it moves - so the number was hardest to read at the moment
+    it was changing.
+
+ -- Federico Cardinali <noreply@example.invalid>  Mon, 31 Aug 2026 11:00:00 +0000
+
 observer (0.4.0) unstable; urgency=medium
 
   * New metric: disk activity. Bytes read and written per second, and the
