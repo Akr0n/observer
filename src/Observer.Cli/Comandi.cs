@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text;
+using Observer.Core.Security;
 using Observer.Service.Credentials;
 
 namespace Observer.Cli;
@@ -28,6 +30,7 @@ public static class Comandi
         {
             "share" => Share(args.Contains("--stdout", StringComparer.Ordinal)),
             "rotate-key" => RotateKey(),
+            "token" => Token(args),
             "doctor" => Doctor(),
             "help" or "--help" or "-h" => Aiuto(0),
             _ => Aiuto(2),
@@ -51,11 +54,130 @@ public static class Comandi
               observer doctor             Explain where the credential store is, how well it is
                                           protected, and what a client would see. Needs nothing.
 
+              observer token set NAME     Keep ANOTHER machine's token here, so it stays out of
+                                          machines.json. The token is read from standard input,
+                                          never from the command line, and is not echoed when
+                                          you type it.
+
+              observer token forget NAME  Remove a machine's token from this computer.
+
             To watch THIS machine you need no token at all: the dashboard comes in through the
             local channel. The token exists only so another computer can query this one.
             """);
 
         return codice;
+    }
+
+    /// <summary>Custodisce, o dimentica, il token di un'ALTRA macchina.</summary>
+    /// <remarks>
+    /// Esiste perche' senza un comando il token si deposita a mano dentro un file, che e'
+    /// esattamente cio' che si sta togliendo. Il segreto arriva da standard input e non
+    /// dagli argomenti, per la stessa ragione scritta in cima a questa classe: la riga
+    /// digitata finisce nella cronologia della shell, e su Unix anche in "ps".
+    /// </remarks>
+    private static int Token(string[] args)
+    {
+        if (args.Length < 3)
+        {
+            return Aiuto(2);
+        }
+
+        ISecretStore deposito = SecretStores.PerQuestaMacchina();
+
+        try
+        {
+            return args[1] switch
+            {
+                "set" => Deposita(deposito, args[2]),
+                "forget" => Dimentica(deposito, args[2]),
+                _ => Aiuto(2),
+            };
+        }
+        catch (SecretStoreException errore)
+        {
+            Console.Error.WriteLine(errore.Message);
+
+            return 1;
+        }
+    }
+
+    private static int Deposita(ISecretStore deposito, string macchina)
+    {
+        string segreto = LeggiSegreto();
+
+        if (segreto.Length == 0)
+        {
+            Console.Error.WriteLine("No token was given, so nothing was stored.");
+
+            return 1;
+        }
+
+        deposito.Write(macchina, segreto);
+
+        Console.WriteLine($"The token for {macchina} is now kept in {deposito.Descrizione}.");
+        Console.WriteLine(
+            $"If machines.json still has an \"apiToken\" line for {macchina}, delete it: " +
+            "Observer refuses to use a token from that file.");
+
+        return 0;
+    }
+
+    private static int Dimentica(ISecretStore deposito, string macchina)
+    {
+        Console.WriteLine(deposito.Delete(macchina)
+            ? $"The token for {macchina} is gone from this computer."
+            : $"There was no token for {macchina} here.");
+
+        return 0;
+    }
+
+    /// <summary>Legge il segreto senza mostrarlo, quando c'e' qualcuno che lo digita.</summary>
+    /// <returns>Il segreto, senza spazi ai bordi.</returns>
+    /// <remarks>
+    /// Senza eco non e' teatro: il terminale conserva cio' che ha stampato, quindi un token
+    /// mostrato mentre lo si incolla resta nella cronologia della finestra e in ogni copia di
+    /// quello che c'era a schermo. Con l'input rediretto non c'e' nessuno da proteggere e si
+    /// legge la riga e basta.
+    /// </remarks>
+    private static string LeggiSegreto()
+    {
+        if (Console.IsInputRedirected)
+        {
+            return (Console.In.ReadLine() ?? string.Empty).Trim();
+        }
+
+        Console.Write("Paste that machine's token (it will not be shown): ");
+
+        StringBuilder costruito = new();
+
+        while (true)
+        {
+            ConsoleKeyInfo tasto = Console.ReadKey(intercept: true);
+
+            if (tasto.Key == ConsoleKey.Enter)
+            {
+                break;
+            }
+
+            if (tasto.Key == ConsoleKey.Backspace)
+            {
+                if (costruito.Length > 0)
+                {
+                    costruito.Length--;
+                }
+
+                continue;
+            }
+
+            if (!char.IsControl(tasto.KeyChar))
+            {
+                costruito.Append(tasto.KeyChar);
+            }
+        }
+
+        Console.WriteLine();
+
+        return costruito.ToString().Trim();
     }
 
     private static int Share(bool soloIlValore)
