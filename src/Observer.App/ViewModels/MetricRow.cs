@@ -41,6 +41,14 @@ public sealed partial class MetricRow : ObservableObject
     /// <summary>Identita' stabile della riga.</summary>
     public string Key { get; }
 
+    /// <summary>True quando da questo quadrante si puo' aprire l'elenco dei processi.</summary>
+    /// <remarks>
+    /// Falso sui dischi, e quel quadrante allora non e' cliccabile affatto: meglio nessun
+    /// invito che un invito che porta a un pannello vuoto. Il perche' sta in
+    /// <see cref="ProcessResource"/>.
+    /// </remarks>
+    public bool PuoMostrareProcessi => ProcessResource.Da(Key) is not null;
+
     /// <summary>Nome leggibile della metrica.</summary>
     [ObservableProperty]
     public partial string Etichetta { get; set; }
