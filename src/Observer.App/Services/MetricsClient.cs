@@ -28,6 +28,28 @@ public interface IMetricsClient
     /// <param name="cancellationToken">Annullato alla chiusura.</param>
     /// <returns>I punti, oppure il motivo per cui non ci sono.</returns>
     Task<HistoryFetch> GetHistoryAsync(HistoryQuery richiesta, CancellationToken cancellationToken);
+
+    /// <summary>Chi sta consumando una risorsa su quella macchina.</summary>
+    /// <param name="per">Quale risorsa: <c>cpu</c> oppure <c>memory</c>.</param>
+    /// <param name="quanti">Quante righe al massimo.</param>
+    /// <param name="cancellationToken">Annullato alla chiusura.</param>
+    /// <returns>Le righe, oppure il motivo per cui non ci sono.</returns>
+    /// <remarks>
+    /// Ha un'implementazione predefinita perche' i doppi di prova che esistono per altro non
+    /// devono essere costretti a fingere anche questa: una finta che non sa elencare processi
+    /// lo dichiara, invece di restituire un elenco vuoto che somiglia a una risposta.
+    /// </remarks>
+    Task<ProcessFetch> GetProcessesAsync(string per, int quanti, CancellationToken cancellationToken) =>
+        Task.FromResult(new ProcessFetch(
+            ServiceOutcome.Unknown, "this client cannot list processes", []));
+
+    /// <summary>Termina un processo su quella macchina.</summary>
+    /// <param name="pid">Identificatore del processo.</param>
+    /// <param name="cancellationToken">Annullato alla chiusura.</param>
+    /// <returns>Come e' andata.</returns>
+    Task<KillFetch> KillProcessAsync(int pid, CancellationToken cancellationToken) =>
+        Task.FromResult(new KillFetch(
+            ServiceOutcome.Unknown, "this client cannot terminate processes"));
 }
 
 /// <summary>Che pezzo di storico si vuole.</summary>
@@ -248,6 +270,86 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
         return outcome == ServiceOutcome.Ok && risposta is not null
             ? new HistoryFetch(ServiceOutcome.Ok, string.Empty, risposta.Points)
             : new HistoryFetch(outcome, problem, null);
+    }
+
+    /// <inheritdoc />
+    public async Task<ProcessFetch> GetProcessesAsync(
+        string per, int quanti, CancellationToken cancellationToken)
+    {
+        string percorso = "processes?by=" + Uri.EscapeDataString(per ?? "cpu")
+            + "&top=" + quanti.ToString(CultureInfo.InvariantCulture);
+
+        (ServiceOutcome esito, string problema, ProcessListWire? risposta) =
+            await LeggiAsync<ProcessListWire>(percorso, cancellationToken).ConfigureAwait(false);
+
+        return esito == ServiceOutcome.Ok && risposta is not null
+            ? new ProcessFetch(
+                ServiceOutcome.Ok,
+                string.Empty,
+                [.. risposta.Processes.Select(ProcessoMostrato.Da)])
+            : new ProcessFetch(esito, problema, []);
+    }
+
+    /// <inheritdoc />
+    public async Task<KillFetch> KillProcessAsync(int pid, CancellationToken cancellationToken)
+    {
+        Uri indirizzo = new(
+            BaseAddress, "processes/" + pid.ToString(CultureInfo.InvariantCulture) + "/kill");
+
+        try
+        {
+            using HttpRequestMessage richiesta = new(HttpMethod.Post, indirizzo);
+
+            if (authorization is not null)
+            {
+                richiesta.Headers.Authorization = authorization;
+            }
+
+            using HttpResponseMessage risposta =
+                await http.SendAsync(richiesta, cancellationToken).ConfigureAwait(false);
+
+            if (risposta.IsSuccessStatusCode)
+            {
+                return new KillFetch(ServiceOutcome.Ok, string.Empty);
+            }
+
+            return risposta.StatusCode switch
+            {
+                // Il servizio risponde 404 quando quel PID non c'e' piu'. Lo stesso codice
+                // arriverebbe da un servizio troppo vecchio per avere questo endpoint: e' una
+                // ambiguita' accettata, perche' client e servizio si aggiornano insieme e il
+                // caso frequente e' di gran lunga il primo — un processo puo' finire da solo
+                // fra il momento in cui compare nell'elenco e il clic.
+                HttpStatusCode.NotFound => new KillFetch(
+                    ServiceOutcome.RispostaInattesa,
+                    "That process is no longer running."),
+
+                HttpStatusCode.Forbidden => new KillFetch(
+                    ServiceOutcome.RispostaInattesa,
+                    $"{Endpoint.Descrizione} refused to terminate it: the operating system " +
+                    "protects that process."),
+
+                HttpStatusCode.Unauthorized => new KillFetch(
+                    ServiceOutcome.TokenRifiutato,
+                    $"{Endpoint.Descrizione} rejected the token."),
+
+                _ => new KillFetch(
+                    ServiceOutcome.RispostaInattesa,
+                    $"{Endpoint.Descrizione} replied " +
+                    ((int)risposta.StatusCode).ToString(CultureInfo.InvariantCulture) +
+                    ", which this application doesn't know how to interpret."),
+            };
+        }
+        catch (HttpRequestException ex)
+        {
+            ServiceOutcome esito = TransportFailure.Classifica(ex);
+
+            return new KillFetch(esito, TestoDiTrasporto(esito, ex.Message));
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new KillFetch(ServiceOutcome.TempoScaduto, TestoTempoScaduto());
+        }
     }
 
     /// <inheritdoc />

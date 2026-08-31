@@ -123,18 +123,92 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:MetricRow">
-                                    <ctl:Gauge Width="148" Height="212"
-                                               Margin="0,4,18,0"
-                                               Fraction="{Binding Frazione}"
-                                               Display="{Binding Valore}"
-                                               Caption="{Binding Etichetta}"
-                                               TrackBrush="{DynamicResource ControlStrongFillColorDefaultBrush}"
-                                               ValueBrush="{DynamicResource AccentFillColorDefaultBrush}"
-                                               RedlineBrush="{DynamicResource SystemFillColorCriticalBrush}"
-                                               NeedleBrush="{DynamicResource TextFillColorPrimaryBrush}" />
+                                    <!-- Il quadrante sta dentro un pulsante trasparente: la
+                                         CPU e la memoria si aprono sull'elenco dei processi,
+                                         i dischi no, e IsEnabled lo dice senza spiegazioni.
+                                         Un pulsante e non un gestore di clic sul controllo,
+                                         cosi' ci si arriva anche da tastiera. -->
+                                    <Button Padding="0"
+                                            Margin="0,4,18,0"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            IsEnabled="{Binding PuoMostrareProcessi}"
+                                            Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).ApriProcessiCommand}"
+                                            CommandParameter="{Binding}">
+                                        <ctl:Gauge Width="148" Height="212"
+                                                   Fraction="{Binding Frazione}"
+                                                   Display="{Binding Valore}"
+                                                   Caption="{Binding Etichetta}"
+                                                   TrackBrush="{DynamicResource ControlStrongFillColorDefaultBrush}"
+                                                   ValueBrush="{DynamicResource AccentFillColorDefaultBrush}"
+                                                   RedlineBrush="{DynamicResource SystemFillColorCriticalBrush}"
+                                                   NeedleBrush="{DynamicResource TextFillColorPrimaryBrush}" />
+                                    </Button>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
+                        <!-- Il pannello dei processi, che si apre cliccando un quadrante.
+                             Sta QUI, sotto i quadranti e sopra lo storico, e non in una
+                             finestra a parte: la domanda "chi mi sta mangiando la CPU" nasce
+                             guardando il quadrante, e la risposta deve comparire accanto a
+                             cio' che l'ha fatta nascere. -->
+                        <Border IsVisible="{Binding ProcessiVisibili}"
+                                Margin="0,12,0,0"
+                                Padding="12"
+                                CornerRadius="6"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                Background="{DynamicResource LayerFillColorDefaultBrush}">
+                            <StackPanel Spacing="8">
+
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right"
+                                            Content="Close"
+                                            Command="{Binding ChiudiProcessiCommand}" />
+                                    <TextBlock Text="{Binding ProcessiTitolo}"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center" />
+                                </DockPanel>
+
+                                <TextBlock Text="{Binding ProcessiProblema}"
+                                           TextWrapping="Wrap"
+                                           IsVisible="{Binding ProcessiProblema, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           Foreground="{DynamicResource SystemFillColorCriticalBrush}" />
+
+                                <ListBox ItemsSource="{Binding Processi}"
+                                         SelectedItem="{Binding ProcessoSelezionato}"
+                                         MaxHeight="260">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate x:DataType="svc:ProcessoMostrato">
+                                            <Grid ColumnDefinitions="*,90,110">
+                                                <TextBlock Text="{Binding Nome}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding Cpu}"
+                                                           HorizontalAlignment="Right" />
+                                                <TextBlock Grid.Column="2"
+                                                           Text="{Binding Memoria}"
+                                                           HorizontalAlignment="Right" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+
+                                <!-- Due pulsanti e non uno con il testo variabile: il primo
+                                     clic arma soltanto, il secondo termina. Chi ha cliccato
+                                     per sbaglio se ne accorge prima che succeda qualcosa. -->
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="End process"
+                                            IsVisible="{Binding !ConfermaTerminazione}"
+                                            IsEnabled="{Binding PuoTerminare}"
+                                            Command="{Binding TerminaSelezionatoCommand}" />
+                                    <Button Content="Click again to end it"
+                                            IsVisible="{Binding ConfermaTerminazione}"
+                                            IsEnabled="{Binding PuoTerminare}"
+                                            Command="{Binding TerminaSelezionatoCommand}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
 
                         <!-- Lo storico. Il servizio lo registra da sempre e fino a oggi non
                              l'aveva mai guardato nessuno. Sta a larghezza piena e non sotto

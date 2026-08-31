@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using FluentAvalonia.UI.Controls;
 using Observer.App.Services;
 using Observer.Core.Metrics;
@@ -50,6 +51,14 @@ public sealed partial class MainViewModel : ViewModelBase
     /// sull'adesso, mentre il quadrante sopra mostra un valore vivo.
     /// </remarks>
     private static readonly TimeSpan CodaStorico = TimeSpan.FromMinutes(10);
+
+    /// <summary>Quante righe chiedere al pannello dei processi.</summary>
+    /// <remarks>
+    /// Quindici, non tutti: la domanda a cui il pannello risponde e' "chi mi sta mangiando la
+    /// macchina", e la coda dell'elenco - centinaia di processi fermi - non risponde a niente
+    /// e costa banda a ogni secondo.
+    /// </remarks>
+    private const int QuantiProcessi = 15;
 
     private readonly Func<IMetricsClient?>? rileggiConfigurazione;
     private readonly Func<DateTimeOffset> adesso;
@@ -187,6 +196,46 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </remarks>
     [ObservableProperty]
     public partial bool MostraQuadranti { get; set; }
+
+    /// <summary>I processi mostrati nel pannello, quando e' aperto.</summary>
+    public ObservableCollection<ProcessoMostrato> Processi { get; } = [];
+
+    /// <summary>True quando il pannello dei processi e' aperto.</summary>
+    [ObservableProperty]
+    public partial bool ProcessiVisibili { get; set; }
+
+    /// <summary>Titolo del pannello: dice di quale risorsa si stanno guardando i processi.</summary>
+    [ObservableProperty]
+    public partial string ProcessiTitolo { get; set; } = string.Empty;
+
+    /// <summary>Che cosa non va nel pannello, quando qualcosa non va. Vuoto altrimenti.</summary>
+    [ObservableProperty]
+    public partial string ProcessiProblema { get; set; } = string.Empty;
+
+    /// <summary>La riga selezionata, quella che il pulsante terminerebbe.</summary>
+    [ObservableProperty]
+    public partial ProcessoMostrato? ProcessoSelezionato { get; set; }
+
+    /// <summary>True quando c'e' una riga selezionata da poter terminare.</summary>
+    [ObservableProperty]
+    public partial bool PuoTerminare { get; set; }
+
+    /// <summary>
+    /// True quando il pulsante di terminazione e' gia' stato premuto una volta e sta
+    /// aspettando la conferma.
+    /// </summary>
+    /// <remarks>
+    /// La conferma sta nel pulsante e non in una finestra di dialogo, e non e' pigrizia: una
+    /// finestra modale qui richiederebbe di passare la finestra padre al view model, cioe' di
+    /// legare la logica all'interfaccia proprio dove finora non lo e'. Due clic sullo stesso
+    /// pulsante, col testo che cambia, difendono dallo stesso errore — un clic distratto su
+    /// una riga sbagliata — senza quella dipendenza.
+    /// </remarks>
+    [ObservableProperty]
+    public partial bool ConfermaTerminazione { get; set; }
+
+    /// <summary>Quale risorsa sta guardando il pannello: <c>cpu</c>, <c>memory</c>, o null.</summary>
+    private string? risorsaMostrata;
 
     /// <summary>Le macchine fra cui si puo' scegliere. La prima e' sempre questa.</summary>
     public ObservableCollection<ObserverEndpoint> Macchine { get; } = [];
@@ -329,6 +378,14 @@ public sealed partial class MainViewModel : ViewModelBase
                     prossimoStorico = adesso() + RicaricaStorico;
 
                     await AggiornaStoricoAsync(cancellationToken);
+                }
+
+                // I processi seguono lo stesso giro dei quadranti, ma solo a pannello aperto:
+                // chiedere un elenco che nessuno sta guardando costerebbe una richiesta al
+                // secondo per niente.
+                if (esito == ServiceOutcome.Ok && ProcessiVisibili)
+                {
+                    await AggiornaProcessiAsync(cancellationToken);
                 }
 
                 // Un 401 su una finestra GIA' collegata significa quasi sempre che il token e'
@@ -621,6 +678,116 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             Quadranti.Add(riga);
         }
+    }
+
+    /// <summary>Apre il pannello dei processi per la risorsa del quadrante scelto.</summary>
+    /// <param name="riga">Il quadrante su cui si e' cliccato.</param>
+    /// <returns>L'attesa della prima lettura.</returns>
+    [RelayCommand]
+    private async Task ApriProcessiAsync(MetricRow? riga)
+    {
+        if (riga is null || ProcessResource.Da(riga.Key) is not { } risorsa)
+        {
+            return;
+        }
+
+        risorsaMostrata = risorsa;
+        ProcessiTitolo = string.Equals(risorsa, "memory", StringComparison.Ordinal)
+            ? "Top processes by memory"
+            : "Top processes by CPU";
+
+        ProcessiVisibili = true;
+        ConfermaTerminazione = false;
+        ProcessiProblema = string.Empty;
+
+        await AggiornaProcessiAsync(CancellationToken.None);
+    }
+
+    /// <summary>Chiude il pannello e dimentica cosa c'era dentro.</summary>
+    [RelayCommand]
+    private void ChiudiProcessi()
+    {
+        ProcessiVisibili = false;
+        risorsaMostrata = null;
+        ProcessoSelezionato = null;
+        ConfermaTerminazione = false;
+        ProcessiProblema = string.Empty;
+        Processi.Clear();
+    }
+
+    /// <summary>Termina il processo selezionato, chiedendo conferma al primo clic.</summary>
+    /// <returns>L'attesa della richiesta e della rilettura.</returns>
+    [RelayCommand]
+    private async Task TerminaSelezionatoAsync()
+    {
+        if (client is null || ProcessoSelezionato is not { } scelto)
+        {
+            return;
+        }
+
+        // Primo clic: arma soltanto. Il pulsante cambia testo, e chi ha cliccato per sbaglio
+        // se ne accorge prima che succeda qualcosa.
+        if (!ConfermaTerminazione)
+        {
+            ConfermaTerminazione = true;
+
+            return;
+        }
+
+        ConfermaTerminazione = false;
+
+        KillFetch esito = await client.KillProcessAsync(scelto.Pid, CancellationToken.None);
+
+        ProcessiProblema = esito.Outcome == ServiceOutcome.Ok ? string.Empty : esito.Problem;
+
+        await AggiornaProcessiAsync(CancellationToken.None);
+    }
+
+    /// <summary>Cambiare riga disarma la conferma.</summary>
+    /// <param name="value">La riga appena selezionata.</param>
+    /// <remarks>
+    /// Senza, una conferma armata su un processo resterebbe armata dopo aver selezionato un
+    /// altro processo, e il secondo clic terminerebbe quello sbagliato.
+    /// </remarks>
+    partial void OnProcessoSelezionatoChanged(ProcessoMostrato? value)
+    {
+        ConfermaTerminazione = false;
+        PuoTerminare = value is not null;
+    }
+
+    private async Task AggiornaProcessiAsync(CancellationToken cancellationToken)
+    {
+        if (client is null || risorsaMostrata is not { } risorsa)
+        {
+            return;
+        }
+
+        ProcessFetch esito = await client.GetProcessesAsync(risorsa, QuantiProcessi, cancellationToken);
+
+        if (esito.Outcome != ServiceOutcome.Ok)
+        {
+            ProcessiProblema = esito.Problem;
+
+            return;
+        }
+
+        ProcessiProblema = string.Empty;
+
+        // La selezione si tiene sul PID e non sull'oggetto: le righe arrivano nuove a ogni
+        // giro, e senza questo la selezione si perderebbe una volta al secondo — cioe' proprio
+        // mentre si sta puntando il processo da terminare.
+        int? selezionato = ProcessoSelezionato?.Pid;
+
+        Processi.Clear();
+
+        foreach (ProcessoMostrato riga in esito.Processi)
+        {
+            Processi.Add(riga);
+        }
+
+        ProcessoSelezionato = selezionato is { } pid
+            ? Processi.FirstOrDefault(riga => riga.Pid == pid)
+            : null;
     }
 
     private bool StessiCollector(IReadOnlyList<MetricGroupState> stati)

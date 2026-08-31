@@ -1,0 +1,162 @@
+using Observer.App.Services;
+using Observer.App.ViewModels;
+using Observer.Core.Metrics;
+
+namespace Observer.App.Tests;
+
+/// <summary>
+/// Il pannello dei processi: quando si apre, cosa ricorda, e cosa serve per terminare.
+/// </summary>
+/// <remarks>
+/// E' l'unico posto dell'applicazione da cui si distrugge qualcosa, e le regole che contano
+/// non sono quelle che si vedono. La selezione deve sopravvivere all'aggiornamento — l'elenco
+/// si riscrive ogni secondo mentre l'utente punta la riga — e la conferma deve disarmarsi
+/// cambiando riga, o il secondo clic ucciderebbe il processo sbagliato.
+/// </remarks>
+public class PannelloProcessiTests
+{
+    private static MetricRow Riga(string chiave) =>
+        new(new MetricRowState(chiave, "etichetta", "valore", 0.5d, MetricSeverity.Ok));
+
+    [Theory]
+    [InlineData("cpu|cpu.usage.total|", "cpu")]
+    [InlineData("memory|memory.used.percent|", "memory")]
+    public void DaiQuadrantiDiCpuEMemoriaSiApreLElenco(string chiave, string attesa) =>
+        Assert.Equal(attesa, ProcessResource.Da(chiave));
+
+    [Theory]
+    [InlineData("disk|disk.used.percent|C:")]
+    [InlineData("disk.activity|disk.busy.percent|Disk 0")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void DaiQuadrantiDeiDischiNonSiApreNiente(string? chiave)
+    {
+        // Non e' una dimenticanza. Lo spazio occupato su un volume non e' attribuibile a un
+        // processo IN ESECUZIONE — chi ha scritto quei file magari non c'e' piu' da mesi — e
+        // il traffico per processo richiede contatori che non sono portabili e che non sono
+        // ancora scritti. Un pannello che si aprisse con l'elenco della CPU sotto il titolo di
+        // un disco direbbe una cosa falsa.
+        Assert.Null(ProcessResource.Da(chiave));
+    }
+
+    [Fact]
+    public void UnQuadranteDiDiscoNonECliccabile()
+    {
+        Assert.False(Riga("disk|disk.used.percent|C:").PuoMostrareProcessi);
+        Assert.True(Riga("cpu|cpu.usage.total|").PuoMostrareProcessi);
+    }
+
+    [Fact]
+    public async Task LaSelezioneSopravviveAllAggiornamento()
+    {
+        // L'elenco si riscrive una volta al secondo. Senza tenere la selezione sul PID, la
+        // riga puntata si deselezionerebbe da sola mentre ci si prepara a terminarla.
+        ClienteConProcessi cliente = new();
+        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+
+        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+
+        viewModel.ProcessoSelezionato = viewModel.Processi.Single(riga => riga.Pid == 22);
+
+        // Stessi PID, valori nuovi: e' cio' che succede a ogni giro.
+        cliente.Cpu = ["9.0 %", "3.0 %"];
+        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+
+        Assert.NotNull(viewModel.ProcessoSelezionato);
+        Assert.Equal(22, viewModel.ProcessoSelezionato!.Pid);
+    }
+
+    [Fact]
+    public async Task CambiareRigaDisarmaLaConferma()
+    {
+        // La regola che evita l'incidente peggiore: conferma armata su un processo, l'utente
+        // cambia idea e ne seleziona un altro, e il clic successivo terminerebbe quello nuovo
+        // senza averlo mai confermato.
+        ClienteConProcessi cliente = new();
+        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+
+        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+
+        viewModel.ProcessoSelezionato = viewModel.Processi.First();
+        await viewModel.TerminaSelezionatoCommand.ExecuteAsync(parameter: null);
+
+        Assert.True(viewModel.ConfermaTerminazione);
+        Assert.Empty(cliente.Terminati);
+
+        viewModel.ProcessoSelezionato = viewModel.Processi.Last();
+
+        Assert.False(viewModel.ConfermaTerminazione);
+        Assert.Empty(cliente.Terminati);
+    }
+
+    [Fact]
+    public async Task ServonoDueClicPerTerminareDavvero()
+    {
+        ClienteConProcessi cliente = new();
+        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+
+        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        viewModel.ProcessoSelezionato = viewModel.Processi.Single(riga => riga.Pid == 11);
+
+        await viewModel.TerminaSelezionatoCommand.ExecuteAsync(parameter: null);
+        Assert.Empty(cliente.Terminati);
+
+        await viewModel.TerminaSelezionatoCommand.ExecuteAsync(parameter: null);
+
+        Assert.Equal([11], cliente.Terminati);
+        Assert.False(viewModel.ConfermaTerminazione);
+    }
+
+    [Fact]
+    public async Task ChiudereIlPannelloDimenticaTutto()
+    {
+        ClienteConProcessi cliente = new();
+        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+
+        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        viewModel.ProcessoSelezionato = viewModel.Processi.First();
+
+        viewModel.ChiudiProcessiCommand.Execute(parameter: null);
+
+        Assert.False(viewModel.ProcessiVisibili);
+        Assert.Empty(viewModel.Processi);
+        Assert.Null(viewModel.ProcessoSelezionato);
+        Assert.False(viewModel.ConfermaTerminazione);
+    }
+
+    private sealed class ClienteConProcessi : IMetricsClient
+    {
+        public IReadOnlyList<string> Cpu { get; set; } = ["5.0 %", "1.0 %"];
+
+        public List<int> Terminati { get; } = [];
+
+        public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.CanaleLocale();
+
+        public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(new SnapshotFetch(ServiceOutcome.NonRaggiungibile, "spenta", null));
+
+        public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(new CatalogFetch(ServiceOutcome.Ok, string.Empty, MetricCatalog.Empty));
+
+        public Task<HistoryFetch> GetHistoryAsync(
+            HistoryQuery richiesta, CancellationToken cancellationToken) =>
+            Task.FromResult(new HistoryFetch(ServiceOutcome.Ok, string.Empty, []));
+
+        public Task<ProcessFetch> GetProcessesAsync(
+            string per, int quanti, CancellationToken cancellationToken) =>
+            Task.FromResult(new ProcessFetch(
+                ServiceOutcome.Ok,
+                string.Empty,
+                [
+                    new ProcessoMostrato(11, "affamato", Cpu[0], "100 MiB"),
+                    new ProcessoMostrato(22, "tranquillo", Cpu[1], "10 MiB"),
+                ]));
+
+        public Task<KillFetch> KillProcessAsync(int pid, CancellationToken cancellationToken)
+        {
+            Terminati.Add(pid);
+
+            return Task.FromResult(new KillFetch(ServiceOutcome.Ok, string.Empty));
+        }
+    }
+}
