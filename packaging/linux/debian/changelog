@@ -1,3 +1,28 @@
+observer (0.4.0) unstable; urgency=medium
+
+  * New metric: disk activity. Bytes read and written per second, and the
+    percentage of time each device spent working, with one gauge per disk.
+  * That percentage is computed from idle time, never by adding read time
+    and write time together: those two overlap, and on one measured window
+    their sum reached 843%.
+  * The instances here are devices - "Disk 0", "sda" - and deliberately do
+    not line up with the volume letters used for disk space. A disk carries
+    several volumes and a volume can span disks, so attributing the traffic
+    of two volumes to one letter would be worse than an honest device name.
+  * A refused connection and a silent one are no longer described with the
+    same words. They ask for opposite remedies - start a service, or open a
+    port - and telling them apart wrongly costs an afternoon.
+  * The request timeout rises from 3 to 6 seconds, and the number is
+    measured rather than chosen. On Windows a refused connection takes about
+    two seconds, and a host name that resolves to two address families pays
+    that twice: with the old budget the refusal never arrived in time, and a
+    stopped service was reported as unreachable.
+  * A certificate that no longer matches its pinned fingerprint now says so
+    in the title of the status bar. It used to read "Reading failed", and it
+    is the one failure here that should not be answered by retrying.
+
+ -- Federico Cardinali <noreply@example.invalid>  Mon, 31 Aug 2026 09:00:00 +0000
+
 observer (0.3.0) unstable; urgency=medium
 
   * New metric: disk space, one gauge per mounted volume. It is the first
