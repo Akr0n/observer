@@ -445,16 +445,12 @@ public sealed partial class MainViewModel : ViewModelBase
         // stessa attesa che ha avuto questa.
         guastoDa = null;
 
+        // Solo QUANDO. Il dove non e' sparito, si e' spostato dove non va riletto a ogni
+        // sguardo: la macchina che si sta guardando e' quella selezionata nell'elenco a
+        // sinistra, e questa riga cambia una volta al secondo mentre quella non cambia mai.
         string ora = snapshot.CapturedAt.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
-        // DOVE e QUANDO, non come ci si e' entrati. Da dove viene il token e' una nota di
-        // configurazione: serve quando qualcosa non va e bisogna sapere quale file
-        // correggere - ed e' li' che sta, nel messaggio dell'impronta che non corrisponde -
-        // ma a regime e' rumore che si rilegge a ogni sguardo senza mai cambiare.
-        string dove = corrente.Endpoint.Kind == EndpointKind.Locale
-            ? "this machine"
-            : corrente.Endpoint.Descrizione;
 
-        SottoIntestazione = $"Connected to {dove} · last reading at {ora}";
+        SottoIntestazione = $"Last Reading: {ora}";
 
         return ServiceOutcome.Ok;
     }

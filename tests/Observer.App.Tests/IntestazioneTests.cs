@@ -28,12 +28,16 @@ public class IntestazioneTests
         Task ciclo = viewModel.EseguiAsync(arresto.Token);
 
         while (!arresto.IsCancellationRequested
-            && !viewModel.SottoIntestazione.StartsWith("Connected", StringComparison.Ordinal))
+            && !viewModel.SottoIntestazione.StartsWith("Last Reading:", StringComparison.Ordinal))
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.Contains("last reading at", viewModel.SottoIntestazione, StringComparison.Ordinal);
+        // L'ora, e solo quella. Il confronto e' su una forma e non su una stringa fissa
+        // perche' l'ora cambia a ogni campione mentre la FORMA no — e una forma sbagliata,
+        // il fuso o i millisecondi o le dodici ore, e' il modo in cui questa riga si rompe
+        // senza che nessuno se ne accorga.
+        Assert.Matches(@"^Last Reading: \d{2}:\d{2}:\d{2}$", viewModel.SottoIntestazione);
         Assert.DoesNotContain("token", viewModel.SottoIntestazione, StringComparison.OrdinalIgnoreCase);
 
         await arresto.CancelAsync();
