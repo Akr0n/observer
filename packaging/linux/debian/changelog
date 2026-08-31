@@ -1,3 +1,26 @@
+observer (0.5.0) unstable; urgency=medium
+
+  * Clicking the CPU or the memory gauge opens the list of the fifteen
+    processes consuming most of it, refreshed once a second while the panel
+    is open, and the selected one can be ended from there.
+  * Ending a process is the first thing this service does that is not a read.
+    It is allowed over the network with the token, by explicit choice, and
+    every attempt - successful or refused by the operating system - is written
+    to the log with the pid, the name, and where the caller came from.
+  * The process list is deliberately not offered for the disk gauges. Space
+    used on a volume cannot be attributed to a running process, and
+    per-process traffic needs counters that are not portable and are not
+    written yet.
+  * Hovering a bar of the history strip now says which minute it covers, and
+    says "not measured" on a gap rather than leaving it to be read from the
+    hatching.
+  * The line under the title now reads "Last Reading: HH:MM:SS". Which machine
+    is being watched is already on screen, selected, in the list on the left.
+  * A dashboard talking to a service older than itself now says so, instead of
+    reporting a 404 it does not know how to interpret.
+
+ -- Federico Cardinali <noreply@example.invalid>  Mon, 31 Aug 2026 14:00:00 +0000
+
 observer (0.4.1) unstable; urgency=medium
 
   * The request timeout rises from 6 to 8 seconds. Six was the first
