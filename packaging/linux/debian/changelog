@@ -1,3 +1,24 @@
+observer (0.6.0) unstable; urgency=medium
+
+  * The token of a remote machine no longer belongs in machines.json, and one
+    written there is refused even when it is the right one. It now lives in
+    the Windows Credential Manager, or on Linux in a file readable only by
+    its owner, whose permissions are checked every time it is read.
+  * The reason changed under it: since that token also authorises ending
+    processes on the other machine, a file meant to be opened, copied and
+    pasted is the wrong place for it.
+  * New command: "observer token set NAME". It reads the token from standard
+    input, never from the command line, and does not echo it while it is
+    typed.
+  * The "name" of a machine is now required, because it is the key its token
+    is stored under, and it is validated before it is ever used to build a
+    path.
+  * Upgrading: run "observer token set NAME" for each remote machine, then
+    delete the "apiToken" line from machines.json. Until you do, that machine
+    is listed as unusable with the reason.
+
+ -- Federico Cardinali <noreply@example.invalid>  Mon, 31 Aug 2026 16:00:00 +0000
+
 observer (0.5.0) unstable; urgency=medium
 
   * Clicking the CPU or the memory gauge opens the list of the fifteen
