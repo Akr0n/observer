@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Observer.App.Services;
 
 /// <summary>Che cosa si sa di un intervallo della striscia.</summary>
@@ -202,4 +204,68 @@ public static class HistoryStrip
 
     private static DateTimeOffset Allinea(DateTimeOffset istante, TimeSpan passo) =>
         new(istante.UtcTicks - (istante.UtcTicks % passo.Ticks), TimeSpan.Zero);
+
+    /// <summary>Quale barra sta sotto una certa ascissa.</summary>
+    /// <param name="x">Ascissa del puntatore, in pixel dal bordo sinistro della striscia.</param>
+    /// <param name="larghezza">Larghezza dell'intera striscia.</param>
+    /// <param name="quante">Quante barre ci sono.</param>
+    /// <returns>L'indice, oppure -1 se il puntatore e' fuori.</returns>
+    /// <remarks>
+    /// Sta qui e non nel controllo per la stessa ragione dell'aritmetica dell'arco: un errore
+    /// di un indice non fa fallire niente, mostra soltanto l'ora della barra accanto. E il
+    /// bordo destro sbaglia da solo — con x uguale alla larghezza la divisione da'
+    /// esattamente <c>quante</c>, cioe' un indice che non esiste.
+    /// </remarks>
+    public static int IndiceSotto(double x, double larghezza, int quante)
+    {
+        if (quante <= 0 || larghezza <= 0d || double.IsNaN(x) || x < 0d || x >= larghezza)
+        {
+            return -1;
+        }
+
+        return Math.Clamp((int)(x / (larghezza / quante)), 0, quante - 1);
+    }
+
+    /// <summary>Che cosa dire di una barra a chi ci passa sopra il mouse.</summary>
+    /// <param name="barre">Le barre della striscia.</param>
+    /// <param name="indice">Quale barra.</param>
+    /// <returns>La frase da mostrare, vuota se l'indice non esiste.</returns>
+    /// <remarks>
+    /// Dice l'INTERVALLO, non l'istante: una barra copre un minuto, e mostrarne solo l'inizio
+    /// lascerebbe indovinare quanto e' larga. Il passo si ricava dalle barre stesse invece di
+    /// essere una costante, cosi' resta vero anche se un giorno la striscia cambia risoluzione.
+    /// <para>
+    /// Su una barra vuota lo dice: "non misurato" non e' "zero", ed e' la stessa distinzione
+    /// che il disegno gia' fa con il tratteggio.
+    /// </para>
+    /// </remarks>
+    public static string Descrivi(IReadOnlyList<HistoryBar> barre, int indice)
+    {
+        ArgumentNullException.ThrowIfNull(barre);
+
+        if (indice < 0 || indice >= barre.Count)
+        {
+            return string.Empty;
+        }
+
+        HistoryBar barra = barre[indice];
+        string da = Ora(barra.Inizio);
+
+        if (barre.Count < 2)
+        {
+            return da;
+        }
+
+        string intervallo = da + " – " + Ora(barra.Inizio + (barre[1].Inizio - barre[0].Inizio));
+
+        return barra.Genere switch
+        {
+            BarKind.Assente => intervallo + " · not measured",
+            BarKind.Parziale => intervallo + $" · {barra.Campioni} of {barra.Attesi} samples",
+            _ => intervallo,
+        };
+    }
+
+    private static string Ora(DateTimeOffset istante) =>
+        istante.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
 }

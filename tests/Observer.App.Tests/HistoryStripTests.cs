@@ -171,4 +171,65 @@ public class HistoryStripTests
         Assert.Throws<ArgumentOutOfRangeException>(
             () => HistoryStrip.Costruisci([], Adesso, quanti: 5, TimeSpan.Zero));
     }
+
+    [Theory]
+    [InlineData(0d, 0)]
+    [InlineData(9.9d, 0)]
+    [InlineData(10d, 1)]
+    [InlineData(99.9d, 9)]
+    public void IlPuntatoreCadeNellaBarraGiusta(double x, int atteso) =>
+        Assert.Equal(atteso, HistoryStrip.IndiceSotto(x, larghezza: 100d, quante: 10));
+
+    [Theory]
+    [InlineData(100d)]
+    [InlineData(101d)]
+    [InlineData(-1d)]
+    public void FuoriDallaStrisciaNonCEUnaBarra(double x)
+    {
+        // Il bordo destro sbaglia da solo: con x esattamente uguale alla larghezza la
+        // divisione da' dieci, cioe' un indice che non esiste, e senza il controllo il
+        // suggerimento leggerebbe fuori dall'elenco.
+        Assert.Equal(-1, HistoryStrip.IndiceSotto(x, larghezza: 100d, quante: 10));
+    }
+
+    [Fact]
+    public void IlSuggerimentoDiceLIntervalloNonLIstante()
+    {
+        // Una barra copre un minuto: mostrarne solo l'inizio lascerebbe indovinare quanto e'
+        // larga. Il passo si ricava dalle barre stesse, non da una costante.
+        IReadOnlyList<HistoryBar> striscia =
+            HistoryStrip.Costruisci([Punto(1, 0.5d)], Adesso, quanti: 3, Minuto);
+
+        Assert.Matches(@"^\d{2}:\d{2} – \d{2}:\d{2}$", HistoryStrip.Descrivi(striscia, 1));
+    }
+
+    [Fact]
+    public void SuUnBucoIlSuggerimentoDiceCheNonSiEMisurato()
+    {
+        // "Non misurato" non e' "zero", ed e' la stessa distinzione che il disegno fa gia' col
+        // tratteggio: qui la si dice a parole, per chi ci passa sopra a controllare.
+        IReadOnlyList<HistoryBar> striscia = HistoryStrip.Costruisci([], Adesso, quanti: 3, Minuto);
+
+        Assert.EndsWith("not measured", HistoryStrip.Descrivi(striscia, 0), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SuUnIntervalloCopertoAMetaIlSuggerimentoDiceQuantiCampioni()
+    {
+        IReadOnlyList<HistoryBar> striscia =
+            HistoryStrip.Costruisci([Punto(1, 0.5d, campioni: 31)], Adesso, quanti: 3, Minuto);
+
+        Assert.EndsWith(
+            "31 of 60 samples", HistoryStrip.Descrivi(striscia, 1), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(3)]
+    public void UnIndiceCheNonEsisteNonProduceUnSuggerimento(int indice)
+    {
+        IReadOnlyList<HistoryBar> striscia = HistoryStrip.Costruisci([], Adesso, quanti: 3, Minuto);
+
+        Assert.Empty(HistoryStrip.Descrivi(striscia, indice));
+    }
 }

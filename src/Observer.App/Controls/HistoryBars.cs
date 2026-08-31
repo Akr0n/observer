@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Media;
 using Observer.App.Services;
 
@@ -118,6 +119,29 @@ public sealed class HistoryBars : Control
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Il suggerimento si ricalcola a ogni movimento perche' cambia PER BARRA, e una striscia
+    /// e' un controllo solo: senza questo direbbe la stessa cosa su tutta la larghezza, cioe'
+    /// non direbbe niente.
+    /// </remarks>
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+
+        base.OnPointerMoved(e);
+
+        Suggerisci(e.GetPosition(this).X);
+    }
+
+    /// <inheritdoc />
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+
+        ToolTip.SetTip(this, null);
+    }
+
+    /// <inheritdoc />
     public override void Render(DrawingContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -222,4 +246,19 @@ public sealed class HistoryBars : Control
 
     private static Color Tinta(IBrush pennello) =>
         pennello is ISolidColorBrush solido ? solido.Color : Colors.Gray;
+
+    /// <summary>Aggiorna il suggerimento con la barra che sta sotto il puntatore.</summary>
+    private void Suggerisci(double x)
+    {
+        string testo = Bars is { Count: > 0 } barrette
+            ? HistoryStrip.Descrivi(barrette, HistoryStrip.IndiceSotto(x, Bounds.Width, barrette.Count))
+            : string.Empty;
+
+        // Si riscrive solo quando cambia davvero: assegnare la stessa stringa a ogni pixel di
+        // movimento farebbe sfarfallare il suggerimento mentre lo si legge.
+        if (!string.Equals(ToolTip.GetTip(this) as string, testo, StringComparison.Ordinal))
+        {
+            ToolTip.SetTip(this, testo.Length == 0 ? null : testo);
+        }
+    }
 }
