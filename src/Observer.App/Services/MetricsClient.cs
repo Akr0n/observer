@@ -102,7 +102,7 @@ public sealed record HistoryFetch(
 /// </remarks>
 public sealed class MetricsClient : IMetricsClient, IDisposable
 {
-    // Sei secondi, e il numero e' misurato, non scelto. I 100 predefiniti di HttpClient
+    // Otto secondi, e il numero e' misurato, non scelto. I 100 predefiniti di HttpClient
     // lascerebbero la finestra ferma senza spiegazione per un minuto e mezzo; ma il limite
     // dal basso non e' il periodo di campionamento, e' QUANTO COSTA UN RIFIUTO.
     //
@@ -112,9 +112,15 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
     // paga due volte, perche' .NET prova un indirizzo dopo l'altro: con i 3 secondi di prima,
     // "localhost" su porta chiusa dava 3007-3034 ms e il rifiuto non arrivava mai — la
     // finestra diceva "nessuna risposta, controlla il firewall" di un servizio spento, che e'
-    // esattamente il consiglio sbagliato. Sei secondi coprono due famiglie di indirizzi con
-    // un paio di secondi di margine, e la barra rossa arriva comunque alla tolleranza dei 10.
-    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(6);
+    // esattamente il consiglio sbagliato.
+    //
+    // Sei secondi erano il primo tentativo e non bastavano. Rimisurato senza tappo, un
+    // rifiuto a doppia pila costa 4035-4121 ms: meno di due secondi di margine, e su una
+    // macchina occupata il test su socket vero ha sforato davvero. Otto danno quasi il doppio
+    // del costo misurato e restano sotto i 10 secondi di StatusEscalation.Tolleranza, che e'
+    // il vincolo dall'alto: un budget piu' lungo della tolleranza farebbe saltare del tutto
+    // la fase "Connecting" e aprirebbe la finestra in rosso.
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(8);
 
     private static readonly JsonSerializerOptions WireOptions = new(JsonSerializerDefaults.Web);
 
