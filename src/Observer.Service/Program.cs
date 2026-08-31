@@ -1,6 +1,7 @@
 using System.Text;
 using Observer.Core.Composition;
 using Observer.Core.Metrics;
+using Observer.Core.Processes;
 using Microsoft.Extensions.Hosting.Systemd;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Observer.Service;
@@ -41,6 +42,12 @@ builder.Host.UseSystemd();
 
 builder.Services.AddObserverMetrics();
 builder.Services.AddSingleton<MetricSnapshotCache>();
+
+// Singleton e non transient, per la stessa ragione dei collector: la classifica dei processi
+// conserva il campione precedente per PID, e ricrearla a ogni richiesta lascerebbe la CPU di
+// ogni processo eternamente sconosciuta.
+builder.Services.AddSingleton<IProcessLister, SystemProcessLister>();
+builder.Services.AddSingleton<ProcessRanking>();
 builder.Services.AddHostedService<MetricSamplingService>();
 
 // Lo storico. Le opzioni si convalidano QUI, prima di aprire la porta: una ritenzione a zero
@@ -190,5 +197,10 @@ app.MapGet("/metrics/latest", (MetricSnapshotCache cache) =>
 // Mappati DOPO il middleware qui sopra, come gli altri due: lo storico dice quando la
 // macchina e' accesa e quanto lavora, cioe' piu' di quanto dica un singolo campionamento.
 app.MapStorageEndpoints();
+
+// Chi sta consumando la macchina, e come fermarlo. E' l'unico gruppo di endpoint che non si
+// limita a leggere: /processes/{pid}/kill distrugge stato, e per questo registra ogni
+// tentativo con provenienza del chiamante.
+app.MapProcessEndpoints();
 
 app.Run();
