@@ -20,7 +20,7 @@ namespace Observer.Service.Tests;
 /// </para>
 /// </remarks>
 [Collection(AmbienteDelProcesso.Nome)]
-public class ProcessEndpointsTests : IClassFixture<ServizioInMemoria>
+public class ProcessEndpointsTests
 {
     private readonly ServizioInMemoria servizio;
 

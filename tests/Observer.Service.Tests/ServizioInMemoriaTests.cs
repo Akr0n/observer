@@ -11,8 +11,18 @@ namespace Observer.Service.Tests;
 /// impostate da un'altra classe a meta' della propria esecuzione, e il guasto comparirebbe a
 /// caso su un runner di CI e non sull'altro.
 /// </remarks>
+/// <para>
+/// La collezione porta anche <see cref="ServizioInMemoria"/>, e quindi il servizio in memoria
+/// e' UNO SOLO per tutte le classi che lo usano. Con una fixture per classe ce n'erano due, e
+/// su Linux la seconda non partiva: il canale locale crea <c>/run/user/N/observer/</c>
+/// all'avvio e la rimuove alla chiusura, quindi il primo banco che finiva portava via la
+/// cartella al secondo, che falliva con "Could not find file ... observer.sock". Senza host
+/// nessuno chiamava <c>MetricStore.Initialize()</c>, e le prove sullo storico morivano con
+/// "no such table: series" — un messaggio che non nomina la causa nemmeno da lontano.
+/// Su Windows non si vedeva: una named pipe non ha una cartella da rimuovere.
+/// </para>
 [CollectionDefinition(Nome)]
-public sealed class AmbienteDelProcesso
+public sealed class AmbienteDelProcesso : ICollectionFixture<ServizioInMemoria>
 {
     /// <summary>Il nome della collezione, per non ripeterlo come stringa in giro.</summary>
     public const string Nome = "ambiente-del-processo";
