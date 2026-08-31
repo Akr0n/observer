@@ -102,10 +102,19 @@ public sealed record HistoryFetch(
 /// </remarks>
 public sealed class MetricsClient : IMetricsClient, IDisposable
 {
-    // Sotto il periodo di campionamento del servizio: una richiesta che impiega piu' di un
-    // secondo e' gia' in ritardo sul campione successivo, e i 100 secondi predefiniti di
-    // HttpClient lascerebbero la finestra ferma senza spiegazione per un minuto e mezzo.
-    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(3);
+    // Sei secondi, e il numero e' misurato, non scelto. I 100 predefiniti di HttpClient
+    // lascerebbero la finestra ferma senza spiegazione per un minuto e mezzo; ma il limite
+    // dal basso non e' il periodo di campionamento, e' QUANTO COSTA UN RIFIUTO.
+    //
+    // Su Windows, .NET 10, sei giri per indirizzo: una connessione rifiutata impiega
+    // 2018-2104 ms su 127.0.0.1, su [::1] e sull'indirizzo di rete di questa macchina — non
+    // e' una stranezza del loopback, e' il costo di un rifiuto. Un NOME a doppia pila li
+    // paga due volte, perche' .NET prova un indirizzo dopo l'altro: con i 3 secondi di prima,
+    // "localhost" su porta chiusa dava 3007-3034 ms e il rifiuto non arrivava mai — la
+    // finestra diceva "nessuna risposta, controlla il firewall" di un servizio spento, che e'
+    // esattamente il consiglio sbagliato. Sei secondi coprono due famiglie di indirizzi con
+    // un paio di secondi di margine, e la barra rossa arriva comunque alla tolleranza dei 10.
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(6);
 
     private static readonly JsonSerializerOptions WireOptions = new(JsonSerializerDefaults.Web);
 
@@ -321,19 +330,54 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
                     null);
             }
 
-            return (ServiceOutcome.NonRaggiungibile, TestoNonRaggiungibile(ex.Message), null);
+            ServiceOutcome esito = TransportFailure.Classifica(ex);
+
+            return (esito, TestoDiTrasporto(esito, ex.Message), null);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             // Scaduto il timeout della richiesta, non una chiusura dell'applicazione: qui
             // distinguere i due casi e' cio' che evita di mostrare un errore mentre si esce.
-            return (
-                ServiceOutcome.NonRaggiungibile,
-                $"The service on {Endpoint.Descrizione} didn't respond within " +
-                RequestTimeout.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture) + " seconds.",
-                null);
+            return (ServiceOutcome.TempoScaduto, TestoTempoScaduto(), null);
         }
     }
+
+    /// <summary>Sceglie la frase in base a COME il collegamento e' fallito.</summary>
+    private string TestoDiTrasporto(ServiceOutcome esito, string dettaglio) => esito switch
+    {
+        ServiceOutcome.ConnessioneRifiutata => TestoRifiutato(dettaglio),
+        ServiceOutcome.TempoScaduto => TestoTempoScaduto(),
+        _ => TestoNonRaggiungibile(dettaglio),
+    };
+
+    // Un rifiuto e' la risposta piu' informativa che un guasto possa dare: il pacchetto e'
+    // arrivato, la macchina ha risposto, e cio' che manca e' soltanto qualcuno in ascolto su
+    // quella porta. Dirlo evita di mandare a cercare il firewall, che e' dove porterebbe la
+    // frase generica.
+    private string TestoRifiutato(string dettaglio) =>
+        Endpoint.Kind == EndpointKind.Locale
+            ? "The Observer service isn't running on this machine: the local channel refused the " +
+              "connection. Start the service, or run \"observer doctor\". Technical detail: " + dettaglio
+            : $"{Endpoint.Descrizione} answered, but nothing is listening on port " +
+              Endpoint.BaseAddress.Port.ToString(CultureInfo.InvariantCulture) +
+              ". The machine is reachable, so Observer is stopped there or it is on another port. " +
+              $"Technical detail: {dettaglio}";
+
+    // Il gemello opposto, ed e' il caso che e' costato un pomeriggio. Un servizio spento
+    // RIFIUTA, quindi il silenzio parla d'altro: una macchina spenta, oppure qualcosa che
+    // scarta i pacchetti. Su Windows la regola del firewall vale su un profilo per volta, e
+    // una macchina in dominio su una rete di casa la classifica come pubblica.
+    private string TestoTempoScaduto() =>
+        Endpoint.Kind == EndpointKind.Locale
+            ? "The Observer service on this machine didn't answer within " +
+              RequestTimeout.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture) +
+              " seconds. It is listening but not replying: run \"observer doctor\"."
+            : $"{Endpoint.Descrizione} didn't answer within " +
+              RequestTimeout.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture) +
+              " seconds, and nothing refused the connection either. Either that machine is off, " +
+              "or something is dropping the packets: check that inbound TCP " +
+              Endpoint.BaseAddress.Port.ToString(CultureInfo.InvariantCulture) +
+              " is allowed there, on the profile that network is classified as.";
 
     private string TestoNonRaggiungibile(string dettaglio) =>
         Endpoint.Kind == EndpointKind.Locale

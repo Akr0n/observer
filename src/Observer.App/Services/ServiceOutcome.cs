@@ -41,6 +41,23 @@ public enum ServiceOutcome
     /// del servizio oppure qualcuno in mezzo, e in nessuno dei due casi conviene riprovare.
     /// </remarks>
     ImprontaNonCorrisponde = 8,
+
+    /// <summary>La connessione e' stata RIFIUTATA: la macchina risponde, il servizio no.</summary>
+    /// <remarks>
+    /// Tenuto separato da <see cref="NonRaggiungibile"/> perche' dice molto di piu': il
+    /// pacchetto e' arrivato fino alla macchina, che ha risposto "su quella porta non c'e'
+    /// nessuno". Il rimedio e' avviare un servizio, non aprire una porta.
+    /// </remarks>
+    ConnessioneRifiutata = 9,
+
+    /// <summary>Nessuno ha risposto entro il tempo massimo.</summary>
+    /// <remarks>
+    /// Il gemello opposto di <see cref="ConnessioneRifiutata"/>: li' torna indietro un
+    /// rifiuto, qui non torna niente. Un servizio spento RIFIUTA, quindi il silenzio non parla
+    /// di un servizio spento: parla di una macchina spenta, oppure di qualcosa che scarta i
+    /// pacchetti senza dirlo. Il rimedio e' aprire una porta, non avviare un servizio.
+    /// </remarks>
+    TempoScaduto = 10,
 }
 
 /// <summary>

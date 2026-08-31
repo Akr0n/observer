@@ -83,7 +83,11 @@ public static class StatusEscalation
 
         return esito switch
         {
-            ServiceOutcome.NonRaggiungibile when ancoraInTempo => new StatusMessage(
+            // I tre modi di non ottenere risposta meritano la stessa attesa: appena avviata,
+            // una macchina RIFIUTA la connessione perche' la porta non e' ancora aperta, e la
+            // accetta poco dopo. Distinguerli serve quando il guasto dura, non durante l'avvio.
+            ServiceOutcome.NonRaggiungibile or ServiceOutcome.ConnessioneRifiutata
+                or ServiceOutcome.TempoScaduto when ancoraInTempo => new StatusMessage(
                 StatusTone.Informational,
                 "Connecting",
                 // Di una macchina REMOTA non si sa se stia partendo: sarebbe un'affermazione
@@ -110,10 +114,24 @@ public static class StatusEscalation
                 "see what it reports.",
                 Guasto(valoriGiaMostrati)),
 
+            // Rifiuto e silenzio non sono sinonimi di "irraggiungibile", ed e' tutto il punto:
+            // al primo si risponde avviando un servizio, al secondo aprendo una porta. Un solo
+            // titolo per entrambi obbligava chi guarda a indovinare quale dei due fosse.
+            ServiceOutcome.ConnessioneRifiutata => Rosso("Service not running", problema, valoriGiaMostrati),
+            ServiceOutcome.TempoScaduto => Rosso("No answer", problema, valoriGiaMostrati),
+
             ServiceOutcome.NonRaggiungibile => Rosso("Service unreachable", problema, valoriGiaMostrati),
             ServiceOutcome.TokenRifiutato => Rosso("Token rejected", problema, valoriGiaMostrati),
             ServiceOutcome.VersioneIncompatibile => Rosso("Version mismatch", problema, valoriGiaMostrati),
             ServiceOutcome.RispostaIncomprensibile => Rosso("Unrecognized response", problema, valoriGiaMostrati),
+
+            // Questi due finivano sotto il titolo generico, e non per una decisione: erano
+            // semplicemente scivolati nell'arm di scarto. Un certificato cambiato in
+            // particolare merita di dirsi, perche' e' il solo guasto qui dentro a cui NON
+            // conviene rispondere riprovando.
+            ServiceOutcome.RispostaInattesa => Rosso("Unexpected reply", problema, valoriGiaMostrati),
+            ServiceOutcome.ImprontaNonCorrisponde => Rosso("Certificate changed", problema, valoriGiaMostrati),
+
             _ => Rosso("Reading failed", problema, valoriGiaMostrati),
         };
     }

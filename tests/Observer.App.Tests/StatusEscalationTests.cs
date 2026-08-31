@@ -175,4 +175,63 @@ public class StatusEscalationTests
             }
         }
     }
+
+    [Theory]
+    [InlineData(ServiceOutcome.ConnessioneRifiutata)]
+    [InlineData(ServiceOutcome.TempoScaduto)]
+    public void AncheIDueModiDiNonRispondereMeritanoLaTolleranza(ServiceOutcome esito)
+    {
+        // Appena avviata, una macchina rifiuta la connessione perche' la porta non e' ancora
+        // aperta, e piu' avanti nell'avvio la accetta. Togliere la tolleranza a questi due
+        // rimetterebbe la barra rossa all'apertura della finestra, che e' il difetto che
+        // questa classe esiste per chiudere.
+        StatusMessage messaggio = Per(esito, TimeSpan.Zero, Remoto);
+
+        Assert.Equal(StatusTone.Informational, messaggio.Tone);
+        Assert.Equal("Connecting", messaggio.Title);
+    }
+
+    [Fact]
+    public void UnRifiutoEUnTempoScadutoNonSiLeggonoUguali()
+    {
+        // Il cuore di questa correzione. I due guasti hanno rimedi opposti: uno si risolve
+        // avviando un servizio, l'altro aprendo una porta. Se il titolo e' lo stesso, chi
+        // guarda la finestra non ha nient'altro da cui capirlo.
+        StatusMessage rifiuto = Per(ServiceOutcome.ConnessioneRifiutata, TimeSpan.FromMinutes(1), Remoto);
+        StatusMessage scaduto = Per(ServiceOutcome.TempoScaduto, TimeSpan.FromMinutes(1), Remoto);
+
+        Assert.Equal(StatusTone.Error, rifiuto.Tone);
+        Assert.Equal(StatusTone.Error, scaduto.Tone);
+        Assert.NotEqual(rifiuto.Title, scaduto.Title);
+        Assert.NotEqual("Service unreachable", rifiuto.Title);
+        Assert.NotEqual("Service unreachable", scaduto.Title);
+    }
+
+    [Fact]
+    public void OgniModoDiFallireHaUnTitoloSuo()
+    {
+        // La falla che questo test chiude non si vede a schermo: e' l'arm di scarto in fondo
+        // allo switch. Aggiungere un valore all'enum COMPILA, e il guasto nuovo finisce in
+        // silenzio sotto un titolo generico, con la tolleranza tolta senza che nessuno lo
+        // abbia deciso. Nessun test falliva. Ora fallisce questo.
+        List<string> generici = [];
+
+        foreach (ServiceOutcome esito in Enum.GetValues<ServiceOutcome>())
+        {
+            if (esito is ServiceOutcome.Ok or ServiceOutcome.Unknown)
+            {
+                continue;
+            }
+
+            if (Per(esito, TimeSpan.FromHours(1), Remoto).Title == "Reading failed")
+            {
+                generici.Add(esito.ToString());
+            }
+        }
+
+        Assert.True(
+            generici.Count == 0,
+            "questi esiti finiscono sotto il titolo generico invece di avere il proprio: "
+                + string.Join(", ", generici));
+    }
 }
