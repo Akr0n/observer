@@ -208,7 +208,9 @@ observer share
 
 su **quella** macchina, da un terminale con privilegi, stampa il token e l'impronta del suo
 certificato. Il token dice che il chiamante puo' entrare; l'impronta dice che la macchina e'
-quella che dichiara di essere. Vanno in `machines.json`, accanto a `client.json`:
+quella che dichiara di essere.
+
+L'impronta e l'indirizzo vanno in `machines.json`, accanto a `client.json`. **Il token no:**
 
 ```json
 {
@@ -216,12 +218,27 @@ quella che dichiara di essere. Vanno in `machines.json`, accanto a `client.json`
     {
       "name": "portatile",
       "baseAddress": "https://portatile:5058/",
-      "apiToken": "il token stampato da observer share",
       "fingerprint": "sha256:..."
     }
   ]
 }
 ```
+
+Il token si consegna a questa macchina con un comando, e non si scrive da nessuna parte:
+
+```bash
+observer token set portatile
+```
+
+Lo legge da standard input e non lo mostra mentre lo digiti. Finisce nel **Credential Manager
+di Windows**, oppure — su Linux — in un file leggibile solo dal proprietario, che Observer si
+rifiuta di usare se i permessi sono piu' larghi.
+
+Il motivo e' cambiato di recente e vale la pena dirlo: da quando esiste
+`/processes/{pid}/kill`, quel token non serve piu' solo a **leggere** la CPU di un'altra
+macchina, serve anche a **fermarci dei processi**. Un file fatto per essere aperto, copiato e
+incollato non e' il posto giusto per una credenziale del genere, e infatti una voce che se lo
+porta ancora dietro viene rifiutata — anche quando il token e' quello giusto.
 
 La **barra laterale c'e' sempre**, anche quando la macchina e' una sola: li' dentro trovi il
 percorso esatto di `machines.json` da scrivere. Nasconderla finche' non ci sono due macchine

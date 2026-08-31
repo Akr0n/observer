@@ -55,7 +55,7 @@ public static class MachineDirectory
     /// <summary>Legge davvero il disco e l'ambiente.</summary>
     /// <returns>L'elenco e i problemi.</returns>
     public static MachineListResult Read() =>
-        Resolve(LeggiFile(FilePath), ClientConfiguration.Read());
+        Resolve(LeggiFile(FilePath), ClientConfiguration.Read(), SecretStores.PerQuestaMacchina());
 
     /// <summary>Compone l'elenco senza toccare il disco.</summary>
     /// <param name="contenuto">Il contenuto grezzo di <c>machines.json</c>, se esiste.</param>
@@ -68,9 +68,11 @@ public static class MachineDirectory
     /// variabile d'ambiente. Chi aveva gia' configurato una macchina non deve rifare niente solo
     /// perche' adesso se ne possono elencare tante.
     /// </remarks>
-    public static MachineListResult Resolve(string? contenuto, ClientConfigurationResult ripiego)
+    public static MachineListResult Resolve(
+        string? contenuto, ClientConfigurationResult ripiego, ISecretStore deposito)
     {
         ArgumentNullException.ThrowIfNull(ripiego);
+        ArgumentNullException.ThrowIfNull(deposito);
 
         // La macchina su cui si sta seduti c'e' SEMPRE, e sta per prima. Non ha bisogno di
         // niente per funzionare, quindi non c'e' modo di sbagliarne la configurazione.
@@ -115,13 +117,22 @@ public static class MachineDirectory
 
         foreach (MachineEntry voce in file.Machines)
         {
-            if (Converti(voce) is { } punto)
+            try
             {
-                macchine.Add(punto);
+                if (Converti(voce, deposito) is { } punto)
+                {
+                    macchine.Add(punto);
+                }
+                else
+                {
+                    problemi.Add(Problema(voce, deposito));
+                }
             }
-            else
+            catch (SecretStoreException errore)
             {
-                problemi.Add(Problema(voce));
+                // Un deposito di cui non ci si puo' fidare fa saltare QUELLA voce e lo dice,
+                // invece di far cadere l'intero elenco: le altre macchine non c'entrano.
+                problemi.Add(errore.Message);
             }
         }
 
@@ -168,26 +179,37 @@ public static class MachineDirectory
     /// <returns>Il testo dell'esempio.</returns>
     public static string Esempio() =>
         "A machine looks like this: { \"name\": \"laptop\", \"baseAddress\": " +
-        "\"https://laptop:5058/\", \"apiToken\": \"...\", \"fingerprint\": \"sha256:...\" }. " +
-        "Run \"observer share\" on that machine to get the last two values.";
+        "\"https://laptop:5058/\", \"fingerprint\": \"sha256:...\" }. Run \"observer share\" " +
+        "on that machine to get the address and the fingerprint, and \"observer token set " +
+        "laptop\" here to keep its token out of this file.";
 
-    private static ObserverEndpoint? Converti(MachineEntry voce)
+    private static ObserverEndpoint? Converti(MachineEntry voce, ISecretStore deposito)
     {
         if (string.IsNullOrWhiteSpace(voce.BaseAddress)
             || !Uri.TryCreate(ConBarraFinale(voce.BaseAddress.Trim()), UriKind.Absolute, out Uri? indirizzo)
             || indirizzo.Scheme != Uri.UriSchemeHttps
-            || string.IsNullOrWhiteSpace(voce.ApiToken)
-            || CertificateFingerprint.Normalizza(voce.Fingerprint) is null)
+            || CertificateFingerprint.Normalizza(voce.Fingerprint) is null
+            || string.IsNullOrWhiteSpace(voce.Name))
         {
             return null;
         }
 
-        return ObserverEndpoint.Remoto(
-            indirizzo,
-            voce.ApiToken.Trim(),
-            "from " + NomeFile,
-            voce.Fingerprint,
-            voce.Name);
+        // Un token scritto nel file NON viene usato, nemmeno se e' quello giusto. Accettarlo
+        // "solo per compatibilita'" vorrebbe dire che il segreto puo' restare li' per sempre,
+        // e che questa modifica non ha tolto niente a nessuno.
+        if (!string.IsNullOrWhiteSpace(voce.ApiToken))
+        {
+            return null;
+        }
+
+        return deposito.TryRead(voce.Name.Trim(), out string token)
+            ? ObserverEndpoint.Remoto(
+                indirizzo,
+                token,
+                "from the secret store",
+                voce.Fingerprint,
+                voce.Name)
+            : null;
     }
 
     /// <summary>Perche' una voce e' stata scartata, detto in modo che si possa correggere.</summary>
@@ -197,7 +219,7 @@ public static class MachineDirectory
     /// piu' in chiaro sulla rete, quindi un indirizzo vecchio non e' un errore di battitura ma
     /// una configurazione che era giusta ieri.
     /// </remarks>
-    private static string Problema(MachineEntry voce)
+    private static string Problema(MachineEntry voce, ISecretStore deposito)
     {
         string chi = string.IsNullOrWhiteSpace(voce.Name)
             ? (string.IsNullOrWhiteSpace(voce.BaseAddress) ? "an entry with no address" : voce.BaseAddress.Trim())
@@ -222,13 +244,38 @@ public static class MachineDirectory
                   CertificateFingerprint.QuanteCifre() + " hex digits. " + Esempio();
         }
 
-        if (string.IsNullOrWhiteSpace(voce.ApiToken))
+        if (!string.IsNullOrWhiteSpace(voce.ApiToken))
         {
-            return chi + " has no token, and another machine's Observer rejects every request " +
-                   "that isn't authenticated. " + Esempio();
+            return
+                chi + " still carries its token inside " + NomeFile + ", and Observer will not " +
+                "use it from there. That token now also authorises ending processes on that " +
+                "machine, so a file meant to be read, copied and shared is the wrong place for " +
+                "it. Run \"observer token set " + chi + "\" to hand it over, then delete the " +
+                "\"apiToken\" line from " + FilePath + ".";
         }
 
-        return chi + " can't be used: the address must be a full https:// address. " + Esempio();
+        if (string.IsNullOrWhiteSpace(voce.Name))
+        {
+            return
+                "An entry with address " + (voce.BaseAddress ?? "(none)").Trim() + " has no " +
+                "\"name\", and the name is how its token is looked up in " +
+                deposito.Descrizione + ". " + Esempio();
+        }
+
+        // L'indirizzo si controlla PRIMA del token mancante: con un indirizzo malformato quella
+        // macchina non e' raggiungibile comunque, e mandare a depositare un token sarebbe
+        // mandare a fare la cosa giusta nell'ordine sbagliato.
+        if (string.IsNullOrWhiteSpace(voce.BaseAddress)
+            || !Uri.TryCreate(ConBarraFinale(voce.BaseAddress.Trim()), UriKind.Absolute, out Uri? indirizzo)
+            || indirizzo.Scheme != Uri.UriSchemeHttps)
+        {
+            return chi + " can't be used: the address must be a full https:// address. " + Esempio();
+        }
+
+        return
+            chi + " has no token in " + deposito.Descrizione + ", and another machine's Observer " +
+            "rejects every request that isn't authenticated. Run \"observer token set " + chi +
+            "\" to store it.";
     }
 
     private static string ConBarraFinale(string indirizzo) =>

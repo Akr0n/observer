@@ -11,6 +11,12 @@ namespace Observer.App.Tests;
 /// La regola che questa classe difende: una voce configurata male non sparisce in silenzio. Una
 /// macchina che semplicemente non compare e' indistinguibile da una che non e' stata aggiunta,
 /// e chi la cerca non ha modo di sapere che cosa correggere.
+/// <para>
+/// Da oggi ne difende una seconda: <b>il token non sta piu' nel file</b>. Sta nel deposito del
+/// sistema, e una voce che se lo porta ancora dietro viene rifiutata anche se quel token e'
+/// giusto — accettarlo "per compatibilita'" vorrebbe dire che il segreto puo' restare li' per
+/// sempre.
+/// </para>
 /// </remarks>
 public class MachineDirectoryTests
 {
@@ -20,13 +26,16 @@ public class MachineDirectoryTests
     private static ClientConfigurationResult NienteAltro() =>
         new(ObserverEndpoint.CanaleLocale(), null);
 
-    private static MachineListResult Leggi(string json) =>
-        MachineDirectory.Resolve(json, NienteAltro());
+    private static MachineListResult Leggi(string json, ISecretStore? deposito = null) =>
+        MachineDirectory.Resolve(json, NienteAltro(), deposito ?? DepositoFinto.Con("laptop", "il-token"));
 
-    private static string Voce(string? indirizzo, string? token, string? impronta, string nome = "laptop") =>
+    /// <summary>Una voce del file. Il token si passa solo per provare che viene rifiutato.</summary>
+    private static string Voce(
+        string? indirizzo, string? impronta, string nome = "laptop", string? tokenNelFile = null) =>
         $$"""
-          { "machines": [ { "name": "{{nome}}", "baseAddress": {{Testo(indirizzo)}},
-            "apiToken": {{Testo(token)}}, "fingerprint": {{Testo(impronta)}} } ] }
+          { "machines": [ { "name": {{Testo(nome)}}, "baseAddress": {{Testo(indirizzo)}},
+            {{(tokenNelFile is null ? string.Empty : "\"apiToken\": " + Testo(tokenNelFile) + ",")}}
+            "fingerprint": {{Testo(impronta)}} } ] }
           """;
 
     private static string Testo(string? valore) =>
@@ -37,7 +46,7 @@ public class MachineDirectoryTests
     {
         // Non si elenca e non si puo' togliere: non ha bisogno di niente per funzionare,
         // quindi non c'e' modo di sbagliarne la configurazione.
-        MachineListResult elenco = MachineDirectory.Resolve(null, NienteAltro());
+        MachineListResult elenco = MachineDirectory.Resolve(null, NienteAltro(), DepositoFinto.Vuoto());
 
         ObserverEndpoint prima = Assert.Single(elenco.Machines);
 
@@ -48,7 +57,7 @@ public class MachineDirectoryTests
     [Fact]
     public void UnaVoceCompletaEntraNellElenco()
     {
-        MachineListResult elenco = Leggi(Voce("https://laptop:5058", "il-token", Impronta));
+        MachineListResult elenco = Leggi(Voce("https://laptop:5058", Impronta));
 
         Assert.Empty(elenco.Problems);
         Assert.Equal(2, elenco.Machines.Count);
@@ -62,11 +71,67 @@ public class MachineDirectoryTests
     }
 
     [Fact]
+    public void UnTokenScrittoNelFileNonVieneUsato()
+    {
+        // Il cuore della modifica. Il token qui sotto e' quello giusto, e non basta: se una
+        // voce col token nel file continuasse a funzionare, nessuno lo toglierebbe mai da li'.
+        MachineListResult elenco = Leggi(
+            Voce("https://laptop:5058", Impronta, tokenNelFile: "il-token"),
+            DepositoFinto.Vuoto());
+
+        Assert.Single(elenco.Machines);
+
+        string problema = Assert.Single(elenco.Problems);
+
+        Assert.Contains("observer token set laptop", problema, StringComparison.Ordinal);
+        Assert.Contains("ending processes", problema, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SenzaTokenNelDepositoNonEntraEDiceComeMetterceLo()
+    {
+        MachineListResult elenco = Leggi(Voce("https://laptop:5058", Impronta), DepositoFinto.Vuoto());
+
+        Assert.Single(elenco.Machines);
+        Assert.Contains(
+            "observer token set laptop", Assert.Single(elenco.Problems), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SenzaNomeNonSiSaDoveCercareIlToken()
+    {
+        // Prima il nome era facoltativo e la macchina si chiamava col proprio indirizzo. Ora e'
+        // la chiave con cui il token si cerca nel deposito, quindi senza non si va da nessuna
+        // parte — e va detto, invece di far sparire la voce.
+        MachineListResult elenco = Leggi(
+            $$"""
+              { "machines": [ { "baseAddress": "https://laptop:5058",
+                "fingerprint": "{{Impronta}}" } ] }
+              """);
+
+        Assert.Single(elenco.Machines);
+        Assert.Contains("\"name\"", Assert.Single(elenco.Problems), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UnDepositoDiCuiNonFidarsiFaSaltareSoloQuellaVoce()
+    {
+        // Un file di segreti leggibile da altri non deve far cadere l'intero elenco: le altre
+        // macchine non c'entrano, e la finestra deve restare utilizzabile.
+        MachineListResult elenco = Leggi(
+            Voce("https://laptop:5058", Impronta),
+            DepositoFinto.CheProtesta("chmod 600 e riprova"));
+
+        Assert.Single(elenco.Machines);
+        Assert.Contains("chmod 600", Assert.Single(elenco.Problems), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void UnIndirizzoInChiaroNonEntraELoSpiega()
     {
         // Il caso di gran lunga piu' probabile: una configurazione che era giusta ieri. Il
         // servizio non risponde piu' in chiaro sulla rete, e va detto perche'.
-        MachineListResult elenco = Leggi(Voce("http://laptop:5057", "il-token", Impronta));
+        MachineListResult elenco = Leggi(Voce("http://laptop:5057", Impronta));
 
         Assert.Single(elenco.Machines);
 
@@ -81,7 +146,7 @@ public class MachineDirectoryTests
     {
         // Cifrato non basta. Senza impronta, chi si mette in mezzo presenta il proprio
         // certificato e il collegamento riesce lo stesso.
-        MachineListResult elenco = Leggi(Voce("https://laptop:5058", "il-token", null));
+        MachineListResult elenco = Leggi(Voce("https://laptop:5058", null));
 
         Assert.Single(elenco.Machines);
         Assert.Contains("fingerprint", Assert.Single(elenco.Problems), StringComparison.Ordinal);
@@ -93,19 +158,10 @@ public class MachineDirectoryTests
         // Un'impronta con dentro un errore di battitura non va aggiustata: verrebbe confrontata
         // con successo contro nessun certificato al mondo, e il messaggio parlerebbe di un
         // attacco.
-        MachineListResult elenco = Leggi(Voce("https://laptop:5058", "il-token", "sha256:non-sono-esadecimale"));
+        MachineListResult elenco = Leggi(Voce("https://laptop:5058", "sha256:non-sono-esadecimale"));
 
         Assert.Single(elenco.Machines);
         Assert.Contains("hex digits", Assert.Single(elenco.Problems), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void SenzaTokenNonEntra()
-    {
-        MachineListResult elenco = Leggi(Voce("https://laptop:5058", null, Impronta));
-
-        Assert.Single(elenco.Machines);
-        Assert.Contains("token", Assert.Single(elenco.Problems), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -128,22 +184,11 @@ public class MachineDirectoryTests
         ObserverEndpoint vecchia = ObserverEndpoint.Remoto(
             new Uri("https://altra:5058/"), "token", "dal vecchio client.json", Impronta);
 
-        MachineListResult elenco = MachineDirectory.Resolve(null, new ClientConfigurationResult(vecchia, null));
+        MachineListResult elenco = MachineDirectory.Resolve(
+            null, new ClientConfigurationResult(vecchia, null), DepositoFinto.Vuoto());
 
         Assert.Equal(2, elenco.Machines.Count);
         Assert.Equal(vecchia, elenco.Machines[1]);
-    }
-
-    [Fact]
-    public void SenzaNomeLaMacchinaSiChiamaColProprioIndirizzo()
-    {
-        MachineListResult elenco = Leggi(
-            $$"""
-              { "machines": [ { "baseAddress": "https://laptop:5058",
-                "apiToken": "t", "fingerprint": "{{Impronta}}" } ] }
-              """);
-
-        Assert.Contains("laptop:5058", elenco.Machines[1].NomeVisibile, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -185,7 +230,7 @@ public class MachineDirectoryTests
             new Uri("http://vecchia:5057/"), "token", "dal vecchio client.json", Impronta);
 
         MachineListResult elenco = MachineDirectory.Resolve(
-            null, new ClientConfigurationResult(inChiaro, null));
+            null, new ClientConfigurationResult(inChiaro, null), DepositoFinto.Vuoto());
 
         Assert.Single(elenco.Machines);
         Assert.Contains("https", Assert.Single(elenco.Problems), StringComparison.Ordinal);
@@ -199,7 +244,7 @@ public class MachineDirectoryTests
             new Uri("https://vecchia:5058/"), "token", "dal vecchio client.json");
 
         MachineListResult elenco = MachineDirectory.Resolve(
-            null, new ClientConfigurationResult(senzaImpronta, null));
+            null, new ClientConfigurationResult(senzaImpronta, null), DepositoFinto.Vuoto());
 
         Assert.Single(elenco.Machines);
         Assert.Contains("fingerprint", Assert.Single(elenco.Problems), StringComparison.Ordinal);
@@ -215,9 +260,54 @@ public class MachineDirectoryTests
             new Uri("https://altra:5058/"), "token", "dal vecchio client.json", Impronta);
 
         MachineListResult elenco = MachineDirectory.Resolve(
-            """{ "altro": 1 }""", new ClientConfigurationResult(vecchia, null));
+            """{ "altro": 1 }""", new ClientConfigurationResult(vecchia, null), DepositoFinto.Vuoto());
 
         Assert.Equal(2, elenco.Machines.Count);
         Assert.Contains("machines", Assert.Single(elenco.Problems), StringComparison.Ordinal);
+    }
+
+    private sealed class DepositoFinto : ISecretStore
+    {
+        private readonly Dictionary<string, string> segreti = new(StringComparer.Ordinal);
+        private readonly string? protesta;
+
+        private DepositoFinto(string? protesta) => this.protesta = protesta;
+
+        public string Descrizione => "the pretend store";
+
+        public static DepositoFinto Vuoto() => new(protesta: null);
+
+        public static DepositoFinto Con(string nome, string segreto)
+        {
+            DepositoFinto deposito = new(protesta: null);
+            deposito.segreti[nome] = segreto;
+
+            return deposito;
+        }
+
+        public static DepositoFinto CheProtesta(string motivo) => new(motivo);
+
+        public bool TryRead(string nome, out string segreto)
+        {
+            if (protesta is not null)
+            {
+                throw new SecretStoreException(protesta);
+            }
+
+            if (segreti.TryGetValue(nome, out string? trovato))
+            {
+                segreto = trovato;
+
+                return true;
+            }
+
+            segreto = string.Empty;
+
+            return false;
+        }
+
+        public void Write(string nome, string segreto) => segreti[nome] = segreto;
+
+        public bool Delete(string nome) => segreti.Remove(nome);
     }
 }
