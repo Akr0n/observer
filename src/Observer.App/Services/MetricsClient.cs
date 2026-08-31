@@ -280,7 +280,12 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             + "&top=" + quanti.ToString(CultureInfo.InvariantCulture);
 
         (ServiceOutcome esito, string problema, ProcessListWire? risposta) =
-            await LeggiAsync<ProcessListWire>(percorso, cancellationToken).ConfigureAwait(false);
+            await LeggiAsync<ProcessListWire>(
+                percorso,
+                cancellationToken,
+                $"The service on {Endpoint.Descrizione} doesn't know how to list processes: it " +
+                "is older than this dashboard. Update Observer on that machine.")
+            .ConfigureAwait(false);
 
         return esito == ServiceOutcome.Ok && risposta is not null
             ? new ProcessFetch(
@@ -355,9 +360,19 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
     /// <inheritdoc />
     public void Dispose() => http.Dispose();
 
+    /// <summary>Legge un endpoint e traduce ogni modo di fallire in un esito con la sua frase.</summary>
+    /// <param name="percorsoRelativo">Il percorso da leggere.</param>
+    /// <param name="cancellationToken">Annullato alla chiusura.</param>
+    /// <param name="quandoNonTrovato">
+    /// Che cosa significa un 404 su QUESTO endpoint, quando significa qualcosa. Su un endpoint
+    /// aggiunto di recente vuol dire che il servizio e' piu' vecchio della dashboard: e' una
+    /// diagnosi precisa con un rimedio preciso, e senza, chi guarda legge "non so come
+    /// interpretarlo" e va a cercare un difetto che non c'e'.
+    /// </param>
     private async Task<(ServiceOutcome Outcome, string Problem, T? Value)> LeggiAsync<T>(
         string percorsoRelativo,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? quandoNonTrovato = null)
         where T : class
     {
         Uri indirizzo = new(BaseAddress, percorsoRelativo);
@@ -393,6 +408,15 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
                     $"The service on {Endpoint.Descrizione} is listening but hasn't produced its first " +
                     "reading yet. This usually clears on its own after a second or two.",
                     null);
+            }
+
+            // Un 404 su un endpoint che questa versione del client conosce e quel servizio no
+            // NON e' una risposta inattesa: e' un servizio piu' vecchio, e aspettare non lo
+            // aggiorna. Percio' l'esito e' VersioneIncompatibile, che la barra di stato mostra
+            // rossa subito invece di lasciarla in "Connecting".
+            if (risposta.StatusCode == HttpStatusCode.NotFound && quandoNonTrovato is { } spiegazione)
+            {
+                return (ServiceOutcome.VersioneIncompatibile, spiegazione, null);
             }
 
             if (!risposta.IsSuccessStatusCode)

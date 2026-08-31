@@ -90,6 +90,25 @@ public class MetricsClientTests
     }
 
     [Fact]
+    public async Task GetProcessesAsync_SuUnServizioVecchio_DiceCheEVecchioENonCheNonCapisce()
+    {
+        // Successo davvero, su questa macchina: la dashboard nuova ha interrogato un servizio
+        // 0.4.1, che quell'endpoint non ce l'ha, e ha risposto 404. Il messaggio diceva "non
+        // so come interpretarlo" e mandava a cercare un difetto che non c'era. La causa e'
+        // nota e il rimedio pure: aggiornare il servizio su quella macchina.
+        using MetricsClient client =
+            Crea(new FintoHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound)));
+
+        ProcessFetch esito = await client.GetProcessesAsync("cpu", 15, CancellationToken.None);
+
+        // VersioneIncompatibile e non RispostaInattesa: aspettare non aggiorna un servizio, e
+        // la barra di stato deve dirlo subito invece di restare in attesa.
+        Assert.Equal(ServiceOutcome.VersioneIncompatibile, esito.Outcome);
+        Assert.Contains("older than this dashboard", esito.Problem, StringComparison.Ordinal);
+        Assert.Empty(esito.Processi);
+    }
+
+    [Fact]
     public async Task GetLatestAsync_QuandoIlServizioEspento_DiceCheNonEraggiungibile()
     {
         using MetricsClient client = Crea(new FintoHandler(_ =>
