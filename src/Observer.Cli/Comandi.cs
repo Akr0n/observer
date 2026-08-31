@@ -257,6 +257,14 @@ public static class Comandi
             ? "    Restart-Service Observer"
             : "    sudo systemctl restart observer");
 
+        // Questo verbo NON stampa il token, e non e' una dimenticanza: cosi' resta innocuo da
+        // eseguire dove l'output finisce in un registro. Ma senza le righe qui sotto chi lo
+        // esegue resta con una chiave nuova e nessun modo di sapere dove leggerla, ed e'
+        // successo davvero - a chi il comando lo aveva scritto.
+        Console.WriteLine();
+        Console.WriteLine("Then read the new token with \"observer share\", and hand it to the");
+        Console.WriteLine("machines that watch this one with \"observer token set NAME\".");
+
         return 0;
     }
 
