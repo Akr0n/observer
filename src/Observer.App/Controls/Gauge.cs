@@ -97,6 +97,16 @@ public sealed class Gauge : Control
     public static readonly StyledProperty<IBrush?> NeedleBrushProperty =
         AvaloniaProperty.Register<Gauge, IBrush?>(nameof(NeedleBrush));
 
+    // Quanta altezza del controllo prende il disegno. Il resto e' la fascia delle scritte:
+    // prima il numero stava DENTRO il quadrante, sopra il perno, ed era la cosa che si leggeva
+    // peggio proprio mentre la lancetta ci passava sopra.
+    private const double QuotaDelQuadrante = 0.70d;
+
+    // Da dove partono le scritte, in raggi dal centro. Piu' di uno perche' il tratto dell'arco
+    // sporge di mezzo spessore oltre il raggio: fermarsi a 1,08 lasciava il numero dentro
+    // l'incavo in fondo al quadrante, che e' vuoto ma e' ancora dentro il disegno.
+    private const double SottoIlQuadrante = 1.15d;
+
     // Cio' che non cambia da un fotogramma all'altro, tenuto da parte. Durante la corsa questo
     // Render() gira una sessantina di volte al secondo, e arco di fondo, zona rossa, tacche e
     // testi sono identici in tutti quei fotogrammi: ricostruirli ogni volta significa rifare
@@ -211,7 +221,9 @@ public sealed class Gauge : Control
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        double lato = Math.Min(Bounds.Width, Bounds.Height);
+        // Il quadrante prende la larghezza, non tutta l'altezza: sotto resta una fascia per le
+        // scritte, che prima stavano dentro il disegno.
+        double lato = Math.Min(Bounds.Width, Bounds.Height * QuotaDelQuadrante);
 
         if (lato <= 0d)
         {
@@ -226,10 +238,10 @@ public sealed class Gauge : Control
             return;
         }
 
-        // Il centro sta al centro della larghezza, ma piu' in basso della meta' dell'altezza:
-        // l'arco occupa solo i tre quarti superiori del cerchio, e centrarlo davvero lascerebbe
-        // uno spazio vuoto in cima mentre le scritte finirebbero contro il bordo di sotto.
-        Point centro = new(Bounds.Width / 2d, (Bounds.Height / 2d) + (raggio * 0.10d));
+        // Il centro sta al centro della larghezza e dentro la fascia del quadrante, non a meta'
+        // del controllo: cio' che sta sotto e' testo, e centrare sull'altezza intera farebbe
+        // scendere il disegno sopra le scritte.
+        Point centro = new(Bounds.Width / 2d, (lato / 2d) + (raggio * 0.10d));
 
         IBrush traccia = TrackBrush ?? Brushes.Gainsboro;
         IBrush valore = ValueBrush ?? Brushes.SteelBlue;
@@ -376,7 +388,7 @@ public sealed class Gauge : Control
         // La didascalia parte quindi da dove il numero finisce davvero, e non da un multiplo
         // scelto a occhio del corpo del numero: quel multiplo era giusto per un corpo solo, e
         // a quadrante piu' piccolo le due scritte si sovrapponevano.
-        double sotto = centro.Y + (raggio * 0.28d);
+        double sotto = centro.Y + (raggio * SottoIlQuadrante);
 
         if (!ReferenceEquals(inchiostroDelleScritte, colore))
         {

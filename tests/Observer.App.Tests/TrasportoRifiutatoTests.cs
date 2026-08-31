@@ -14,11 +14,16 @@ namespace Observer.App.Tests;
 /// <para>
 /// La seconda meta' e' quella che serviva. Misurato su Windows con .NET 10, sei giri per
 /// indirizzo: un rifiuto costa 2018-2104 ms, su loopback come sull'indirizzo di rete. Un nome
-/// a doppia pila lo paga due volte, perche' gli indirizzi si provano in fila. Con i 3 secondi
-/// di budget che il client aveva, "localhost" su una porta chiusa non arrivava mai a dire
-/// "rifiutata": scadeva prima, e la finestra consigliava di controllare il firewall per un
-/// servizio semplicemente spento. Un test costruito solo sulle eccezioni sarebbe rimasto
-/// verde tutto il tempo.
+/// a doppia pila lo paga due volte, perche' gli indirizzi si provano in fila, e senza tappo
+/// costa 4035-4121 ms. Con i 3 secondi di budget che il client aveva, "localhost" su una
+/// porta chiusa non arrivava mai a dire "rifiutata": scadeva prima, e la finestra consigliava
+/// di controllare il firewall per un servizio semplicemente spento. Un test costruito solo
+/// sulle eccezioni sarebbe rimasto verde tutto il tempo.
+/// <para>
+/// E' anche il test che ha bocciato il primo budget. Sei secondi passavano su una macchina
+/// scarica e sono caduti su una occupata, perche' meno di due secondi di margine su 4,1 non
+/// sono un margine. Otto danno quasi il doppio del costo misurato.
+/// </para>
 /// </para>
 /// </remarks>
 public class TrasportoRifiutatoTests
