@@ -323,6 +323,18 @@ public class SnapshotProjectionTests
     public void DescribeBytes_UsaIPrefissiBinari(double byteTotali, string atteso) =>
         Assert.Equal(atteso, MetricFormatting.DescribeBytes(byteTotali));
 
+    [Theory]
+    [InlineData(0d, "0 B/s")]
+    [InlineData(449852d, "439.3 KiB/s")]
+    [InlineData(1073741824d, "1.0 GiB/s")]
+    public void UnaVelocitaUsaGliStessiPrefissiDeiByte(double alSecondo, string atteso) =>
+        // I byte al secondo sono l'unita' nuova portata dall'attivita' dei dischi. Senza un
+        // ramo suo finiscono nel formato generico e a schermo si legge "449852 B/s", con il
+        // formattatore dei byte li' accanto a non fare niente.
+        Assert.Equal(
+            atteso,
+            MetricFormatting.Describe(MetricValue.FromNumber(alSecondo), new MetricUnit("B/s")));
+
     private static IReadOnlyList<MetricGroupState> Proietta(MetricSnapshot collector) =>
         SnapshotProjection.Project(
             new MachineSnapshot(MachineSnapshot.CurrentSchemaVersion, DateTimeOffset.UnixEpoch, [collector]),

@@ -106,6 +106,14 @@ public static class MetricFormatting
             return DescribeBytes(numero);
         }
 
+        // Una velocita' e' pur sempre una quantita' di byte: senza questo ramo finirebbe nel
+        // formato generico e si leggerebbe "449852 B/s", con i prefissi binari gia' scritti
+        // due righe piu' su.
+        if (simbolo == "B/s")
+        {
+            return DescribeBytes(numero) + "/s";
+        }
+
         string testo = numero == Math.Floor(numero) && Math.Abs(numero) < 1e15d
             ? numero.ToString("F0", CultureInfo.InvariantCulture)
             : numero.ToString("F2", CultureInfo.InvariantCulture);
