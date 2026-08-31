@@ -151,3 +151,29 @@ public sealed class UnsupportedDiskReadingProvider : IDiskReadingProvider
         return false;
     }
 }
+
+/// <summary>Porta dell'attivita' dei dischi per una piattaforma che non si sa misurare.</summary>
+public sealed class UnsupportedDiskActivityProvider : IDiskActivityProvider
+{
+    /// <summary>Crea la porta con il motivo da mostrare.</summary>
+    /// <param name="reason">Perche' qui non si misura.</param>
+    public UnsupportedDiskActivityProvider(string reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        UnsupportedReason = reason;
+    }
+
+    /// <inheritdoc />
+    public bool IsSupported => false;
+
+    /// <inheritdoc />
+    public string? UnsupportedReason { get; }
+
+    /// <inheritdoc />
+    public bool TryRead(out IReadOnlyList<DiskActivityReading> readings)
+    {
+        readings = [];
+
+        return false;
+    }
+}

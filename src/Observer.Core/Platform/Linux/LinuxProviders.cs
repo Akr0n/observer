@@ -180,3 +180,82 @@ public sealed class LinuxDiskReadingProvider : IDiskReadingProvider
         return true;
     }
 }
+
+/// <summary>
+/// Adattatore /proc/diskstats per l'attivita' dei dischi.
+/// </summary>
+/// <remarks>
+/// Il problema vero non e' leggere i contatori, e' decidere di CHI sono. /proc/diskstats
+/// elenca insieme dischi interi, partizioni e dispositivi finti — <c>loop0</c>, <c>ram0</c>,
+/// <c>dm-0</c>, <c>zram0</c> — e sommarli tutti conterebbe lo stesso byte due o tre volte.
+/// <para>
+/// Il filtro non e' un elenco di prefissi da indovinare, che sbaglierebbe in silenzio al
+/// primo nome nuovo. E' una domanda sola al filesystem, attraverso
+/// <see cref="IFileTextReader"/> e quindi provabile dal runner Windows: esiste
+/// <c>/sys/block/NOME/device/uevent</c>?
+/// </para>
+/// <para>
+/// Quella domanda sola copre tutti e due i casi, e la prima stesura non se n'era accorta:
+/// aveva anche un controllo su <c>/sys/block/NOME/stat</c> per escludere le partizioni. E'
+/// stata una mutazione a mostrare che non serviva — toglierlo non faceva fallire niente —
+/// perche' una partizione sotto <c>/sys/block</c> non compare affatto: sta piu' in basso,
+/// dentro la cartella del disco che la contiene. Chi non ha un dispositivo fisico dietro
+/// (loop, ram, zram, i volumi logici, un array md) resta fuori per lo stesso motivo.
+/// </para>
+/// </remarks>
+public sealed class LinuxDiskActivityProvider : IDiskActivityProvider
+{
+    private const string DiskStatsPath = "/proc/diskstats";
+
+    private readonly IFileTextReader reader;
+
+    /// <summary>Crea l'adattatore sopra il lettore indicato.</summary>
+    /// <param name="reader">Da dove leggere i file di sistema.</param>
+    public LinuxDiskActivityProvider(IFileTextReader reader)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+
+        this.reader = reader;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Vero sempre, anche fuori da Linux: la piattaforma e' un parametro della composizione e
+    /// non una lettura dell'ambiente, ed e' cosi' che questo ramo si prova dal runner Windows.
+    /// </remarks>
+    public bool IsSupported => true;
+
+    /// <inheritdoc />
+    public string? UnsupportedReason => null;
+
+    /// <inheritdoc />
+    public bool TryRead(out IReadOnlyList<DiskActivityReading> readings)
+    {
+        if (!reader.TryReadAllText(DiskStatsPath, out string contenuto))
+        {
+            readings = [];
+
+            return false;
+        }
+
+        List<DiskActivityReading> trovati = [];
+
+        foreach (DiskStatsLine riga in ProcDiskStatsParser.Read(contenuto))
+        {
+            if (!HaUnDispositivoDietro(riga.Device))
+            {
+                continue;
+            }
+
+            trovati.Add(DiskActivityReading.ConTempoOccupato(
+                riga.Device, riga.BytesRead, riga.BytesWritten, riga.Busy));
+        }
+
+        readings = trovati;
+
+        return true;
+    }
+
+    private bool HaUnDispositivoDietro(string nome) =>
+        reader.TryReadAllText($"/sys/block/{nome}/device/uevent", out _);
+}

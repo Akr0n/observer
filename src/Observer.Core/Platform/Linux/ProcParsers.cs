@@ -320,3 +320,95 @@ public static class ProcMountInfoParser
         return costruito.ToString();
     }
 }
+
+/// <summary>Una riga di /proc/diskstats, gia' convertita in byte e tempo.</summary>
+/// <param name="Device">Nome del dispositivo, per esempio <c>sda</c> o <c>nvme0n1</c>.</param>
+/// <param name="BytesRead">Byte letti dall'accensione.</param>
+/// <param name="BytesWritten">Byte scritti dall'accensione.</param>
+/// <param name="Busy">Tempo cumulativo con almeno una richiesta in corso.</param>
+public readonly record struct DiskStatsLine(
+    string Device,
+    ulong BytesRead,
+    ulong BytesWritten,
+    TimeSpan Busy);
+
+/// <summary>
+/// Parser di /proc/diskstats. Funzione pura come gli altri: riceve il contenuto gia' letto,
+/// quindi gira identico sul runner Windows.
+/// </summary>
+/// <remarks>
+/// Due cose vanno sapute e nessuna delle due si indovina.
+/// <para>
+/// La prima: i settori qui sono <b>sempre</b> da 512 byte, per contratto documentato del
+/// kernel, e non hanno niente a che vedere con la dimensione fisica del blocco. Un disco
+/// "4K native" li conta comunque da 512, e chi moltiplicasse per la dimensione vera del
+/// settore pubblicherebbe numeri otto volte piu' grandi del vero.
+/// </para>
+/// <para>
+/// La seconda: il tempo di occupazione e' il campo 13 (<c>io_ticks</c>), che conta i
+/// millisecondi in cui la coda NON era vuota. Non e' la somma dei millisecondi di lettura e
+/// di scrittura, che sono i campi 7 e 11: quelli si sovrappongono, e sommarli ha gia' dato
+/// 843% su una stessa finestra.
+/// </para>
+/// </remarks>
+public static class ProcDiskStatsParser
+{
+    private const ulong ByteDelSettore = 512UL;
+
+    // Indici contando da zero dopo lo split. I campi successivi — scarti e flush — esistono
+    // solo sui kernel recenti, e non servono qui: per questo la riga si accetta a 14 campi.
+    private const int IndiceNome = 2;
+    private const int IndiceSettoriLetti = 5;
+    private const int IndiceSettoriScritti = 9;
+    private const int IndiceMillisecondiOccupato = 12;
+    private const int CampiMinimi = 14;
+
+    /// <summary>Legge le righe utilizzabili, saltando quelle che non lo sono.</summary>
+    /// <param name="content">Contenuto di /proc/diskstats.</param>
+    /// <returns>Una riga per dispositivo riconosciuto.</returns>
+    public static IReadOnlyList<DiskStatsLine> Read(string content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+
+        List<DiskStatsLine> righe = [];
+
+        foreach (string riga in content.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            string[] pezzi = riga.Split(
+                (char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (pezzi.Length < CampiMinimi)
+            {
+                continue;
+            }
+
+            if (!Numero(pezzi[IndiceSettoriLetti], out ulong settoriLetti)
+                || !Numero(pezzi[IndiceSettoriScritti], out ulong settoriScritti)
+                || !Numero(pezzi[IndiceMillisecondiOccupato], out ulong millisecondi))
+            {
+                continue;
+            }
+
+            // Un prodotto che trabocca tornerebbe indietro in silenzio, e il collector lo
+            // leggerebbe come un contatore andato all'indietro invece che come una riga da
+            // buttare. Serve piu' spazio di quanto un disco vero possa avere scritto, ma
+            // costa un confronto.
+            if (settoriLetti > ulong.MaxValue / ByteDelSettore
+                || settoriScritti > ulong.MaxValue / ByteDelSettore)
+            {
+                continue;
+            }
+
+            righe.Add(new DiskStatsLine(
+                pezzi[IndiceNome],
+                settoriLetti * ByteDelSettore,
+                settoriScritti * ByteDelSettore,
+                TimeSpan.FromMilliseconds(millisecondi)));
+        }
+
+        return righe;
+    }
+
+    private static bool Numero(string testo, out ulong valore) =>
+        ulong.TryParse(testo, NumberStyles.None, CultureInfo.InvariantCulture, out valore);
+}

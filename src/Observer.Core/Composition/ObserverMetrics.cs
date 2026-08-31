@@ -32,25 +32,39 @@ public static class ObserverMetrics
 
         const string sconosciuta = "unrecognized platform: only Windows and Linux are supported";
 
-        (ICpuTimesProvider cpu, IMemoryReadingProvider memory, IDiskReadingProvider disk) = platform switch
+        (ICpuTimesProvider cpu,
+            IMemoryReadingProvider memory,
+            IDiskReadingProvider disk,
+            IDiskActivityProvider diskActivity) = platform switch
         {
             HostPlatform.Linux => (
                 new LinuxCpuTimesProvider(fileReader) as ICpuTimesProvider,
                 new LinuxMemoryReadingProvider(fileReader) as IMemoryReadingProvider,
-                new LinuxDiskReadingProvider(fileReader) as IDiskReadingProvider),
+                new LinuxDiskReadingProvider(fileReader) as IDiskReadingProvider,
+                new LinuxDiskActivityProvider(fileReader) as IDiskActivityProvider),
 
             HostPlatform.Windows => (
                 new WindowsCpuTimesProvider(),
                 new WindowsMemoryReadingProvider() as IMemoryReadingProvider,
-                new WindowsDiskReadingProvider() as IDiskReadingProvider),
+                new WindowsDiskReadingProvider() as IDiskReadingProvider,
+                new WindowsDiskActivityProvider() as IDiskActivityProvider),
 
             _ => (
                 new UnsupportedCpuTimesProvider(sconosciuta),
                 new UnsupportedMemoryReadingProvider(sconosciuta),
-                new UnsupportedDiskReadingProvider(sconosciuta)),
+                new UnsupportedDiskReadingProvider(sconosciuta),
+                new UnsupportedDiskActivityProvider(sconosciuta)),
         };
 
-        return [new CpuCollector(cpu), new MemoryCollector(memory), new DiskCollector(disk)];
+        // L'ordine e' quello in cui i riquadri compaiono a schermo: lo spazio sui dischi
+        // prima dell'attivita', perche' e' la domanda che ci si fa piu' spesso.
+        return
+        [
+            new CpuCollector(cpu),
+            new MemoryCollector(memory),
+            new DiskCollector(disk),
+            new DiskActivityCollector(diskActivity),
+        ];
     }
 
     /// <summary>
