@@ -238,11 +238,22 @@
                                      pannello che sta gia' dentro una pagina che scorre. -->
                                 <ListBox x:Name="ElencoProcessi"
                                          ItemsSource="{Binding Processi}"
-                                         SelectedItem="{Binding ProcessoSelezionato}">
+                                         SelectedItem="{Binding ProcessoSelezionato}"
+                                         AutomationProperties.Name="{Binding ProcessiTitolo}">
+                                    <!-- Il nome accessibile sta sulla RIGA, il ListBoxItem: e'
+                                         cio' che le frecce selezionano e che un lettore di
+                                         schermo annuncia. Messo sulla Grid dentro il modello
+                                         non lo leggeva nessuno. ReflectionBinding perche' uno
+                                         Style non ha un x:DataType da cui compilare. -->
+                                    <ListBox.Styles>
+                                        <Style Selector="ListBoxItem">
+                                            <Setter Property="AutomationProperties.Name"
+                                                    Value="{ReflectionBinding Descrizione}" />
+                                        </Style>
+                                    </ListBox.Styles>
                                     <ListBox.ItemTemplate>
                                         <DataTemplate x:DataType="svc:ProcessoMostrato">
-                                            <Grid ColumnDefinitions="*,70,90,90"
-                                                  AutomationProperties.Name="{Binding Descrizione}">
+                                            <Grid ColumnDefinitions="*,70,90,90">
                                                 <TextBlock Text="{Binding Nome}" TextTrimming="CharacterEllipsis" />
                                                 <TextBlock Grid.Column="1"
                                                            Text="{Binding Cpu}"

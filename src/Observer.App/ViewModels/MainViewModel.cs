@@ -763,7 +763,15 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Apre il pannello dei processi per la risorsa del quadrante scelto.</summary>
     /// <param name="riga">Il quadrante su cui si e' cliccato.</param>
     /// <returns>L'attesa della prima lettura.</returns>
-    [RelayCommand]
+    /// <remarks>
+    /// Le esecuzioni concorrenti vanno PERMESSE: il comando e' uno solo per tutti i quadranti,
+    /// e un comando asincrono, finche' e' in esecuzione, rifiuta ogni altra esecuzione. Senza
+    /// questo, mentre la prima lettura e' in volo su una macchina remota lenta, ogni altro clic
+    /// — su un altro quadrante, o sullo stesso per chiudere — verrebbe scartato in silenzio, e
+    /// la finestra sembrerebbe non rispondere. La risposta di una lettura ormai superata la
+    /// scarta <see cref="AggiornaProcessiAsync"/>.
+    /// </remarks>
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task ApriProcessiAsync(MetricRow? riga)
     {
         if (riga is null || ProcessResource.Da(riga.Key) is not { } risorsa)
@@ -858,6 +866,15 @@ public sealed partial class MainViewModel : ViewModelBase
         }
 
         ProcessFetch esito = await client.GetProcessesAsync(risorsa, QuantiProcessi, cancellationToken);
+
+        // Mentre la risposta era in volo il pannello puo' essere stato chiuso, o portato su
+        // un'altra risorsa: questa risposta allora non e' piu' di nessuno. Applicarla
+        // riempirebbe un pannello chiuso, o metterebbe le righe della CPU sotto il titolo
+        // della memoria.
+        if (!ProcessiVisibili || !string.Equals(risorsaMostrata, risorsa, StringComparison.Ordinal))
+        {
+            return;
+        }
 
         if (esito.Outcome != ServiceOutcome.Ok)
         {

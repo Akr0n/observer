@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Threading;
 using Observer.App.ViewModels;
 
@@ -13,7 +14,19 @@ namespace Observer.App.Views;
 /// </summary>
 public partial class MainWindow : Window
 {
+    /// <summary>Quanto del pannello dei processi portare in vista quando si apre.</summary>
+    /// <remarks>
+    /// Il titolo, le intestazioni e le prime righe: abbastanza da vedere che si e' aperto e
+    /// cosa contiene. Non tutto il pannello — quindici righe sono piu' alte della finestra
+    /// predefinita, e portarlo in vista per intero spingeva fuori i quadranti, compreso
+    /// quello appena cliccato.
+    /// </remarks>
+    private const double AltezzaDaMostrare = 160d;
+
     private INotifyPropertyChanged? osservato;
+
+    /// <summary>Chi aveva il fuoco quando il pannello si e' aperto: di norma, il quadrante.</summary>
+    private IInputElement? provenienza;
 
     /// <summary>Costruisce la finestra.</summary>
     public MainWindow()
@@ -53,10 +66,22 @@ public partial class MainWindow : Window
     private void QuandoCambia(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(MainViewModel.ProcessiVisibili)
-            || DataContext is not MainViewModel { ProcessiVisibili: true })
+            || DataContext is not MainViewModel modello)
         {
             return;
         }
+
+        if (!modello.ProcessiVisibili)
+        {
+            // Chiuso il pannello, il fuoco torna da dove era partito invece di sparire con
+            // l'elenco: da tastiera, un fuoco perso vuol dire ricominciare dall'inizio.
+            provenienza?.Focus();
+            provenienza = null;
+
+            return;
+        }
+
+        provenienza = FocusManager?.GetFocusedElement();
 
         // DOPO il layout, non subito: il pannello appena reso visibile non ha ancora una
         // dimensione, e portare in vista un rettangolo vuoto non porta da nessuna parte. E il
@@ -67,7 +92,9 @@ public partial class MainWindow : Window
         Dispatcher.UIThread.Post(
             () =>
             {
-                PannelloProcessi.BringIntoView();
+                Rect pannello = PannelloProcessi.Bounds;
+                PannelloProcessi.BringIntoView(
+                    new Rect(0d, 0d, pannello.Width, Math.Min(pannello.Height, AltezzaDaMostrare)));
                 ElencoProcessi.Focus();
             },
             DispatcherPriority.Loaded);

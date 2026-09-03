@@ -52,6 +52,20 @@ public class LeggerezzaTests
             cliente.MassimoInVolo >= 2,
             $"al massimo {cliente.MassimoInVolo} richieste di storico in volo insieme: sono partite in fila");
 
+        // E ogni risposta deve tornare alla SUA riga: leggere in parallelo e poi abbinare per
+        // posizione e' esattamente il punto in cui uno storico finirebbe sotto il quadrante
+        // sbagliato. Qui la memoria risponde con un guasto e la CPU no.
+        MetricRow cpu = viewModel.Quadranti.Single(riga => riga.Key.StartsWith("cpu|", StringComparison.Ordinal));
+        MetricRow memoria = viewModel.Quadranti.Single(riga => riga.Key.StartsWith("memory|", StringComparison.Ordinal));
+
+        while (!arresto.IsCancellationRequested && !memoria.NotaStorico.Contains("guasto", StringComparison.Ordinal))
+        {
+            await Task.Delay(50, CancellationToken.None);
+        }
+
+        Assert.Contains("storico della memoria guasto", memoria.NotaStorico, StringComparison.Ordinal);
+        Assert.DoesNotContain("guasto", cpu.NotaStorico, StringComparison.Ordinal);
+
         await arresto.CancelAsync();
 
         try
@@ -133,7 +147,9 @@ public class LeggerezzaTests
             Interlocked.Decrement(ref inVolo);
             Interlocked.Increment(ref completate);
 
-            return new HistoryFetch(ServiceOutcome.Ok, string.Empty, []);
+            return string.Equals(richiesta.Collector, "memory", StringComparison.Ordinal)
+                ? new HistoryFetch(ServiceOutcome.NonRaggiungibile, "storico della memoria guasto", null)
+                : new HistoryFetch(ServiceOutcome.Ok, string.Empty, []);
         }
     }
 }

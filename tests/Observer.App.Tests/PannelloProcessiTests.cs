@@ -211,9 +211,64 @@ public class PannelloProcessiTests
         Assert.False(viewModel.ConfermaTerminazione);
     }
 
+    [Fact]
+    public async Task UnClicMentreLaPrimaLetturaEInVoloNonVieneScartato()
+    {
+        // Macchina remota lenta: la prima lettura dell'elenco non torna subito. Nel frattempo
+        // chi ha cliccato clicca ancora — per chiudere, o per passare a un altro quadrante —
+        // e quel clic deve contare. Prima veniva scartato: il comando e' UNO per tutti i
+        // quadranti, e un comando asincrono in esecuzione rifiuta le esecuzioni concorrenti.
+        ClienteConProcessi cliente = new() { Attesa = new TaskCompletionSource<ProcessFetch>() };
+        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+
+        Task prima = viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+
+        Assert.True(viewModel.ProcessiVisibili);
+        Assert.True(viewModel.ApriProcessiCommand.CanExecute(Riga("memory|memory.used.percent|")));
+
+        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+
+        Assert.False(viewModel.ProcessiVisibili);
+
+        // E la risposta arrivata in ritardo per un pannello ormai chiuso non lo riempie.
+        cliente.Attesa.SetResult(new ProcessFetch(
+            ServiceOutcome.Ok, string.Empty, [new ProcessoMostrato(99, "in ritardo", "99 %", "1 MiB")]));
+        await prima;
+
+        Assert.False(viewModel.ProcessiVisibili);
+        Assert.Empty(viewModel.Processi);
+    }
+
+    [Fact]
+    public async Task UnaRispostaInRitardoNonFinisceSottoIlTitoloDiUnAltroQuadrante()
+    {
+        ClienteConProcessi cliente = new();
+        TaskCompletionSource<ProcessFetch> inVolo = new();
+        cliente.Attesa = inVolo;
+        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+
+        Task cpu = viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+
+        // Il secondo quadrante risponde subito; il primo, dopo.
+        cliente.Attesa = null;
+        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("memory|memory.used.percent|"));
+
+        Assert.Contains("memory", viewModel.ProcessiTitolo, StringComparison.Ordinal);
+        Assert.Equal(["affamato", "tranquillo"], viewModel.Processi.Select(riga => riga.Nome));
+
+        inVolo.SetResult(new ProcessFetch(
+            ServiceOutcome.Ok, string.Empty, [new ProcessoMostrato(99, "in ritardo", "99 %", "1 MiB")]));
+        await cpu;
+
+        Assert.Equal(["affamato", "tranquillo"], viewModel.Processi.Select(riga => riga.Nome));
+    }
+
     private sealed class ClienteConProcessi : IMetricsClient
     {
         public IReadOnlyList<string> Cpu { get; set; } = ["5.0 %", "1.0 %"];
+
+        /// <summary>Se impostata, la prossima lettura dell'elenco risponde solo quando lo dice il test.</summary>
+        public TaskCompletionSource<ProcessFetch>? Attesa { get; set; }
 
         public List<int> Terminati { get; } = [];
 
@@ -235,6 +290,11 @@ public class PannelloProcessiTests
             string per, int quanti, CancellationToken cancellationToken)
         {
             Chiesti.Add(per);
+
+            if (Attesa is { } attesa)
+            {
+                return attesa.Task;
+            }
 
             return Task.FromResult(new ProcessFetch(
                 ServiceOutcome.Ok,
