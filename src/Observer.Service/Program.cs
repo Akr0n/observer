@@ -1,6 +1,7 @@
 using System.Text;
 using Observer.Core.Composition;
 using Observer.Core.Metrics;
+using Observer.Core.Platform;
 using Observer.Core.Processes;
 using Microsoft.Extensions.Hosting.Systemd;
 using Microsoft.Extensions.Hosting.WindowsServices;
@@ -46,7 +47,8 @@ builder.Services.AddSingleton<MetricSnapshotCache>();
 // Singleton e non transient, per la stessa ragione dei collector: la classifica dei processi
 // conserva il campione precedente per PID, e ricrearla a ogni richiesta lascerebbe la CPU di
 // ogni processo eternamente sconosciuta.
-builder.Services.AddSingleton<IProcessLister, SystemProcessLister>();
+builder.Services.AddSingleton<IProcessLister>(sp => new SystemProcessLister(
+    ProcessIoReaders.Per(HostPlatformDetector.Current, sp.GetRequiredService<IFileTextReader>())));
 builder.Services.AddSingleton<ProcessRanking>();
 builder.Services.AddHostedService<MetricSamplingService>();
 

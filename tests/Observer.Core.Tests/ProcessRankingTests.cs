@@ -15,8 +15,9 @@ public class ProcessRankingTests
 {
     private const int Core = 4;
 
-    private static ProcessTimes Processo(int pid, string nome, double secondiDiCpu, long byteInMemoria) =>
-        new(pid, nome, TimeSpan.FromSeconds(secondiDiCpu), ByteSize.FromBytes(byteInMemoria));
+    private static ProcessTimes Processo(
+        int pid, string nome, double secondiDiCpu, long byteInMemoria, ulong? byteDiIo = null) =>
+        new(pid, nome, TimeSpan.FromSeconds(secondiDiCpu), ByteSize.FromBytes(byteInMemoria), byteDiIo);
 
     [Fact]
     public void AlPrimoGiroLaMemoriaCEELaCpuNo()
@@ -126,6 +127,104 @@ public class ProcessRankingTests
         IReadOnlyList<ProcessUsage> ordinati = ProcessRanking.PiuAffamatiDiCpu(tutti, 3);
 
         Assert.Equal(["affamato", "fermo", "ignoto"], ordinati.Select(processo => processo.Name));
+    }
+
+    [Fact]
+    public void AlPrimoGiroLIoNonCE()
+    {
+        Banco banco = new([Processo(10, "copia", 5, 100_000, byteDiIo: 1_000_000)]);
+
+        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> primo));
+        Assert.Null(Assert.Single(primo).IoBytesPerSecond);
+    }
+
+    [Fact]
+    public void DalSecondoGiroLIoEUnTassoInBytePerSecondo()
+    {
+        // Mezzo megabyte in piu' in un secondo: 500.000 byte al secondo, qualunque sia il numero
+        // di core - a differenza della CPU, qui la macchina intera non divide niente.
+        Banco banco = new([Processo(10, "copia", 5, 100_000, byteDiIo: 1_000_000)]);
+
+        banco.Classifica.TryLeggi(out _);
+        banco.Avanza([Processo(10, "copia", 5, 100_000, byteDiIo: 1_500_000)]);
+
+        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> secondo));
+        Assert.Equal(500_000d, Assert.Single(secondo).IoBytesPerSecond!.Value, 6);
+    }
+
+    [Fact]
+    public void UnPidRiusatoNonEreditaLIoDelMorto()
+    {
+        // Stessa trappola della CPU, stessa difesa: il nome. Un "backup" morto con un terabyte
+        // trasferito e un "editor" nato al suo posto non devono produrre un tasso.
+        Banco banco = new([Processo(10, "backup", 5, 100_000, byteDiIo: 1_000_000_000_000)]);
+
+        banco.Classifica.TryLeggi(out _);
+        banco.Avanza([Processo(10, "editor", 5, 100_000, byteDiIo: 1_000_000_000_500)]);
+
+        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> secondo));
+        Assert.Null(Assert.Single(secondo).IoBytesPerSecond);
+    }
+
+    [Fact]
+    public void UnContatoreDiIoCheTornaIndietroNonProduceUnTasso()
+    {
+        Banco banco = new([Processo(10, "copia", 5, 100_000, byteDiIo: 1_000_000)]);
+
+        banco.Classifica.TryLeggi(out _);
+        banco.Avanza([Processo(10, "copia", 5, 100_000, byteDiIo: 900_000)]);
+
+        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> secondo));
+        Assert.Null(Assert.Single(secondo).IoBytesPerSecond);
+    }
+
+    [Theory]
+    [InlineData(null, 1_000_000UL)]
+    [InlineData(1_000_000UL, null)]
+    [InlineData(null, null)]
+    public void SenzaContatoreDaUnaDelleDuePartiIlTassoRestaSconosciuto(ulong? prima, ulong? dopo)
+    {
+        // Su Linux il contatore degli altri utenti non si legge, e un processo puo' diventare
+        // leggibile - o smettere di esserlo - fra un giro e l'altro. Un solo campione non basta.
+        Banco banco = new([Processo(10, "copia", 5, 100_000, prima)]);
+
+        banco.Classifica.TryLeggi(out _);
+        banco.Avanza([Processo(10, "copia", 5, 100_000, dopo)]);
+
+        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> secondo));
+        Assert.Null(Assert.Single(secondo).IoBytesPerSecond);
+    }
+
+    [Fact]
+    public void LIoNonToccaLaCpuENeppureIlContrario()
+    {
+        // I due tassi si calcolano dalla stessa storia ma non si condizionano: un contatore di
+        // I/O che manca non deve cancellare una percentuale di CPU valida.
+        Banco banco = new([Processo(10, "copia", 5, 100_000)]);
+
+        banco.Classifica.TryLeggi(out _);
+        banco.Avanza([Processo(10, "copia", 5.5, 100_000, byteDiIo: 10)]);
+
+        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> secondo));
+
+        ProcessUsage solo = Assert.Single(secondo);
+        Assert.Equal(12.5d, solo.CpuPercent!.Value, 6);
+        Assert.Null(solo.IoBytesPerSecond);
+    }
+
+    [Fact]
+    public void ChiNonHaAncoraUnTassoDiIoVaInFondo()
+    {
+        List<ProcessUsage> tutti =
+        [
+            new(1, "ignoto", 0d, ByteSize.FromBytes(10), null),
+            new(2, "fermo", 0d, ByteSize.FromBytes(10), 0d),
+            new(3, "indaffarato", 0d, ByteSize.FromBytes(10), 5_000_000d),
+        ];
+
+        IReadOnlyList<ProcessUsage> ordinati = ProcessRanking.PiuAffamatiDiIo(tutti, 3);
+
+        Assert.Equal(["indaffarato", "fermo", "ignoto"], ordinati.Select(processo => processo.Name));
     }
 
     [Fact]

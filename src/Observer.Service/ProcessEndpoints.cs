@@ -14,12 +14,23 @@ namespace Observer.Service;
 /// il client deve poter mostrare un trattino invece di affermare che il processo e' fermo.
 /// </param>
 /// <param name="WorkingSetBytes">Memoria fisica occupata.</param>
-public sealed record ProcessRow(int Pid, string Name, double? CpuPercent, long WorkingSetBytes);
+/// <param name="IoBytesPerSecond">
+/// Byte al secondo letti e scritti, oppure null quando non e' noto: primo giro, processo appena
+/// nato, o un sistema che non lo dice - su Linux, i processi degli altri utenti.
+/// </param>
+public sealed record ProcessRow(
+    int Pid, string Name, double? CpuPercent, long WorkingSetBytes, double? IoBytesPerSecond);
 
 /// <summary>La risposta di <c>/processes</c>.</summary>
 /// <param name="CapturedAt">Quando e' stato letto l'elenco.</param>
+/// <param name="By">
+/// Il criterio applicato: <c>cpu</c>, <c>memory</c> o <c>io</c>. Ripetuto apposta: un client
+/// che chiede un criterio a un servizio piu' vecchio che non lo conosce riceverebbe l'elenco
+/// della CPU, e senza questo campo lo mostrerebbe sotto il titolo sbagliato.
+/// </param>
 /// <param name="Processes">I processi, gia' ordinati.</param>
-public sealed record ProcessListResponse(DateTimeOffset CapturedAt, IReadOnlyList<ProcessRow> Processes);
+public sealed record ProcessListResponse(
+    DateTimeOffset CapturedAt, string By, IReadOnlyList<ProcessRow> Processes);
 
 /// <summary>Gli endpoint che dicono chi sta consumando la macchina, e permettono di fermarlo.</summary>
 /// <remarks>
@@ -69,21 +80,34 @@ public static partial class ProcessEndpoints
 
         int quanti = Math.Clamp(top ?? QuantiPerDefault, 1, QuantiAlMassimo);
 
-        // Per memoria oppure per CPU. Chi non dice niente ottiene la CPU, che e' la domanda
-        // che ci si fa guardando un quadrante rosso.
-        IReadOnlyList<ProcessUsage> ordinati =
-            string.Equals(by, "memory", StringComparison.OrdinalIgnoreCase)
-                ? ProcessRanking.PiuAffamatiDiMemoria(processi, quanti)
-                : ProcessRanking.PiuAffamatiDiCpu(processi, quanti);
+        // Per memoria, per I/O oppure per CPU. Chi non dice niente ottiene la CPU, che e' la
+        // domanda che ci si fa guardando un quadrante rosso.
+        string criterio = Criterio(by);
+
+        IReadOnlyList<ProcessUsage> ordinati = criterio switch
+        {
+            "memory" => ProcessRanking.PiuAffamatiDiMemoria(processi, quanti),
+            "io" => ProcessRanking.PiuAffamatiDiIo(processi, quanti),
+            _ => ProcessRanking.PiuAffamatiDiCpu(processi, quanti),
+        };
 
         return Results.Ok(new ProcessListResponse(
             DateTimeOffset.UtcNow,
+            criterio,
             [.. ordinati.Select(processo => new ProcessRow(
                 processo.Pid,
                 processo.Name,
                 processo.CpuPercent,
-                processo.WorkingSet.Bytes))]));
+                processo.WorkingSet.Bytes,
+                processo.IoBytesPerSecond))]));
     }
+
+    private static string Criterio(string? by) => by?.ToUpperInvariant() switch
+    {
+        "MEMORY" => "memory",
+        "IO" => "io",
+        _ => "cpu",
+    };
 
     private static IResult Termina(HttpContext contesto, ILoggerFactory registri, int pid)
     {

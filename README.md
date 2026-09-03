@@ -9,8 +9,9 @@ e dei dispositivi presenti sulla rete locale. Gira su Windows e Linux.
 > e su Linux - CPU, memoria, spazio per volume, attivita' per disco - conserva le serie su
 > SQLite, si genera da solo il proprio token di macchina, ed espone i dati sia sulla rete sia
 > su un canale locale che non richiede credenziali. Il client desktop li mostra dal vivo, con
-> un'ora di storico sotto i quadranti, e dal quadrante della CPU o della memoria apre l'elenco
-> dei processi che la stanno consumando, da cui un processo si puo' terminare. Ci sono un
+> un'ora di storico sotto i quadranti, e dal quadrante della CPU, della memoria o dell'attivita'
+> di un disco apre l'elenco dei processi che la stanno consumando, da cui un processo si puo'
+> terminare. Ci sono un
 > pacchetto MSI per Windows e un `.deb` per Linux, che registrano il servizio e installano
 > la dashboard. Mancano la rete e i sensori di temperatura.
 >
@@ -52,10 +53,21 @@ dispositivo onesto. La percentuale di occupazione si ricava dal tempo **inattivo
 tempo di lettura e di scrittura: i due si sovrappongono, e su una finestra misurata la somma
 dava 843%.
 
-Oltre alle metriche, il servizio espone l'**elenco dei processi** ordinato per CPU o per
-memoria, ed e' quello che la dashboard apre cliccando il quadrante corrispondente. I quadranti
-dei dischi non lo aprono: lo spazio occupato su un volume non si attribuisce a un processo in
-esecuzione.
+Oltre alle metriche, il servizio espone l'**elenco dei processi** ordinato per CPU, per memoria
+o per I/O, ed e' quello che la dashboard apre cliccando il quadrante corrispondente. Dal
+quadrante dell'attivita' di un disco si apre l'elenco per I/O, che e' dell'**intera macchina** e
+il titolo lo dice: i contatori sono per processo, e nessuno dei due sistemi dice su quale
+dispositivo sono finiti i byte. I quadranti dello spazio non aprono niente: lo spazio occupato
+su un volume non si attribuisce a un processo in esecuzione.
+
+"I/O" vuol dire ogni lettura e scrittura che il processo ha chiesto, cache compresa: e' l'unico
+contatore per processo che Windows abbia, e su Linux si leggono `rchar` e `wchar` - non
+`read_bytes` e `write_bytes`, che sarebbero piu' veri per il disco ma diversi da quello che
+dice l'altra macchina sotto lo stesso titolo. Su Linux, poi, `/proc/PID/io` si legge solo con
+il permesso di *ptrace* su quel processo: il servizio gira come utente `observer` e per i
+processi degli altri utenti mostra un trattino. E' voluto - `CAP_SYS_PTRACE` permetterebbe di
+leggere la memoria di qualunque processo - e chi lo vuole togliere aggiunge
+`AmbientCapabilities=CAP_SYS_PTRACE` alla unit di systemd, sapendo cosa concede.
 
 ### Aggiungere una metrica
 
@@ -139,7 +151,7 @@ sbagliato. Dalla **rete** il bearer token resta obbligatorio.
 | `GET /metrics/series` | quali serie sono state davvero misurate su questa macchina |
 | `GET /metrics/history` | i punti storici; `resolution` accetta `auto`, `raw`, `1m`, `5m` |
 | `GET /metrics/storage` | dove scrive, quanto occupa, fin dove ha aggregato |
-| `GET /processes` | i processi che consumano di piu'; `by` accetta `cpu` (predefinito) o `memory`, `top` da 1 a 100 (predefinito 15) |
+| `GET /processes` | i processi che consumano di piu'; `by` accetta `cpu` (predefinito), `memory` o `io`, `top` da 1 a 100 (predefinito 15); la risposta ripete il criterio applicato in `by` |
 | `POST /processes/{pid}/kill` | termina quel processo: `204` se e' andata, `404` se il pid non esiste |
 
 `auto` sceglie la risoluzione più fine ancora disponibile per l'intervallo richiesto: il
