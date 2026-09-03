@@ -26,6 +26,15 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </remarks>
     public static readonly TimeSpan Intervallo = TimeSpan.FromSeconds(1);
 
+    /// <summary>Ogni quanto si interroga il servizio quando la finestra e' ridotta a icona.</summary>
+    /// <remarks>
+    /// Non si ferma: riaprendo la finestra la barra di stato deve dire subito com'e' andata,
+    /// non "collegamento in corso". Ma un campione al secondo per una finestra che nessuno
+    /// guarda e' lavoro fatto alla macchina che si sta misurando, e questo e' uno strumento
+    /// che rientra nel numero che mostra.
+    /// </remarks>
+    public static readonly TimeSpan IntervalloRidotto = TimeSpan.FromSeconds(10);
+
     /// <summary>Quanto storico mostra la striscia.</summary>
     private static readonly TimeSpan FinestraStorico = TimeSpan.FromHours(1);
 
@@ -250,7 +259,27 @@ public sealed partial class MainViewModel : ViewModelBase
     /// una riga sbagliata — senza quella dipendenza.
     /// </remarks>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TestoTermina))]
     public partial bool ConfermaTerminazione { get; set; }
+
+    /// <summary>Che cosa c'e' scritto sul pulsante di terminazione, adesso.</summary>
+    /// <remarks>
+    /// UN pulsante che cambia scritta, e non due che si alternano: con due, al primo clic il
+    /// pulsante premuto spariva e il fuoco della tastiera cadeva nel vuoto, e chi conferma con
+    /// Invio si trovava a premere Invio su niente.
+    /// </remarks>
+    public string TestoTermina => ConfermaTerminazione ? "Click again to end it" : "End process";
+
+    /// <summary>
+    /// True quando la finestra e' ridotta a icona: la cadenza delle letture si allunga.
+    /// </summary>
+    /// <remarks>Lo imposta la finestra; il view model non sa cos'e' una finestra.</remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Cadenza))]
+    public partial bool InSecondoPiano { get; set; }
+
+    /// <summary>Ogni quanto si legge, adesso.</summary>
+    public TimeSpan Cadenza => InSecondoPiano ? IntervalloRidotto : Intervallo;
 
     /// <summary>Quale risorsa sta guardando il pannello: <c>cpu</c>, <c>memory</c>, o null.</summary>
     private string? risorsaMostrata;
@@ -418,6 +447,11 @@ public sealed partial class MainViewModel : ViewModelBase
                 {
                     AdottaConfigurazioneAggiornata();
                 }
+
+                // La cadenza segue la finestra: ridotta a icona si legge ogni dieci secondi.
+                // Cambiare il periodo di un PeriodicTimer vale dal tick successivo, che e'
+                // esattamente quello che serve: nessun timer da ricreare, nessun giro perso.
+                timer.Period = Cadenza;
 
                 if (!await timer.WaitForNextTickAsync(cancellationToken))
                 {
@@ -610,47 +644,75 @@ public sealed partial class MainViewModel : ViewModelBase
 
         DateTimeOffset ora = adesso();
 
-        foreach (MetricRow riga in Quadranti.ToList())
+        // Tutte le strisce insieme, non una dopo l'altra: sei quadranti facevano dodici
+        // richieste in fila, e il tempo del giro era la SOMMA delle latenze. Le richieste
+        // partono qui, in parallelo; le righe si toccano solo dopo, quando sono tornate tutte,
+        // e sul thread dell'interfaccia.
+        List<MetricRow> righe = [.. Quadranti];
+
+        (HistoryFetch Aggregato, HistoryFetch? Coda)[] letture = await Task.WhenAll(
+            righe.Select(riga => LeggiStoricoAsync(corrente, riga.Key, ora, cancellationToken)))
+            .ConfigureAwait(true);
+
+        for (int i = 0; i < righe.Count; i++)
         {
-            string[] pezzi = riga.Key.Split('|');
-
-            if (pezzi.Length < 2)
-            {
-                continue;
-            }
-
-            string? istanza = pezzi.Length > 2 && pezzi[2].Length > 0 ? pezzi[2] : null;
-
-            HistoryFetch aggregato = await corrente.GetHistoryAsync(
-                new HistoryQuery(pezzi[0], pezzi[1], istanza, ora - FinestraStorico, "1m"),
-                cancellationToken).ConfigureAwait(true);
-
-            if (aggregato.Outcome != ServiceOutcome.Ok || aggregato.Points is null)
-            {
-                riga.Storico = null;
-                riga.NotaStorico = "No history: " + aggregato.Problem;
-
-                continue;
-            }
-
-            HistoryFetch coda = await corrente.GetHistoryAsync(
-                new HistoryQuery(pezzi[0], pezzi[1], istanza, ora - CodaStorico, "raw"),
-                cancellationToken).ConfigureAwait(true);
-
-            IReadOnlyList<HistoryPoint> punti = coda.Outcome == ServiceOutcome.Ok && coda.Points is not null
-                ? HistoryStrip.Unisci(aggregato.Points, HistoryStrip.Raggruppa(coda.Points, PassoStorico))
-                : aggregato.Points;
-
-            riga.NotaStorico = punti.Count > 0
-                ? string.Empty
-                : "No history recorded for this metric yet.";
-
-            riga.Storico = HistoryStrip.Costruisci(
-                InFrazioni(punti),
-                ora,
-                (int)(FinestraStorico / PassoStorico),
-                PassoStorico);
+            ApplicaStorico(righe[i], letture[i].Aggregato, letture[i].Coda, ora);
         }
+    }
+
+    /// <summary>Le due letture dello storico di UNA metrica: l'aggregato al minuto e la coda grezza.</summary>
+    /// <returns>La coda e' null quando l'aggregato non c'e': senza quello non serve.</returns>
+    private static async Task<(HistoryFetch Aggregato, HistoryFetch? Coda)> LeggiStoricoAsync(
+        IMetricsClient corrente, string chiave, DateTimeOffset ora, CancellationToken cancellationToken)
+    {
+        string[] pezzi = chiave.Split('|');
+
+        if (pezzi.Length < 2)
+        {
+            return (new HistoryFetch(ServiceOutcome.Unknown, "malformed metric key", null), null);
+        }
+
+        string? istanza = pezzi.Length > 2 && pezzi[2].Length > 0 ? pezzi[2] : null;
+
+        HistoryFetch aggregato = await corrente.GetHistoryAsync(
+            new HistoryQuery(pezzi[0], pezzi[1], istanza, ora - FinestraStorico, "1m"),
+            cancellationToken).ConfigureAwait(false);
+
+        if (aggregato.Outcome != ServiceOutcome.Ok || aggregato.Points is null)
+        {
+            return (aggregato, null);
+        }
+
+        HistoryFetch coda = await corrente.GetHistoryAsync(
+            new HistoryQuery(pezzi[0], pezzi[1], istanza, ora - CodaStorico, "raw"),
+            cancellationToken).ConfigureAwait(false);
+
+        return (aggregato, coda);
+    }
+
+    private static void ApplicaStorico(MetricRow riga, HistoryFetch aggregato, HistoryFetch? coda, DateTimeOffset ora)
+    {
+        if (aggregato.Outcome != ServiceOutcome.Ok || aggregato.Points is null)
+        {
+            riga.Storico = null;
+            riga.NotaStorico = "No history: " + aggregato.Problem;
+
+            return;
+        }
+
+        IReadOnlyList<HistoryPoint> punti = coda is { Outcome: ServiceOutcome.Ok, Points: not null }
+            ? HistoryStrip.Unisci(aggregato.Points, HistoryStrip.Raggruppa(coda.Points, PassoStorico))
+            : aggregato.Points;
+
+        riga.NotaStorico = punti.Count > 0
+            ? string.Empty
+            : "No history recorded for this metric yet.";
+
+        riga.Storico = HistoryStrip.Costruisci(
+            InFrazioni(punti),
+            ora,
+            (int)(FinestraStorico / PassoStorico),
+            PassoStorico);
     }
 
     /// <summary>Porta i valori dello storico nella scala 0..1 dei quadranti.</summary>
@@ -701,11 +763,29 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Apre il pannello dei processi per la risorsa del quadrante scelto.</summary>
     /// <param name="riga">Il quadrante su cui si e' cliccato.</param>
     /// <returns>L'attesa della prima lettura.</returns>
-    [RelayCommand]
+    /// <remarks>
+    /// Le esecuzioni concorrenti vanno PERMESSE: il comando e' uno solo per tutti i quadranti,
+    /// e un comando asincrono, finche' e' in esecuzione, rifiuta ogni altra esecuzione. Senza
+    /// questo, mentre la prima lettura e' in volo su una macchina remota lenta, ogni altro clic
+    /// — su un altro quadrante, o sullo stesso per chiudere — verrebbe scartato in silenzio, e
+    /// la finestra sembrerebbe non rispondere. La risposta di una lettura ormai superata la
+    /// scarta <see cref="AggiornaProcessiAsync"/>.
+    /// </remarks>
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task ApriProcessiAsync(MetricRow? riga)
     {
         if (riga is null || ProcessResource.Da(riga.Key) is not { } risorsa)
         {
+            return;
+        }
+
+        // Lo stesso quadrante una seconda volta CHIUDE: e' il gesto che chiunque prova per
+        // primo per far sparire una cosa che ha appena fatto comparire. Un altro quadrante
+        // invece cambia elenco senza chiudere.
+        if (ProcessiVisibili && string.Equals(risorsaMostrata, risorsa, StringComparison.Ordinal))
+        {
+            ChiudiProcessi();
+
             return;
         }
 
@@ -786,6 +866,15 @@ public sealed partial class MainViewModel : ViewModelBase
         }
 
         ProcessFetch esito = await client.GetProcessesAsync(risorsa, QuantiProcessi, cancellationToken);
+
+        // Mentre la risposta era in volo il pannello puo' essere stato chiuso, o portato su
+        // un'altra risorsa: questa risposta allora non e' piu' di nessuno. Applicarla
+        // riempirebbe un pannello chiuso, o metterebbe le righe della CPU sotto il titolo
+        // della memoria.
+        if (!ProcessiVisibili || !string.Equals(risorsaMostrata, risorsa, StringComparison.Ordinal))
+        {
+            return;
+        }
 
         if (esito.Outcome != ServiceOutcome.Ok)
         {

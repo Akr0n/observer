@@ -33,6 +33,13 @@ public sealed record ProcessListWire(
 /// <param name="Io">I byte al secondo gia' formattati, oppure un trattino se non si sa.</param>
 public sealed record ProcessoMostrato(int Pid, string Nome, string Cpu, string Memoria, string Io = "—")
 {
+    /// <summary>La riga letta per intero, per chi non la vede: nome e le tre colonne col loro titolo.</summary>
+    /// <remarks>
+    /// Un lettore di schermo che legge quattro TextBlock separati dice "claude, 15.1 %, 228.5
+    /// MiB, 1.1 MiB/s" senza dire cosa siano: le intestazioni di colonna, che l'occhio tiene a
+    /// mente, per l'orecchio non esistono.
+    /// </remarks>
+    public string Descrizione => $"{Nome}, CPU {Cpu}, memory {Memoria}, I/O {Io}";
     /// <summary>Traduce una riga arrivata dal filo in una riga da mostrare.</summary>
     /// <param name="riga">La riga arrivata.</param>
     /// <returns>La riga da mostrare.</returns>

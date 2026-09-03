@@ -6,14 +6,22 @@
         xmlns:ctl="using:Observer.App.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="560"
+        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
         x:Class="Observer.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         x:CompileBindings="True"
         Icon="/Assets/observer.ico"
-        Width="720" Height="560"
-        MinWidth="420" MinHeight="360"
+        Width="900" Height="700"
+        MinWidth="720" MinHeight="520"
         Title="{Binding TitoloFinestra}">
+
+    <!-- 900x700 e non 720x560: a 720 entravano due quadranti per riga e i dischi finivano
+         sotto la piega gia' sulla macchina di chi ha scritto il programma. Il minimo e'
+         misurato sul layout, e non e' 640 come sembrava bastare per due quadranti: a 640 le
+         tre colonne numeriche del pannello dei processi mangiavano tutta la larghezza e la
+         colonna del NOME - l'unica elastica - andava a zero, righe di soli numeri. A 720
+         restano al nome 148 px. Il vecchio minimo, 420x360, era di un giorno PRIMA che
+         esistesse la barra laterale, e non era mai stato riallineato. -->
 
     <Window.Styles>
         <!-- Solo un guasto vero si colora. Un Warmup all'avvio o una metrica non misurabile
@@ -21,6 +29,28 @@
              ignorare anche gli allarmi veri. -->
         <Style Selector="TextBlock.problema">
             <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+        </Style>
+
+        <!-- Un quadrante cliccabile INVITA: cursore a mano, e il riquadro che compare al
+             passaggio del mouse e' quello del pulsante. Quello non cliccabile - lo spazio
+             disco - resta un quadrante e basta: senza il riquadro del pulsante disabilitato,
+             che lo faceva sembrare spento (misurato: un rettangolo al 4% di bianco). L'invito
+             sta sul cliccabile, non la punizione sul non cliccabile. -->
+        <Style Selector="Button.quadrante">
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.quadrante:disabled">
+            <Setter Property="Cursor" Value="Arrow" />
+        </Style>
+        <Style Selector="Button.quadrante:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+
+        <!-- Le didascalie prendono colore dal tema, non da un'opacita' scelta a mano: cosi'
+             restano leggibili in entrambi i temi senza ricalcolarle. -->
+        <Style Selector="TextBlock.secondario">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
         </Style>
     </Window.Styles>
 
@@ -31,8 +61,12 @@
     <DockPanel Margin="20">
 
         <StackPanel DockPanel.Dock="Top" Spacing="2">
-            <TextBlock Text="{Binding Intestazione}" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap" />
-            <TextBlock Text="{Binding SottoIntestazione}" Opacity="0.7" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding Intestazione}"
+                       Theme="{StaticResource SubtitleTextBlockStyle}"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="{Binding SottoIntestazione}"
+                       Classes="secondario"
+                       TextWrapping="Wrap" />
         </StackPanel>
 
         <ui:FAInfoBar DockPanel.Dock="Top"
@@ -58,7 +92,7 @@
             <DockPanel>
                 <TextBlock DockPanel.Dock="Top"
                            Text="Machines"
-                           FontWeight="SemiBold"
+                           Theme="{StaticResource BodyStrongTextBlockStyle}"
                            Margin="0,0,0,8" />
 
                 <!-- I problemi stanno SOTTO l'elenco, non in un log: una macchina configurata
@@ -67,8 +101,8 @@
                 <TextBlock DockPanel.Dock="Bottom"
                            Text="{Binding SuggerimentoElenco}"
                            IsVisible="{Binding MostraSuggerimento}"
-                           FontSize="11"
-                           Opacity="0.7"
+                           Theme="{StaticResource CaptionTextBlockStyle}"
+                           Classes="secondario"
                            TextWrapping="Wrap"
                            Margin="0,12,0,0" />
 
@@ -79,7 +113,7 @@
                         <DataTemplate x:DataType="x:String">
                             <TextBlock Text="{Binding}"
                                        Classes="problema"
-                                       FontSize="11"
+                                       Theme="{StaticResource CaptionTextBlockStyle}"
                                        TextWrapping="Wrap"
                                        Margin="0,0,0,6" />
                         </DataTemplate>
@@ -113,7 +147,7 @@
                         Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
                     <StackPanel Spacing="4">
 
-                        <TextBlock Text="At a glance" FontSize="16" FontWeight="SemiBold" />
+                        <TextBlock Text="At a glance" Theme="{StaticResource BodyStrongTextBlockStyle}" />
 
                         <ItemsControl ItemsSource="{Binding Quadranti}">
                             <ItemsControl.ItemsPanel>
@@ -128,12 +162,17 @@
                                          dei processi, lo spazio dei dischi no, e IsEnabled lo
                                          dice senza spiegazioni.
                                          Un pulsante e non un gestore di clic sul controllo,
-                                         cosi' ci si arriva anche da tastiera. -->
-                                    <Button Padding="0"
+                                         cosi' ci si arriva anche da tastiera. Il nome e il
+                                         valore per il lettore di schermo stanno qui, perche' il
+                                         disegno su DrawingContext per lui non esiste. -->
+                                    <Button Classes="quadrante"
+                                            Padding="0"
                                             Margin="0,4,18,0"
                                             Background="Transparent"
                                             BorderThickness="0"
                                             IsEnabled="{Binding PuoMostrareProcessi}"
+                                            AutomationProperties.Name="{Binding Etichetta}"
+                                            AutomationProperties.HelpText="{Binding Valore}"
                                             Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).ApriProcessiCommand}"
                                             CommandParameter="{Binding}">
                                         <ctl:Gauge Width="148" Height="212"
@@ -153,11 +192,16 @@
                              Sta QUI, sotto i quadranti e sopra lo storico, e non in una
                              finestra a parte: la domanda "chi mi sta mangiando la CPU" nasce
                              guardando il quadrante, e la risposta deve comparire accanto a
-                             cio' che l'ha fatta nascere. -->
-                        <Border IsVisible="{Binding ProcessiVisibili}"
+                             cio' che l'ha fatta nascere. E' un livello ELEVATO dentro il
+                             riquadro (LayerFill invece di CardBackground): e' l'unica
+                             superficie che compare e sparisce, e deve staccarsi da cio' che
+                             resta. La finestra scorre fin qui da sola quando si apre: vedi il
+                             code-behind. -->
+                        <Border x:Name="PannelloProcessi"
+                                IsVisible="{Binding ProcessiVisibili}"
                                 Margin="0,12,0,0"
                                 Padding="12"
-                                CornerRadius="6"
+                                CornerRadius="8"
                                 BorderThickness="1"
                                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                                 Background="{DynamicResource LayerFillColorDefaultBrush}">
@@ -168,7 +212,7 @@
                                             Content="Close"
                                             Command="{Binding ChiudiProcessiCommand}" />
                                     <TextBlock Text="{Binding ProcessiTitolo}"
-                                               FontWeight="SemiBold"
+                                               Theme="{StaticResource BodyStrongTextBlockStyle}"
                                                VerticalAlignment="Center" />
                                 </DockPanel>
 
@@ -177,12 +221,39 @@
                                            IsVisible="{Binding ProcessiProblema, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                            Foreground="{DynamicResource SystemFillColorCriticalBrush}" />
 
-                                <ListBox ItemsSource="{Binding Processi}"
+                                <!-- Le intestazioni, con le STESSE colonne delle righe: tre
+                                     numeri senza nome sopra non dicono di cosa sono. Le
+                                     larghezze sono misurate sui valori piu' larghi che le
+                                     colonne mostrano ("100.0 %", "649.8 MiB", "419.7 KiB/s"):
+                                     ogni pixel in piu' qui e' un pixel tolto al nome. -->
+                                <Grid ColumnDefinitions="*,70,90,90" Margin="12,0,12,0">
+                                    <TextBlock Text="Name" Theme="{StaticResource CaptionTextBlockStyle}" Classes="secondario" />
+                                    <TextBlock Grid.Column="1" Text="CPU" Theme="{StaticResource CaptionTextBlockStyle}" Classes="secondario" HorizontalAlignment="Right" />
+                                    <TextBlock Grid.Column="2" Text="Memory" Theme="{StaticResource CaptionTextBlockStyle}" Classes="secondario" HorizontalAlignment="Right" />
+                                    <TextBlock Grid.Column="3" Text="I/O" Theme="{StaticResource CaptionTextBlockStyle}" Classes="secondario" HorizontalAlignment="Right" />
+                                </Grid>
+
+                                <!-- Senza MaxHeight: sono al piu' quindici righe, e un elenco
+                                     che si fermava a 260 px costringeva a scorrere DENTRO un
+                                     pannello che sta gia' dentro una pagina che scorre. -->
+                                <ListBox x:Name="ElencoProcessi"
+                                         ItemsSource="{Binding Processi}"
                                          SelectedItem="{Binding ProcessoSelezionato}"
-                                         MaxHeight="260">
+                                         AutomationProperties.Name="{Binding ProcessiTitolo}">
+                                    <!-- Il nome accessibile sta sulla RIGA, il ListBoxItem: e'
+                                         cio' che le frecce selezionano e che un lettore di
+                                         schermo annuncia. Messo sulla Grid dentro il modello
+                                         non lo leggeva nessuno. ReflectionBinding perche' uno
+                                         Style non ha un x:DataType da cui compilare. -->
+                                    <ListBox.Styles>
+                                        <Style Selector="ListBoxItem">
+                                            <Setter Property="AutomationProperties.Name"
+                                                    Value="{ReflectionBinding Descrizione}" />
+                                        </Style>
+                                    </ListBox.Styles>
                                     <ListBox.ItemTemplate>
                                         <DataTemplate x:DataType="svc:ProcessoMostrato">
-                                            <Grid ColumnDefinitions="*,90,110,110">
+                                            <Grid ColumnDefinitions="*,70,90,90">
                                                 <TextBlock Text="{Binding Nome}" TextTrimming="CharacterEllipsis" />
                                                 <TextBlock Grid.Column="1"
                                                            Text="{Binding Cpu}"
@@ -198,19 +269,13 @@
                                     </ListBox.ItemTemplate>
                                 </ListBox>
 
-                                <!-- Due pulsanti e non uno con il testo variabile: il primo
-                                     clic arma soltanto, il secondo termina. Chi ha cliccato
-                                     per sbaglio se ne accorge prima che succeda qualcosa. -->
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button Content="End process"
-                                            IsVisible="{Binding !ConfermaTerminazione}"
-                                            IsEnabled="{Binding PuoTerminare}"
-                                            Command="{Binding TerminaSelezionatoCommand}" />
-                                    <Button Content="Click again to end it"
-                                            IsVisible="{Binding ConfermaTerminazione}"
-                                            IsEnabled="{Binding PuoTerminare}"
-                                            Command="{Binding TerminaSelezionatoCommand}" />
-                                </StackPanel>
+                                <!-- UN pulsante che cambia scritta: il primo clic arma, il
+                                     secondo termina. Prima erano due pulsanti alternati, e al
+                                     primo clic quello premuto spariva portandosi via il fuoco
+                                     della tastiera. -->
+                                <Button Content="{Binding TestoTermina}"
+                                        IsEnabled="{Binding PuoTerminare}"
+                                        Command="{Binding TerminaSelezionatoCommand}" />
                             </StackPanel>
                         </Border>
 
@@ -220,8 +285,8 @@
                              leggono. -->
                         <TextBlock Text="Last hour"
                                    Margin="0,14,0,0"
-                                   FontWeight="SemiBold"
-                                   Opacity="0.75"
+                                   Theme="{StaticResource BodyStrongTextBlockStyle}"
+                                   Classes="secondario"
                                    IsVisible="{Binding MostraQuadranti}" />
 
                         <ItemsControl ItemsSource="{Binding Quadranti}">
@@ -230,8 +295,8 @@
                                     <StackPanel Margin="0,6,0,0" Spacing="2">
 
                                         <TextBlock Text="{Binding Etichetta}"
-                                                   FontSize="11"
-                                                   Opacity="0.65" />
+                                                   Theme="{StaticResource CaptionTextBlockStyle}"
+                                                   Classes="secondario" />
 
                                         <ctl:HistoryBars Height="34"
                                                          IsVisible="{Binding MostraStorico}"
@@ -248,8 +313,8 @@
                                              questo insegnerebbe a ignorare gli allarmi veri. -->
                                         <TextBlock Text="{Binding NotaStorico}"
                                                    IsVisible="{Binding MostraNotaStorico}"
-                                                   FontSize="11"
-                                                   Opacity="0.7"
+                                                   Theme="{StaticResource CaptionTextBlockStyle}"
+                                                   Classes="secondario"
                                                    TextWrapping="Wrap" />
 
                                     </StackPanel>
@@ -270,7 +335,7 @@
                         Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
                     <StackPanel Spacing="4">
 
-                        <TextBlock Text="Usage" FontSize="16" FontWeight="SemiBold" />
+                        <TextBlock Text="Usage" Theme="{StaticResource BodyStrongTextBlockStyle}" />
 
                         <ItemsControl ItemsSource="{Binding Gruppi}">
                             <ItemsControl.ItemTemplate>
@@ -282,14 +347,13 @@
                                              separare due riquadri che ormai sono uno. -->
                                         <TextBlock Text="{Binding Titolo}"
                                                    IsVisible="{Binding MostraRighe}"
-                                                   FontWeight="SemiBold"
-                                                   Opacity="0.75" />
+                                                   Theme="{StaticResource BodyStrongTextBlockStyle}"
+                                                   Classes="secondario" />
 
                                         <TextBlock Text="{Binding Nota}"
                                                    IsVisible="{Binding MostraNota}"
                                                    Classes.problema="{Binding Problema}"
-                                                   TextWrapping="Wrap"
-                                                   Opacity="0.85" />
+                                                   TextWrapping="Wrap" />
 
                                         <ItemsControl ItemsSource="{Binding Righe}">
                                             <ItemsControl.ItemTemplate>
