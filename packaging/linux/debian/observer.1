@@ -1,12 +1,14 @@
-.TH OBSERVER 1 "2026-08-27" "observer 0.1.0" "User Commands"
+.TH OBSERVER 1 "2026-09-03" "observer 0.6.1" "User Commands"
 .SH NAME
-observer \- manage this machine's Observer service
+observer \- manage this machine's Observer service and its stored tokens
 .SH SYNOPSIS
 .B observer
 .RI [ command ]
+.RI [ argument ]
 .SH DESCRIPTION
 .B observer
-manages the machine token of the Observer service running on this computer.
+manages the machine token of the Observer service running on this computer, and
+keeps the tokens of the other machines this computer watches.
 .PP
 To watch the machine you are sitting at you need no token at all: the dashboard
 comes in through the local socket, and membership of the
@@ -16,15 +18,17 @@ group is what grants access to it. The token exists only so that
 computer can query this one.
 .PP
 The service generates its own token the first time it starts and keeps it in the
-credential store, so nothing has to be configured after installation. This
-command never takes a token as an argument, which is why no token ever reaches
-your shell history.
+credential store, so nothing has to be configured after installation. No command
+ever takes a token as an argument, which is why no token ever reaches your shell
+history:
+.B token set
+reads it from standard input instead.
 .SH COMMANDS
 .TP
 .B share " [\-\-stdout]"
-Print the machine token, with the context needed to install it on another
-computer. Requires privileges, because the credential store is readable only by
-the service account and by root.
+Print the machine token and the certificate fingerprint, with the context needed
+to install them on another computer. Requires privileges, because the credential
+store is readable only by the service account and by root.
 .IP
 With
 .B \-\-stdout
@@ -34,19 +38,40 @@ rejected byte by byte by the constant-time comparison.
 .TP
 .B rotate\-key
 Replace the machine token. The previous one keeps working for 24 hours, so
-remote clients are not cut off all at once. Requires privileges.
+remote clients are not cut off all at once. The service keeps using the old key
+until it is restarted; after that, read the new one with
+.B share
+and hand it to the machines that watch this one with
+.BR "token set" .
+Requires privileges.
 .TP
 .B doctor
 Report where the credential store is, how well it is protected, what identity
 this terminal has, and what a client would see on the local channel. Requires
-nothing, and it is the command that explains the other two when they fail.
+nothing, and it is the command that explains the others when they fail.
+.TP
+.BI "token set " NAME
+Keep the token of another machine on this computer, under the
+.I NAME
+that machine has in
+.IR machines.json ,
+so that it never has to be written into that file. The token is read from
+standard input, never from the command line, and is not echoed while it is
+typed.
+.I NAME
+may contain letters, digits, space, dot, underscore and hyphen, and nothing
+else, because it becomes a file name. Requires nothing.
+.TP
+.BI "token forget " NAME
+Remove that machine's token from this computer.
 .SH EXIT STATUS
 .TP
 .B 0
 Success.
 .TP
 .B 1
-The credential store could not be read or written.
+The credential store or the token store could not be read or written, or no
+token was given.
 .TP
 .B 2
 The command was not recognised.
@@ -60,6 +85,12 @@ system user.
 .I /run/observer/observer.sock
 The local channel. Callers that are local and identifiable are served without
 any token.
+.TP
+.I ~/.local/share/Observer/secrets/NAME
+The token of the machine called
+.IR NAME ,
+one file each, readable only by its owner. The dashboard refuses to use one
+that group or others can read, or whose directory others can write to.
 .SH SEE ALSO
 .BR observer-dashboard (1),
 .BR systemctl (1)
