@@ -47,6 +47,19 @@ if [ -n "$LUNGHE" ]; then
     exit 1
 fi
 
+# E la voce nuova deve essere DATATA DOPO la precedente. Lintian confronta le due date e
+# rifiuta il pacchetto (latest-changelog-entry-without-new-date): e' successo alla 0.8.1,
+# scritta con le 11:30 sotto una 0.8.0 scritta con le 12:00, e la release e' fallita dopo che
+# l'MSI era gia' costruito. Anche questo costa un confronto e si scopre qui.
+DATA_NUOVA="$(grep -m1 '^ -- ' "$QUI/debian/changelog" | sed 's/.*>  //')"
+DATA_VECCHIA="$(grep -m2 '^ -- ' "$QUI/debian/changelog" | tail -1 | sed 's/.*>  //')"
+
+if [ "$(date -d "$DATA_NUOVA" +%s)" -le "$(date -d "$DATA_VECCHIA" +%s)" ]; then
+    echo "La data della voce nuova del changelog ($DATA_NUOVA) non e' successiva a quella" >&2
+    echo "precedente ($DATA_VECCHIA): lintian la rifiuta." >&2
+    exit 1
+fi
+
 echo "Versione $VERSIONE"
 
 rm -rf "$ALBERO" "$USCITA"
