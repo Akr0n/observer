@@ -11,6 +11,9 @@ observer (0.11.0) unstable; urgency=medium
     costs an eight-second timeout, and the gauges must not pay it.
   * The rows of the machine list carry their accessible name themselves,
     where keyboard navigation and screen readers actually look.
+  * A machine that is not being watched and whose token or fingerprint has
+    been changed on disk is read again the next time its probe is refused,
+    so its dot recovers without restarting the dashboard.
 
  -- Federico Cardinali <noreply@example.invalid>  Thu, 03 Sep 2026 16:30:00 +0000
 

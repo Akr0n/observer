@@ -99,25 +99,6 @@ public class MainViewModelStatusTests
         await ciclo.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
     }
 
-    /// <summary>
-    /// Un orologio che si sposta a comando: l'attesa dura dieci secondi, e un test che li
-    /// aspettasse davvero sarebbe un test che nessuno esegue volentieri.
-    /// </summary>
-    /// <remarks>
-    /// I tick stanno in un <c>long</c> letto e scritto con <see cref="Volatile"/>: il ciclo di
-    /// aggiornamento gira su un thread del pool, il test avanza l'orologio dal proprio, e una
-    /// struttura da sedici byte si potrebbe leggere a meta' scrittura.
-    /// </remarks>
-    private sealed class OrologioFinto
-    {
-        private long istante = new DateTimeOffset(2026, 8, 27, 12, 0, 0, TimeSpan.Zero).UtcTicks;
-
-        public DateTimeOffset Adesso() => new(Volatile.Read(ref istante), TimeSpan.Zero);
-
-        public void Avanza(TimeSpan quanto) =>
-            Volatile.Write(ref istante, Volatile.Read(ref istante) + quanto.Ticks);
-    }
-
     /// <summary>Un client che fallisce sempre allo stesso modo.</summary>
     private sealed class FakeMetricsClient(ServiceOutcome esito) : IMetricsClient
     {

@@ -44,8 +44,24 @@ public sealed partial class MacchinaInElenco : ObservableObject
         Punto = punto;
     }
 
-    /// <summary>La macchina.</summary>
-    public ObserverEndpoint Punto { get; }
+    /// <summary>La macchina. Cambia solo con <see cref="Aggiorna"/>, a credenziale ruotata.</summary>
+    public ObserverEndpoint Punto { get; private set; }
+
+    /// <summary>Sostituisce il punto: stesso indirizzo, credenziale nuova.</summary>
+    /// <param name="punto">La voce riletta da disco.</param>
+    /// <remarks>
+    /// Senza, una macchina non guardata verrebbe sondata per sempre con il token letto
+    /// all'avvio, e dopo <c>observer token set</c> il suo pallino resterebbe "Token rejected"
+    /// fino al riavvio: lo stesso incidente gia' chiuso tre volte per la macchina guardata.
+    /// </remarks>
+    internal void Aggiorna(ObserverEndpoint punto)
+    {
+        ArgumentNullException.ThrowIfNull(punto);
+
+        Punto = punto;
+        OnPropertyChanged(nameof(Nome));
+        OnPropertyChanged(nameof(Descrizione));
+    }
 
     /// <summary>Il nome scritto nell'elenco.</summary>
     public string Nome => Punto.NomeVisibile;
@@ -55,7 +71,8 @@ public sealed partial class MacchinaInElenco : ObservableObject
     internal DateTimeOffset? GuastoDa { get; set; }
 
     /// <summary>True mentre una sonda e' in volo: la prossima non le parte sopra.</summary>
-    internal bool InSonda { get; set; }
+    /// <remarks>Leggibile da fuori perche' un test lo osserva; lo scrive solo il view model.</remarks>
+    public bool InSonda { get; internal set; }
 
     /// <summary>Come sta.</summary>
     [ObservableProperty]

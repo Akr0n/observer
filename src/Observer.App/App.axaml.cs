@@ -77,7 +77,12 @@ public partial class App : Application
                     return aggiornata is null || aggiornata == corrente ? null : Apri(aggiornata);
                 },
                 elenco: elenco,
-                apriMacchina: Apri);
+                apriMacchina: Apri,
+
+                // La stessa rilettura di sopra, per una macchina NON guardata la cui sonda
+                // torna con un token rifiutato: la voce nuova ha la credenziale nuova.
+                rileggiPunto: punto => MachineDirectory.Read().Machines.FirstOrDefault(
+                    candidato => candidato.Kind == punto.Kind && candidato.BaseAddress == punto.BaseAddress));
 
             CancellationTokenSource arresto = new();
 
