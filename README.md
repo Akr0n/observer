@@ -335,6 +335,25 @@ niente, non copiare il valore nuovo.
 Il primo produce un MSI, il secondo un `.deb`. Registrano il servizio, installano la dashboard
 e creano il collegamento nel menu.
 
+**La porta nel firewall.** L'MSI aggiunge a Windows Firewall due regole per la porta `5058/tcp`,
+legate all'eseguibile del servizio: una per le reti **private** e una per quelle di **dominio**,
+entrambe limitate alla **sottorete locale**. Mai sulle reti pubbliche: il Wi-Fi di un bar non e'
+un posto dove esporre le metriche di una macchina, nemmeno dietro un token. Le regole se ne
+vanno con la disinstallazione. Se la macchina remota sta su un'altra sottorete, la regola va
+allargata a mano, sapendo cosa si concede. Fino alla 0.7.0 il servizio ascoltava sulla rete e
+il firewall rifiutava in silenzio ogni connessione: la dashboard remota diceva "no answer" e
+mandava a cercare un guasto di rete che non c'era.
+
+Il `.deb` invece **non apre niente**, perche' un pacchetto Debian non tocca il firewall di chi lo
+installa: porta un profilo per `ufw`, cosi' che
+
+```bash
+sudo ufw allow Observer
+```
+
+sia tutto quello che serve, e la nota a fine installazione lo dice. Per guardare la macchina su
+cui si e' seduti non serve in nessuno dei due casi: la dashboard entra dal canale locale.
+
 **Disinstallando l'MSI dal Pannello di controllo se ne va tutto**: il servizio, i file, il
 deposito delle credenziali sotto `ProgramData` e lo storico, che vive nel profilo dell'account
 di sistema e non e' un posto che qualcuno andrebbe a cercare a mano. Un **aggiornamento** e'

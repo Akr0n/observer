@@ -6,7 +6,8 @@
   solo al primo avvio, sotto C:\ProgramData\Observer, con permessi che escludono ogni altro
   account. Questo installer copia file, registra un servizio e crea un collegamento.
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall">
 
   <Package Name="Observer"
            Manufacturer="Federico Cardinali"
@@ -152,12 +153,42 @@
 
     <ComponentGroup Id="Servizio" Directory="INSTALLFOLDER">
       <Component Id="ServiceExecutable" Guid="A1C4E6B2-3F8D-4E52-9A07-5B1D2C4F6E80">
-        <File Id="ObserverServiceExe" Source="$(var.PayloadDir)Observer.Service.exe" KeyPath="yes" />
+        <File Id="ObserverServiceExe" Source="$(var.PayloadDir)Observer.Service.exe" KeyPath="yes">
+          <!-- La porta nel firewall di Windows, che senza questa regola blocca ogni
+               connessione in ingresso: il servizio ascoltava sulla rete e nessuno lo
+               raggiungeva, e la dashboard remota diceva "no answer", cioe' mandava a cercare
+               un guasto di rete. Era un difetto del prodotto, non della rete.
+
+               DUE regole e non una, perche' Profile accetta un solo valore e "all" include le
+               reti PUBBLICHE: la porta si apre sulle reti private e di dominio, mai sul Wi-Fi
+               di un bar. Scope="localSubnet" restringe ai vicini di sottorete, che e' cio' che
+               "dispositivi presenti sulla rete locale" vuol dire; chi ha la remota su un'altra
+               sottorete allarga la regola a mano, sapendo cosa sta facendo. Annidate nel File
+               e non nel componente: cosi' la regola vale per QUESTO eseguibile su questa
+               porta, non per chiunque si metta in ascolto su 5058.
+
+               Transazionale come tutto il resto: nasce con il componente e sparisce con lui
+               alla disinstallazione, senza uno script netsh da ricordare. -->
+          <fw:FirewallException Id="ObserverPortaPrivata"
+                                Name="Observer metrics service (private networks)"
+                                Description="Lets other computers on this network read this machine's metrics over HTTPS. Not needed to watch this machine."
+                                Port="5058"
+                                Protocol="tcp"
+                                Profile="private"
+                                Scope="localSubnet" />
+          <fw:FirewallException Id="ObserverPortaDominio"
+                                Name="Observer metrics service (domain networks)"
+                                Description="Lets other computers on this network read this machine's metrics over HTTPS. Not needed to watch this machine."
+                                Port="5058"
+                                Protocol="tcp"
+                                Profile="domain"
+                                Scope="localSubnet" />
+        </File>
 
         <ServiceInstall Id="ObserverServiceInstall"
                         Name="Observer"
                         DisplayName="Observer metrics service"
-                        Description="Samples CPU and memory and serves them over HTTP and a local named pipe."
+                        Description="Samples CPU, memory, disks and processes and serves them over HTTPS and a local named pipe."
                         Type="ownProcess"
                         Start="auto"
                         Account="LocalSystem"

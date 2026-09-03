@@ -50,7 +50,7 @@ fi
 echo "Versione $VERSIONE"
 
 rm -rf "$ALBERO" "$USCITA"
-mkdir -p "$ALBERO/DEBIAN" "$ALBERO/usr/lib/observer/service" "$ALBERO/usr/lib/observer/dashboard"          "$ALBERO/usr/lib/observer/cli" "$ALBERO/usr/bin" "$ALBERO/lib/systemd/system"          "$ALBERO/usr/share/doc/observer" "$ALBERO/usr/share/applications"          "$ALBERO/usr/share/icons/hicolor/256x256/apps" "$ALBERO/usr/share/man/man1" "$ALBERO/usr/share/lintian/overrides" "$USCITA"
+mkdir -p "$ALBERO/DEBIAN" "$ALBERO/usr/lib/observer/service" "$ALBERO/usr/lib/observer/dashboard"          "$ALBERO/usr/lib/observer/cli" "$ALBERO/usr/bin" "$ALBERO/lib/systemd/system"          "$ALBERO/usr/share/doc/observer" "$ALBERO/usr/share/applications"          "$ALBERO/usr/share/icons/hicolor/256x256/apps" "$ALBERO/usr/share/man/man1" "$ALBERO/usr/share/lintian/overrides" "$ALBERO/etc/ufw/applications.d" "$USCITA"
 
 pubblica() {
     local progetto="$1" destinazione="$2"
@@ -122,6 +122,14 @@ chmod 0644 "$ALBERO/usr/share/man/man1/observer.1.gz"            "$ALBERO/usr/sh
 # il modo di smettere di guardarle.
 install -m 0644 "$QUI/debian/lintian-overrides" "$ALBERO/usr/share/lintian/overrides/observer"
 
+# Il profilo per ufw. NON apre niente da solo - un pacchetto Debian non tocca il firewall di
+# chi lo installa - ma rende possibile "sudo ufw allow Observer" al posto del numero della
+# porta. Sta in /etc, quindi e' un conffile: cosi' dpkg lo tratta da configurazione e a un
+# aggiornamento non sovrascrive una modifica dell'amministratore.
+install -m 0644 "$QUI/debian/observer.ufw" "$ALBERO/etc/ufw/applications.d/observer"
+echo /etc/ufw/applications.d/observer > "$ALBERO/DEBIAN/conffiles"
+chmod 0644 "$ALBERO/DEBIAN/conffiles"
+
 if [ -f "$RADICE/src/Observer.App/Assets/observer.png" ]; then
     install -m 0644 "$RADICE/src/Observer.App/Assets/observer.png"         "$ALBERO/usr/share/icons/hicolor/256x256/apps/observer.png"
 fi
@@ -156,6 +164,10 @@ chmod 0644 "$ALBERO/usr/share/applications/observer.desktop"
 dpkg-deb --root-owner-group --build "$ALBERO" "$USCITA/observer_${VERSIONE}_amd64.deb"
 
 echo
-dpkg-deb --info "$USCITA"/observer_*.deb | head -20
+# sed e NON head: con "set -o pipefail", head chiude la pipe dopo venti righe e il SIGPIPE
+# di dpkg-deb diventa un codice d'uscita - cioe' un pacchetto costruito bene e uno script che
+# dice di aver fallito. E' una corsa: in CI e' stata vinta per settimane, in un container
+# Debian e' stata persa il 2026-09-03, e lintian non e' mai partito. sed legge fino in fondo.
+dpkg-deb --info "$USCITA"/observer_*.deb | sed -n '1,20p'
 echo
 ls -lh "$USCITA"/observer_*.deb

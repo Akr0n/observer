@@ -1,0 +1,4 @@
+[Observer]
+title=Observer metrics service
+description=Machine metrics over HTTPS on port 5058, for OTHER computers on the network. Not needed to watch this machine.
+ports=5058/tcp
