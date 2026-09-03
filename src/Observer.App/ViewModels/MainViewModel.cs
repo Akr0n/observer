@@ -281,6 +281,30 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Ogni quanto si legge, adesso.</summary>
     public TimeSpan Cadenza => InSecondoPiano ? IntervalloRidotto : Intervallo;
 
+    /// <summary>Quanto e' ingrandita la finestra: 1 e' la misura normale.</summary>
+    /// <remarks>
+    /// Avalonia non legge la dimensione del testo di sistema, quindi chi l'ha alzata in Windows
+    /// qui non la ritrova. Questa e' l'impostazione interna che la sostituisce; la applica la
+    /// finestra, che scala tutto - quadranti compresi - e la ricorda fra un avvio e l'altro.
+    /// </remarks>
+    [ObservableProperty]
+    public partial double ScalaTesto { get; set; } = Preferenze.ScaleAmmesse[0];
+
+    /// <summary>Le scale fra cui si sceglie.</summary>
+    public static IReadOnlyList<double> OpzioniScala => Preferenze.ScaleAmmesse;
+
+    /// <summary>Una scala non ammessa non entra: la si riporta alla normale.</summary>
+    /// <param name="value">La scala richiesta.</param>
+    partial void OnScalaTestoChanged(double value)
+    {
+        double valida = Preferenze.ScalaValida(value);
+
+        if (valida != value)
+        {
+            ScalaTesto = valida;
+        }
+    }
+
     /// <summary>Quale risorsa sta guardando il pannello: <c>cpu</c>, <c>memory</c>, o null.</summary>
     private string? risorsaMostrata;
 
