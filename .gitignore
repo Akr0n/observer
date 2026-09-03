@@ -516,3 +516,6 @@ packaging/linux/out/
 # e in qualche punto descrivono uno stato ormai superato. Cio' che di quelle misure serve a
 # chi tocca il codice sta nei commenti del codice stesso, che sono versionati.
 docs/
+
+# L'indice locale di CodeGraph: un database SQLite ricostruibile, mai da versionare.
+.codegraph/

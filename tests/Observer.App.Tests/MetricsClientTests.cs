@@ -109,6 +109,48 @@ public class MetricsClientTests
     }
 
     [Fact]
+    public async Task GetProcessesAsync_PerIoSuUnServizioCheNonLoConosce_DiceCheEVecchio()
+    {
+        // Un servizio 0.6 non conosce "io": risponde 200 con l'elenco della CPU, e senza il
+        // campo "by". Mostrare quell'elenco sotto il titolo dell'I/O sarebbe una bugia.
+        using MetricsClient client = Crea(new FintoHandler(_ => Json(HttpStatusCode.OK,
+            """{"capturedAt":"2026-09-03T08:00:00Z","processes":[{"pid":1,"name":"x","cpuPercent":null,"workingSetBytes":10}]}""")));
+
+        ProcessFetch esito = await client.GetProcessesAsync("io", 15, CancellationToken.None);
+
+        Assert.Equal(ServiceOutcome.VersioneIncompatibile, esito.Outcome);
+        Assert.Contains("older than this dashboard", esito.Problem, StringComparison.Ordinal);
+        Assert.Empty(esito.Processi);
+    }
+
+    [Fact]
+    public async Task GetProcessesAsync_PerCpuSuUnServizioCheNonRipeteIlCriterio_FunzionaLoStesso()
+    {
+        // Lo stesso servizio vecchio sa ordinare per CPU: l'assenza di "by" non deve
+        // rifiutare un elenco che e' giusto.
+        using MetricsClient client = Crea(new FintoHandler(_ => Json(HttpStatusCode.OK,
+            """{"capturedAt":"2026-09-03T08:00:00Z","processes":[{"pid":1,"name":"x","cpuPercent":null,"workingSetBytes":10}]}""")));
+
+        ProcessFetch esito = await client.GetProcessesAsync("cpu", 15, CancellationToken.None);
+
+        Assert.Equal(ServiceOutcome.Ok, esito.Outcome);
+        Assert.Single(esito.Processi);
+        Assert.Equal("—", esito.Processi[0].Io);
+    }
+
+    [Fact]
+    public async Task GetProcessesAsync_LeggeIlTassoDiIo()
+    {
+        using MetricsClient client = Crea(new FintoHandler(_ => Json(HttpStatusCode.OK,
+            """{"capturedAt":"2026-09-03T08:00:00Z","by":"io","processes":[{"pid":1,"name":"copia","cpuPercent":2.5,"workingSetBytes":10,"ioBytesPerSecond":1572864},{"pid":2,"name":"ignoto","cpuPercent":null,"workingSetBytes":10,"ioBytesPerSecond":null}]}""")));
+
+        ProcessFetch esito = await client.GetProcessesAsync("io", 15, CancellationToken.None);
+
+        Assert.Equal(ServiceOutcome.Ok, esito.Outcome);
+        Assert.Equal(["1.5 MiB/s", "—"], esito.Processi.Select(riga => riga.Io));
+    }
+
+    [Fact]
     public async Task GetLatestAsync_QuandoIlServizioEspento_DiceCheNonEraggiungibile()
     {
         using MetricsClient client = Crea(new FintoHandler(_ =>

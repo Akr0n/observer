@@ -21,29 +21,53 @@ public class PannelloProcessiTests
     [Theory]
     [InlineData("cpu|cpu.usage.total|", "cpu")]
     [InlineData("memory|memory.used.percent|", "memory")]
-    public void DaiQuadrantiDiCpuEMemoriaSiApreLElenco(string chiave, string attesa) =>
+    [InlineData("disk.activity|disk.busy.percent|Disk 0", "io")]
+    public void DaiQuadrantiDiCpuMemoriaEAttivitaDiscoSiApreLElenco(string chiave, string attesa) =>
         Assert.Equal(attesa, ProcessResource.Da(chiave));
 
     [Theory]
     [InlineData("disk|disk.used.percent|C:")]
-    [InlineData("disk.activity|disk.busy.percent|Disk 0")]
     [InlineData("")]
     [InlineData(null)]
-    public void DaiQuadrantiDeiDischiNonSiApreNiente(string? chiave)
+    public void DaiQuadrantiDelloSpazioDiscoNonSiApreNiente(string? chiave)
     {
         // Non e' una dimenticanza. Lo spazio occupato su un volume non e' attribuibile a un
-        // processo IN ESECUZIONE — chi ha scritto quei file magari non c'e' piu' da mesi — e
-        // il traffico per processo richiede contatori che non sono portabili e che non sono
-        // ancora scritti. Un pannello che si aprisse con l'elenco della CPU sotto il titolo di
-        // un disco direbbe una cosa falsa.
+        // processo IN ESECUZIONE — chi ha scritto quei file magari non c'e' piu' da mesi. Un
+        // pannello che si aprisse con l'elenco della CPU sotto il titolo di un volume direbbe
+        // una cosa falsa.
         Assert.Null(ProcessResource.Da(chiave));
     }
 
     [Fact]
-    public void UnQuadranteDiDiscoNonECliccabile()
+    public void SoloLoSpazioDeiDischiNonECliccabile()
     {
         Assert.False(Riga("disk|disk.used.percent|C:").PuoMostrareProcessi);
+        Assert.True(Riga("disk.activity|disk.busy.percent|Disk 0").PuoMostrareProcessi);
         Assert.True(Riga("cpu|cpu.usage.total|").PuoMostrareProcessi);
+    }
+
+    [Fact]
+    public async Task DalQuadranteDellAttivitaDiscoSiChiedeLIoDellInteraMacchina()
+    {
+        // Il quadrante e' di UN disco, l'elenco no: i contatori sono per processo, non per
+        // dispositivo. Il titolo deve dirlo, e al servizio si chiede "io", non la CPU.
+        ClienteConProcessi cliente = new();
+        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+
+        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("disk.activity|disk.busy.percent|Disk 0"));
+
+        Assert.Equal(["io"], cliente.Chiesti);
+        Assert.Contains("I/O", viewModel.ProcessiTitolo, StringComparison.Ordinal);
+        Assert.Contains("whole machine", viewModel.ProcessiTitolo, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UnTassoDiIoSiFormattaInBytePerSecondoEUnoIgnotoEUnTrattino()
+    {
+        // Un trattino e non "0 B/s": sono due affermazioni diverse, e la seconda su un elenco
+        // ordinato per I/O sposterebbe l'attenzione sul programma sbagliato.
+        Assert.Equal("1.5 MiB/s", ProcessoMostrato.Da(new ProcessWire(1, "copia", 0d, 10, 1_572_864d)).Io);
+        Assert.Equal("—", ProcessoMostrato.Da(new ProcessWire(1, "ignoto", 0d, 10, null)).Io);
     }
 
     [Fact]
@@ -130,6 +154,8 @@ public class PannelloProcessiTests
 
         public List<int> Terminati { get; } = [];
 
+        public List<string> Chiesti { get; } = [];
+
         public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.CanaleLocale();
 
         public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) =>
@@ -143,14 +169,18 @@ public class PannelloProcessiTests
             Task.FromResult(new HistoryFetch(ServiceOutcome.Ok, string.Empty, []));
 
         public Task<ProcessFetch> GetProcessesAsync(
-            string per, int quanti, CancellationToken cancellationToken) =>
-            Task.FromResult(new ProcessFetch(
+            string per, int quanti, CancellationToken cancellationToken)
+        {
+            Chiesti.Add(per);
+
+            return Task.FromResult(new ProcessFetch(
                 ServiceOutcome.Ok,
                 string.Empty,
                 [
                     new ProcessoMostrato(11, "affamato", Cpu[0], "100 MiB"),
                     new ProcessoMostrato(22, "tranquillo", Cpu[1], "10 MiB"),
                 ]));
+        }
 
         public Task<KillFetch> KillProcessAsync(int pid, CancellationToken cancellationToken)
         {

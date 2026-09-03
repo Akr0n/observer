@@ -9,7 +9,13 @@ namespace Observer.Core.Processes;
 /// <param name="Name">Nome dell'eseguibile, senza percorso.</param>
 /// <param name="Cpu">Tempo di processore consumato da quando il processo e' partito.</param>
 /// <param name="WorkingSet">Memoria fisica occupata adesso.</param>
-public readonly record struct ProcessTimes(int Pid, string Name, TimeSpan Cpu, ByteSize WorkingSet);
+/// <param name="IoBytes">
+/// Byte letti e scritti dal processo da quando e' partito, attraverso le chiamate di I/O: file,
+/// pipe e socket insieme, letture servite dalla cache comprese. Null quando il sistema non li ha
+/// voluti dire — su Linux e' la norma per i processi di un altro utente.
+/// </param>
+public readonly record struct ProcessTimes(
+    int Pid, string Name, TimeSpan Cpu, ByteSize WorkingSet, ulong? IoBytes = null);
 
 /// <summary>Quanto sta consumando un processo, pronto da mostrare.</summary>
 /// <param name="Pid">Identificatore del processo.</param>
@@ -20,7 +26,13 @@ public readonly record struct ProcessTimes(int Pid, string Name, TimeSpan Cpu, B
 /// che e' diverso da zero e non va confuso con "sta fermo".
 /// </param>
 /// <param name="WorkingSet">Memoria fisica occupata.</param>
-public readonly record struct ProcessUsage(int Pid, string Name, double? CpuPercent, ByteSize WorkingSet);
+/// <param name="IoBytesPerSecond">
+/// Byte al secondo letti e scritti dal processo, sull'ultimo intervallo. Null per le stesse
+/// ragioni della CPU — primo giro, processo appena nato — e in piu' quando il sistema non
+/// fornisce il contatore.
+/// </param>
+public readonly record struct ProcessUsage(
+    int Pid, string Name, double? CpuPercent, ByteSize WorkingSet, double? IoBytesPerSecond = null);
 
 /// <summary>Porta di lettura dell'elenco dei processi.</summary>
 public interface IProcessLister
@@ -31,13 +43,28 @@ public interface IProcessLister
     bool TryList(out IReadOnlyList<ProcessTimes> processes);
 }
 
+/// <summary>Porta di lettura del contatore di I/O di UN processo.</summary>
+/// <remarks>
+/// Separata dall'elenco perche' e' l'unica parte che non e' portabile: nome, memoria e tempo di
+/// processore li da' la libreria standard su entrambi i sistemi, i byte trasferiti no.
+/// </remarks>
+public interface IProcessIoReader
+{
+    /// <summary>Legge i byte letti e scritti dal processo da quando e' partito.</summary>
+    /// <param name="pid">Identificatore del processo.</param>
+    /// <param name="bytes">Il totale, letture piu' scritture.</param>
+    /// <returns>False quando il sistema non lo dice, per quel processo.</returns>
+    bool TryRead(int pid, out ulong bytes);
+}
+
 /// <summary>
 /// Adattatore reale, sopra <see cref="Process"/>.
 /// </summary>
 /// <remarks>
 /// Uno solo per tutte e due le piattaforme, e non e' pigrizia: nome, memoria occupata e tempo
-/// di processore sono gia' portabili nella libreria standard. Un provider per sistema
-/// operativo servira' quando si vorra' l'I/O per processo, che portabile non e'.
+/// di processore sono gia' portabili nella libreria standard. L'I/O per processo invece non lo
+/// e', e arriva da un <see cref="IProcessIoReader"/> per sistema operativo, facoltativo: senza,
+/// quella colonna resta sconosciuta e il resto dell'elenco non ne risente.
 /// <para>
 /// Un processo che sparisce fra l'elenco e la lettura dei suoi contatori NON fa fallire gli
 /// altri: sparisce e basta. E' la norma, non l'eccezione — su una macchina viva qualcosa
@@ -47,6 +74,15 @@ public interface IProcessLister
 /// </remarks>
 public sealed class SystemProcessLister : IProcessLister
 {
+    private readonly IProcessIoReader? io;
+
+    /// <summary>Crea l'adattatore, con o senza il lettore dell'I/O.</summary>
+    /// <param name="ioReader">Da dove leggere i byte trasferiti, o null per non leggerli.</param>
+    public SystemProcessLister(IProcessIoReader? ioReader = null)
+    {
+        io = ioReader;
+    }
+
     /// <inheritdoc />
     public bool TryList(out IReadOnlyList<ProcessTimes> processes)
     {
@@ -56,7 +92,7 @@ public sealed class SystemProcessLister : IProcessLister
         {
             using (processo)
             {
-                if (TryLeggi(processo, out ProcessTimes lettura))
+                if (TryLeggi(processo, io, out ProcessTimes lettura))
                 {
                     trovati.Add(lettura);
                 }
@@ -68,17 +104,26 @@ public sealed class SystemProcessLister : IProcessLister
         return true;
     }
 
-    private static bool TryLeggi(Process processo, out ProcessTimes lettura)
+    private static bool TryLeggi(Process processo, IProcessIoReader? io, out ProcessTimes lettura)
     {
         lettura = default;
 
         try
         {
-            lettura = new ProcessTimes(
-                processo.Id,
-                processo.ProcessName,
-                processo.TotalProcessorTime,
-                ByteSize.FromBytes(processo.WorkingSet64));
+            int pid = processo.Id;
+            string nome = processo.ProcessName;
+            TimeSpan cpu = processo.TotalProcessorTime;
+            ByteSize memoria = ByteSize.FromBytes(processo.WorkingSet64);
+
+            // L'I/O si legge per ultimo - DOPO nome e contatori, in variabili locali, non come
+            // argomento del costruttore, dove verrebbe valutato per primo - e non fa fallire la
+            // riga: un processo di cui si sa la CPU ma non i byte trasferiti e' ancora un
+            // processo da mostrare.
+            ulong? trasferiti = io is not null && io.TryRead(pid, out ulong byteIo)
+                ? byteIo
+                : null;
+
+            lettura = new ProcessTimes(pid, nome, cpu, memoria, trasferiti);
 
             return true;
         }

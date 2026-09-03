@@ -287,6 +287,20 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
                 "is older than this dashboard. Update Observer on that machine.")
             .ConfigureAwait(false);
 
+        // Un servizio piu' vecchio non conosce "io": risponde con l'elenco della CPU e senza il
+        // campo "by". Mostrarlo sotto il titolo dell'I/O sarebbe una bugia, e il rimedio e' lo
+        // stesso del 404: aggiornare Observer su quella macchina.
+        if (esito == ServiceOutcome.Ok
+            && risposta is { By: null }
+            && string.Equals(per, "io", StringComparison.Ordinal))
+        {
+            return new ProcessFetch(
+                ServiceOutcome.VersioneIncompatibile,
+                $"The service on {Endpoint.Descrizione} cannot rank processes by I/O: it is " +
+                "older than this dashboard. Update Observer on that machine.",
+                []);
+        }
+
         return esito == ServiceOutcome.Ok && risposta is not null
             ? new ProcessFetch(
                 ServiceOutcome.Ok,

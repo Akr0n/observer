@@ -3,6 +3,8 @@ using Observer.Core.Metrics;
 using Observer.Core.Metrics.Cpu;
 using Observer.Core.Metrics.Memory;
 using Observer.Core.Platform;
+using Observer.Core.Platform.Linux;
+using Observer.Core.Platform.Windows;
 
 namespace Observer.Core.Tests;
 
@@ -39,6 +41,19 @@ public class PlatformCompositionTests
             Assert.Contains(collectors, c => c.Id == "memory");
             Assert.All(collectors, c => Assert.NotEmpty(c.Descriptors));
         }
+    }
+
+    [Fact]
+    public void IlLettoreDellIoSegueLaPiattaforma()
+    {
+        // Stessa regola dei collector: la piattaforma e' un parametro. E la scelta sbagliata
+        // non farebbe eccezione - WindowsProcessIoReader fuori da Windows risponde false in
+        // silenzio, e ogni tasso resterebbe ignoto senza che nessuno lo dica.
+        FakeFileTextReader lettore = new();
+
+        Assert.IsType<WindowsProcessIoReader>(ProcessIoReaders.Per(HostPlatform.Windows, lettore));
+        Assert.IsType<LinuxProcessIoReader>(ProcessIoReaders.Per(HostPlatform.Linux, lettore));
+        Assert.Null(ProcessIoReaders.Per(HostPlatform.Unknown, lettore));
     }
 
     [Fact]

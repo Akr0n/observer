@@ -123,9 +123,10 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:MetricRow">
-                                    <!-- Il quadrante sta dentro un pulsante trasparente: la
-                                         CPU e la memoria si aprono sull'elenco dei processi,
-                                         i dischi no, e IsEnabled lo dice senza spiegazioni.
+                                    <!-- Il quadrante sta dentro un pulsante trasparente: CPU,
+                                         memoria e attivita' dei dischi si aprono sull'elenco
+                                         dei processi, lo spazio dei dischi no, e IsEnabled lo
+                                         dice senza spiegazioni.
                                          Un pulsante e non un gestore di clic sul controllo,
                                          cosi' ci si arriva anche da tastiera. -->
                                     <Button Padding="0"
@@ -181,13 +182,16 @@
                                          MaxHeight="260">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate x:DataType="svc:ProcessoMostrato">
-                                            <Grid ColumnDefinitions="*,90,110">
+                                            <Grid ColumnDefinitions="*,90,110,110">
                                                 <TextBlock Text="{Binding Nome}" TextTrimming="CharacterEllipsis" />
                                                 <TextBlock Grid.Column="1"
                                                            Text="{Binding Cpu}"
                                                            HorizontalAlignment="Right" />
                                                 <TextBlock Grid.Column="2"
                                                            Text="{Binding Memoria}"
+                                                           HorizontalAlignment="Right" />
+                                                <TextBlock Grid.Column="3"
+                                                           Text="{Binding Io}"
                                                            HorizontalAlignment="Right" />
                                             </Grid>
                                         </DataTemplate>

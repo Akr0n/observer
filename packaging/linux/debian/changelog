@@ -1,3 +1,28 @@
+observer (0.7.0) unstable; urgency=medium
+
+  * Clicking a disk activity gauge now opens the process list ranked by
+    I/O: bytes read and written per second by each process, refreshed once
+    a second like the CPU and memory lists, with the same "End process"
+    button.
+  * That list is for the whole machine, and the title says so: the counters
+    are per process, and neither system says which device the bytes went
+    to. Disk space gauges still open nothing, because space used on a
+    volume cannot be attributed to a running process.
+  * "I/O" means every read and write the process asked for, cached ones
+    included - the only per-process counter Windows has. On Linux the
+    matching pair is rchar and wchar, chosen over read_bytes and write_bytes
+    so that both systems say the same thing under the same title.
+  * On Linux the service reads /proc/PID/io only for processes it may
+    ptrace, so as the "observer" user it reports a dash for other users'
+    processes. That is deliberate: CAP_SYS_PTRACE would let it read any
+    process's memory. Add "AmbientCapabilities=CAP_SYS_PTRACE" to the unit
+    to lift it, knowing what it grants.
+  * The /processes response now repeats the criterion it applied ("by"), so
+    a dashboard asking a service older than itself for the I/O ranking is
+    told the service is old instead of being shown the CPU list.
+
+ -- Federico Cardinali <noreply@example.invalid>  Thu, 03 Sep 2026 10:00:00 +0000
+
 observer (0.6.1) unstable; urgency=medium
 
   * "observer rotate-key" now says where to read the key it has just written

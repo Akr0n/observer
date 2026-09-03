@@ -1,4 +1,4 @@
-.TH OBSERVER-DASHBOARD 1 "2026-09-03" "observer 0.6.1" "User Commands"
+.TH OBSERVER-DASHBOARD 1 "2026-09-03" "observer 0.7.0" "User Commands"
 .SH NAME
 observer-dashboard \- watch a machine's vital signs
 .SH SYNOPSIS
@@ -7,9 +7,13 @@ observer-dashboard \- watch a machine's vital signs
 .B observer-dashboard
 opens a window that polls an Observer service once a second and shows what it
 reports: CPU, memory, disk space per volume and disk activity per device, on
-gauges, with the last hour drawn underneath. Clicking the CPU or the memory
-gauge lists the processes consuming most of it, refreshed once a second, and
-the selected one can be ended from there.
+gauges, with the last hour drawn underneath. Clicking the CPU, the memory or a
+disk activity gauge lists the processes consuming most of it, refreshed once a
+second, and the selected one can be ended from there. The list behind a disk
+gauge is ranked by I/O over the whole machine, because the counters are per
+process and not per device; on Linux the service can read the I/O of other
+users' processes only with CAP_SYS_PTRACE, which it deliberately lacks, so
+those rows show a dash.
 .PP
 With no configuration it talks to the service on this machine over the local
 socket, and needs no token. For that to work your account has to be in the

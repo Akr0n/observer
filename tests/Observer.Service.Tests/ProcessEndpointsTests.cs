@@ -111,4 +111,68 @@ public class ProcessEndpointsTests
 
         Assert.Equal(HttpStatusCode.NotFound, risposta.StatusCode);
     }
+
+    [Theory]
+    [InlineData("/processes", "cpu")]
+    [InlineData("/processes?by=memory", "memory")]
+    [InlineData("/processes?by=io", "io")]
+    [InlineData("/processes?by=IO", "io")]
+    [InlineData("/processes?by=boh", "cpu")]
+    public async Task LaRispostaRipeteIlCriterioApplicato(string percorso, string atteso)
+    {
+        // Il client lo usa per accorgersi di un servizio che non conosce ancora "io": senza,
+        // riceverebbe l'elenco della CPU e lo mostrerebbe sotto il titolo dell'I/O.
+        using HttpClient client = servizio.CreateAuthorizedClient();
+
+        using HttpResponseMessage risposta = await client.GetAsync(new Uri(percorso, UriKind.Relative));
+
+        Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
+
+        using JsonDocument documento = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+        Assert.Equal(atteso, documento.RootElement.GetProperty("by").GetString());
+    }
+
+    [Fact]
+    public async Task LOrdinePerIoMetteIPiuIndaffaratiInCimaEGliIgnotiInFondo()
+    {
+        using HttpClient client = servizio.CreateAuthorizedClient();
+        Uri percorso = new("/processes?by=io&top=100", UriKind.Relative);
+
+        // Due letture: alla prima non c'e' un campione precedente e ogni tasso e' ignoto.
+        (await client.GetAsync(percorso)).Dispose();
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
+
+        using HttpResponseMessage risposta = await client.GetAsync(percorso);
+
+        using JsonDocument documento = JsonDocument.Parse(await risposta.Content.ReadAsStringAsync());
+
+        double precedente = double.MaxValue;
+        bool ignotiIniziati = false;
+
+        foreach (JsonElement processo in documento.RootElement.GetProperty("processes").EnumerateArray())
+        {
+            JsonElement tasso = processo.GetProperty("ioBytesPerSecond");
+
+            if (tasso.ValueKind == JsonValueKind.Null)
+            {
+                ignotiIniziati = true;
+
+                continue;
+            }
+
+            Assert.False(ignotiIniziati, "un tasso noto dopo uno ignoto: l'ordine e' sbagliato");
+
+            double adesso = tasso.GetDouble();
+            Assert.True(adesso <= precedente, "l'elenco per I/O non e' in ordine decrescente");
+            precedente = adesso;
+        }
+
+        // Almeno un tasso deve essere NOTO. Senza questa riga il test passerebbe a vuoto con
+        // ogni tasso null - cioe' con il lettore dell'I/O mai collegato in Program.cs - e
+        // l'ha dimostrato una mutazione: new SystemProcessLister(ioReader: null), suite verde.
+        // Questo e' l'unico test che attraversa il cablaggio vero, dal servizio al sistema.
+        Assert.Contains(
+            documento.RootElement.GetProperty("processes").EnumerateArray(),
+            processo => processo.GetProperty("ioBytesPerSecond").ValueKind != JsonValueKind.Null);
+    }
 }

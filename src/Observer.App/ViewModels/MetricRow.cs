@@ -43,9 +43,9 @@ public sealed partial class MetricRow : ObservableObject
 
     /// <summary>True quando da questo quadrante si puo' aprire l'elenco dei processi.</summary>
     /// <remarks>
-    /// Falso sui dischi, e quel quadrante allora non e' cliccabile affatto: meglio nessun
-    /// invito che un invito che porta a un pannello vuoto. Il perche' sta in
-    /// <see cref="ProcessResource"/>.
+    /// Falso sullo spazio dei dischi, e quel quadrante allora non e' cliccabile affatto: meglio
+    /// nessun invito che un invito che porta a un pannello vuoto. Vero sull'attivita' dei
+    /// dischi, che apre l'elenco per I/O. Il perche' sta in <see cref="ProcessResource"/>.
     /// </remarks>
     public bool PuoMostrareProcessi => ProcessResource.Da(Key) is not null;
 

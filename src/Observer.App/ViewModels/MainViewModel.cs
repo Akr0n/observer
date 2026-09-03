@@ -692,9 +692,14 @@ public sealed partial class MainViewModel : ViewModelBase
         }
 
         risorsaMostrata = risorsa;
-        ProcessiTitolo = string.Equals(risorsa, "memory", StringComparison.Ordinal)
-            ? "Top processes by memory"
-            : "Top processes by CPU";
+        // "Whole machine" sta nel titolo perche' il quadrante da cui si arriva e' quello di UN
+        // disco, e l'elenco non lo e': i contatori di I/O sono per processo, non per dispositivo.
+        ProcessiTitolo = risorsa switch
+        {
+            "memory" => "Top processes by memory",
+            "io" => "Top processes by I/O (whole machine)",
+            _ => "Top processes by CPU",
+        };
 
         ProcessiVisibili = true;
         ConfermaTerminazione = false;
