@@ -281,6 +281,42 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Ogni quanto si legge, adesso.</summary>
     public TimeSpan Cadenza => InSecondoPiano ? IntervalloRidotto : Intervallo;
 
+    /// <summary>Quanto e' ingrandita la finestra: 1 e' la misura normale.</summary>
+    /// <remarks>
+    /// Avalonia non legge la dimensione del testo di sistema, quindi chi l'ha alzata in Windows
+    /// qui non la ritrova. Questa e' l'impostazione interna che la sostituisce; la applica la
+    /// finestra, che scala tutto - quadranti compresi - e la ricorda fra un avvio e l'altro.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ScalaScelta))]
+    public partial double ScalaTesto { get; set; } = Preferenze.ScaleAmmesse[0];
+
+    /// <summary>Le scale fra cui si sceglie, come voci del selettore.</summary>
+    public static IReadOnlyList<OpzioneScala> OpzioniScala { get; } =
+        [.. Preferenze.ScaleAmmesse.Select(fattore => new OpzioneScala(fattore))];
+
+    /// <summary>La scala come voce del selettore: e' <see cref="ScalaTesto"/> con un'etichetta.</summary>
+    /// <remarks>
+    /// Il selettore puo' assegnare null mentre cambia elenco: allora la scala resta com'e'.
+    /// </remarks>
+    public OpzioneScala ScalaScelta
+    {
+        get => new(ScalaTesto);
+        set => ScalaTesto = value?.Fattore ?? ScalaTesto;
+    }
+
+    /// <summary>Una scala non ammessa non entra: la si riporta alla normale.</summary>
+    /// <param name="value">La scala richiesta.</param>
+    partial void OnScalaTestoChanged(double value)
+    {
+        double valida = Preferenze.ScalaValida(value);
+
+        if (valida != value)
+        {
+            ScalaTesto = valida;
+        }
+    }
+
     /// <summary>Quale risorsa sta guardando il pannello: <c>cpu</c>, <c>memory</c>, o null.</summary>
     private string? risorsaMostrata;
 

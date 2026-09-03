@@ -24,6 +24,13 @@
          esistesse la barra laterale, e non era mai stato riallineato. -->
 
     <Window.Styles>
+        <!-- I popup (suggerimenti, tendine) seguono la misura del testo. La tendina del
+             selettore lo fa gia' per conto del tema; il suggerimento di Avalonia no, e a
+             150% il valore sotto il puntatore sullo storico restava piccolo. -->
+        <Style Selector="Popup">
+            <Setter Property="InheritsTransform" Value="True" />
+        </Style>
+
         <!-- Solo un guasto vero si colora. Un Warmup all'avvio o una metrica non misurabile
              su questa piattaforma restano neutri: allarmare per una cosa normale insegna a
              ignorare anche gli allarmi veri. -->
@@ -58,16 +65,45 @@
          perche' senza client e senza configurazione non saprebbe cosa mostrare. Le binding
          restano comunque verificate a compilazione grazie a x:DataType + x:CompileBindings. -->
 
+    <!-- La radice e' un LayoutTransformControl: e' cio' che scala TUTTA la finestra quando si
+         cambia "Text size", quadranti compresi. Avalonia non legge la dimensione del testo di
+         sistema, e ingrandire solo i caratteri lascerebbe i quadranti piccoli sotto scritte
+         grandi. Il code-behind gli assegna la trasformazione e alza di pari passo la
+         dimensione minima della finestra. -->
+    <LayoutTransformControl x:Name="Radice">
     <DockPanel Margin="20">
 
-        <StackPanel DockPanel.Dock="Top" Spacing="2">
-            <TextBlock Text="{Binding Intestazione}"
-                       Theme="{StaticResource SubtitleTextBlockStyle}"
-                       TextWrapping="Wrap" />
-            <TextBlock Text="{Binding SottoIntestazione}"
-                       Classes="secondario"
-                       TextWrapping="Wrap" />
-        </StackPanel>
+        <DockPanel DockPanel.Dock="Top">
+            <!-- La misura del testo, in alto a destra: una scelta che si fa una volta e non si
+                 rilegge, quindi sta fuori dal percorso dello sguardo. Quattro gradini, quelli
+                 di Windows. -->
+            <StackPanel DockPanel.Dock="Right"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Top"
+                        Margin="16,0,0,0">
+                <TextBlock Text="Text size"
+                           Theme="{StaticResource CaptionTextBlockStyle}"
+                           Classes="secondario"
+                           VerticalAlignment="Center" />
+                <!-- Le voci sono OpzioneScala, il cui testo e' "115 %": niente modello di
+                     voce, cosi' tendina, testo e cio' che annuncia un lettore di schermo
+                     coincidono (con un double nudo annunciava "1,15"). -->
+                <ComboBox ItemsSource="{x:Static vm:MainViewModel.OpzioniScala}"
+                          SelectedItem="{Binding ScalaScelta}"
+                          MinWidth="92"
+                          AutomationProperties.Name="Text size" />
+            </StackPanel>
+
+            <StackPanel Spacing="2">
+                <TextBlock Text="{Binding Intestazione}"
+                           Theme="{StaticResource SubtitleTextBlockStyle}"
+                           TextWrapping="Wrap" />
+                <TextBlock Text="{Binding SottoIntestazione}"
+                           Classes="secondario"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </DockPanel>
 
         <ui:FAInfoBar DockPanel.Dock="Top"
                       Margin="0,14,0,0"
@@ -81,8 +117,13 @@
              gia' una seconda, e cosi' nessuno poteva scoprire di poterne aggiungere: l'unico
              posto in cui la funzione si annunciava era la funzione stessa. Con una macchina
              sola, al suo posto c'e' la frase che dice come aggiungerne un'altra. -->
+        <!-- Larga quanto i nomi che contiene, fra 150 e 240: prima erano 210 px fissi anche
+             per due voci di dieci lettere, cioe' un terzo della finestra minima speso per il
+             vuoto. Il massimo serve al suggerimento su come aggiungere una macchina, che va
+             a capo invece di allargare la barra. -->
         <Border DockPanel.Dock="Left"
-                Width="210"
+                MinWidth="150"
+                MaxWidth="240"
                 Margin="0,14,16,0"
                 Padding="12"
                 CornerRadius="8"
@@ -149,10 +190,14 @@
 
                         <TextBlock Text="At a glance" Theme="{StaticResource BodyStrongTextBlockStyle}" />
 
-                        <ItemsControl ItemsSource="{Binding Quadranti}">
+                        <!-- La griglia decide colonne e misura delle celle: quante ne entrano
+                             alla misura minima, allargate fino a un massimo per riempire la
+                             riga. Niente buchi a fine riga, e quadranti grandi quanto c'e'
+                             posto (vedi GaugeGrid). -->
+                        <ItemsControl ItemsSource="{Binding Quadranti}" Margin="0,4,0,0">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <WrapPanel />
+                                    <ctl:GaugeGrid />
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
@@ -164,19 +209,21 @@
                                          Un pulsante e non un gestore di clic sul controllo,
                                          cosi' ci si arriva anche da tastiera. Il nome e il
                                          valore per il lettore di schermo stanno qui, perche' il
-                                         disegno su DrawingContext per lui non esiste. -->
+                                         disegno su DrawingContext per lui non esiste.
+                                         Contenuto allineato a Stretch: il quadrante non ha una
+                                         misura propria, prende quella della cella. -->
                                     <Button Classes="quadrante"
                                             Padding="0"
-                                            Margin="0,4,18,0"
                                             Background="Transparent"
                                             BorderThickness="0"
+                                            HorizontalContentAlignment="Stretch"
+                                            VerticalContentAlignment="Stretch"
                                             IsEnabled="{Binding PuoMostrareProcessi}"
                                             AutomationProperties.Name="{Binding Etichetta}"
                                             AutomationProperties.HelpText="{Binding Valore}"
                                             Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).ApriProcessiCommand}"
                                             CommandParameter="{Binding}">
-                                        <ctl:Gauge Width="148" Height="212"
-                                                   Fraction="{Binding Frazione}"
+                                        <ctl:Gauge Fraction="{Binding Frazione}"
                                                    Display="{Binding Valore}"
                                                    Caption="{Binding Etichetta}"
                                                    TrackBrush="{DynamicResource ControlStrongFillColorDefaultBrush}"
@@ -391,5 +438,6 @@
         </ScrollViewer>
 
     </DockPanel>
+    </LayoutTransformControl>
 
 </Window>

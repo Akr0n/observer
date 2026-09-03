@@ -102,6 +102,10 @@ public sealed class Gauge : Control
     // peggio proprio mentre la lancetta ci passava sopra.
     private const double QuotaDelQuadrante = 0.70d;
 
+    // La misura con cui il quadrante e' nato, e che vale ancora dove nessuno gliene da' una.
+    private const double LarghezzaClassica = 148d;
+    private const double AltezzaClassica = 212d;
+
     // Da dove partono le scritte, in raggi dal centro. Piu' di uno perche' il tratto dell'arco
     // sporge di mezzo spessore oltre il raggio: fermarsi a 1,08 lasciava il numero dentro
     // l'incavo in fondo al quadrante, che e' vuoto ma e' ancora dentro il disegno.
@@ -215,6 +219,19 @@ public sealed class Gauge : Control
         get => GetValue(NeedleBrushProperty);
         set => SetValue(NeedleBrushProperty, value);
     }
+
+    /// <summary>Quanto spazio chiede: TUTTO quello che gli offrono.</summary>
+    /// <param name="availableSize">Lo spazio disponibile.</param>
+    /// <returns>Lo spazio disponibile stesso, o la misura classica dove non c'e' un limite.</returns>
+    /// <remarks>
+    /// Un Control senza misura propria dichiara zero, e zero e' quello che la griglia dei
+    /// quadranti gli ha dato il primo giorno: riquadro alto il giusto e nessun quadrante
+    /// dentro. Qui il quadrante riempie la cella che il pannello ha deciso per lui; dove non
+    /// c'e' una cella - misurato senza limiti - vale la misura con cui e' nato, 148x212.
+    /// </remarks>
+    protected override Size MeasureOverride(Size availableSize) => new(
+        double.IsInfinity(availableSize.Width) ? LarghezzaClassica : availableSize.Width,
+        double.IsInfinity(availableSize.Height) ? AltezzaClassica : availableSize.Height);
 
     /// <inheritdoc />
     public override void Render(DrawingContext context)
