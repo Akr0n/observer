@@ -75,6 +75,18 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Come aprire un client verso una macchina scelta nell'elenco.</summary>
     private readonly Func<ObserverEndpoint, IMetricsClient>? apriMacchina;
 
+    /// <summary>Come rileggere da disco la voce di una macchina, quando la sua credenziale non vale piu'.</summary>
+    private readonly Func<ObserverEndpoint, ObserverEndpoint?>? rileggiPunto;
+
+    /// <summary>La voce dell'elenco che il giro principale sta leggendo davvero.</summary>
+    /// <remarks>
+    /// NON la selezione della lista: quella puo' diventare null (un Ctrl+clic sulla voce
+    /// evidenziata la deseleziona) mentre il giro continua a leggere la stessa macchina, e
+    /// allora la sonda la interrogherebbe una seconda volta e il suo pallino smetterebbe di
+    /// seguire la barra. E' questa voce che le sonde saltano e che la barra aggiorna.
+    /// </remarks>
+    private MacchinaInElenco? voceGuardata;
+
 
     private IMetricsClient? client;
 
@@ -112,22 +124,28 @@ public sealed partial class MainViewModel : ViewModelBase
     /// Le macchine da mettere nella barra laterale, oppure null per non mostrarla affatto.
     /// </param>
     /// <param name="apriMacchina">Come aprire un client verso una macchina dell'elenco.</param>
+    /// <param name="rileggiPunto">
+    /// Come rileggere da disco la voce di una macchina non guardata quando una sonda torna
+    /// con un token rifiutato o un'impronta che non corrisponde, oppure null per non rileggere.
+    /// </param>
     public MainViewModel(
         IMetricsClient? client,
         string? problemaDiConfigurazione,
         Func<IMetricsClient?>? rileggiConfigurazione = null,
         Func<DateTimeOffset>? orologio = null,
         MachineListResult? elenco = null,
-        Func<ObserverEndpoint, IMetricsClient>? apriMacchina = null)
+        Func<ObserverEndpoint, IMetricsClient>? apriMacchina = null,
+        Func<ObserverEndpoint, ObserverEndpoint?>? rileggiPunto = null)
     {
         this.client = client;
         this.rileggiConfigurazione = rileggiConfigurazione;
         this.apriMacchina = apriMacchina;
+        this.rileggiPunto = rileggiPunto;
         adesso = orologio ?? (static () => DateTimeOffset.UtcNow);
 
         foreach (ObserverEndpoint punto in elenco?.Machines ?? [])
         {
-            Macchine.Add(punto);
+            Macchine.Add(new MacchinaInElenco(punto));
         }
 
         foreach (string problema in elenco?.Problems ?? [])
@@ -139,7 +157,7 @@ public sealed partial class MainViewModel : ViewModelBase
         // serve alcun guardiano contro la propria stessa scrittura: il gestore qui sotto esce
         // da se' quando la macchina scelta e' gia' quella aperta.
         MacchinaSelezionata = Macchine.FirstOrDefault(
-            punto => client is not null && punto == client.Endpoint) ?? Macchine.FirstOrDefault();
+            voce => client is not null && voce.Punto == client.Endpoint) ?? Macchine.FirstOrDefault();
 
         // Solo il nome dell'applicazione. QUALE macchina si sta guardando lo dicono gia' la
         // riga sotto il titolo e la voce evidenziata nella barra laterale: ripeterlo nel
@@ -320,8 +338,18 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Quale risorsa sta guardando il pannello: <c>cpu</c>, <c>memory</c>, o null.</summary>
     private string? risorsaMostrata;
 
-    /// <summary>Le macchine fra cui si puo' scegliere. La prima e' sempre questa.</summary>
-    public ObservableCollection<ObserverEndpoint> Macchine { get; } = [];
+    /// <summary>Le macchine fra cui si puo' scegliere, ognuna col suo stato. La prima e' sempre questa.</summary>
+    public ObservableCollection<MacchinaInElenco> Macchine { get; } = [];
+
+    /// <summary>Ogni quanto si sondano le macchine che NON si stanno guardando.</summary>
+    /// <remarks>
+    /// Quindici secondi e non uno: un pallino accanto al nome deve dire "e' viva", non seguire
+    /// la CPU. E le sonde partono e non si aspettano: una macchina spenta costa otto secondi
+    /// di timeout, e il giro dei quadranti non deve pagarli.
+    /// </remarks>
+    public static readonly TimeSpan RicaricaStati = TimeSpan.FromSeconds(15);
+
+    private DateTimeOffset prossimaSonda = DateTimeOffset.MinValue;
 
     /// <summary>Le voci dell'elenco che sono state scartate, e perche'.</summary>
     /// <remarks>
@@ -353,30 +381,42 @@ public sealed partial class MainViewModel : ViewModelBase
 
     /// <summary>La macchina attualmente guardata.</summary>
     [ObservableProperty]
-    public partial ObserverEndpoint? MacchinaSelezionata { get; set; }
+    public partial MacchinaInElenco? MacchinaSelezionata { get; set; }
 
     /// <summary>Cambia macchina senza riavviare la finestra.</summary>
     /// <param name="value">La macchina scelta nell'elenco.</param>
-    partial void OnMacchinaSelezionataChanged(ObserverEndpoint? value)
+    partial void OnMacchinaSelezionataChanged(MacchinaInElenco? value)
     {
-        if (value is null || apriMacchina is null)
+        if (value is null)
+        {
+            // La lista non dovrebbe arrivarci (AlwaysSelected); se ci arriva, la macchina
+            // guardata resta quella di prima e voceGuardata non cambia.
+            return;
+        }
+
+        voceGuardata = value;
+
+        if (apriMacchina is null)
         {
             return;
         }
 
-        if (client is not null && value == client.Endpoint)
+        if (client is not null && value.Punto == client.Endpoint)
         {
             return;
         }
 
-        client = apriMacchina(value);
+        client = apriMacchina(value.Punto);
 
         // Tutto cio' che descriveva la macchina PRECEDENTE va buttato: il catalogo, perche' le
-        // etichette appartengono a quel servizio; i riquadri, perche' sono le sue misure; e
-        // l'orologio dei guasti, perche' a una macchina nuova spetta un'attesa nuova.
+        // etichette appartengono a quel servizio, e i riquadri, perche' sono le sue misure.
+        // L'orologio dei guasti invece si EREDITA dalla voce: se la sonda sa gia' da venti
+        // secondi che questa macchina e' spenta, la barra apre rossa subito invece di recitare
+        // dieci secondi di "Connecting" - la grazia serve a un servizio che sta partendo, non a
+        // uno gia' misurato spento. E cosi' barra e pallino hanno un orologio solo.
         catalogoLetto = false;
         catalogo = MetricCatalog.Empty;
-        guastoDa = null;
+        guastoDa = value.GuastoDa;
         Gruppi.Clear();
 
         // E i quadranti, che sono una SECONDA collezione sulle stesse righe. Svuotare solo i
@@ -471,6 +511,14 @@ public sealed partial class MainViewModel : ViewModelBase
                     await AggiornaProcessiAsync(cancellationToken);
                 }
 
+                // Le altre macchine, per il pallino accanto al nome. Partono e non si
+                // aspettano: vedi SondaLeAltre.
+                if (adesso() >= prossimaSonda)
+                {
+                    prossimaSonda = adesso() + RicaricaStati;
+                    SondaLeAltre(cancellationToken);
+                }
+
                 // Un 401 su una finestra GIA' collegata significa quasi sempre che il token e'
                 // stato ruotato. Senza rileggere qui, la finestra resterebbe bloccata su
                 // "Token rejected" fino al riavvio: e' lo stesso incidente di "Configuration
@@ -527,10 +575,17 @@ public sealed partial class MainViewModel : ViewModelBase
         }
 
         client = ricomparso;
+        voceGuardata?.Aggiorna(ricomparso.Endpoint);
 
         // Attesa nuova: l'endpoint e' cambiato, e i secondi gia' consumati contro il
-        // precedente non dicono niente su questo.
+        // precedente non dicono niente su questo. Anche per il pallino, che ha lo stesso
+        // orologio.
         guastoDa = null;
+
+        if (voceGuardata is not null)
+        {
+            voceGuardata.GuastoDa = null;
+        }
 
         // Il catalogo appartiene al servizio precedente: va riletto, altrimenti le etichette
         // resterebbero quelle di una macchina diversa.
@@ -581,10 +636,19 @@ public sealed partial class MainViewModel : ViewModelBase
             }
         }
 
+        // Stessa guardia anche dopo il catalogo: e' un secondo await, e l'utente puo' aver
+        // cambiato macchina proprio li'. Senza, il pallino di una macchina mai contattata
+        // diventava "Reachable" con la lettura di quella precedente.
+        if (!ReferenceEquals(client, corrente))
+        {
+            return ServiceOutcome.Unknown;
+        }
+
         MachineSnapshot snapshot = fetch.Snapshot!;
         Applica(SnapshotProjection.Project(snapshot, catalogo));
 
         StatoVisibile = false;
+        voceGuardata?.Registra(ServiceOutcome.Ok, string.Empty, adesso());
 
         // La serie di guasti e' finita: la prossima ricomincia da capo, e ha diritto alla
         // stessa attesa che ha avuto questa.
@@ -622,6 +686,73 @@ public sealed partial class MainViewModel : ViewModelBase
 
         Mostra(Gravita(messaggio.Tone), messaggio.Title, messaggio.Text);
         SottoIntestazione = messaggio.Subheading;
+
+        // Il pallino della macchina guardata segue la barra di stato, con lo stesso orologio,
+        // cosi' i due non dicono mai cose diverse.
+        voceGuardata?.Registra(esito, testo, ora);
+    }
+
+    /// <summary>Interroga le macchine che non si stanno guardando, tutte insieme e senza aspettarle.</summary>
+    /// <param name="cancellationToken">Annullato alla chiusura.</param>
+    /// <remarks>
+    /// Il giro principale NON attende le sonde: una macchina spenta risponde dopo otto secondi
+    /// di timeout, e i quadranti della macchina guardata non devono fermarsi per questo. Ogni
+    /// sonda aggiorna la propria voce quando torna, e finche' e' in volo non ne parte un'altra.
+    /// </remarks>
+    private void SondaLeAltre(CancellationToken cancellationToken)
+    {
+        if (apriMacchina is null)
+        {
+            return;
+        }
+
+        foreach (MacchinaInElenco voce in Macchine)
+        {
+            // Si salta la voce che il giro principale legge DAVVERO, non la selezione della
+            // lista: vedi voceGuardata.
+            if (voce.InSonda || ReferenceEquals(voce, voceGuardata))
+            {
+                continue;
+            }
+
+            voce.InSonda = true;
+            _ = SondaAsync(voce, cancellationToken);
+        }
+    }
+
+    private async Task SondaAsync(MacchinaInElenco voce, CancellationToken cancellationToken)
+    {
+        try
+        {
+            SnapshotFetch fetch = await apriMacchina!(voce.Punto).GetLatestAsync(cancellationToken);
+
+            voce.Registra(fetch.Outcome, fetch.Problem, adesso());
+
+            // Token rifiutato o impronta che non corrisponde: la voce va riletta da disco,
+            // come fa gia' il giro principale per la macchina guardata. Altrimenti la sonda
+            // successiva riparte con la credenziale vecchia e il pallino resta rosso fino al
+            // riavvio, anche dopo "observer token set".
+            if (fetch.Outcome is ServiceOutcome.TokenRifiutato or ServiceOutcome.ImprontaNonCorrisponde
+                && rileggiPunto?.Invoke(voce.Punto) is { } riletto
+                && riletto != voce.Punto)
+            {
+                voce.Aggiorna(riletto);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Chiusura: niente da registrare.
+        }
+#pragma warning disable CA1031 // Una sonda che lancia non deve far cadere niente: il suo esito e' un pallino.
+        catch (Exception errore)
+#pragma warning restore CA1031
+        {
+            voce.Registra(ServiceOutcome.Unknown, errore.Message, adesso());
+        }
+        finally
+        {
+            voce.InSonda = false;
+        }
     }
 
     private static FAInfoBarSeverity Gravita(StatusTone tono) => tono switch

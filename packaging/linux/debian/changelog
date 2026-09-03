@@ -1,3 +1,22 @@
+observer (0.11.0) unstable; urgency=medium
+
+  * A coloured dot next to every machine in the list says whether it is
+    reachable, without clicking on it: grey until checked, green when it
+    answers, amber while a fault is younger than ten seconds, red after
+    that. It is the same rule as the status bar, so a red dot means what a
+    red bar means; a rejected token or an incompatible version is red at
+    once. Hovering the dot, or a screen reader, gives the reason in words.
+  * The machines you are not looking at are probed every fifteen seconds,
+    all together and without holding up the gauges: a machine that is off
+    costs an eight-second timeout, and the gauges must not pay it.
+  * The rows of the machine list carry their accessible name themselves,
+    where keyboard navigation and screen readers actually look.
+  * A machine that is not being watched and whose token or fingerprint has
+    been changed on disk is read again the next time its probe is refused,
+    so its dot recovers without restarting the dashboard.
+
+ -- Federico Cardinali <noreply@example.invalid>  Thu, 03 Sep 2026 16:30:00 +0000
+
 observer (0.10.0) unstable; urgency=medium
 
   * The gauges now fill the row: as many columns as fit at the smallest
@@ -37,7 +56,7 @@ observer (0.9.0) unstable; urgency=medium
   * Gauges have a name and a value for screen readers, and the clickable
     ones show a hand cursor; the disk space gauges, which open nothing, no
     longer wear the faint box of a disabled button.
-  * The window opens at 900x700 and cannot go below 640x520: the old minimum
+  * The window opens at 900x700 and cannot go below 720x520: the old minimum
     of 420x360 predated the machine list and cut the only visible gauge in
     half.
   * Captions and section titles come from the Fluent type scale and take

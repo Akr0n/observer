@@ -66,7 +66,7 @@ public partial class App : Application
                     // Rilegge dal disco la voce della macchina che si sta guardando. Serve
                     // quando il suo token viene ruotato: senza, la finestra resterebbe bloccata
                     // su "Token rejected" fino al riavvio anche dopo aver corretto il file.
-                    if (viewModel?.MacchinaSelezionata is not { } corrente)
+                    if (viewModel?.MacchinaSelezionata?.Punto is not { } corrente)
                     {
                         return null;
                     }
@@ -77,7 +77,12 @@ public partial class App : Application
                     return aggiornata is null || aggiornata == corrente ? null : Apri(aggiornata);
                 },
                 elenco: elenco,
-                apriMacchina: Apri);
+                apriMacchina: Apri,
+
+                // La stessa rilettura di sopra, per una macchina NON guardata la cui sonda
+                // torna con un token rifiutato: la voce nuova ha la credenziale nuova.
+                rileggiPunto: punto => MachineDirectory.Read().Machines.FirstOrDefault(
+                    candidato => candidato.Kind == punto.Kind && candidato.BaseAddress == punto.BaseAddress));
 
             CancellationTokenSource arresto = new();
 

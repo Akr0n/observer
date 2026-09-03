@@ -59,6 +59,21 @@
         <Style Selector="TextBlock.secondario">
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
         </Style>
+
+        <!-- I pallini delle macchine: gli stessi colori di stato del tema, cosi' verde, giallo
+             e rosso qui vogliono dire cio' che vogliono dire nella barra di stato. -->
+        <Style Selector="Ellipse.ignoto">
+            <Setter Property="Fill" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+        </Style>
+        <Style Selector="Ellipse.raggiungibile">
+            <Setter Property="Fill" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+        </Style>
+        <Style Selector="Ellipse.attenzione">
+            <Setter Property="Fill" Value="{DynamicResource SystemFillColorCautionBrush}" />
+        </Style>
+        <Style Selector="Ellipse.guasto">
+            <Setter Property="Fill" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+        </Style>
     </Window.Styles>
 
     <!-- Nessun Design.DataContext: MainViewModel non ha piu' un costruttore senza argomenti,
@@ -161,13 +176,42 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
+                <!-- AlwaysSelected: senza, un Ctrl+clic sulla voce evidenziata la
+                     deselezionerebbe, e la macchina guardata - che il giro principale
+                     continua a leggere - finirebbe sondata una seconda volta. -->
                 <ListBox ItemsSource="{Binding Macchine}"
                          SelectedItem="{Binding MacchinaSelezionata}"
+                         SelectionMode="Single,AlwaysSelected"
                          Background="Transparent"
-                         BorderThickness="0">
+                         BorderThickness="0"
+                         AutomationProperties.Name="Machines">
+                    <!-- Come per i processi: il nome accessibile sta sulla riga, non dentro
+                         il modello, perche' e' la riga che le frecce scelgono e che un
+                         lettore di schermo annuncia. E il suggerimento sta li' per la
+                         stessa ragione: su un pannello senza sfondo compariva solo sopra
+                         gli otto pixel del pallino e sul nome, non sul resto della riga. -->
+                    <ListBox.Styles>
+                        <Style Selector="ListBoxItem">
+                            <Setter Property="AutomationProperties.Name"
+                                    Value="{ReflectionBinding Descrizione}" />
+                            <Setter Property="ToolTip.Tip" Value="{ReflectionBinding Dettaglio}" />
+                        </Style>
+                    </ListBox.Styles>
                     <ListBox.ItemTemplate>
-                        <DataTemplate x:DataType="svc:ObserverEndpoint">
-                            <TextBlock Text="{Binding NomeVisibile}" TextWrapping="Wrap" />
+                        <DataTemplate x:DataType="vm:MacchinaInElenco">
+                            <!-- Il pallino dice se la macchina e' viva senza doverci cliccare
+                                 sopra; il colore segue la stessa regola della barra di stato,
+                                 e il testo del suggerimento dice perche'. -->
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Ellipse Width="8"
+                                         Height="8"
+                                         VerticalAlignment="Center"
+                                         Classes.ignoto="{Binding Ignoto}"
+                                         Classes.raggiungibile="{Binding Raggiungibile}"
+                                         Classes.attenzione="{Binding Attenzione}"
+                                         Classes.guasto="{Binding Guasto}" />
+                                <TextBlock Text="{Binding Nome}" TextWrapping="Wrap" />
+                            </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
