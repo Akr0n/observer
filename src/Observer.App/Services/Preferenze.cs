@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -31,6 +32,18 @@ public sealed record PosizioneFinestra(
     /// </remarks>
     public const int MinimoAfferrabile = 120;
 
+    /// <summary>Di quanto il bordo sinistro puo' sporgere fuori dallo schermo.</summary>
+    /// <remarks>
+    /// Windows disegna attorno a ogni finestra un bordo invisibile di 7-8 pixel, e una
+    /// finestra agganciata al bordo sinistro (Win+Freccia) sta a X = -8: senza questa
+    /// tolleranza non verrebbe mai ricordata. In alto no: il bordo invisibile in alto non
+    /// c'e', e una finestra massimizzata sta a (-8, -8), che cosi' resta esclusa.
+    /// </remarks>
+    public const int Tolleranza = 16;
+
+    /// <summary>Una posizione che porta solo lo stato: non passa <see cref="SuUnoDegli"/>.</summary>
+    private static PosizioneFinestra SoloStato => new(0, 0, 0, 0, Maximized: false);
+
     /// <summary>Un'area di lavoro, in pixel fisici.</summary>
     /// <param name="X">Bordo sinistro.</param>
     /// <param name="Y">Bordo superiore.</param>
@@ -52,10 +65,14 @@ public sealed record PosizioneFinestra(
 
         foreach (AreaDiLavoro schermo in schermi)
         {
-            if (X >= schermo.X
+            // Le costanti si sommano e sottraggono dal lato dello schermo, MAI da X o Y:
+            // con un file scritto a mano che dice x = 2147483647 la somma traboccava, il
+            // confronto passava, e la finestra si apriva invisibile - e si risalvava
+            // identica a ogni chiusura.
+            if (X >= schermo.X - Tolleranza
                 && Y >= schermo.Y
-                && X + MinimoAfferrabile <= schermo.X + schermo.Width
-                && Y + MinimoAfferrabile <= schermo.Y + schermo.Height)
+                && X <= schermo.X + schermo.Width - MinimoAfferrabile
+                && Y <= schermo.Y + schermo.Height - MinimoAfferrabile)
             {
                 return this;
             }
@@ -63,6 +80,63 @@ public sealed record PosizioneFinestra(
 
         return null;
     }
+
+    /// <summary>Cosa ricordare alla chiusura, a seconda di com'e' la finestra.</summary>
+    /// <param name="ridottaAIcona">True se la finestra e' ridotta a icona.</param>
+    /// <param name="massimizzata">
+    /// True se e' a tutto schermo, oppure se lo era prima di essere ridotta a icona.
+    /// </param>
+    /// <param name="ultimaNormale">
+    /// L'ultima geometria vista in stato normale durante questa sessione, se c'e' stata.
+    /// </param>
+    /// <param name="salvata">La geometria letta dal file all'avvio, se c'era.</param>
+    /// <param name="attuale">La geometria di adesso, che vale solo a finestra normale.</param>
+    /// <returns>La posizione da scrivere, oppure null se non c'e' niente di sensato da dire.</returns>
+    /// <remarks>
+    /// Le misure di una finestra a tutto schermo sono quelle dello schermo, e la posizione di
+    /// una ridotta a icona e' fuori da ogni schermo: in quei due stati si ricorda l'ultima
+    /// geometria normale di QUESTA sessione, non quella letta dal file all'avvio - che e'
+    /// cio' che si faceva prima, e uno spostamento fatto prima di massimizzare andava
+    /// perso: su due monitor la finestra riapriva su quello sbagliato. Se nessuna geometria
+    /// normale e' nota, lo stato a tutto schermo si ricorda da solo, con una posizione che
+    /// <see cref="SuUnoDegli"/> scarta: la finestra si apre dove decide il sistema, ma piena.
+    /// </remarks>
+    public static PosizioneFinestra? AllaChiusura(
+        bool ridottaAIcona,
+        bool massimizzata,
+        PosizioneFinestra? ultimaNormale,
+        PosizioneFinestra? salvata,
+        PosizioneFinestra attuale)
+    {
+        ArgumentNullException.ThrowIfNull(attuale);
+
+        if (!ridottaAIcona && !massimizzata)
+        {
+            return attuale with { Maximized = false };
+        }
+
+        PosizioneFinestra? normale = ultimaNormale ?? salvata;
+
+        if (massimizzata)
+        {
+            return (normale ?? SoloStato) with { Maximized = true };
+        }
+
+        return normale is null ? null : normale with { Maximized = false };
+    }
+}
+
+/// <summary>Una voce del selettore della misura del testo.</summary>
+/// <param name="Fattore">La scala: 1 e' la misura normale.</param>
+/// <remarks>
+/// Il testo della voce E' il suo <see cref="ToString"/>: un lettore di schermo annuncia
+/// quello, e con un double nudo annunciava "1,15" al posto di "115 %". L'uguaglianza per
+/// valore del record e' cio' che fa ritrovare la voce a partire dal numero.
+/// </remarks>
+public sealed record OpzioneScala(double Fattore)
+{
+    /// <inheritdoc />
+    public override string ToString() => Fattore.ToString("P0", CultureInfo.CurrentCulture);
 }
 
 /// <summary>Cio' che la dashboard ricorda di se' fra un avvio e l'altro.</summary>

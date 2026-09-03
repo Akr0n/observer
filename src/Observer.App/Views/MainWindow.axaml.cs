@@ -16,6 +16,12 @@ namespace Observer.App.Views;
 /// model quando la finestra e' ridotta a icona, ricordare dov'era e quanto grande, e scalare
 /// tutto quando cambia la misura del testo.
 /// </summary>
+/// <remarks>
+/// Le regole che si possono provare senza una finestra stanno altrove: cosa ricordare alla
+/// chiusura e' <see cref="PosizioneFinestra.AllaChiusura"/>, e se una posizione sta su uno
+/// schermo e' <see cref="PosizioneFinestra.SuUnoDegli"/>. Qui restano solo le letture e le
+/// scritture delle proprieta' della finestra.
+/// </remarks>
 public partial class MainWindow : Window
 {
     /// <summary>Quanto del pannello dei processi portare in vista quando si apre.</summary>
@@ -33,6 +39,15 @@ public partial class MainWindow : Window
     private INotifyPropertyChanged? osservato;
     private Preferenze preferenze;
 
+    /// <summary>L'ultima geometria vista in stato normale in questa sessione, se c'e' stata.</summary>
+    private PosizioneFinestra? ultimaNormale;
+
+    /// <summary>Se l'ultimo stato non ridotto a icona era a tutto schermo.</summary>
+    private bool eraMassimizzata;
+
+    /// <summary>La scala applicata adesso.</summary>
+    private double scala = 1d;
+
     /// <summary>Chi aveva il fuoco quando il pannello si e' aperto: di norma, il quadrante.</summary>
     private IInputElement? provenienza;
 
@@ -49,8 +64,14 @@ public partial class MainWindow : Window
         preferenze = PreferenzeStore.Leggi();
         Ricolloca(preferenze.Finestra);
 
+        // Con un Post, non nel gestore: su Windows lo stato "a tutto schermo" arriva con la
+        // stessa raffica di eventi che porta la nuova posizione e misura, e chi legge
+        // WindowState dentro il gestore rischia di annotare la geometria massimizzata come
+        // se fosse quella normale. Rimandato in coda, il controllo gira a raffica finita.
+        PositionChanged += (_, _) => Dispatcher.UIThread.Post(AnnotaSeNormale);
+        SizeChanged += (_, _) => Dispatcher.UIThread.Post(AnnotaSeNormale);
+
         DataContextChanged += (_, _) => Osserva();
-        Opened += (_, _) => RiapriATuttoSchermoSeLoEra();
         Closing += (_, _) => Ricorda();
     }
 
@@ -59,11 +80,24 @@ public partial class MainWindow : Window
     {
         base.OnPropertyChanged(change);
 
+        if (change.Property != WindowStateProperty)
+        {
+            return;
+        }
+
+        WindowState stato = change.GetNewValue<WindowState>();
+
+        // Ridotta a icona non dice niente su com'era: si ricorda l'ultimo stato pieno.
+        if (stato != WindowState.Minimized)
+        {
+            eraMassimizzata = stato == WindowState.Maximized;
+        }
+
         // Ridotta a icona, la finestra legge ogni dieci secondi invece che ogni secondo. Lo
         // stato lo sa solo la finestra; la cadenza la decide il view model.
-        if (change.Property == WindowStateProperty && DataContext is MainViewModel modello)
+        if (DataContext is MainViewModel modello)
         {
-            modello.InSecondoPiano = change.GetNewValue<WindowState>() == WindowState.Minimized;
+            modello.InSecondoPiano = stato == WindowState.Minimized;
         }
     }
 
@@ -71,7 +105,9 @@ public partial class MainWindow : Window
     /// <remarks>
     /// Il controllo sugli schermi non e' pignoleria: con un monitor esterno scollegato la
     /// finestra riaprirebbe fuori da tutto, invisibile e senza modo di afferrarla. In quel caso
-    /// si apre dove decide il sistema, come la prima volta.
+    /// si apre dove decide il sistema, come la prima volta. A tutto schermo si torna anche
+    /// allora: lo stato e' dello schermo che c'e', non di quello che manca. E lo si imposta
+    /// PRIMA che la finestra si mostri, cosi' appare gia' piena invece di saltarci dopo.
     /// </remarks>
     private void Ricolloca(PosizioneFinestra? salvata)
     {
@@ -80,50 +116,52 @@ public partial class MainWindow : Window
             return;
         }
 
-        List<PosizioneFinestra.AreaDiLavoro> aree = [.. Screens.All.Select(AreaDi)];
-
-        if (salvata.SuUnoDegli(aree) is not { } dove)
+        if (salvata.SuUnoDegli(Aree()) is { } dove)
         {
-            return;
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Position = new PixelPoint(dove.X, dove.Y);
+            Width = dove.Width;
+            Height = dove.Height;
+            ultimaNormale = dove with { Maximized = false };
         }
 
-        WindowStartupLocation = WindowStartupLocation.Manual;
-        Position = new PixelPoint(dove.X, dove.Y);
-        Width = dove.Width;
-        Height = dove.Height;
-    }
-
-    private static PosizioneFinestra.AreaDiLavoro AreaDi(Screen schermo) => new(
-        schermo.WorkingArea.X, schermo.WorkingArea.Y, schermo.WorkingArea.Width, schermo.WorkingArea.Height);
-
-    /// <summary>A tutto schermo si torna solo DOPO che la finestra esiste: prima non ha uno schermo.</summary>
-    private void RiapriATuttoSchermoSeLoEra()
-    {
-        if (preferenze.Finestra is { Maximized: true })
+        if (salvata.Maximized)
         {
             WindowState = WindowState.Maximized;
         }
     }
 
+    private List<PosizioneFinestra.AreaDiLavoro> Aree() => [.. Screens.All.Select(AreaDi)];
+
+    private static PosizioneFinestra.AreaDiLavoro AreaDi(Screen schermo) => new(
+        schermo.WorkingArea.X, schermo.WorkingArea.Y, schermo.WorkingArea.Width, schermo.WorkingArea.Height);
+
+    /// <summary>Annota la geometria, se la finestra e' normale e sta su uno schermo.</summary>
+    private void AnnotaSeNormale()
+    {
+        if (WindowState == WindowState.Normal && Attuale().SuUnoDegli(Aree()) is { } normale)
+        {
+            ultimaNormale = normale;
+        }
+
+        // La finestra puo' essere passata a uno schermo piu' piccolo: il tetto ai minimi si
+        // ricalcola su quello.
+        ApplicaMinimi();
+    }
+
     /// <summary>Scrive dov'e' la finestra e quanto e' grande il testo, per la prossima volta.</summary>
-    /// <remarks>
-    /// A tutto schermo si ricordano la posizione e le misure di PRIMA, gia' salvate, piu' il
-    /// fatto di esserlo: le misure di una finestra massimizzata sono quelle dello schermo, e
-    /// ripristinarle darebbe una finestra "normale" grande come lo schermo. Ridotta a icona
-    /// non si ricorda niente di nuovo: la posizione e' fuori da ogni schermo.
-    /// </remarks>
     private void Ricorda()
     {
-        double scala = DataContext is MainViewModel modello ? modello.ScalaTesto : preferenze.ScalaTesto;
+        double scalaDaSalvare = DataContext is MainViewModel modello ? modello.ScalaTesto : preferenze.ScalaTesto;
 
-        PosizioneFinestra? posizione = WindowState switch
-        {
-            WindowState.Minimized => preferenze.Finestra,
-            WindowState.Maximized => (preferenze.Finestra ?? Attuale()) with { Maximized = true },
-            _ => Attuale(),
-        };
+        PosizioneFinestra? posizione = PosizioneFinestra.AllaChiusura(
+            ridottaAIcona: WindowState == WindowState.Minimized,
+            massimizzata: eraMassimizzata,
+            ultimaNormale,
+            preferenze.Finestra,
+            Attuale());
 
-        preferenze = new Preferenze(posizione, scala);
+        preferenze = new Preferenze(posizione, scalaDaSalvare);
         PreferenzeStore.Scrivi(preferenze);
     }
 
@@ -205,10 +243,29 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Scala tutta la finestra, e con lei la sua misura minima.</summary>
-    private void ApplicaScala(double scala)
+    private void ApplicaScala(double nuova)
     {
-        Radice.LayoutTransform = scala == 1d ? null : new ScaleTransform(scala, scala);
-        MinWidth = larghezzaMinima * scala;
-        MinHeight = altezzaMinima * scala;
+        scala = nuova;
+        Radice.LayoutTransform = nuova == 1d ? null : new ScaleTransform(nuova, nuova);
+        ApplicaMinimi();
+    }
+
+    /// <summary>I minimi del XAML per la scala, ma mai piu' grandi dello schermo.</summary>
+    /// <remarks>
+    /// A 150% i minimi del XAML diventano 1080x780 logici, e su un portatile 1366x768 l'area
+    /// di lavoro e' alta 720: senza tetto la finestra si allungherebbe oltre lo schermo e non
+    /// si potrebbe piu' rimpicciolire. Sotto il minimo di progetto il contenuto scorre, che e'
+    /// cio' che lo ScrollViewer c'e' a fare. L'area di lavoro e' in pixel fisici e i minimi in
+    /// logici: si divide per la scala dello schermo.
+    /// </remarks>
+    private void ApplicaMinimi()
+    {
+        Screen? schermo = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        double fattore = schermo?.Scaling ?? 1d;
+        double larghezzaSchermo = schermo is null ? double.PositiveInfinity : schermo.WorkingArea.Width / fattore;
+        double altezzaSchermo = schermo is null ? double.PositiveInfinity : schermo.WorkingArea.Height / fattore;
+
+        MinWidth = Math.Min(larghezzaMinima * scala, larghezzaSchermo);
+        MinHeight = Math.Min(altezzaMinima * scala, altezzaSchermo);
     }
 }

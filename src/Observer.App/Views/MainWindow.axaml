@@ -24,6 +24,13 @@
          esistesse la barra laterale, e non era mai stato riallineato. -->
 
     <Window.Styles>
+        <!-- I popup (suggerimenti, tendine) seguono la misura del testo. La tendina del
+             selettore lo fa gia' per conto del tema; il suggerimento di Avalonia no, e a
+             150% il valore sotto il puntatore sullo storico restava piccolo. -->
+        <Style Selector="Popup">
+            <Setter Property="InheritsTransform" Value="True" />
+        </Style>
+
         <!-- Solo un guasto vero si colora. Un Warmup all'avvio o una metrica non misurabile
              su questa piattaforma restano neutri: allarmare per una cosa normale insegna a
              ignorare anche gli allarmi veri. -->
@@ -79,16 +86,13 @@
                            Theme="{StaticResource CaptionTextBlockStyle}"
                            Classes="secondario"
                            VerticalAlignment="Center" />
+                <!-- Le voci sono OpzioneScala, il cui testo e' "115 %": niente modello di
+                     voce, cosi' tendina, testo e cio' che annuncia un lettore di schermo
+                     coincidono (con un double nudo annunciava "1,15"). -->
                 <ComboBox ItemsSource="{x:Static vm:MainViewModel.OpzioniScala}"
-                          SelectedItem="{Binding ScalaTesto}"
+                          SelectedItem="{Binding ScalaScelta}"
                           MinWidth="92"
-                          AutomationProperties.Name="Text size">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate x:DataType="x:Double">
-                            <TextBlock Text="{Binding, StringFormat='{}{0:P0}'}" />
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
+                          AutomationProperties.Name="Text size" />
             </StackPanel>
 
             <StackPanel Spacing="2">

@@ -288,10 +288,22 @@ public sealed partial class MainViewModel : ViewModelBase
     /// finestra, che scala tutto - quadranti compresi - e la ricorda fra un avvio e l'altro.
     /// </remarks>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ScalaScelta))]
     public partial double ScalaTesto { get; set; } = Preferenze.ScaleAmmesse[0];
 
-    /// <summary>Le scale fra cui si sceglie.</summary>
-    public static IReadOnlyList<double> OpzioniScala => Preferenze.ScaleAmmesse;
+    /// <summary>Le scale fra cui si sceglie, come voci del selettore.</summary>
+    public static IReadOnlyList<OpzioneScala> OpzioniScala { get; } =
+        [.. Preferenze.ScaleAmmesse.Select(fattore => new OpzioneScala(fattore))];
+
+    /// <summary>La scala come voce del selettore: e' <see cref="ScalaTesto"/> con un'etichetta.</summary>
+    /// <remarks>
+    /// Il selettore puo' assegnare null mentre cambia elenco: allora la scala resta com'e'.
+    /// </remarks>
+    public OpzioneScala ScalaScelta
+    {
+        get => new(ScalaTesto);
+        set => ScalaTesto = value?.Fattore ?? ScalaTesto;
+    }
 
     /// <summary>Una scala non ammessa non entra: la si riporta alla normale.</summary>
     /// <param name="value">La scala richiesta.</param>
