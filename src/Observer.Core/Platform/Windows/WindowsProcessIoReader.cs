@@ -51,7 +51,15 @@ public sealed partial class WindowsProcessIoReader : IProcessIoReader
             return false;
         }
 
-        bytes = contatori.ReadTransferCount + contatori.WriteTransferCount;
+        ulong somma = contatori.ReadTransferCount + contatori.WriteTransferCount;
+
+        // Stessa guardia del lettore Linux: un giro dei 64 bit non e' un totale.
+        if (somma < contatori.ReadTransferCount)
+        {
+            return false;
+        }
+
+        bytes = somma;
 
         return true;
     }

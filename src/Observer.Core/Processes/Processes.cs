@@ -110,18 +110,20 @@ public sealed class SystemProcessLister : IProcessLister
 
         try
         {
-            // L'I/O si legge per ultimo e non fa fallire la riga: un processo di cui si sa la
-            // CPU ma non i byte trasferiti e' ancora un processo da mostrare.
-            ulong? trasferiti = io is not null && io.TryRead(processo.Id, out ulong byteIo)
+            int pid = processo.Id;
+            string nome = processo.ProcessName;
+            TimeSpan cpu = processo.TotalProcessorTime;
+            ByteSize memoria = ByteSize.FromBytes(processo.WorkingSet64);
+
+            // L'I/O si legge per ultimo - DOPO nome e contatori, in variabili locali, non come
+            // argomento del costruttore, dove verrebbe valutato per primo - e non fa fallire la
+            // riga: un processo di cui si sa la CPU ma non i byte trasferiti e' ancora un
+            // processo da mostrare.
+            ulong? trasferiti = io is not null && io.TryRead(pid, out ulong byteIo)
                 ? byteIo
                 : null;
 
-            lettura = new ProcessTimes(
-                processo.Id,
-                processo.ProcessName,
-                processo.TotalProcessorTime,
-                ByteSize.FromBytes(processo.WorkingSet64),
-                trasferiti);
+            lettura = new ProcessTimes(pid, nome, cpu, memoria, trasferiti);
 
             return true;
         }

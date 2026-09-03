@@ -166,5 +166,13 @@ public class ProcessEndpointsTests
             Assert.True(adesso <= precedente, "l'elenco per I/O non e' in ordine decrescente");
             precedente = adesso;
         }
+
+        // Almeno un tasso deve essere NOTO. Senza questa riga il test passerebbe a vuoto con
+        // ogni tasso null - cioe' con il lettore dell'I/O mai collegato in Program.cs - e
+        // l'ha dimostrato una mutazione: new SystemProcessLister(ioReader: null), suite verde.
+        // Questo e' l'unico test che attraversa il cablaggio vero, dal servizio al sistema.
+        Assert.Contains(
+            documento.RootElement.GetProperty("processes").EnumerateArray(),
+            processo => processo.GetProperty("ioBytesPerSecond").ValueKind != JsonValueKind.Null);
     }
 }
