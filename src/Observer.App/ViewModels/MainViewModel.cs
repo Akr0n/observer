@@ -127,7 +127,7 @@ public sealed partial class MainViewModel : ViewModelBase
 
         foreach (ObserverEndpoint punto in elenco?.Machines ?? [])
         {
-            Macchine.Add(punto);
+            Macchine.Add(new MacchinaInElenco(punto));
         }
 
         foreach (string problema in elenco?.Problems ?? [])
@@ -139,7 +139,7 @@ public sealed partial class MainViewModel : ViewModelBase
         // serve alcun guardiano contro la propria stessa scrittura: il gestore qui sotto esce
         // da se' quando la macchina scelta e' gia' quella aperta.
         MacchinaSelezionata = Macchine.FirstOrDefault(
-            punto => client is not null && punto == client.Endpoint) ?? Macchine.FirstOrDefault();
+            voce => client is not null && voce.Punto == client.Endpoint) ?? Macchine.FirstOrDefault();
 
         // Solo il nome dell'applicazione. QUALE macchina si sta guardando lo dicono gia' la
         // riga sotto il titolo e la voce evidenziata nella barra laterale: ripeterlo nel
@@ -320,8 +320,18 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Quale risorsa sta guardando il pannello: <c>cpu</c>, <c>memory</c>, o null.</summary>
     private string? risorsaMostrata;
 
-    /// <summary>Le macchine fra cui si puo' scegliere. La prima e' sempre questa.</summary>
-    public ObservableCollection<ObserverEndpoint> Macchine { get; } = [];
+    /// <summary>Le macchine fra cui si puo' scegliere, ognuna col suo stato. La prima e' sempre questa.</summary>
+    public ObservableCollection<MacchinaInElenco> Macchine { get; } = [];
+
+    /// <summary>Ogni quanto si sondano le macchine che NON si stanno guardando.</summary>
+    /// <remarks>
+    /// Quindici secondi e non uno: un pallino accanto al nome deve dire "e' viva", non seguire
+    /// la CPU. E le sonde partono e non si aspettano: una macchina spenta costa otto secondi
+    /// di timeout, e il giro dei quadranti non deve pagarli.
+    /// </remarks>
+    private static readonly TimeSpan RicaricaStati = TimeSpan.FromSeconds(15);
+
+    private DateTimeOffset prossimaSonda = DateTimeOffset.MinValue;
 
     /// <summary>Le voci dell'elenco che sono state scartate, e perche'.</summary>
     /// <remarks>
@@ -353,23 +363,23 @@ public sealed partial class MainViewModel : ViewModelBase
 
     /// <summary>La macchina attualmente guardata.</summary>
     [ObservableProperty]
-    public partial ObserverEndpoint? MacchinaSelezionata { get; set; }
+    public partial MacchinaInElenco? MacchinaSelezionata { get; set; }
 
     /// <summary>Cambia macchina senza riavviare la finestra.</summary>
     /// <param name="value">La macchina scelta nell'elenco.</param>
-    partial void OnMacchinaSelezionataChanged(ObserverEndpoint? value)
+    partial void OnMacchinaSelezionataChanged(MacchinaInElenco? value)
     {
         if (value is null || apriMacchina is null)
         {
             return;
         }
 
-        if (client is not null && value == client.Endpoint)
+        if (client is not null && value.Punto == client.Endpoint)
         {
             return;
         }
 
-        client = apriMacchina(value);
+        client = apriMacchina(value.Punto);
 
         // Tutto cio' che descriveva la macchina PRECEDENTE va buttato: il catalogo, perche' le
         // etichette appartengono a quel servizio; i riquadri, perche' sono le sue misure; e
@@ -469,6 +479,14 @@ public sealed partial class MainViewModel : ViewModelBase
                 if (esito == ServiceOutcome.Ok && ProcessiVisibili)
                 {
                     await AggiornaProcessiAsync(cancellationToken);
+                }
+
+                // Le altre macchine, per il pallino accanto al nome. Partono e non si
+                // aspettano: vedi SondaLeAltre.
+                if (adesso() >= prossimaSonda)
+                {
+                    prossimaSonda = adesso() + RicaricaStati;
+                    SondaLeAltre(cancellationToken);
                 }
 
                 // Un 401 su una finestra GIA' collegata significa quasi sempre che il token e'
@@ -585,6 +603,7 @@ public sealed partial class MainViewModel : ViewModelBase
         Applica(SnapshotProjection.Project(snapshot, catalogo));
 
         StatoVisibile = false;
+        MacchinaSelezionata?.Registra(ServiceOutcome.Ok, string.Empty, adesso());
 
         // La serie di guasti e' finita: la prossima ricomincia da capo, e ha diritto alla
         // stessa attesa che ha avuto questa.
@@ -622,6 +641,60 @@ public sealed partial class MainViewModel : ViewModelBase
 
         Mostra(Gravita(messaggio.Tone), messaggio.Title, messaggio.Text);
         SottoIntestazione = messaggio.Subheading;
+
+        // Il pallino della macchina guardata segue la barra di stato, cosi' i due non dicono
+        // mai cose diverse.
+        MacchinaSelezionata?.Registra(esito, testo, ora);
+    }
+
+    /// <summary>Interroga le macchine che non si stanno guardando, tutte insieme e senza aspettarle.</summary>
+    /// <param name="cancellationToken">Annullato alla chiusura.</param>
+    /// <remarks>
+    /// Il giro principale NON attende le sonde: una macchina spenta risponde dopo otto secondi
+    /// di timeout, e i quadranti della macchina guardata non devono fermarsi per questo. Ogni
+    /// sonda aggiorna la propria voce quando torna, e finche' e' in volo non ne parte un'altra.
+    /// </remarks>
+    private void SondaLeAltre(CancellationToken cancellationToken)
+    {
+        if (apriMacchina is null)
+        {
+            return;
+        }
+
+        foreach (MacchinaInElenco voce in Macchine)
+        {
+            if (voce.InSonda || ReferenceEquals(voce, MacchinaSelezionata))
+            {
+                continue;
+            }
+
+            voce.InSonda = true;
+            _ = SondaAsync(voce, cancellationToken);
+        }
+    }
+
+    private async Task SondaAsync(MacchinaInElenco voce, CancellationToken cancellationToken)
+    {
+        try
+        {
+            SnapshotFetch fetch = await apriMacchina!(voce.Punto).GetLatestAsync(cancellationToken);
+
+            voce.Registra(fetch.Outcome, fetch.Problem, adesso());
+        }
+        catch (OperationCanceledException)
+        {
+            // Chiusura: niente da registrare.
+        }
+#pragma warning disable CA1031 // Una sonda che lancia non deve far cadere niente: il suo esito e' un pallino.
+        catch (Exception errore)
+#pragma warning restore CA1031
+        {
+            voce.Registra(ServiceOutcome.Unknown, errore.Message, adesso());
+        }
+        finally
+        {
+            voce.InSonda = false;
+        }
     }
 
     private static FAInfoBarSeverity Gravita(StatusTone tono) => tono switch

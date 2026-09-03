@@ -48,7 +48,7 @@ public class CambioMacchinaTests
         Assert.NotEmpty(viewModel.Quadranti);
         Assert.True(viewModel.MostraQuadranti);
 
-        viewModel.MacchinaSelezionata = altra;
+        viewModel.MacchinaSelezionata = viewModel.Macchine.Single(voce => voce.Punto == altra);
 
         // Subito, senza aspettare un giro: fra la scelta e la prima risposta della macchina
         // nuova passa almeno un secondo, e in quel secondo non deve esserci niente da leggere.

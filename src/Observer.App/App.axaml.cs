@@ -66,7 +66,7 @@ public partial class App : Application
                     // Rilegge dal disco la voce della macchina che si sta guardando. Serve
                     // quando il suo token viene ruotato: senza, la finestra resterebbe bloccata
                     // su "Token rejected" fino al riavvio anche dopo aver corretto il file.
-                    if (viewModel?.MacchinaSelezionata is not { } corrente)
+                    if (viewModel?.MacchinaSelezionata?.Punto is not { } corrente)
                     {
                         return null;
                     }
