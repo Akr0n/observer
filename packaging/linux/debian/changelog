@@ -1,3 +1,19 @@
+observer (0.8.0) unstable; urgency=medium
+
+  * Windows: the installer now opens port 5058/tcp in Windows Firewall for
+    the service executable, on private and domain networks only and only
+    from the local subnet, and removes the rules on uninstall. Until now the
+    service listened on the network and the firewall silently refused every
+    connection, so a remote dashboard reported "no answer" and sent you
+    looking for a network fault that was not there.
+  * Linux: the package ships a ufw application profile and opens nothing by
+    itself, as a Debian package must not; "sudo ufw allow Observer" is all
+    it takes, and the post-install note says so.
+  * The service descriptions in both packages no longer say "CPU and memory
+    over HTTP": they say what is measured, and that it is HTTPS.
+
+ -- Federico Cardinali <noreply@example.invalid>  Thu, 03 Sep 2026 12:00:00 +0000
+
 observer (0.7.0) unstable; urgency=medium
 
   * Clicking a disk activity gauge now opens the process list ranked by
