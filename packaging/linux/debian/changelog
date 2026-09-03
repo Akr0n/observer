@@ -1,3 +1,32 @@
+observer (0.9.0) unstable; urgency=medium
+
+  * Clicking a gauge now scrolls the window to the process list and puts the
+    keyboard focus in it. At the default window size the list used to open
+    below the fold, and the click looked like it had done nothing: it was
+    the most serious finding of the interface review.
+  * A second click on the same gauge closes the list; a click on another
+    gauge switches it without closing.
+  * The process list has column headings - Name, CPU, Memory, I/O - and grows
+    with the window instead of stopping at 260 pixels and scrolling inside a
+    page that already scrolls.
+  * One "End process" button that changes its label on the first click,
+    instead of two buttons swapping places and taking the keyboard focus
+    with them.
+  * Gauges have a name and a value for screen readers, and the clickable
+    ones show a hand cursor; the disk space gauges, which open nothing, no
+    longer wear the faint box of a disabled button.
+  * The window opens at 900x700 and cannot go below 640x520: the old minimum
+    of 420x360 predated the machine list and cut the only visible gauge in
+    half.
+  * Captions and section titles come from the Fluent type scale and take
+    their colour from the theme instead of a hand-picked opacity; the gauge
+    caption never goes below 11 px.
+  * Less work when nobody is looking: minimised, the dashboard reads every
+    ten seconds instead of every second, and the history strips of all
+    gauges are fetched together instead of one after another.
+
+ -- Federico Cardinali <noreply@example.invalid>  Thu, 03 Sep 2026 14:00:00 +0000
+
 observer (0.8.1) unstable; urgency=medium
 
   * The window title now carries the version: "Observer 0.8.1". Which build

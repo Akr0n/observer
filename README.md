@@ -54,7 +54,9 @@ tempo di lettura e di scrittura: i due si sovrappongono, e su una finestra misur
 dava 843%.
 
 Oltre alle metriche, il servizio espone l'**elenco dei processi** ordinato per CPU, per memoria
-o per I/O, ed e' quello che la dashboard apre cliccando il quadrante corrispondente. Dal
+o per I/O, ed e' quello che la dashboard apre cliccando il quadrante corrispondente: la finestra
+scorre da sola fino all'elenco, un secondo clic sullo stesso quadrante lo chiude, un clic su un
+altro quadrante lo cambia. Dal
 quadrante dell'attivita' di un disco si apre l'elenco per I/O, che e' dell'**intera macchina** e
 il titolo lo dice: i contatori sono per processo, e nessuno dei due sistemi dice su quale
 dispositivo sono finiti i byte. I quadranti dello spazio non aprono niente: lo spazio occupato
