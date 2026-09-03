@@ -1,3 +1,25 @@
+observer (0.10.0) unstable; urgency=medium
+
+  * The gauges now fill the row: as many columns as fit at the smallest
+    readable size, then every gauge grows - up to half again as large - to
+    use the width there is. No more holes at the end of a row.
+  * The machine list is as wide as the names in it, between 150 and 240
+    pixels, instead of a fixed 210 that spent a third of a small window on
+    empty space.
+  * The window remembers where it was, how big, and whether it was
+    maximised, and reopens there - unless that place is on a screen that is
+    no longer connected, in which case it opens where the system puts it.
+  * A "Text size" setting in the top right corner, with the same steps as
+    Windows (100, 115, 130, 150 %): it scales the whole window, gauges
+    included, and is remembered. The minimum window size grows with it, so
+    the layout never breaks. It exists because the toolkit does not read
+    the system text size.
+  * Both are kept in preferences.json next to client.json - a separate file,
+    because client.json may carry a credential and should not be rewritten
+    at every close.
+
+ -- Federico Cardinali <noreply@example.invalid>  Thu, 03 Sep 2026 15:00:00 +0000
+
 observer (0.9.0) unstable; urgency=medium
 
   * Clicking a gauge now scrolls the window to the process list and puts the
