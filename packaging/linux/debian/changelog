@@ -1,3 +1,19 @@
+observer (0.6.1) unstable; urgency=medium
+
+  * "observer rotate-key" now says where to read the key it has just written
+    ("observer share") and how to hand it to the machines that watch this one
+    ("observer token set NAME"). It still does not print the token, on
+    purpose, so it stays harmless where the output ends up in a log.
+  * The manual pages catch up with 0.6.0: observer(1) documents "token set"
+    and "token forget", and observer-dashboard(1) describes machines.json,
+    where the token no longer goes, and the HTTPS address on port 5058.
+  * README aligned with what is released: disk space, disk activity and the
+    process list are no longer listed as missing, the endpoint table carries
+    /processes and /processes/{pid}/kill, and the command table carries the
+    token verbs.
+
+ -- Federico Cardinali <noreply@example.invalid>  Thu, 03 Sep 2026 08:00:00 +0000
+
 observer (0.6.0) unstable; urgency=medium
 
   * The token of a remote machine no longer belongs in machines.json, and one
