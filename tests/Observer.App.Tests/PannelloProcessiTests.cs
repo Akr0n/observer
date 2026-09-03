@@ -82,9 +82,11 @@ public class PannelloProcessiTests
 
         viewModel.ProcessoSelezionato = viewModel.Processi.Single(riga => riga.Pid == 22);
 
-        // Stessi PID, valori nuovi: e' cio' che succede a ogni giro.
+        // Stessi PID, valori nuovi: e' cio' che succede a ogni giro. Si passa per un altro
+        // quadrante e non per lo stesso, perche' lo stesso quadrante una seconda volta CHIUDE
+        // il pannello; un altro lo aggiorna sul posto, ed e' l'aggiornamento che qui conta.
         cliente.Cpu = ["9.0 %", "3.0 %"];
-        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("memory|memory.used.percent|"));
 
         Assert.NotNull(viewModel.ProcessoSelezionato);
         Assert.Equal(22, viewModel.ProcessoSelezionato!.Pid);
@@ -130,6 +132,67 @@ public class PannelloProcessiTests
         Assert.Equal([11], cliente.Terminati);
         Assert.False(viewModel.ConfermaTerminazione);
     }
+
+    [Fact]
+    public async Task CliccareDiNuovoLoStessoQuadranteChiudeIlPannello()
+    {
+        // Il gesto che chiunque prova per primo per far sparire cio' che ha appena fatto
+        // comparire. Prima riapriva lo stesso elenco, e l'unico modo di chiuderlo era il
+        // pulsante Close in fondo a destra.
+        ClienteConProcessi cliente = new();
+        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+
+        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        Assert.True(viewModel.ProcessiVisibili);
+
+        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+
+        Assert.False(viewModel.ProcessiVisibili);
+        Assert.Empty(viewModel.Processi);
+        Assert.Equal(["cpu"], cliente.Chiesti);
+    }
+
+    [Fact]
+    public async Task CliccareUnAltroQuadranteCambiaElencoSenzaChiudere()
+    {
+        ClienteConProcessi cliente = new();
+        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+
+        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("memory|memory.used.percent|"));
+
+        Assert.True(viewModel.ProcessiVisibili);
+        Assert.Contains("memory", viewModel.ProcessiTitolo, StringComparison.Ordinal);
+        Assert.Equal(["cpu", "memory"], cliente.Chiesti);
+    }
+
+    [Fact]
+    public async Task IlPulsanteDiceQuandoServeIlSecondoClic()
+    {
+        // Un pulsante solo, che cambia scritta: cosi' il fuoco della tastiera resta dov'e'.
+        // Con due pulsanti alternati, al primo clic quello premuto spariva.
+        ClienteConProcessi cliente = new();
+        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+
+        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        viewModel.ProcessoSelezionato = viewModel.Processi.First();
+
+        Assert.Equal("End process", viewModel.TestoTermina);
+
+        await viewModel.TerminaSelezionatoCommand.ExecuteAsync(parameter: null);
+
+        Assert.Equal("Click again to end it", viewModel.TestoTermina);
+
+        viewModel.ProcessoSelezionato = viewModel.Processi.Last();
+
+        Assert.Equal("End process", viewModel.TestoTermina);
+    }
+
+    [Fact]
+    public void UnaRigaSiLeggePerInteroConLeIntestazioni() =>
+        Assert.Equal(
+            "claude, CPU 15.1 %, memory 228.5 MiB, I/O 1.1 MiB/s",
+            new ProcessoMostrato(1, "claude", "15.1 %", "228.5 MiB", "1.1 MiB/s").Descrizione);
 
     [Fact]
     public async Task ChiudereIlPannelloDimenticaTutto()

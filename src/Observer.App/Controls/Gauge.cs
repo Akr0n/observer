@@ -418,7 +418,10 @@ public sealed class Gauge : Control
             if (didascalia is null
                 || !string.Equals(didascaliaScritta, Caption, StringComparison.Ordinal))
             {
-                didascalia = Testo(Caption, Math.Max(8d, corpo * 0.46d), colore);
+                // Undici e non otto: sotto, a 148 px di quadrante la didascalia scendeva a dieci
+                // e diventava la scritta piu' piccola della finestra, proprio quella che dice
+                // COSA misura il numero grande sopra.
+                didascalia = Testo(Caption, Math.Max(11d, corpo * 0.46d), colore);
                 didascaliaScritta = Caption;
             }
 
