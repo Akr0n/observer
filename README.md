@@ -5,12 +5,14 @@
 Dashboard cross-platform per il monitoraggio dei parametri vitali della macchina
 e dei dispositivi presenti sulla rete locale. Gira su Windows e Linux.
 
-> **Stato:** funzionante su CPU e memoria, e installabile. Il servizio campiona una volta
-> al secondo su Windows e su Linux, conserva le serie su SQLite, si genera da solo il
-> proprio token di macchina, ed espone i dati sia sulla rete sia su un canale locale che
-> non richiede credenziali; il client desktop si collega e li mostra dal vivo. Ci sono un
+> **Stato:** funzionante e installabile. Il servizio campiona una volta al secondo su Windows
+> e su Linux - CPU, memoria, spazio per volume, attivita' per disco - conserva le serie su
+> SQLite, si genera da solo il proprio token di macchina, ed espone i dati sia sulla rete sia
+> su un canale locale che non richiede credenziali. Il client desktop li mostra dal vivo, con
+> un'ora di storico sotto i quadranti, e dal quadrante della CPU o della memoria apre l'elenco
+> dei processi che la stanno consumando, da cui un processo si puo' terminare. Ci sono un
 > pacchetto MSI per Windows e un `.deb` per Linux, che registrano il servizio e installano
-> la dashboard. Mancano le altre metriche (dischi, rete, processi) e i grafici storici.
+> la dashboard. Mancano la rete e i sensori di temperatura.
 >
 > L'interfaccia dell'applicazione è in **inglese**; questa documentazione e i commenti
 > nel codice restano in italiano.
@@ -26,13 +28,34 @@ raccolta e visualizzazione devono essere due processi distinti.
 | `src/Observer.Core` | Modelli condivisi, astrazione dei collector e adattatori di piattaforma |
 | `src/Observer.Service` | Servizio headless: campiona a 1 Hz, conserva le serie su SQLite con aggregazione ed espone i dati via HTTP autenticato |
 | `src/Observer.App` | Client desktop Avalonia: si collega al servizio e mostra le metriche dal vivo |
-| `src/Observer.Cli` | Riga di comando `observer`: condivide la chiave, la ruota, diagnostica |
+| `src/Observer.Cli` | Riga di comando `observer`: condivide la chiave, la ruota, diagnostica, e custodisce i token delle altre macchine |
 | `tests/Observer.Core.Tests` | Test su `Observer.Core` |
 | `tests/Observer.Service.Tests` | Test su `Observer.Service`, storico e canale locale compresi |
 | `tests/Observer.App.Tests` | Test sul client HTTP e sulla traduzione delle risposte |
 | `tests/Observer.Cli.Tests` | Test sui messaggi della riga di comando |
 
 Il client può puntare al servizio in esecuzione sulla stessa macchina o su un'altra.
+
+### Cosa misura
+
+| Metrica | Un'istanza e' | Note |
+| --- | --- | --- |
+| CPU | la macchina | percentuale di utilizzo, dal delta dei tempi di sistema |
+| Memoria | la macchina | usata, disponibile e totale; "disponibile" e' una stima quando il sistema la fornisce come tale, e lo dice |
+| Spazio disco | un volume (`C:`, `/`) | usato, libero e totale; una capacita' pari a zero e' "sconosciuta", non "vuota" |
+| Attivita' disco | un dispositivo (`Disk 0`, `sda`) | byte letti e scritti al secondo, e percentuale di tempo occupato |
+
+Le istanze dell'attivita' disco sono **dispositivi**, non volumi, e di proposito non coincidono
+con quelle dello spazio: un disco porta piu' volumi e un volume puo' estendersi su piu' dischi,
+quindi attribuire il traffico di due volumi a una lettera sarebbe peggio di un nome di
+dispositivo onesto. La percentuale di occupazione si ricava dal tempo **inattivo**, mai sommando
+tempo di lettura e di scrittura: i due si sovrappongono, e su una finestra misurata la somma
+dava 843%.
+
+Oltre alle metriche, il servizio espone l'**elenco dei processi** ordinato per CPU o per
+memoria, ed e' quello che la dashboard apre cliccando il quadrante corrispondente. I quadranti
+dei dischi non lo aprono: lo spazio occupato su un volume non si attribuisce a un processo in
+esecuzione.
 
 ### Aggiungere una metrica
 
@@ -116,10 +139,19 @@ sbagliato. Dalla **rete** il bearer token resta obbligatorio.
 | `GET /metrics/series` | quali serie sono state davvero misurate su questa macchina |
 | `GET /metrics/history` | i punti storici; `resolution` accetta `auto`, `raw`, `1m`, `5m` |
 | `GET /metrics/storage` | dove scrive, quanto occupa, fin dove ha aggregato |
+| `GET /processes` | i processi che consumano di piu'; `by` accetta `cpu` (predefinito) o `memory`, `top` da 1 a 100 (predefinito 15) |
+| `POST /processes/{pid}/kill` | termina quel processo: `204` se e' andata, `404` se il pid non esiste |
 
 `auto` sceglie la risoluzione più fine ancora disponibile per l'intervallo richiesto: il
 grezzo di ieri è stato cancellato, e restituire un grafico vuoto si leggerebbe come
 "macchina non monitorata".
+
+`/processes/{pid}/kill` e' l'**unica scrittura** del servizio, ed e' ammessa dalla rete col
+token per scelta esplicita: da un'altra macchina si vede un processo impazzito e lo si ferma
+da li'. Ogni tentativo - riuscito o rifiutato dal sistema operativo - finisce nel log del
+servizio con pid, nome e provenienza del chiamante. E' anche il motivo per cui il token non
+sta piu' in un file (vedi "Guardare un'altra macchina"). `GET /processes` risponde `503`
+quando l'elenco non si puo' leggere su quella macchina.
 
 ## Requisiti
 
@@ -168,9 +200,11 @@ autorizzato, l'impronta del certificato dice che quella macchina e' chi dichiara
 Senza la seconda, chi riesce a mettersi in mezzo presenta il proprio certificato e il token
 gli arriva addosso.
 
-Il modo normale di usarli e' la dashboard, che li legge da `machines.json` e confronta
-l'impronta da se'. Da riga di comando il certificato e' autofirmato, quindi `curl` non ha
-un'autorita' a cui appoggiarsi: l'impronta va confrontata **a mano**, e solo dopo si procede.
+Il modo normale di usarli e' la dashboard: indirizzo e impronta vanno in `machines.json`, il
+token nel deposito di questa macchina con `observer token set` (vedi "Guardare un'altra
+macchina"), e l'impronta la confronta lei. Da riga di comando il certificato e' autofirmato,
+quindi `curl` non ha un'autorita' a cui appoggiarsi: l'impronta va confrontata **a mano**, e
+solo dopo si procede.
 
 ```bash
 # 1. che impronta presenta quella macchina, vista da qui
@@ -194,8 +228,10 @@ nomina la propria causa.
 | Verbo | Elevazione | Cosa fa |
 | --- | --- | --- |
 | `observer share` | si | mostra il token di macchina e l'impronta, per configurare un ALTRO computer |
-| `observer rotate-key` | si | genera una chiave nuova; la precedente vale ancora 24 ore |
+| `observer rotate-key` | si | genera una chiave nuova; la precedente vale ancora 24 ore, e il servizio usa la vecchia finche' non viene riavviato |
 | `observer doctor` | no | dove sta il deposito, com'e' protetto, e se il canale locale risponde |
+| `observer token set NOME` | no | custodisce il token di un'ALTRA macchina; lo legge da standard input e non lo mostra |
+| `observer token forget NOME` | no | dimentica quel token |
 
 ### Guardare un'altra macchina
 
@@ -224,6 +260,11 @@ L'impronta e l'indirizzo vanno in `machines.json`, accanto a `client.json`. **Il
 }
 ```
 
+`name` e' **obbligatorio**: e' la chiave sotto cui viene custodito il token, e viene controllato
+prima di comporre qualsiasi percorso - lettere, cifre, spazio, `.`, `_` e `-`, niente altro -
+perche' un nome come `../../id_rsa` andrebbe altrimenti a leggere e sovrascrivere un file fuori
+dalla cartella.
+
 Il token si consegna a questa macchina con un comando, e non si scrive da nessuna parte:
 
 ```bash
@@ -240,6 +281,10 @@ macchina, serve anche a **fermarci dei processi**. Un file fatto per essere aper
 incollato non e' il posto giusto per una credenziale del genere, e infatti una voce che se lo
 porta ancora dietro viene rifiutata — anche quando il token e' quello giusto.
 
+**Aggiornando da una versione precedente alla 0.6.0**: per ogni macchina remota esegui
+`observer token set NOME` e poi cancella la riga `apiToken` da `machines.json`. Finche' resta,
+quella macchina compare sotto l'elenco come inutilizzabile, con scritto il comando da eseguire.
+
 La **barra laterale c'e' sempre**, anche quando la macchina e' una sola: li' dentro trovi il
 percorso esatto di `machines.json` da scrivere. Nasconderla finche' non ci sono due macchine
 significherebbe annunciare la funzione solo a chi sa gia' che esiste.
@@ -247,6 +292,14 @@ significherebbe annunciare la funzione solo a chi sa gia' che esiste.
 Quella locale e' sempre la prima: non si elenca e non si puo' togliere. Una voce scritta male
 **non sparisce in silenzio** - compare sotto l'elenco con il motivo, perche' una macchina che
 semplicemente non c'e' e' indistinguibile da una che non e' stata aggiunta.
+
+Quando una macchina non risponde, la barra di stato distingue **connessione rifiutata** - c'e'
+qualcuno a quell'indirizzo ma il servizio non e' in ascolto: va avviato - da **nessuna risposta**
+entro 8 secondi, che di solito e' una porta chiusa o un firewall. I due rimedi sono opposti, e
+confonderli costa un pomeriggio. Nei primi 10 secondi la barra resta gialla, non rossa: un
+servizio che sta ancora partendo rifiuta anche lui. Un token rifiutato, un'impronta diversa o
+un servizio piu' vecchio della dashboard sono rossi da subito, perche' fra un minuto saranno
+identici.
 
 **Sulla rete il servizio risponde solo in HTTPS.** Prima rispondeva in chiaro, e il token
 attraversava la rete una volta al secondo: una sola cattura di pacchetti consegnava una

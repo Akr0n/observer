@@ -1,12 +1,15 @@
-.TH OBSERVER-DASHBOARD 1 "2026-08-27" "observer 0.1.0" "User Commands"
+.TH OBSERVER-DASHBOARD 1 "2026-09-03" "observer 0.6.1" "User Commands"
 .SH NAME
-observer-dashboard \- watch a machine's CPU and memory
+observer-dashboard \- watch a machine's vital signs
 .SH SYNOPSIS
 .B observer-dashboard
 .SH DESCRIPTION
 .B observer-dashboard
 opens a window that polls an Observer service once a second and shows what it
-reports.
+reports: CPU, memory, disk space per volume and disk activity per device, on
+gauges, with the last hour drawn underneath. Clicking the CPU or the memory
+gauge lists the processes consuming most of it, refreshed once a second, and
+the selected one can be ended from there.
 .PP
 With no configuration it talks to the service on this machine over the local
 socket, and needs no token. For that to work your account has to be in the
@@ -19,24 +22,50 @@ group:
 .PP
 then log out and back in.
 .PP
-It can point at a service on another computer instead, and that is what makes
-watching several machines nearly free. A remote service does require a token:
-get it by running
+It can watch other machines too, and that is what makes watching several of
+them nearly free. Each one needs two values, both printed by
 .B observer share
-on that machine.
+on that machine: its address and its certificate fingerprint go into
+.IR machines.json ;
+its token is handed to this computer with
+.B observer token set NAME
+and is never written into the file. An entry that still carries an
+.B apiToken
+field is refused, even when the token is the right one, and is listed under the
+machines with the reason.
 .SH ENVIRONMENT
 .TP
 .B Observer__BaseAddress
-The service to query, for example
-.IR http://other-machine:5057/ .
-Defaults to the local socket.
+A single service to query, for example
+.IR https://other-machine:5058/ .
+Defaults to the local socket. Kept for the older one-machine setup;
+.I machines.json
+is the normal way.
 .TP
 .B Observer__ApiToken
-The token for a remote service. Not needed for this machine.
+The token for that service. Not needed for this machine.
 .SH FILES
 .TP
+.I ~/.local/share/Observer/machines.json
+The machines to watch. Each entry has a
+.B name
+(required: it is the key the token is kept under), a
+.B baseAddress
+and a
+.B fingerprint
+of the form
+.IR sha256:... .
+The token does not go here.
+.TP
+.I ~/.local/share/Observer/secrets/NAME
+Where
+.B observer token set
+keeps each machine's token, readable only by its owner.
+.TP
 .I ~/.local/share/Observer/client.json
-Read when the environment variables are absent. Recognised fields are
+Read only when
+.I machines.json
+does not exist: the older one-machine configuration, with the fields
 .B baseAddress
 and
 .BR apiToken .
