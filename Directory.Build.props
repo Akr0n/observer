@@ -12,7 +12,7 @@
          di tutti e tre. Da qui raggiunge anche i metadati dei binari, che prima dichiaravano
          tutti 1.0.0.0 qualunque fosse la versione del pacchetto che li conteneva.
          Il .wixproj la riceve perche' questo file si applica anche a lui. -->
-    <Version>0.6.1</Version>
+    <Version>0.7.0</Version>
 
     <!-- Il titolare del copyright, in un posto solo. Da qui finisce nei metadati di OGNI
          eseguibile prodotto: le proprieta' del file su Windows, e le stesse informazioni
