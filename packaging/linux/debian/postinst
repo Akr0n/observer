@@ -64,6 +64,13 @@ socket. For your account to use it, it has to be in the observer group:
 then log out and back in. The token exists only so ANOTHER computer can query this
 machine; get it with "observer share", from a terminal with privileges.
 
+For that other computer to reach this one, port 5058/tcp has to be open. This
+package opens nothing by itself; if you use ufw, it installed a profile so that
+
+    sudo ufw allow Observer
+
+is all it takes. Not needed to watch this machine.
+
 NOTE
         ;;
 esac

@@ -7,9 +7,9 @@ Maintainer: Federico Cardinali <noreply@example.invalid>
 Depends: aspnetcore-runtime-10.0, adduser, libc6, init-system-helpers (>= 1.54~)
 Recommends: libx11-6, libice6, libsm6, libfontconfig1, libxext6, libxcursor1, libxrandr2, libxi6, libxrender1, libx11-xcb1, libgl1, libegl1
 Description: Machine metrics service and dashboard
- Observer samples CPU and memory and serves them over HTTP and a local unix
- socket. The service generates and keeps its own machine token on first
- start, so nothing has to be configured after installation.
+ Observer samples CPU, memory, disks and processes and serves them over HTTPS
+ and a local unix socket. The service generates and keeps its own machine
+ token on first start, so nothing has to be configured after installation.
  .
  To watch the machine you are sitting at you need no token at all: the
  dashboard comes in through the local socket, and membership of the observer

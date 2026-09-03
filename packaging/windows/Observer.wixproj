@@ -44,4 +44,11 @@
            Text="Il payload contiene file che possono portare un segreto: @(SegretiTrovati). Un MSI finisce su GitHub Releases: toglili dalla cartella pubblicata prima di impacchettare." />
   </Target>
 
+  <!-- L'estensione Firewall: l'unico modo, dentro un MSI, di aprire la porta del servizio in
+       modo transazionale - la regola nasce con il componente e muore con lui alla
+       disinstallazione, senza uno script netsh che poi nessuno ricorda di annullare. -->
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Firewall.wixext" Version="6.0.2" />
+  </ItemGroup>
+
 </Project>
