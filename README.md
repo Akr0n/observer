@@ -62,6 +62,13 @@ il titolo lo dice: i contatori sono per processo, e nessuno dei due sistemi dice
 dispositivo sono finiti i byte. I quadranti dello spazio non aprono niente: lo spazio occupato
 su un volume non si attribuisce a un processo in esecuzione.
 
+La finestra **ricorda dov'era**, quanto era grande e se era a tutto schermo, e riapre li' - a
+meno che quel posto stia su uno schermo che non c'e' piu', nel qual caso apre dove la mette il
+sistema. In alto a destra c'e' la **misura del testo** (100, 115, 130, 150 %, gli stessi passi
+di Windows): scala tutta la finestra, quadranti compresi, e viene ricordata anche lei. Le due
+cose stanno in `preferences.json` accanto a `client.json` - un file a parte, perche'
+`client.json` puo' contenere una credenziale e non va riscritto a ogni chiusura.
+
 "I/O" vuol dire ogni lettura e scrittura che il processo ha chiesto, cache compresa: e' l'unico
 contatore per processo che Windows abbia, e su Linux si leggono `rchar` e `wchar` - non
 `read_bytes` e `write_bytes`, che sarebbero piu' veri per il disco ma diversi da quello che
@@ -298,6 +305,15 @@ porta ancora dietro viene rifiutata — anche quando il token e' quello giusto.
 **Aggiornando da una versione precedente alla 0.6.0**: per ogni macchina remota esegui
 `observer token set NOME` e poi cancella la riga `apiToken` da `machines.json`. Finche' resta,
 quella macchina compare sotto l'elenco come inutilizzabile, con scritto il comando da eseguire.
+
+Accanto a ogni macchina dell'elenco c'e' un **pallino** che dice se risponde, senza doverci
+cliccare sopra: grigio finche' non e' stata sentita, verde se risponde, ambra mentre un guasto
+dura da meno di dieci secondi, rosso dopo. E' la stessa regola della barra di stato, cosi' un
+pallino rosso vuol dire cio' che vuol dire una barra rossa; un token rifiutato o una versione
+incompatibile sono rossi subito. Le macchine che non stai guardando vengono sondate ogni
+quindici secondi, tutte insieme e senza trattenere i quadranti: una macchina spenta costa un
+timeout di otto secondi, e i quadranti non devono pagarlo. Il suggerimento sul pallino dice il
+motivo.
 
 La **barra laterale c'e' sempre**, anche quando la macchina e' una sola: li' dentro trovi il
 percorso esatto di `machines.json` da scrivere. Nasconderla finche' non ci sono due macchine
