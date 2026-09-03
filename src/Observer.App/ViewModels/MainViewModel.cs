@@ -134,7 +134,8 @@ public sealed partial class MainViewModel : ViewModelBase
 
         // Solo il nome dell'applicazione. QUALE macchina si sta guardando lo dicono gia' la
         // riga sotto il titolo e la voce evidenziata nella barra laterale: ripeterlo nel
-        // titolo grande e' rumore che si legge a ogni sguardo.
+        // titolo grande e' rumore che si legge a ogni sguardo. La versione sta nella barra
+        // del titolo della finestra, non qui: la si cerca quando serve, non la si rilegge.
         Intestazione = "Observer";
 
         if (client is null)
@@ -152,9 +153,26 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Titolo della finestra: nome e versione del programma.</summary>
+    /// <remarks>
+    /// Costante per tutta la vita della finestra, quindi non e' osservabile. La versione e'
+    /// quella dei metadati del binario, cioe' di <c>Directory.Build.props</c>, senza l'hash.
+    /// </remarks>
+    public string TitoloFinestra { get; } = Titolo(AppVersion.DiQuestoProgramma());
+
     /// <summary>Titolo grande in cima alla finestra.</summary>
     [ObservableProperty]
     public partial string Intestazione { get; set; }
+
+    /// <summary>Compone il titolo della finestra dalla versione.</summary>
+    /// <param name="versione">La versione corta, o vuota se non c'e'.</param>
+    /// <returns><c>Observer 0.8.0</c>, oppure solo <c>Observer</c> quando la versione manca.</returns>
+    public static string Titolo(string versione)
+    {
+        ArgumentNullException.ThrowIfNull(versione);
+
+        return versione.Length == 0 ? "Observer" : "Observer " + versione;
+    }
 
     /// <summary>Riga sotto il titolo: stato del collegamento e ora dell'ultima lettura.</summary>
     [ObservableProperty]
