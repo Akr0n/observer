@@ -32,9 +32,12 @@ public class PreferenzeTests
     public void UnaScalaNonAmmessaTornaAllaNormale()
     {
         // Un file scritto a mano con 2.7 darebbe una finestra tre volte piu' grande dello
-        // schermo. Le scale sono quattro, e sono quelle.
+        // schermo, e uno con 0.5 pulsanti da 16 px. Le scale sono sei, e sono quelle: senza
+        // l'asserzione su 0.75 una lista tornata a [1..1.5] passerebbe solo il test dell'ordine.
         Assert.Equal(1.0d, Preferenze.Da("""{"textScale": 2.7}""").ScalaTesto);
+        Assert.Equal(1.0d, Preferenze.Da("""{"textScale": 0.5}""").ScalaTesto);
         Assert.Equal(1.15d, Preferenze.Da("""{"textScale": 1.15}""").ScalaTesto);
+        Assert.Equal(0.75d, Preferenze.Da("""{"textScale": 0.75}""").ScalaTesto);
         Assert.Equal(1.0d, Preferenze.Da("""{}""").ScalaTesto);
     }
 
@@ -217,13 +220,19 @@ public class PreferenzeTests
 
         Assert.Contains("115", testo, StringComparison.Ordinal);
         Assert.Contains("%", testo, StringComparison.Ordinal);
+        Assert.Contains("75", new OpzioneScala(0.75d).ToString(), StringComparison.Ordinal);
         Assert.Equal(new OpzioneScala(1.15d), new OpzioneScala(1.15d));
     }
 
     [Fact]
-    public void LeScaleAmmesseSonoInOrdineEPartonoDallaNormale()
+    public void LeScaleAmmesseSonoInOrdineEComprendonoLaNormale()
     {
-        Assert.Equal(1.0d, Preferenze.ScaleAmmesse[0]);
+        Assert.Equal(1.0d, Preferenze.ScalaNormale);
+        Assert.Contains(Preferenze.ScalaNormale, Preferenze.ScaleAmmesse);
+
+        // Il pavimento e' 0,75 e non scende: e' la scala a cui un controllo Fluent da 32 px
+        // e' ancora 24 px, e l'anello di stato tiene il buco (misurato su catture reali).
+        Assert.True(Preferenze.ScaleAmmesse[0] >= 0.75d);
 
         for (int i = 1; i < Preferenze.ScaleAmmesse.Count; i++)
         {

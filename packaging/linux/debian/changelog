@@ -1,3 +1,15 @@
+observer (0.14.0) unstable; urgency=medium
+
+  * The "Text size" selector is now "Zoom" and also goes below 100 %: 75
+    and 85 % join 100, 115, 130 and 150. Below 100 the window shows more
+    without scrolling (more history rows, one more column of gauges on a
+    laptop) at the price of smaller text. 75 is the floor, measured on real
+    captures: buttons stay 24 px tall and the status ring keeps its hole.
+    An older dashboard reading a preferences file with 0.75 or 0.85 opens
+    at 100 % in silence, keeping window and theme.
+
+ -- Federico Cardinali <noreply@example.invalid>  Fri, 04 Sep 2026 12:30:00 +0000
+
 observer (0.13.0) unstable; urgency=medium
 
   * The status mark next to each machine has a shape as well as a colour:

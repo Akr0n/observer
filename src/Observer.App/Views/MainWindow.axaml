@@ -24,7 +24,7 @@
          esistesse la barra laterale, e non era mai stato riallineato. -->
 
     <Window.Styles>
-        <!-- I popup (suggerimenti, tendine) seguono la misura del testo. La tendina del
+        <!-- I popup (suggerimenti, tendine) seguono lo zoom. La tendina del
              selettore lo fa gia' per conto del tema; il suggerimento di Avalonia no, e a
              150% il valore sotto il puntatore sullo storico restava piccolo. -->
         <Style Selector="Popup">
@@ -92,15 +92,15 @@
          restano comunque verificate a compilazione grazie a x:DataType + x:CompileBindings. -->
 
     <!-- La radice e' un LayoutTransformControl: e' cio' che scala TUTTA la finestra quando si
-         cambia "Text size", quadranti compresi. Avalonia non legge la dimensione del testo di
-         sistema, e ingrandire solo i caratteri lascerebbe i quadranti piccoli sotto scritte
-         grandi. Il code-behind gli assegna la trasformazione e alza di pari passo la
-         dimensione minima della finestra. -->
+         cambia "Zoom", quadranti compresi, in su come in giu'. Avalonia non legge la
+         dimensione del testo di sistema, e ingrandire solo i caratteri lascerebbe i quadranti
+         piccoli sotto scritte grandi. Il code-behind gli assegna la trasformazione e muove di
+         pari passo la dimensione minima della finestra. -->
     <LayoutTransformControl x:Name="Radice">
     <DockPanel Margin="20">
 
         <DockPanel DockPanel.Dock="Top">
-            <!-- Tema e misura del testo, in alto a destra: scelte che si fanno una volta e non
+            <!-- Tema e zoom, in alto a destra: scelte che si fanno una volta e non
                  si rileggono, quindi stanno fuori dal percorso dello sguardo. -->
             <StackPanel DockPanel.Dock="Right"
                         Orientation="Horizontal"
@@ -118,7 +118,7 @@
                           MinWidth="92"
                           Margin="0,0,8,0"
                           AutomationProperties.Name="Theme" />
-                <TextBlock Text="Text size"
+                <TextBlock Text="Zoom"
                            Theme="{StaticResource CaptionTextBlockStyle}"
                            Classes="secondario"
                            VerticalAlignment="Center" />
@@ -128,7 +128,7 @@
                 <ComboBox ItemsSource="{x:Static vm:MainViewModel.OpzioniScala}"
                           SelectedItem="{Binding ScalaScelta}"
                           MinWidth="92"
-                          AutomationProperties.Name="Text size" />
+                          AutomationProperties.Name="Zoom" />
             </StackPanel>
 
             <StackPanel Spacing="2">

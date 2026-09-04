@@ -71,7 +71,8 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         // I minimi scritti nel XAML sono quelli a scala 1: a scala 1,3 la stessa finestra
-        // deve essere il 30% piu' grande per contenere lo stesso layout.
+        // deve essere il 30% piu' grande per contenere lo stesso layout, e a 0,75 puo' essere
+        // il 25% piu' piccola.
         larghezzaMinima = MinWidth;
         altezzaMinima = MinHeight;
 
@@ -270,6 +271,12 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Scala tutta la finestra, e con lei la sua misura minima.</summary>
+    /// <remarks>
+    /// Sotto 1 e' l'unico vincolo d'ordine nuovo: la larghezza salvata nel file puo' stare
+    /// sotto il minimo del XAML (a 0,75 il minimo e' 540), quindi questo deve girare prima del
+    /// primo layout. Gira da <see cref="Osserva"/>, all'assegnazione del DataContext, che in
+    /// <c>App</c> precede lo Show.
+    /// </remarks>
     private void ApplicaScala(double nuova)
     {
         scala = nuova;
