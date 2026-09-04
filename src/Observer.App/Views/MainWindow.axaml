@@ -65,8 +65,12 @@
              oltre al colore, perche' misurato (CIEDE2000 dopo la simulazione di Machado) nel
              tema chiaro con la deuteranopia giallo e rosso distano 1,0: lo stesso colore. Gli
              stati provvisori sono anelli vuoti (meno inchiostro, non di piu', nei dieci secondi
-             di grazia), il verde e' il pallino pieno di sempre, il guasto e' un quadrato. Ogni
-             coppia che il colore confonde e' separata da pieno/vuoto o da cerchio/quadrato. -->
+             di grazia), il verde e' il pallino pieno di sempre, il guasto e' un quadrato messo
+             di punta: un rombo, perche' un quadrato dritto da 10 px sporge dal disco di due
+             pixel per angolo e verde/rosso, per la deuteranopia nel tema chiaro (distanza
+             5,7), resterebbero separati solo da quello. Le punte del rombo sporgono dove il
+             disco e' tondo. Ogni coppia che il colore confonde e' separata da pieno/vuoto o
+             da cerchio/rombo. -->
         <Style Selector="Ellipse.ignoto">
             <Setter Property="Stroke" Value="{DynamicResource TextFillColorTertiaryBrush}" />
             <Setter Property="StrokeThickness" Value="2" />
@@ -226,7 +230,11 @@
                                              Classes.raggiungibile="{Binding Raggiungibile}"
                                              Classes.attenzione="{Binding Attenzione}"
                                              IsVisible="{Binding !Guasto}" />
-                                    <Rectangle Classes="guasto" IsVisible="{Binding Guasto}" />
+                                    <Rectangle Classes="guasto"
+                                               Width="7"
+                                               Height="7"
+                                               RenderTransform="rotate(45deg)"
+                                               IsVisible="{Binding Guasto}" />
                                 </Panel>
                                 <TextBlock Text="{Binding Nome}" TextWrapping="Wrap" />
                             </StackPanel>

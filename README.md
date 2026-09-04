@@ -313,14 +313,14 @@ quella macchina compare sotto l'elenco come inutilizzabile, con scritto il coman
 
 Accanto a ogni macchina dell'elenco c'e' un **segno di stato** che dice se risponde, senza
 doverci cliccare sopra: un anello grigio vuoto finche' non e' stata sentita, un pallino verde
-pieno se risponde, un anello ambra mentre un guasto dura da meno di dieci secondi, un quadrato
-rosso dopo. Pieno o vuoto, cerchio o quadrato: si legge anche da chi non distingue i colori,
+pieno se risponde, un anello ambra mentre un guasto dura da meno di dieci secondi, un rombo
+rosso dopo. Pieno o vuoto, cerchio o rombo: si legge anche da chi non distingue i colori,
 perche' nel tema chiaro ambra e rosso, per la forma piu' comune di daltonismo, sono lo stesso
 colore. I colori sono quelli della barra di stato, cosi' un
 segno rosso vuol dire cio' che vuol dire una barra rossa; un token rifiutato o una versione
 incompatibile sono rossi subito. Le macchine che non stai guardando vengono sondate ogni
 quindici secondi, tutte insieme e senza trattenere i quadranti: una macchina spenta costa un
-timeout di otto secondi, e i quadranti non devono pagarlo. Il suggerimento sul pallino dice il
+timeout di otto secondi, e i quadranti non devono pagarlo. Il suggerimento sulla riga dice il
 motivo.
 
 La **barra laterale c'e' sempre**, anche quando la macchina e' una sola: li' dentro trovi il

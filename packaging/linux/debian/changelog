@@ -3,7 +3,7 @@ observer (0.13.0) unstable; urgency=medium
   * The status mark next to each machine has a shape as well as a colour:
     a hollow ring while the machine has not been probed yet or a fault is
     younger than ten seconds, the same filled green dot as before when it
-    answers, and a red square on a fault. Measured with a simulation of
+    answers, and a red diamond on a fault. Measured with a simulation of
     colour blindness: in the light theme the caution and critical colours
     were the same colour for deuteranopia; a shape reads in every theme and
     in black and white.
