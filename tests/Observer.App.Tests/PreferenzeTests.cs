@@ -41,10 +41,26 @@ public class PreferenzeTests
     [Fact]
     public void AndataERitornoDalJson()
     {
-        Preferenze originali = new(new PosizioneFinestra(192, 100, 900, 700, Maximized: false), 1.3d);
+        Preferenze originali = new(new PosizioneFinestra(192, 100, 900, 700, Maximized: false), 1.3d, "dark");
 
         Assert.Equal(originali, Preferenze.Da(originali.InJson()));
         Assert.Contains("\"textScale\":1.3", originali.InJson(), StringComparison.Ordinal);
+        Assert.Contains("\"theme\":\"dark\"", originali.InJson(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("""{}""", "system")]
+    [InlineData("""{"theme": null}""", "system")]
+    [InlineData("""{"theme": "nero"}""", "system")]
+    [InlineData("""{"theme": "dark"}""", "dark")]
+    [InlineData("""{"theme": "Dark"}""", "dark")]
+    [InlineData("""{"theme": "light"}""", "light")]
+    public void UnTemaNonAmmessoTornaAQuelloDelSistema(string json, string atteso)
+    {
+        // Un file vecchio non ha il campo, uno scritto a mano puo' avere di tutto: niente di
+        // questo deve fermare la finestra, e le maiuscole si perdonano.
+        Assert.Equal(atteso, Preferenze.Da(json).Tema);
+        Assert.Equal("system", Preferenze.Predefinite.Tema);
     }
 
     [Fact]

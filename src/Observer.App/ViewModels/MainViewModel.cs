@@ -335,6 +335,39 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Il tema: <c>system</c>, <c>light</c> o <c>dark</c>.</summary>
+    /// <remarks>
+    /// Lo applica l'applicazione, non questa classe, che non sa cos'e' un tema: qui sta solo
+    /// la scelta, perche' e' cio' che la tendina mostra e cio' che si ricorda.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TemaScelto))]
+    public partial string Tema { get; set; } = Preferenze.TemiAmmessi[0];
+
+    /// <summary>I temi fra cui si sceglie, come voci del selettore.</summary>
+    public static IReadOnlyList<OpzioneTema> OpzioniTema { get; } =
+        [.. Preferenze.TemiAmmessi.Select(chiave => new OpzioneTema(chiave))];
+
+    /// <summary>Il tema come voce del selettore: e' <see cref="Tema"/> con un'etichetta.</summary>
+    /// <remarks>Il selettore puo' assegnare null mentre cambia elenco: allora il tema resta com'e'.</remarks>
+    public OpzioneTema TemaScelto
+    {
+        get => new(Tema);
+        set => Tema = value?.Chiave ?? Tema;
+    }
+
+    /// <summary>Un tema non ammesso non entra: si torna a quello del sistema.</summary>
+    /// <param name="value">Il tema richiesto.</param>
+    partial void OnTemaChanged(string value)
+    {
+        string valido = Preferenze.TemaValido(value);
+
+        if (!string.Equals(valido, value, StringComparison.Ordinal))
+        {
+            Tema = valido;
+        }
+    }
+
     /// <summary>Quale risorsa sta guardando il pannello: <c>cpu</c>, <c>memory</c>, o null.</summary>
     private string? risorsaMostrata;
 

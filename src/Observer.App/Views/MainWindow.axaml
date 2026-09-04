@@ -89,14 +89,24 @@
     <DockPanel Margin="20">
 
         <DockPanel DockPanel.Dock="Top">
-            <!-- La misura del testo, in alto a destra: una scelta che si fa una volta e non si
-                 rilegge, quindi sta fuori dal percorso dello sguardo. Quattro gradini, quelli
-                 di Windows. -->
+            <!-- Tema e misura del testo, in alto a destra: scelte che si fanno una volta e non
+                 si rileggono, quindi stanno fuori dal percorso dello sguardo. -->
             <StackPanel DockPanel.Dock="Right"
                         Orientation="Horizontal"
                         Spacing="8"
                         VerticalAlignment="Top"
                         Margin="16,0,0,0">
+                <TextBlock Text="Theme"
+                           Theme="{StaticResource CaptionTextBlockStyle}"
+                           Classes="secondario"
+                           VerticalAlignment="Center" />
+                <!-- Voci OpzioneTema: il testo e' "System", "Light", "Dark". Lo applica
+                     l'applicazione, non la finestra: le tendine sono finestre a parte. -->
+                <ComboBox ItemsSource="{x:Static vm:MainViewModel.OpzioniTema}"
+                          SelectedItem="{Binding TemaScelto}"
+                          MinWidth="92"
+                          Margin="0,0,8,0"
+                          AutomationProperties.Name="Theme" />
                 <TextBlock Text="Text size"
                            Theme="{StaticResource CaptionTextBlockStyle}"
                            Classes="secondario"

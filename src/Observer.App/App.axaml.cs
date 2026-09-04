@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Platform;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using Observer.App.Services;
 using Observer.App.ViewModels;
@@ -28,6 +30,12 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            // Le preferenze si leggono UNA volta, qui, e si passano alla finestra: il tema va
+            // applicato prima che la finestra esista, perche' un TopLevel copia il tema alla
+            // costruzione e dopo si aprirebbe chiaro per poi scattare.
+            Preferenze preferenze = PreferenzeStore.Leggi();
+            ApplicaTema(preferenze.Tema);
+
             MachineListResult elenco = MachineDirectory.Read();
 
             // Ogni client aperto va chiuso all'uscita, compresi quelli nati cambiando macchina
@@ -86,7 +94,7 @@ public partial class App : Application
 
             CancellationTokenSource arresto = new();
 
-            desktop.MainWindow = new MainWindow
+            desktop.MainWindow = new MainWindow(preferenze)
             {
                 DataContext = viewModel,
             };
@@ -113,5 +121,33 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>Applica il tema a tutta l'applicazione: finestre, tendine e barra del titolo.</summary>
+    /// <param name="tema">La chiave: <c>system</c>, <c>light</c> o <c>dark</c>.</param>
+    /// <remarks>
+    /// Sull'applicazione e mai sulla finestra: le tendine e i suggerimenti sono finestre a parte
+    /// e prendono il tema da qui. E prima che la finestra esista: un TopLevel copia il tema alla
+    /// costruzione. La rilettura del tema di sistema al ritorno a "system" e' una cintura: dal
+    /// decompilato, la variante predefinita si limita a cancellare il tema effettivo e i
+    /// dizionari potrebbero ricadere su quello chiaro fino al prossimo cambio di colori del
+    /// sistema. MISURATO il 2026-09-04 su un Windows 11 in tema scuro, con Avalonia 12.1.1:
+    /// senza questa riga, da Dark a System la finestra resta scura, come deve, e la trappola
+    /// non si presenta. La riga resta perche' costa una riga, non
+    /// ha effetti collaterali (Windows la sovrascrive al prossimo cambio, come farebbe da
+    /// solo) e sugli altri backend non e' stata misurata.
+    /// </remarks>
+    public void ApplicaTema(string tema)
+    {
+        ThemeVariant variante = OpzioneTema.Variante(tema);
+
+        RequestedThemeVariant = variante;
+
+        if (variante == ThemeVariant.Default && PlatformSettings is { } impostazioni)
+        {
+            bool scuro = impostazioni.GetColorValues().ThemeVariant == PlatformThemeVariant.Dark;
+
+            SetValue(ActualThemeVariantProperty, scuro ? ThemeVariant.Dark : ThemeVariant.Light);
+        }
     }
 }

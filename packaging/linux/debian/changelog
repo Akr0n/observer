@@ -1,3 +1,16 @@
+observer (0.12.0) unstable; urgency=medium
+
+  * A "Theme" selector in the header, next to "Text size": System (as
+    before, following the operating system), Light or Dark. The change is
+    immediate, drop-downs included and, on Windows 11, the title bar too;
+    it is remembered in preferences.json next to the text size.
+  * The gauges, the history strip and the selected row take the accent
+    colour of the PC instead of a fixed violet. It is read at start-up, on
+    Windows and on KDE; on Windows it also follows a change made while the
+    window is open.
+
+ -- Federico Cardinali <noreply@example.invalid>  Fri, 04 Sep 2026 09:30:00 +0000
+
 observer (0.11.0) unstable; urgency=medium
 
   * A coloured dot next to every machine in the list says whether it is

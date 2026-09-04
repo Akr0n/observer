@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Avalonia.Styling;
 
 namespace Observer.App.Services;
 
@@ -139,17 +140,52 @@ public sealed record OpzioneScala(double Fattore)
     public override string ToString() => Fattore.ToString("P0", CultureInfo.CurrentCulture);
 }
 
+/// <summary>Una voce del selettore del tema: quello del sistema, chiaro o scuro.</summary>
+/// <param name="Chiave">Cio' che va nel file: <c>system</c>, <c>light</c> o <c>dark</c>.</param>
+/// <remarks>
+/// Come <see cref="OpzioneScala"/>: il testo della voce e' il suo <see cref="ToString"/>, ed e'
+/// cio' che la tendina mostra e che un lettore di schermo annuncia.
+/// </remarks>
+public sealed record OpzioneTema(string Chiave)
+{
+    /// <inheritdoc />
+    public override string ToString() => Chiave switch
+    {
+        "light" => "Light",
+        "dark" => "Dark",
+        _ => "System",
+    };
+
+    /// <summary>La variante di tema per una chiave: quella predefinita segue il sistema.</summary>
+    /// <param name="chiave">La chiave, gia' ammessa o no.</param>
+    /// <returns>La variante da chiedere all'applicazione.</returns>
+    /// <remarks>
+    /// E' l'unico ramo con una decisione vera: un refuso qui non farebbe rumore, lascerebbe
+    /// solo una finestra chiara a chi ha chiesto quella scura. Per questo e' provato a parte.
+    /// </remarks>
+    public static ThemeVariant Variante(string chiave) => chiave switch
+    {
+        "light" => ThemeVariant.Light,
+        "dark" => ThemeVariant.Dark,
+        _ => ThemeVariant.Default,
+    };
+}
+
 /// <summary>Cio' che la dashboard ricorda di se' fra un avvio e l'altro.</summary>
 /// <param name="Finestra">Dove stava la finestra, oppure null se non lo sa ancora.</param>
 /// <param name="ScalaTesto">Quanto e' ingrandita la finestra: 1 e' la misura normale.</param>
+/// <param name="Tema">Il tema scelto: <c>system</c>, <c>light</c> o <c>dark</c>.</param>
 /// <remarks>
 /// Un file a parte e non <c>client.json</c>: quello porta una credenziale, e un programma che lo
-/// riscrivesse a ogni chiusura per salvare due numeri sarebbe un programma che riscrive una
-/// credenziale a ogni chiusura.
+/// riscrivesse a ogni chiusura per salvare tre valori sarebbe un programma che riscrive una
+/// credenziale a ogni chiusura. Il tema e' un parametro posizionale SENZA valore predefinito
+/// di proposito: chi costruisce le preferenze deve dire anche quello, e un
+/// <c>new Preferenze(posizione, scala)</c> che lo dimentica non compila.
 /// </remarks>
 public sealed record Preferenze(
     [property: JsonPropertyName("window")] PosizioneFinestra? Finestra,
-    [property: JsonPropertyName("textScale")] double ScalaTesto)
+    [property: JsonPropertyName("textScale")] double ScalaTesto,
+    [property: JsonPropertyName("theme")] string Tema)
 {
     /// <summary>Le scale che si possono scegliere. La prima e' la misura normale.</summary>
     /// <remarks>
@@ -158,16 +194,39 @@ public sealed record Preferenze(
     /// </remarks>
     public static readonly IReadOnlyList<double> ScaleAmmesse = [1.0d, 1.15d, 1.3d, 1.5d];
 
+    /// <summary>I temi che si possono scegliere. Il primo e' quello del sistema.</summary>
+    public static readonly IReadOnlyList<string> TemiAmmessi = ["system", "light", "dark"];
+
     private static readonly JsonSerializerOptions Opzioni = new(JsonSerializerDefaults.Web);
 
     /// <summary>Le preferenze di chi non ne ha ancora salvate.</summary>
-    public static Preferenze Predefinite => new(null, ScaleAmmesse[0]);
+    public static Preferenze Predefinite => new(null, ScaleAmmesse[0], TemiAmmessi[0]);
 
     /// <summary>La scala richiesta se e' una di quelle ammesse, altrimenti quella normale.</summary>
     /// <param name="scala">La scala letta dal file, o scelta.</param>
     /// <returns>Una scala ammessa.</returns>
     public static double ScalaValida(double scala) =>
         ScaleAmmesse.Contains(scala) ? scala : ScaleAmmesse[0];
+
+    /// <summary>Il tema richiesto se e' uno di quelli ammessi, altrimenti quello del sistema.</summary>
+    /// <param name="tema">Il tema letto dal file, o scelto; anche null.</param>
+    /// <returns>Una chiave ammessa, in minuscolo.</returns>
+    /// <remarks>
+    /// Le maiuscole si perdonano: un file scritto a mano con <c>"Dark"</c> vuol dire scuro.
+    /// Tutto il resto - null, campo assente, una parola inventata - vale il sistema.
+    /// </remarks>
+    public static string TemaValido(string? tema)
+    {
+        foreach (string ammesso in TemiAmmessi)
+        {
+            if (string.Equals(ammesso, tema, StringComparison.OrdinalIgnoreCase))
+            {
+                return ammesso;
+            }
+        }
+
+        return TemiAmmessi[0];
+    }
 
     /// <summary>Legge le preferenze da un file, tollerando tutto cio' che puo' andare storto.</summary>
     /// <param name="json">Il contenuto del file, oppure null se non c'e'.</param>
@@ -185,7 +244,7 @@ public sealed record Preferenze(
 
             return lette is null
                 ? Predefinite
-                : lette with { ScalaTesto = ScalaValida(lette.ScalaTesto) };
+                : lette with { ScalaTesto = ScalaValida(lette.ScalaTesto), Tema = TemaValido(lette.Tema) };
         }
         catch (JsonException)
         {
@@ -233,7 +292,13 @@ public static class PreferenzeStore
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath) ?? ".");
-            File.WriteAllText(FilePath, preferenze.InJson());
+
+            // Prima su un file provvisorio, poi al posto di quello vero: una chiusura
+            // interrotta a meta' scrittura non lascia un file troncato, che al prossimo avvio
+            // varrebbe come "nessuna preferenza" e farebbe dimenticare tutto insieme.
+            string provvisorio = FilePath + ".tmp";
+            File.WriteAllText(provvisorio, preferenze.InJson());
+            File.Move(provvisorio, FilePath, overwrite: true);
         }
         catch (IOException)
         {
