@@ -60,18 +60,29 @@
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
         </Style>
 
-        <!-- I pallini delle macchine: gli stessi colori di stato del tema, cosi' verde, giallo
-             e rosso qui vogliono dire cio' che vogliono dire nella barra di stato. -->
+        <!-- I segni di stato delle macchine: gli stessi colori del tema, cosi' verde, giallo e
+             rosso qui vogliono dire cio' che vogliono dire nella barra di stato. E una FORMA
+             oltre al colore, perche' misurato (CIEDE2000 dopo la simulazione di Machado) nel
+             tema chiaro con la deuteranopia giallo e rosso distano 1,0: lo stesso colore. Gli
+             stati provvisori sono anelli vuoti (meno inchiostro, non di piu', nei dieci secondi
+             di grazia), il verde e' il pallino pieno di sempre, il guasto e' un quadrato messo
+             di punta: un rombo, perche' un quadrato dritto da 10 px sporge dal disco di due
+             pixel per angolo e verde/rosso, per la deuteranopia nel tema chiaro (distanza
+             5,7), resterebbero separati solo da quello. Le punte del rombo sporgono dove il
+             disco e' tondo. Ogni coppia che il colore confonde e' separata da pieno/vuoto o
+             da cerchio/rombo. -->
         <Style Selector="Ellipse.ignoto">
-            <Setter Property="Fill" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+            <Setter Property="Stroke" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+            <Setter Property="StrokeThickness" Value="2" />
         </Style>
         <Style Selector="Ellipse.raggiungibile">
             <Setter Property="Fill" Value="{DynamicResource SystemFillColorSuccessBrush}" />
         </Style>
         <Style Selector="Ellipse.attenzione">
-            <Setter Property="Fill" Value="{DynamicResource SystemFillColorCautionBrush}" />
+            <Setter Property="Stroke" Value="{DynamicResource SystemFillColorCautionBrush}" />
+            <Setter Property="StrokeThickness" Value="2" />
         </Style>
-        <Style Selector="Ellipse.guasto">
+        <Style Selector="Rectangle.guasto">
             <Setter Property="Fill" Value="{DynamicResource SystemFillColorCriticalBrush}" />
         </Style>
     </Window.Styles>
@@ -213,13 +224,18 @@
                                  sopra; il colore segue la stessa regola della barra di stato,
                                  e il testo del suggerimento dice perche'. -->
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Ellipse Width="8"
-                                         Height="8"
-                                         VerticalAlignment="Center"
-                                         Classes.ignoto="{Binding Ignoto}"
-                                         Classes.raggiungibile="{Binding Raggiungibile}"
-                                         Classes.attenzione="{Binding Attenzione}"
-                                         Classes.guasto="{Binding Guasto}" />
+                                <!-- 10 px e non 8: a 8 l'anello da 2 px non ha un buco. -->
+                                <Panel Width="10" Height="10" VerticalAlignment="Center">
+                                    <Ellipse Classes.ignoto="{Binding Ignoto}"
+                                             Classes.raggiungibile="{Binding Raggiungibile}"
+                                             Classes.attenzione="{Binding Attenzione}"
+                                             IsVisible="{Binding !Guasto}" />
+                                    <Rectangle Classes="guasto"
+                                               Width="7"
+                                               Height="7"
+                                               RenderTransform="rotate(45deg)"
+                                               IsVisible="{Binding Guasto}" />
+                                </Panel>
                                 <TextBlock Text="{Binding Nome}" TextWrapping="Wrap" />
                             </StackPanel>
                         </DataTemplate>
