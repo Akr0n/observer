@@ -41,6 +41,25 @@ public class TemaTests
     }
 
     [Fact]
+    public void CambiareTemaOScalaNotificaAncheLaVoceDelSelettore()
+    {
+        // La tendina e' legata alla VOCE (TemaScelto, ScalaScelta), ma la finestra scrive la
+        // chiave (Tema, ScalaTesto): senza la notifica della voce, all'avvio con "dark" nel
+        // file la finestra sarebbe scura con il selettore fermo su System.
+        MainViewModel viewModel = new(client: null, problemaDiConfigurazione: null);
+        List<string> notificate = [];
+        viewModel.PropertyChanged += (_, e) => notificate.Add(e.PropertyName ?? string.Empty);
+
+        viewModel.Tema = "dark";
+        viewModel.ScalaTesto = 1.3d;
+
+        Assert.Contains(nameof(MainViewModel.Tema), notificate);
+        Assert.Contains(nameof(MainViewModel.TemaScelto), notificate);
+        Assert.Contains(nameof(MainViewModel.ScalaTesto), notificate);
+        Assert.Contains(nameof(MainViewModel.ScalaScelta), notificate);
+    }
+
+    [Fact]
     public void IlViewModelNonAccettaUnTemaInventato()
     {
         MainViewModel viewModel = new(client: null, problemaDiConfigurazione: null);

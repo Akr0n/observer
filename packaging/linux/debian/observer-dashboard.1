@@ -1,4 +1,4 @@
-.TH OBSERVER-DASHBOARD 1 "2026-09-03" "observer 0.12.0" "User Commands"
+.TH OBSERVER-DASHBOARD 1 "2026-09-04" "observer 0.12.0" "User Commands"
 .SH NAME
 observer-dashboard \- watch a machine's vital signs
 .SH SYNOPSIS
@@ -14,6 +14,13 @@ gauge is ranked by I/O over the whole machine, because the counters are per
 process and not per device; on Linux the service can read the I/O of other
 users' processes only with CAP_SYS_PTRACE, which it deliberately lacks, so
 those rows show a dash.
+.PP
+Two selectors sit in the top right corner:
+.B Theme
+(System, Light or Dark) and
+.BR "Text size" .
+Both are remembered, together with where the window was, in
+.IR preferences.json .
 .PP
 With no configuration it talks to the service on this machine over the local
 socket, and needs no token. For that to work your account has to be in the
@@ -74,5 +81,10 @@ does not exist: the older one-machine configuration, with the fields
 and
 .BR apiToken .
 It carries another machine's credential, so it is not something to share.
+.TP
+.I ~/.local/share/Observer/preferences.json
+Where the window remembers its place and size, the text size and the theme.
+No credential goes here, which is why it is a separate file that is rewritten
+at every close.
 .SH SEE ALSO
 .BR observer (1)

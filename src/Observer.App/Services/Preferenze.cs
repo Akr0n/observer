@@ -292,7 +292,13 @@ public static class PreferenzeStore
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath) ?? ".");
-            File.WriteAllText(FilePath, preferenze.InJson());
+
+            // Prima su un file provvisorio, poi al posto di quello vero: una chiusura
+            // interrotta a meta' scrittura non lascia un file troncato, che al prossimo avvio
+            // varrebbe come "nessuna preferenza" e farebbe dimenticare tutto insieme.
+            string provvisorio = FilePath + ".tmp";
+            File.WriteAllText(provvisorio, preferenze.InJson());
+            File.Move(provvisorio, FilePath, overwrite: true);
         }
         catch (IOException)
         {

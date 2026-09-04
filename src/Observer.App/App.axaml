@@ -4,7 +4,8 @@
              xmlns:local="using:Observer.App"
              xmlns:sty="using:FluentAvalonia.Styling"
              RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+             <!-- Valore iniziale: segue il sistema. Quello vero lo imposta App.ApplicaTema
+                  dalle preferenze, prima che la finestra esista. -->
 
     <Application.DataTemplates>
         <local:ViewLocator />
@@ -17,13 +18,16 @@
 
              PreferUserAccentColor: senza, l'accento e' un viola fisso (SlateBlue), uguale su
              ogni PC e che somigliava all'accento di questa macchina per coincidenza. Con,
-             i quadranti, la striscia e la riga selezionata prendono l'accento di Windows
-             (e di KDE su Linux) e lo seguono quando cambia.
+             i quadranti, la striscia e la riga selezionata prendono l'accento del PC, letto
+             all'avvio: su Windows (UISettings) segue anche un cambio a finestra aperta; su
+             Linux si legge solo su KDE, LXQt e LXDE, e li' UNA volta sola, perche' la
+             libreria tiene kdeglobals in un campo statico. Altrove resta SlateBlue.
 
-             PreferSystemTheme invece NON va mai acceso: scrive un Light/Dark esplicito e da
-             quel momento l'applicazione smette di seguire il sistema; in Alto contrasto
-             passa a un dizionario in cui i tre colori di stato sono tutti rossi. Il tema
-             chiaro/scuro lo governa App.ApplicaTema, da RequestedThemeVariant. -->
+             PreferSystemTheme invece NON va mai acceso: a ogni cambio di colori del sistema
+             FluentAvalonia riscriverebbe RequestedThemeVariant con un Light/Dark esplicito,
+             cancellando la scelta fatta nel selettore, e System non potrebbe mai valere
+             Default; in Alto contrasto passerebbe inoltre al dizionario in cui i tre colori
+             di stato sono tutti rossi. Il tema chiaro/scuro lo governa App.ApplicaTema. -->
         <sty:FluentAvaloniaTheme PreferUserAccentColor="True" />
     </Application.Styles>
 </Application>

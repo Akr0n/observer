@@ -131,8 +131,9 @@ public partial class App : Application
     /// costruzione. La rilettura del tema di sistema al ritorno a "system" e' una cintura: dal
     /// decompilato, la variante predefinita si limita a cancellare il tema effettivo e i
     /// dizionari potrebbero ricadere su quello chiaro fino al prossimo cambio di colori del
-    /// sistema. MISURATO il 2026-09-04 su Windows 11 con Avalonia 12.1.1: senza questa riga,
-    /// da Dark a System la finestra resta comunque scura. Resta perche' costa una riga, non
+    /// sistema. MISURATO il 2026-09-04 su un Windows 11 in tema scuro, con Avalonia 12.1.1:
+    /// senza questa riga, da Dark a System la finestra resta scura, come deve, e la trappola
+    /// non si presenta. La riga resta perche' costa una riga, non
     /// ha effetti collaterali (Windows la sovrascrive al prossimo cambio, come farebbe da
     /// solo) e sugli altri backend non e' stata misurata.
     /// </remarks>

@@ -67,10 +67,12 @@ meno che quel posto stia su uno schermo che non c'e' piu', nel qual caso apre do
 sistema. In alto a destra c'e' la **misura del testo** (100, 115, 130, 150 %, gli stessi passi
 di Windows): scala tutta la finestra, quadranti compresi, e viene ricordata anche lei. Accanto
 c'e' il **tema**: System (segue il sistema, come prima), Light o Dark, con cambio immediato,
-barra del titolo e tendine comprese. Le tre cose stanno in `preferences.json` accanto a
-`client.json` - un file a parte, perche' `client.json` puo' contenere una credenziale e non va
-riscritto a ogni chiusura. I quadranti, la striscia e la riga selezionata hanno il colore di
-accento del PC (quello di Windows, o di KDE su Linux) e lo seguono quando cambia.
+tendine comprese e, su Windows 11, anche la barra del titolo. Le tre cose stanno in
+`preferences.json` accanto a `client.json` - un file a parte, perche' `client.json` puo'
+contenere una credenziale e non va riscritto a ogni chiusura. I quadranti, la striscia e la
+riga selezionata hanno il colore di accento del PC, letto all'avvio: su Windows seguono anche
+un cambio fatto a finestra aperta; su Linux l'accento si legge solo su KDE, LXQt e LXDE, e
+altrove resta il viola predefinito del tema.
 
 "I/O" vuol dire ogni lettura e scrittura che il processo ha chiesto, cache compresa: e' l'unico
 contatore per processo che Windows abbia, e su Linux si leggono `rchar` e `wchar` - non

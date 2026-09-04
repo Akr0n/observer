@@ -193,21 +193,20 @@ public partial class MainWindow : Window
 
         osservato = DataContext as INotifyPropertyChanged;
 
+        if (DataContext is MainViewModel modello)
+        {
+            // I valori salvati entrano nel view model PRIMA di iscriversi a PropertyChanged:
+            // il tema lo ha gia' applicato l'applicazione e la scala si applica a mano qui
+            // sotto, quindi il gestore non deve scattare. Scattava, e riscriveva identico a
+            // ogni avvio il file appena letto.
+            modello.ScalaTesto = preferenze.ScalaTesto;
+            ApplicaScala(modello.ScalaTesto);
+            modello.Tema = preferenze.Tema;
+        }
+
         if (osservato is not null)
         {
             osservato.PropertyChanged += QuandoCambia;
-        }
-
-        if (DataContext is MainViewModel modello)
-        {
-            // La scala salvata entra nel view model (che la mostra nel selettore) e da li'
-            // torna qui attraverso PropertyChanged, come ogni scelta successiva dell'utente.
-            // Se e' quella normale non cambia niente e non scatta niente: si applica a mano.
-            modello.ScalaTesto = preferenze.ScalaTesto;
-            ApplicaScala(modello.ScalaTesto);
-
-            // Il tema e' gia' applicato dall'applicazione: qui entra solo nel selettore.
-            modello.Tema = preferenze.Tema;
         }
     }
 
