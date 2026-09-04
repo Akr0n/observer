@@ -127,7 +127,7 @@ public sealed record PosizioneFinestra(
     }
 }
 
-/// <summary>Una voce del selettore della misura del testo.</summary>
+/// <summary>Una voce del selettore dello zoom.</summary>
 /// <param name="Fattore">La scala: 1 e' la misura normale.</param>
 /// <remarks>
 /// Il testo della voce E' il suo <see cref="ToString"/>: un lettore di schermo annuncia
@@ -173,7 +173,8 @@ public sealed record OpzioneTema(string Chiave)
 
 /// <summary>Cio' che la dashboard ricorda di se' fra un avvio e l'altro.</summary>
 /// <param name="Finestra">Dove stava la finestra, oppure null se non lo sa ancora.</param>
-/// <param name="ScalaTesto">Quanto e' ingrandita la finestra: 1 e' la misura normale.</param>
+/// <param name="ScalaTesto">Quanto e' scalata la finestra: 1 e' la misura normale, sotto 1 e'
+/// piu' piccola.</param>
 /// <param name="Tema">Il tema scelto: <c>system</c>, <c>light</c> o <c>dark</c>.</param>
 /// <remarks>
 /// Un file a parte e non <c>client.json</c>: quello porta una credenziale, e un programma che lo
@@ -184,15 +185,28 @@ public sealed record OpzioneTema(string Chiave)
 /// </remarks>
 public sealed record Preferenze(
     [property: JsonPropertyName("window")] PosizioneFinestra? Finestra,
+    // La chiave resta textScale anche se l'interfaccia dice Zoom: rinominarla farebbe perdere
+    // lo zoom salvato a tutti, e una versione precedente non la leggerebbe piu'.
     [property: JsonPropertyName("textScale")] double ScalaTesto,
     [property: JsonPropertyName("theme")] string Tema)
 {
-    /// <summary>Le scale che si possono scegliere. La prima e' la misura normale.</summary>
+    /// <summary>La misura normale: 1.</summary>
+    public const double ScalaNormale = 1.0d;
+
+    /// <summary>Le scale che si possono scegliere, in ordine crescente.</summary>
     /// <remarks>
-    /// Quattro gradini e non un cursore continuo: la finestra si ridisegna a ogni scatto, e i
-    /// gradini sono quelli che Windows stesso offre per il testo (100, 115, 130, 150).
+    /// Gradini e non un cursore continuo: la finestra si ridisegna a ogni scatto. Sopra la
+    /// normale sono quelli che Windows stesso offre per il testo (115, 130, 150). Sotto, due
+    /// gradini per vedere di piu' senza scorrere: in una finestra 900x700 con sei quadranti
+    /// le righe di storico in vista passano da una a tre (85) e quattro (75), e le colonne di
+    /// quadranti da quattro a cinque; su uno schermo grande i sei stanno gia' su una riga a
+    /// 100, quindi il guadagno e' verticale. Il pavimento e' 75 e NON scende: i controlli
+    /// Fluent da 32 px diventano 24 logici, e l'anello di stato, catturato a 75 % in entrambi
+    /// gli stati, tiene un buco di 5 px fisici a DPI 125 (4 simulati a DPI 100). A 67 i
+    /// controlli sarebbero 21 px e il corpo del testo 9 px fisici su uno schermo a 100 %,
+    /// sotto ogni testo di sistema. Il prezzo del 75 sono le didascalie: 9 px logici.
     /// </remarks>
-    public static readonly IReadOnlyList<double> ScaleAmmesse = [1.0d, 1.15d, 1.3d, 1.5d];
+    public static readonly IReadOnlyList<double> ScaleAmmesse = [0.75d, 0.85d, 1.0d, 1.15d, 1.3d, 1.5d];
 
     /// <summary>I temi che si possono scegliere. Il primo e' quello del sistema.</summary>
     public static readonly IReadOnlyList<string> TemiAmmessi = ["system", "light", "dark"];
@@ -200,13 +214,13 @@ public sealed record Preferenze(
     private static readonly JsonSerializerOptions Opzioni = new(JsonSerializerDefaults.Web);
 
     /// <summary>Le preferenze di chi non ne ha ancora salvate.</summary>
-    public static Preferenze Predefinite => new(null, ScaleAmmesse[0], TemiAmmessi[0]);
+    public static Preferenze Predefinite => new(null, ScalaNormale, TemiAmmessi[0]);
 
     /// <summary>La scala richiesta se e' una di quelle ammesse, altrimenti quella normale.</summary>
     /// <param name="scala">La scala letta dal file, o scelta.</param>
     /// <returns>Una scala ammessa.</returns>
     public static double ScalaValida(double scala) =>
-        ScaleAmmesse.Contains(scala) ? scala : ScaleAmmesse[0];
+        ScaleAmmesse.Contains(scala) ? scala : ScalaNormale;
 
     /// <summary>Il tema richiesto se e' uno di quelli ammessi, altrimenti quello del sistema.</summary>
     /// <param name="tema">Il tema letto dal file, o scelto; anche null.</param>

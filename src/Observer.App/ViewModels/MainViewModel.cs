@@ -299,15 +299,16 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Ogni quanto si legge, adesso.</summary>
     public TimeSpan Cadenza => InSecondoPiano ? IntervalloRidotto : Intervallo;
 
-    /// <summary>Quanto e' ingrandita la finestra: 1 e' la misura normale.</summary>
+    /// <summary>Quanto e' scalata la finestra: 1 e' la misura normale, sotto 1 e' piu' piccola.</summary>
     /// <remarks>
     /// Avalonia non legge la dimensione del testo di sistema, quindi chi l'ha alzata in Windows
-    /// qui non la ritrova. Questa e' l'impostazione interna che la sostituisce; la applica la
+    /// qui non la ritrova. Questa e' l'impostazione interna che la sostituisce, e va anche sotto
+    /// il 100 %, dove Windows non va: e' uno zoom, non solo una misura del testo. La applica la
     /// finestra, che scala tutto - quadranti compresi - e la ricorda fra un avvio e l'altro.
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ScalaScelta))]
-    public partial double ScalaTesto { get; set; } = Preferenze.ScaleAmmesse[0];
+    public partial double ScalaTesto { get; set; } = Preferenze.ScalaNormale;
 
     /// <summary>Le scale fra cui si sceglie, come voci del selettore.</summary>
     public static IReadOnlyList<OpzioneScala> OpzioniScala { get; } =

@@ -1,4 +1,4 @@
-.TH OBSERVER-DASHBOARD 1 "2026-09-04" "observer 0.13.0" "User Commands"
+.TH OBSERVER-DASHBOARD 1 "2026-09-04" "observer 0.14.0" "User Commands"
 .SH NAME
 observer-dashboard \- watch a machine's vital signs
 .SH SYNOPSIS
@@ -18,7 +18,8 @@ those rows show a dash.
 Two selectors sit in the top right corner:
 .B Theme
 (System, Light or Dark) and
-.BR "Text size" .
+.B Zoom
+(75 to 150 %; the whole window scales, gauges included).
 Both are remembered, together with where the window was, in
 .IR preferences.json .
 .PP
@@ -83,7 +84,7 @@ and
 It carries another machine's credential, so it is not something to share.
 .TP
 .I ~/.local/share/Observer/preferences.json
-Where the window remembers its place and size, the text size and the theme.
+Where the window remembers its place and size, the zoom and the theme.
 No credential goes here, which is why it is a separate file that is rewritten
 at every close.
 .SH SEE ALSO

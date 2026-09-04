@@ -14,7 +14,7 @@ namespace Observer.App.Views;
 /// La finestra. Il code-behind fa le cose che il view model non puo' fare perche' non sa
 /// cos'e' una finestra: portare in vista il pannello dei processi quando si apre, dire al view
 /// model quando la finestra e' ridotta a icona, ricordare dov'era e quanto grande, e scalare
-/// tutto quando cambia la misura del testo.
+/// tutto quando cambia lo zoom.
 /// </summary>
 /// <remarks>
 /// Le regole che si possono provare senza una finestra stanno altrove: cosa ricordare alla
@@ -71,7 +71,8 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         // I minimi scritti nel XAML sono quelli a scala 1: a scala 1,3 la stessa finestra
-        // deve essere il 30% piu' grande per contenere lo stesso layout.
+        // deve essere il 30% piu' grande per contenere lo stesso layout, e a 0,75 puo' essere
+        // il 25% piu' piccola.
         larghezzaMinima = MinWidth;
         altezzaMinima = MinHeight;
 
@@ -163,7 +164,7 @@ public partial class MainWindow : Window
         ApplicaMinimi();
     }
 
-    /// <summary>Scrive dov'e' la finestra, quanto e' grande il testo e il tema, per la prossima volta.</summary>
+    /// <summary>Scrive dov'e' la finestra, lo zoom e il tema, per la prossima volta.</summary>
     private void Ricorda()
     {
         MainViewModel? modello = DataContext as MainViewModel;
@@ -270,6 +271,12 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Scala tutta la finestra, e con lei la sua misura minima.</summary>
+    /// <remarks>
+    /// Sotto 1 e' l'unico vincolo d'ordine nuovo: la larghezza salvata nel file puo' stare
+    /// sotto il minimo del XAML (a 0,75 il minimo e' 540), quindi questo deve girare prima del
+    /// primo layout. Gira da <see cref="Osserva"/>, all'assegnazione del DataContext, che in
+    /// <c>App</c> precede lo Show.
+    /// </remarks>
     private void ApplicaScala(double nuova)
     {
         scala = nuova;
