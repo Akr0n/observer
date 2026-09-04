@@ -311,10 +311,13 @@ porta ancora dietro viene rifiutata — anche quando il token e' quello giusto.
 `observer token set NOME` e poi cancella la riga `apiToken` da `machines.json`. Finche' resta,
 quella macchina compare sotto l'elenco come inutilizzabile, con scritto il comando da eseguire.
 
-Accanto a ogni macchina dell'elenco c'e' un **pallino** che dice se risponde, senza doverci
-cliccare sopra: grigio finche' non e' stata sentita, verde se risponde, ambra mentre un guasto
-dura da meno di dieci secondi, rosso dopo. E' la stessa regola della barra di stato, cosi' un
-pallino rosso vuol dire cio' che vuol dire una barra rossa; un token rifiutato o una versione
+Accanto a ogni macchina dell'elenco c'e' un **segno di stato** che dice se risponde, senza
+doverci cliccare sopra: un anello grigio vuoto finche' non e' stata sentita, un pallino verde
+pieno se risponde, un anello ambra mentre un guasto dura da meno di dieci secondi, un quadrato
+rosso dopo. Pieno o vuoto, cerchio o quadrato: si legge anche da chi non distingue i colori,
+perche' nel tema chiaro ambra e rosso, per la forma piu' comune di daltonismo, sono lo stesso
+colore. I colori sono quelli della barra di stato, cosi' un
+segno rosso vuol dire cio' che vuol dire una barra rossa; un token rifiutato o una versione
 incompatibile sono rossi subito. Le macchine che non stai guardando vengono sondate ogni
 quindici secondi, tutte insieme e senza trattenere i quadranti: una macchina spenta costa un
 timeout di otto secondi, e i quadranti non devono pagarlo. Il suggerimento sul pallino dice il
