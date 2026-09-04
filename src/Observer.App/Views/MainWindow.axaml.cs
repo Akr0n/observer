@@ -14,7 +14,7 @@ namespace Observer.App.Views;
 /// La finestra. Il code-behind fa le cose che il view model non puo' fare perche' non sa
 /// cos'e' una finestra: portare in vista il pannello dei processi quando si apre, dire al view
 /// model quando la finestra e' ridotta a icona, ricordare dov'era e quanto grande, e scalare
-/// tutto quando cambia la misura del testo.
+/// tutto quando cambia lo zoom.
 /// </summary>
 /// <remarks>
 /// Le regole che si possono provare senza una finestra stanno altrove: cosa ricordare alla
@@ -164,7 +164,7 @@ public partial class MainWindow : Window
         ApplicaMinimi();
     }
 
-    /// <summary>Scrive dov'e' la finestra, quanto e' grande il testo e il tema, per la prossima volta.</summary>
+    /// <summary>Scrive dov'e' la finestra, lo zoom e il tema, per la prossima volta.</summary>
     private void Ricorda()
     {
         MainViewModel? modello = DataContext as MainViewModel;

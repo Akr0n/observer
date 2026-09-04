@@ -32,10 +32,12 @@ public class PreferenzeTests
     public void UnaScalaNonAmmessaTornaAllaNormale()
     {
         // Un file scritto a mano con 2.7 darebbe una finestra tre volte piu' grande dello
-        // schermo, e uno con 0.5 pulsanti da 16 px. Le scale sono sei, e sono quelle: senza
-        // l'asserzione su 0.75 una lista tornata a [1..1.5] passerebbe solo il test dell'ordine.
+        // schermo, e uno con 0.5 pulsanti da 16 px. Anche un valore FRA due gradini non entra:
+        // un intervallo al posto della lista lascerebbe passare 0.9, e la tendina non avrebbe
+        // una voce da selezionare. Le scale sono quelle della lista, provata per intero sotto.
         Assert.Equal(1.0d, Preferenze.Da("""{"textScale": 2.7}""").ScalaTesto);
         Assert.Equal(1.0d, Preferenze.Da("""{"textScale": 0.5}""").ScalaTesto);
+        Assert.Equal(1.0d, Preferenze.Da("""{"textScale": 0.9}""").ScalaTesto);
         Assert.Equal(1.15d, Preferenze.Da("""{"textScale": 1.15}""").ScalaTesto);
         Assert.Equal(0.75d, Preferenze.Da("""{"textScale": 0.75}""").ScalaTesto);
         Assert.Equal(1.0d, Preferenze.Da("""{}""").ScalaTesto);
@@ -220,23 +222,22 @@ public class PreferenzeTests
 
         Assert.Contains("115", testo, StringComparison.Ordinal);
         Assert.Contains("%", testo, StringComparison.Ordinal);
-        Assert.Contains("75", new OpzioneScala(0.75d).ToString(), StringComparison.Ordinal);
+
+        // Il double nudo comincia con uno 0 in ogni cultura; il P0 di 0,75 non ne contiene in
+        // nessuna delle 889 culture di .NET. Non StartsWith("75"): in turco e' "%75".
+        Assert.DoesNotContain("0", new OpzioneScala(0.75d).ToString(), StringComparison.Ordinal);
         Assert.Equal(new OpzioneScala(1.15d), new OpzioneScala(1.15d));
     }
 
     [Fact]
-    public void LeScaleAmmesseSonoInOrdineEComprendonoLaNormale()
+    public void LeScaleAmmesseSonoSeiESonoQuelle()
     {
         Assert.Equal(1.0d, Preferenze.ScalaNormale);
-        Assert.Contains(Preferenze.ScalaNormale, Preferenze.ScaleAmmesse);
 
-        // Il pavimento e' 0,75 e non scende: e' la scala a cui un controllo Fluent da 32 px
-        // e' ancora 24 px, e l'anello di stato tiene il buco (misurato su catture reali).
-        Assert.True(Preferenze.ScaleAmmesse[0] >= 0.75d);
-
-        for (int i = 1; i < Preferenze.ScaleAmmesse.Count; i++)
-        {
-            Assert.True(Preferenze.ScaleAmmesse[i] > Preferenze.ScaleAmmesse[i - 1]);
-        }
+        // La lista esatta e non una regola (ordine crescente, pavimento): con la sola regola
+        // togliere 0,85 o 1,5 non faceva fallire niente, provato con i mutanti. Il pavimento
+        // e' 0,75 e non scende: e' la scala a cui un controllo Fluent da 32 px e' ancora
+        // 24 px, e l'anello di stato tiene il buco (misurato su catture reali).
+        Assert.Equal([0.75d, 0.85d, 1.0d, 1.15d, 1.3d, 1.5d], Preferenze.ScaleAmmesse);
     }
 }

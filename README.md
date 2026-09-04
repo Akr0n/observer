@@ -66,9 +66,10 @@ La finestra **ricorda dov'era**, quanto era grande e se era a tutto schermo, e r
 meno che quel posto stia su uno schermo che non c'e' piu', nel qual caso apre dove la mette il
 sistema. In alto a destra c'e' lo **zoom** (75, 85, 100, 115, 130, 150 %): scala tutta la
 finestra, quadranti compresi, e viene ricordato anche lui. Sopra il 100 % sono i passi di
-Windows per il testo; sotto si vede di piu' senza scorrere - piu' righe di storico, e su un
-portatile una colonna di quadranti in piu' - al prezzo di scritte piu' piccole. Il 75 % e' il
-pavimento, misurato: i pulsanti restano alti 24 px e l'anello di stato tiene il buco. Accanto
+Windows per il testo; sotto si vede di piu' senza scorrere - piu' righe di storico e, nella
+finestra alla misura predefinita, una colonna di quadranti in piu' - al prezzo di scritte
+piu' piccole. Il 75 % e' il pavimento, misurato: i pulsanti vanno da 32 a 24 px e l'anello
+di stato tiene il buco. Accanto
 c'e' il **tema**: System (segue il sistema, come prima), Light o Dark, con cambio immediato,
 tendine comprese e, su Windows 11, anche la barra del titolo. Le tre cose stanno in
 `preferences.json` accanto a `client.json` - un file a parte, perche' `client.json` puo'

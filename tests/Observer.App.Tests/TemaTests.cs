@@ -77,4 +77,20 @@ public class TemaTests
         viewModel.TemaScelto = null!;
         Assert.Equal("light", viewModel.Tema);
     }
+
+    [Fact]
+    public void IlViewModelParteDallaNormaleEOffreTutteLeScale()
+    {
+        // La tendina mostra OpzioniScala, non ScaleAmmesse: un gradino perso fra le due liste
+        // non si vede in nessun altro test. E la scala di partenza e' quella normale, non il
+        // primo elemento della lista, che da 0.14.0 e' 0,75.
+        MainViewModel viewModel = new(client: null, problemaDiConfigurazione: null);
+
+        Assert.Equal(Preferenze.ScalaNormale, viewModel.ScalaTesto);
+        Assert.Equal(Preferenze.ScaleAmmesse, MainViewModel.OpzioniScala.Select(voce => voce.Fattore));
+
+        // Come per il tema: una scala inventata non entra, torna alla normale.
+        viewModel.ScalaTesto = 0.5d;
+        Assert.Equal(Preferenze.ScalaNormale, viewModel.ScalaTesto);
+    }
 }

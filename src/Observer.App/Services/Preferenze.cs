@@ -185,6 +185,8 @@ public sealed record OpzioneTema(string Chiave)
 /// </remarks>
 public sealed record Preferenze(
     [property: JsonPropertyName("window")] PosizioneFinestra? Finestra,
+    // La chiave resta textScale anche se l'interfaccia dice Zoom: rinominarla farebbe perdere
+    // lo zoom salvato a tutti, e una versione precedente non la leggerebbe piu'.
     [property: JsonPropertyName("textScale")] double ScalaTesto,
     [property: JsonPropertyName("theme")] string Tema)
 {
