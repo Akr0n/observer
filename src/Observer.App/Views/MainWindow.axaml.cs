@@ -51,9 +51,23 @@ public partial class MainWindow : Window
     /// <summary>Chi aveva il fuoco quando il pannello si e' aperto: di norma, il quadrante.</summary>
     private IInputElement? provenienza;
 
-    /// <summary>Costruisce la finestra e la rimette dov'era.</summary>
+    /// <summary>Costruttore che il compilatore XAML di Avalonia esige, e che nessuno chiama.</summary>
+    /// <remarks>
+    /// L'applicazione usa sempre quello con le preferenze, gia' lette e gia' applicate per il
+    /// tema. Questo esiste solo perche' senza un costruttore pubblico senza argomenti il XAML
+    /// della finestra non compila (AVLN3000).
+    /// </remarks>
     public MainWindow()
+        : this(PreferenzeStore.Leggi())
     {
+    }
+
+    /// <summary>Costruisce la finestra e la rimette dov'era.</summary>
+    /// <param name="preferenze">Le preferenze gia' lette, e gia' applicate per il tema.</param>
+    public MainWindow(Preferenze preferenze)
+    {
+        ArgumentNullException.ThrowIfNull(preferenze);
+
         InitializeComponent();
 
         // I minimi scritti nel XAML sono quelli a scala 1: a scala 1,3 la stessa finestra
@@ -61,7 +75,7 @@ public partial class MainWindow : Window
         larghezzaMinima = MinWidth;
         altezzaMinima = MinHeight;
 
-        preferenze = PreferenzeStore.Leggi();
+        this.preferenze = preferenze;
         Ricolloca(preferenze.Finestra);
 
         // Con un Post, non nel gestore: su Windows lo stato "a tutto schermo" arriva con la
@@ -149,10 +163,12 @@ public partial class MainWindow : Window
         ApplicaMinimi();
     }
 
-    /// <summary>Scrive dov'e' la finestra e quanto e' grande il testo, per la prossima volta.</summary>
+    /// <summary>Scrive dov'e' la finestra, quanto e' grande il testo e il tema, per la prossima volta.</summary>
     private void Ricorda()
     {
-        double scalaDaSalvare = DataContext is MainViewModel modello ? modello.ScalaTesto : preferenze.ScalaTesto;
+        MainViewModel? modello = DataContext as MainViewModel;
+        double scalaDaSalvare = modello?.ScalaTesto ?? preferenze.ScalaTesto;
+        string temaDaSalvare = modello?.Tema ?? preferenze.Tema;
 
         PosizioneFinestra? posizione = PosizioneFinestra.AllaChiusura(
             ridottaAIcona: WindowState == WindowState.Minimized,
@@ -161,7 +177,7 @@ public partial class MainWindow : Window
             preferenze.Finestra,
             Attuale());
 
-        preferenze = new Preferenze(posizione, scalaDaSalvare);
+        preferenze = new Preferenze(posizione, scalaDaSalvare, temaDaSalvare);
         PreferenzeStore.Scrivi(preferenze);
     }
 
@@ -189,6 +205,9 @@ public partial class MainWindow : Window
             // Se e' quella normale non cambia niente e non scatta niente: si applica a mano.
             modello.ScalaTesto = preferenze.ScalaTesto;
             ApplicaScala(modello.ScalaTesto);
+
+            // Il tema e' gia' applicato dall'applicazione: qui entra solo nel selettore.
+            modello.Tema = preferenze.Tema;
         }
     }
 
@@ -203,6 +222,15 @@ public partial class MainWindow : Window
         {
             ApplicaScala(modello.ScalaTesto);
             preferenze = preferenze with { ScalaTesto = modello.ScalaTesto };
+            PreferenzeStore.Scrivi(preferenze);
+
+            return;
+        }
+
+        if (e.PropertyName == nameof(MainViewModel.Tema))
+        {
+            (Application.Current as App)?.ApplicaTema(modello.Tema);
+            preferenze = preferenze with { Tema = modello.Tema };
             PreferenzeStore.Scrivi(preferenze);
 
             return;

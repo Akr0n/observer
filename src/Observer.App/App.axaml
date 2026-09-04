@@ -13,7 +13,17 @@
     <Application.Styles>
         <!-- FluentAvaloniaTheme SOSTITUISCE FluentTheme: mettere entrambi caricherebbe due
              volte le stesse risorse. Serve perche' i controlli FA (qui FAInfoBar) prendono
-             il proprio template da qui e senza resterebbero senza aspetto. -->
-        <sty:FluentAvaloniaTheme />
+             il proprio template da qui e senza resterebbero senza aspetto.
+
+             PreferUserAccentColor: senza, l'accento e' un viola fisso (SlateBlue), uguale su
+             ogni PC e che somigliava all'accento di questa macchina per coincidenza. Con,
+             i quadranti, la striscia e la riga selezionata prendono l'accento di Windows
+             (e di KDE su Linux) e lo seguono quando cambia.
+
+             PreferSystemTheme invece NON va mai acceso: scrive un Light/Dark esplicito e da
+             quel momento l'applicazione smette di seguire il sistema; in Alto contrasto
+             passa a un dizionario in cui i tre colori di stato sono tutti rossi. Il tema
+             chiaro/scuro lo governa App.ApplicaTema, da RequestedThemeVariant. -->
+        <sty:FluentAvaloniaTheme PreferUserAccentColor="True" />
     </Application.Styles>
 </Application>
