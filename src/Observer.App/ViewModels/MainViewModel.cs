@@ -78,6 +78,11 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Come rileggere da disco la voce di una macchina, quando la sua credenziale non vale piu'.</summary>
     private readonly Func<ObserverEndpoint, ObserverEndpoint?>? rileggiPunto;
 
+    private readonly Func<string, Task>? copiaNegliAppunti;
+
+    /// <summary>L'ultima scrittura negli appunti, per metterci in fila la prossima.</summary>
+    private Task codaAppunti = Task.CompletedTask;
+
     /// <summary>La voce dell'elenco che il giro principale sta leggendo davvero.</summary>
     /// <remarks>
     /// NON la selezione della lista: quella puo' diventare null (un Ctrl+clic sulla voce
@@ -128,8 +133,9 @@ public sealed partial class MainViewModel : ViewModelBase
     /// Come rileggere da disco la voce di una macchina non guardata quando una sonda torna
     /// con un token rifiutato o un'impronta che non corrisponde, oppure null per non rileggere.
     /// </param>
-    private readonly Func<string, Task>? copiaNegliAppunti;
-
+    /// <param name="copiaNegliAppunti">
+    /// Come scrivere negli appunti, oppure null: senza, i comandi di copia restano spenti.
+    /// </param>
     public MainViewModel(
         IMetricsClient? client,
         string? problemaDiConfigurazione,
@@ -263,12 +269,12 @@ public sealed partial class MainViewModel : ViewModelBase
 
     /// <summary>La riga selezionata, quella che il pulsante terminerebbe.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PuoCopiareLaRiga))]
+    [NotifyCanExecuteChangedFor(nameof(CopiaProcessoCommand))]
     public partial ProcessoMostrato? ProcessoSelezionato { get; set; }
 
     /// <summary>True quando c'e' una riga selezionata da poter terminare.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(PuoCopiareLaRiga))]
-    [NotifyCanExecuteChangedFor(nameof(CopiaProcessoCommand))]
     public partial bool PuoTerminare { get; set; }
 
     /// <summary>True quando gli appunti sono raggiungibili: senza, i comandi restano spenti.</summary>
@@ -282,7 +288,14 @@ public sealed partial class MainViewModel : ViewModelBase
     public bool PuoCopiare => copiaNegliAppunti is not null;
 
     /// <summary>True quando c'e' una riga di processo da copiare.</summary>
-    public bool PuoCopiareLaRiga => PuoCopiare && PuoTerminare;
+    /// <remarks>
+    /// Sulla SELEZIONE e non su <see cref="PuoTerminare"/>, anche se oggi coincidono: copiare
+    /// una riga e' di sola lettura, terminarla no, e far viaggiare la prima sul permesso della
+    /// seconda vuol dire che il giorno in cui si stringe il cancello di chi puo' uccidere un
+    /// processo — un utente senza diritti, una macchina di sola lettura — sparirebbe anche la
+    /// possibilita' di copiarne il nome, senza che nessuno l'abbia deciso.
+    /// </remarks>
+    public bool PuoCopiareLaRiga => PuoCopiare && ProcessoSelezionato is not null;
 
     /// <summary>
     /// True quando il pulsante di terminazione e' gia' stato premuto una volta e sta
@@ -1054,12 +1067,37 @@ public sealed partial class MainViewModel : ViewModelBase
     /// Meglio non fare niente che perdere il testo per raccontare che non si e' riusciti a
     /// copiarlo.
     /// </remarks>
-    private async Task NegliAppuntiAsync(string testo)
+    private Task NegliAppuntiAsync(string testo)
     {
         if (copiaNegliAppunti is not { } copia)
         {
-            return;
+            return Task.CompletedTask;
         }
+
+        // IN FILA, una dopo l'altra. Gli appunti di Windows possono essere tenuti da un altro
+        // programma, e Avalonia in quel caso riprova dieci volte a cento millisecondi l'una:
+        // due scritture partite a poca distanza hanno due cicli di ritentativo indipendenti, e
+        // vince quella che RIESCE per ultima, non quella che si e' chiesta per ultima. Senza
+        // fila, un secondo clic puo' lasciare negli appunti il testo del primo — misurato, e in
+        // silenzio. Tutto gira sul thread dell'interfaccia, quindi la fila non ha bisogno di
+        // serrature: basta incatenare i Task.
+        codaAppunti = InFilaAsync(codaAppunti, copia, testo);
+
+        return codaAppunti;
+    }
+
+    /// <summary>Aspetta la scrittura precedente, poi scrive. Non lancia mai.</summary>
+    /// <param name="precedente">La scrittura da aspettare.</param>
+    /// <param name="copia">Come scrivere.</param>
+    /// <param name="testo">Cosa scrivere.</param>
+    /// <returns>L'attesa della propria scrittura.</returns>
+    /// <remarks>
+    /// Che non lanci mai e' cio' che rende sicuro aspettarla dalla chiamata successiva: una
+    /// scrittura fallita non deve trascinarsi dietro quelle dopo.
+    /// </remarks>
+    private static async Task InFilaAsync(Task precedente, Func<string, Task> copia, string testo)
+    {
+        await precedente;
 
         try
         {
@@ -1069,7 +1107,8 @@ public sealed partial class MainViewModel : ViewModelBase
         catch (Exception) // un fallimento del sistema, non un guasto della dashboard.
 #pragma warning restore CA1031
         {
-            // Niente: vedi il commento sopra.
+            // Niente. Un guasto degli appunti non ha dove dirsi: l'unico posto sarebbe la
+            // barra di stato, che e' proprio cio' che si sta copiando.
         }
     }
 

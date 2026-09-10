@@ -397,26 +397,33 @@
                                          ItemsSource="{Binding Processi}"
                                          SelectedItem="{Binding ProcessoSelezionato}"
                                          AutomationProperties.Name="{Binding ProcessiTitolo}">
-                                    <!-- Ctrl+C sull'ELENCO e non sulla finestra: sulla finestra
-                                         scatterebbe con il fuoco ovunque, copiando una riga che
-                                         chi guarda non sta nemmeno vedendo. Qui vale quando il
-                                         fuoco e' dentro l'elenco, che e' dove il code-behind lo
-                                         mette da solo all'apertura del pannello. -->
-                                    <ListBox.KeyBindings>
-                                        <KeyBinding Gesture="Ctrl+C" Command="{Binding CopiaProcessoCommand}" />
-                                    </ListBox.KeyBindings>
-                                    <!-- Il tasto destro SELEZIONA la riga su cui si preme, e la
+                                    <!-- Niente Ctrl+C, ed e' una rinuncia misurata. Un
+                                         KeyBinding sull'elenco non scatta mai: il fuoco non
+                                         resta li' dentro, ne' cliccando una riga ne' con
+                                         Focusable="True" sul ListBox, provati entrambi sulla
+                                         finestra vera. Metterlo sulla FINESTRA lo farebbe
+                                         scattare col fuoco ovunque, copiando una riga che chi
+                                         guarda non sta vedendo. Una scorciatoia annunciata e
+                                         non funzionante e' peggio di nessuna scorciatoia.
+                                         Il tasto destro SELEZIONA la riga su cui si preme, e la
                                          selezione e' anche il bersaglio di "End process". Un
                                          gesto che chi lo fa considera di sola lettura sposta
                                          quindi quel bersaglio: non e' pericoloso, perche' la
                                          terminazione chiede conferma e la conferma si disarma
                                          da sola quando la selezione cambia, ma va saputo. -->
-                                    <ListBox.ContextMenu>
-                                        <ContextMenu>
-                                            <MenuItem Header="Copy row"
-                                                      Command="{Binding CopiaProcessoCommand}" />
-                                        </ContextMenu>
-                                    </ListBox.ContextMenu>
+                                    <!-- ContextFlyout con FAMenuFlyout, e non ContextMenu: in
+                                         questa applicazione si carica SOLO FluentAvaloniaTheme,
+                                         che non porta un ControlTheme per ContextMenu. Un
+                                         ContextMenu si apre lo stesso, senza modello, e non
+                                         disegna niente: il menu del tasto destro non
+                                         comparirebbe mai, e l'unico segno sarebbe la selezione
+                                         che si sposta. -->
+                                    <ListBox.ContextFlyout>
+                                        <ui:FAMenuFlyout>
+                                            <ui:FAMenuFlyoutItem Text="Copy row"
+                                                                 Command="{Binding CopiaProcessoCommand}" />
+                                        </ui:FAMenuFlyout>
+                                    </ListBox.ContextFlyout>
                                     <!-- Il nome accessibile sta sulla RIGA, il ListBoxItem: e'
                                          cio' che le frecce selezionano e che un lettore di
                                          schermo annuncia. Messo sulla Grid dentro il modello

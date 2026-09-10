@@ -345,8 +345,9 @@ servizio che sta ancora partendo rifiuta anche lui. Un token rifiutato, un'impro
 un servizio piu' vecchio della dashboard sono rossi da subito, perche' fra un minuto saranno
 identici. Quel messaggio si puo' **copiare**, col pulsante `Copy` sulla barra stessa: un'impronta
 che non corrisponde ne stampa due per intero, e nessuno le ricopia a mano. Anche una riga
-dell'elenco dei processi si copia, dal menu del tasto destro o con Ctrl+C quando il fuoco e'
-li' dentro, e porta con se' il PID. Il resto delle scritte non e' selezionabile di proposito:
+dell'elenco dei processi si copia, dal menu del tasto destro, e porta con se' il PID - che
+identifica il processo quando di "chrome" ce ne sono dodici. Il resto delle scritte non e'
+selezionabile di proposito:
 un testo selezionabile si prende il clic per cominciare la selezione, e trascinare su un
 quadrante ne aprirebbe il pannello invece di scegliere le parole.
 
