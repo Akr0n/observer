@@ -1,3 +1,17 @@
+observer (0.16.0) unstable; urgency=medium
+
+  * The status message can be copied, with a "Copy" button on the bar
+    itself: a fingerprint that does not match prints two whole
+    fingerprints, and nobody retypes those. A process row can be copied
+    too, from the right-click menu, and carries its PID - which is what
+    identifies the process when there are twelve of "chrome".
+  * Nothing else is selectable, on purpose: selectable text takes the
+    press that starts a selection, so dragging over a gauge would open its
+    process panel instead of picking words, and dragging over a process
+    row would not select it.
+
+ -- Federico Cardinali <noreply@example.invalid>  Thu, 10 Sep 2026 17:30:00 +0000
+
 observer (0.15.0) unstable; urgency=medium
 
   * The row of a machine that is down now says for how long: "for 3 min",
