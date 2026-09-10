@@ -59,6 +59,14 @@ public sealed partial class MacchinaInElenco : ObservableObject
         ArgumentNullException.ThrowIfNull(punto);
 
         Punto = punto;
+
+        // La misura ricomincia: da qui in poi e' un'altra macchina, o la stessa raggiunta in
+        // un altro modo, e "giu' da due giorni" riferito alla precedente sarebbe una bugia.
+        // Sta QUI e non nel chiamante perche' i chiamanti sono due, e uno dei due si
+        // dimenticherebbe.
+        GuastoDa = null;
+        DaQuanto = string.Empty;
+
         OnPropertyChanged(nameof(Nome));
         OnPropertyChanged(nameof(Descrizione));
     }
@@ -67,8 +75,20 @@ public sealed partial class MacchinaInElenco : ObservableObject
     public string Nome => Punto.NomeVisibile;
 
     /// <summary>Da quando le letture falliscono di fila, oppure null se l'ultima e' andata.</summary>
-    /// <remarks>La stessa misura che la barra di stato tiene per la macchina guardata.</remarks>
-    internal DateTimeOffset? GuastoDa { get; set; }
+    /// <remarks>
+    /// La stessa misura che la barra di stato tiene per la macchina guardata. Il setter e'
+    /// privato: l'orologio e il testo che ne deriva devono muoversi insieme, e da fuori si
+    /// azzerano solo cambiando la macchina della voce, cioe' da <see cref="Aggiorna"/>.
+    /// <para>
+    /// E' il primo fallimento che QUESTA finestra ha visto, non l'istante in cui la macchina
+    /// e' andata giu': una dashboard appena aperta su una macchina spenta da tre giorni dira'
+    /// "under 1 min". Il dato per saperlo davvero non c'e' — la macchina che dovrebbe dirlo
+    /// e' proprio quella che non risponde. Per la stessa ragione e' tempo di calendario e non
+    /// tempo osservato: attraverso una sospensione del PC, o un intervallo in cui la finestra
+    /// era chiusa, la durata rivendica una continuita' che nessuno ha guardato.
+    /// </para>
+    /// </remarks>
+    internal DateTimeOffset? GuastoDa { get; private set; }
 
     /// <summary>True mentre una sonda e' in volo: la prossima non le parte sopra.</summary>
     /// <remarks>Leggibile da fuori perche' un test lo osserva; lo scrive solo il view model.</remarks>
@@ -81,8 +101,32 @@ public sealed partial class MacchinaInElenco : ObservableObject
 
     /// <summary>Perche' sta cosi', in una frase corta: il titolo che avrebbe la barra di stato.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Descrizione))]
+    [NotifyPropertyChangedFor(nameof(Descrizione), nameof(Suggerimento))]
     public partial string Dettaglio { get; set; } = "Not checked yet";
+
+    /// <summary>Da quanto dura il guasto, gia' scritto: <c>for 2 h 10 min</c>. Vuoto se non c'e'.</summary>
+    /// <remarks>
+    /// Una proprieta' MEMORIZZATA, scritta quando arriva una lettura, e non un getter che
+    /// legge l'orologio: cosi' non serve alcun timer, e la riga non puo' cambiare mentre
+    /// nessuno guarda. Il prezzo e' che il testo puo' restare indietro fino alla lettura
+    /// successiva, ed e' per questo che <see cref="Downtime.Frase"/> tronca.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MostraDaQuanto), nameof(Suggerimento), nameof(Descrizione))]
+    public partial string DaQuanto { get; set; } = string.Empty;
+
+    /// <summary>True quando c'e' una durata da mostrare sotto il nome.</summary>
+    public bool MostraDaQuanto => DaQuanto.Length > 0;
+
+    /// <summary>Cio' che dice il suggerimento del mouse: il motivo, e da quanto dura.</summary>
+    /// <remarks>
+    /// Separati da un punto medio e non da uno spazio: il prefisso e' uno solo per dieci
+    /// titoli diversi, e attaccato ad alcuni cambia il senso della frase. "Token rejected for
+    /// 3 min" in inglese si legge "respinto PER tre minuti", cioe' un blocco a tempo, che e'
+    /// il contrario di cio' che sta succedendo. Il punto medio spezza la frase e lascia due
+    /// fatti accostati, che e' quello che sono.
+    /// </remarks>
+    public string Suggerimento => DaQuanto.Length == 0 ? Dettaglio : $"{Dettaglio} · {DaQuanto}";
 
     /// <summary>True finche' nessuno l'ha interrogata.</summary>
     public bool Ignoto => Stato == StatoVoce.Ignoto;
@@ -97,7 +141,12 @@ public sealed partial class MacchinaInElenco : ObservableObject
     public bool Guasto => Stato == StatoVoce.Guasto;
 
     /// <summary>Nome e stato insieme, per chi non vede il pallino.</summary>
-    public string Descrizione => $"{Nome}: {Dettaglio}";
+    /// <remarks>
+    /// Passa da <see cref="Suggerimento"/> e non da <see cref="Dettaglio"/>: cosi' il
+    /// suggerimento del mouse e cio' che annuncia un lettore di schermo non possono divergere,
+    /// e la durata la sente anche chi la riga non la vede.
+    /// </remarks>
+    public string Descrizione => $"{Nome}: {Suggerimento}";
 
     /// <summary>Registra l'esito di una lettura, dalla sonda o dal giro principale.</summary>
     /// <param name="esito">Com'e' andata.</param>
@@ -108,6 +157,7 @@ public sealed partial class MacchinaInElenco : ObservableObject
         if (esito == ServiceOutcome.Ok)
         {
             GuastoDa = null;
+            DaQuanto = string.Empty;
             Stato = StatoVoce.Raggiungibile;
             Dettaglio = "Reachable";
 
@@ -121,5 +171,15 @@ public sealed partial class MacchinaInElenco : ObservableObject
 
         Stato = messaggio.Tone == StatusTone.Error ? StatoVoce.Guasto : StatoVoce.Attenzione;
         Dettaglio = messaggio.Title;
+
+        // Il cancello e' il TONO, non lo stato: dentro i dieci secondi di tolleranza il tono
+        // e' neutro e non si dice ancora niente, perche' un contatore che parte su ogni
+        // singhiozzo insegna a ignorarlo - che e' cio' che StatusEscalation esiste per
+        // impedire. E' il tono e non lo stato Guasto perche' un "No readings yet" arriva DOPO
+        // la tolleranza ma resta un avviso, non un rosso, e puo' durare giorni: filtrare sul
+        // rosso lo lascerebbe fuori proprio mentre e' la cosa che dura di piu'.
+        DaQuanto = messaggio.Tone == StatusTone.Informational
+            ? string.Empty
+            : "for " + Downtime.Frase(adesso - GuastoDa.Value);
     }
 }

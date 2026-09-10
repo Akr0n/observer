@@ -612,14 +612,10 @@ public sealed partial class MainViewModel : ViewModelBase
         voceGuardata?.Aggiorna(ricomparso.Endpoint);
 
         // Attesa nuova: l'endpoint e' cambiato, e i secondi gia' consumati contro il
-        // precedente non dicono niente su questo. Anche per il pallino, che ha lo stesso
-        // orologio.
+        // precedente non dicono niente su questo. Il pallino ha lo stesso orologio, ma lo
+        // azzera Aggiorna qui sopra, insieme al testo che ne deriva: da fuori la voce non lo
+        // tocca piu' nessuno.
         guastoDa = null;
-
-        if (voceGuardata is not null)
-        {
-            voceGuardata.GuastoDa = null;
-        }
 
         // Il catalogo appartiene al servizio precedente: va riletto, altrimenti le etichette
         // resterebbero quelle di una macchina diversa.
