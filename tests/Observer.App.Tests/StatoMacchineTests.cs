@@ -63,6 +63,66 @@ public class StatoMacchineTests
     }
 
     [Fact]
+    public void DentroLaTolleranzaLaRigaNonDiceAncoraDaQuanto()
+    {
+        // Un contatore che parte su ogni singhiozzo insegna a ignorarlo, ed e' esattamente
+        // cio' che i dieci secondi di tolleranza esistono per impedire.
+        MacchinaInElenco voce = new(Remota("altra"));
+
+        voce.Registra(ServiceOutcome.ConnessioneRifiutata, "refused", T0);
+
+        Assert.True(voce.Attenzione);
+        Assert.Equal(string.Empty, voce.DaQuanto);
+        Assert.False(voce.MostraDaQuanto);
+    }
+
+    [Fact]
+    public void PassataLaTolleranzaLaRigaDiceDaQuantoDuraIlGuasto()
+    {
+        MacchinaInElenco voce = new(Remota("altra"));
+
+        voce.Registra(ServiceOutcome.ConnessioneRifiutata, "refused", T0);
+        voce.Registra(ServiceOutcome.ConnessioneRifiutata, "refused", T0 + TimeSpan.FromMinutes(3));
+
+        Assert.True(voce.Guasto);
+        Assert.Equal("for 3 min", voce.DaQuanto);
+        Assert.True(voce.MostraDaQuanto);
+
+        // La durata si sente anche senza vedere la riga: il suggerimento e il nome accessibile
+        // passano dallo stesso testo, cosi' non possono divergere.
+        Assert.Contains("for 3 min", voce.Suggerimento, StringComparison.Ordinal);
+        Assert.Contains("for 3 min", voce.Descrizione, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UnaMacchinaCheTornaSuNonMostraPiuLaDurata()
+    {
+        MacchinaInElenco voce = new(Remota("altra"));
+
+        voce.Registra(ServiceOutcome.ConnessioneRifiutata, "refused", T0);
+        voce.Registra(ServiceOutcome.ConnessioneRifiutata, "refused", T0 + TimeSpan.FromMinutes(3));
+        voce.Registra(ServiceOutcome.Ok, string.Empty, T0 + TimeSpan.FromMinutes(4));
+
+        Assert.Equal(string.Empty, voce.DaQuanto);
+        Assert.False(voce.MostraDaQuanto);
+
+        // Niente coda: la descrizione torna a essere nome e stato, senza durata appiccicata.
+        Assert.EndsWith(": Reachable", voce.Descrizione, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UnTokenRifiutatoDiceDaQuantoDalPrimoIstante()
+    {
+        // Non ha tolleranza: fra un minuto sara' identico, quindi la durata parte subito.
+        MacchinaInElenco voce = new(Remota("altra"));
+
+        voce.Registra(ServiceOutcome.TokenRifiutato, "rejected", T0);
+
+        Assert.True(voce.Guasto);
+        Assert.Equal("for under 1 min", voce.DaQuanto);
+    }
+
+    [Fact]
     public void UnTokenRifiutatoEGuastoDaSubito()
     {
         // Fra un minuto sara' identico: non c'e' grazia che tenga.

@@ -215,7 +215,7 @@
                         <Style Selector="ListBoxItem">
                             <Setter Property="AutomationProperties.Name"
                                     Value="{ReflectionBinding Descrizione}" />
-                            <Setter Property="ToolTip.Tip" Value="{ReflectionBinding Dettaglio}" />
+                            <Setter Property="ToolTip.Tip" Value="{ReflectionBinding Suggerimento}" />
                         </Style>
                     </ListBox.Styles>
                     <ListBox.ItemTemplate>
@@ -236,7 +236,18 @@
                                                RenderTransform="rotate(45deg)"
                                                IsVisible="{Binding Guasto}" />
                                 </Panel>
-                                <TextBlock Text="{Binding Nome}" TextWrapping="Wrap" />
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Nome}" TextWrapping="Wrap" />
+                                    <!-- Da quanto dura il guasto, sotto il nome. Compare solo
+                                         quando c'e' qualcosa da dire: dentro i dieci secondi
+                                         di tolleranza la riga non c'e', e una macchina sana
+                                         resta esattamente com'era prima. -->
+                                    <TextBlock Text="{Binding DaQuanto}"
+                                               IsVisible="{Binding MostraDaQuanto}"
+                                               Theme="{StaticResource CaptionTextBlockStyle}"
+                                               Classes="secondario"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
