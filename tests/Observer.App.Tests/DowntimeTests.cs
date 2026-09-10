@@ -42,6 +42,14 @@ public class DowntimeTests
     }
 
     [Fact]
+    public void IlConfineDelMinutoNonLasciaBuchi()
+    {
+        // L'altro capo di "under 1 min": a cinquantanove secondi non si conta, a sessanta si.
+        Assert.Equal("under 1 min", Downtime.Frase(TimeSpan.FromSeconds(59)));
+        Assert.Equal("1 min", Downtime.Frase(TimeSpan.FromMinutes(1)));
+    }
+
+    [Fact]
     public void DallOraInSuSiLeggonoDueUnita()
     {
         Assert.Equal("1 h", Downtime.Frase(TimeSpan.FromHours(1)));
@@ -81,11 +89,12 @@ public class DowntimeTests
         Assert.Equal("1 day", Downtime.Frase(TimeSpan.FromHours(24)));
 
     [Fact]
-    public void LaFraseNonPortaMaiUnSeparatoreDecimale()
+    public void LaFraseNonPortaMaiUnNumeroFrazionario()
     {
-        // I numeri passano da InvariantCulture: su una macchina italiana un numero formattato
-        // con la cultura corrente scriverebbe "1,5", e questa frase e' testo dell'interfaccia,
-        // che qui e' in inglese.
+        // Non e' una prova sulla cultura: un intero non porta separatori in nessuna cultura,
+        // e a proteggere la cultura c'e' CA1305, che senza il formato esplicito non fa
+        // nemmeno compilare. Qui si pinna che la frase non contenga mai un numero con la
+        // virgola, cioe' che le unita' restino intere invece di diventare "1,5 h".
         foreach (TimeSpan durata in new[]
         {
             TimeSpan.FromMinutes(90),

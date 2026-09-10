@@ -83,7 +83,9 @@ public sealed partial class MacchinaInElenco : ObservableObject
     /// E' il primo fallimento che QUESTA finestra ha visto, non l'istante in cui la macchina
     /// e' andata giu': una dashboard appena aperta su una macchina spenta da tre giorni dira'
     /// "under 1 min". Il dato per saperlo davvero non c'e' — la macchina che dovrebbe dirlo
-    /// e' proprio quella che non risponde.
+    /// e' proprio quella che non risponde. Per la stessa ragione e' tempo di calendario e non
+    /// tempo osservato: attraverso una sospensione del PC, o un intervallo in cui la finestra
+    /// era chiusa, la durata rivendica una continuita' che nessuno ha guardato.
     /// </para>
     /// </remarks>
     internal DateTimeOffset? GuastoDa { get; private set; }
@@ -117,7 +119,14 @@ public sealed partial class MacchinaInElenco : ObservableObject
     public bool MostraDaQuanto => DaQuanto.Length > 0;
 
     /// <summary>Cio' che dice il suggerimento del mouse: il motivo, e da quanto dura.</summary>
-    public string Suggerimento => DaQuanto.Length == 0 ? Dettaglio : $"{Dettaglio} {DaQuanto}";
+    /// <remarks>
+    /// Separati da un punto medio e non da uno spazio: il prefisso e' uno solo per dieci
+    /// titoli diversi, e attaccato ad alcuni cambia il senso della frase. "Token rejected for
+    /// 3 min" in inglese si legge "respinto PER tre minuti", cioe' un blocco a tempo, che e'
+    /// il contrario di cio' che sta succedendo. Il punto medio spezza la frase e lascia due
+    /// fatti accostati, che e' quello che sono.
+    /// </remarks>
+    public string Suggerimento => DaQuanto.Length == 0 ? Dettaglio : $"{Dettaglio} · {DaQuanto}";
 
     /// <summary>True finche' nessuno l'ha interrogata.</summary>
     public bool Ignoto => Stato == StatoVoce.Ignoto;
@@ -166,8 +175,9 @@ public sealed partial class MacchinaInElenco : ObservableObject
         // Il cancello e' il TONO, non lo stato: dentro i dieci secondi di tolleranza il tono
         // e' neutro e non si dice ancora niente, perche' un contatore che parte su ogni
         // singhiozzo insegna a ignorarlo - che e' cio' che StatusEscalation esiste per
-        // impedire. Un "No readings yet", invece, e' un avviso senza tolleranza e puo' durare
-        // giorni: quello la durata ce l'ha.
+        // impedire. E' il tono e non lo stato Guasto perche' un "No readings yet" arriva DOPO
+        // la tolleranza ma resta un avviso, non un rosso, e puo' durare giorni: filtrare sul
+        // rosso lo lascerebbe fuori proprio mentre e' la cosa che dura di piu'.
         DaQuanto = messaggio.Tone == StatusTone.Informational
             ? string.Empty
             : "for " + Downtime.Frase(adesso - GuastoDa.Value);

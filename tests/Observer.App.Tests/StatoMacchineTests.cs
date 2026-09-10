@@ -95,6 +95,39 @@ public class StatoMacchineTests
     }
 
     [Fact]
+    public void UnServizioCheNonCampionaDiceDaQuantoAncheSeNonERosso()
+    {
+        // Il ramo giallo, che e' la ragione per cui il cancello e' il TONO e non lo stato
+        // Guasto: un servizio raggiungibile che non ha ancora campionato resta un avviso, mai
+        // un rosso, e puo' durare giorni. Un cancello scritto sul rosso lo lascerebbe senza
+        // durata proprio mentre e' la cosa che dura di piu'.
+        MacchinaInElenco voce = new(Remota("altra"));
+
+        voce.Registra(ServiceOutcome.NonAncoraPronto, "warming up", T0);
+        voce.Registra(ServiceOutcome.NonAncoraPronto, "warming up", T0 + TimeSpan.FromMinutes(7));
+
+        Assert.True(voce.Attenzione);
+        Assert.False(voce.Guasto);
+        Assert.Equal("for 7 min", voce.DaQuanto);
+    }
+
+    [Fact]
+    public void ScrivereLaDurataNotificaAncheCheVaMostrata()
+    {
+        // MostraDaQuanto e' legato a IsVisible della seconda riga: senza la sua notifica il
+        // testo cambierebbe e la riga resterebbe invisibile per sempre, con la suite verde.
+        MacchinaInElenco voce = new(Remota("altra"));
+        List<string> notificate = [];
+        voce.PropertyChanged += (_, e) => notificate.Add(e.PropertyName ?? string.Empty);
+
+        voce.Registra(ServiceOutcome.TokenRifiutato, "rejected", T0);
+
+        Assert.Contains(nameof(MacchinaInElenco.DaQuanto), notificate);
+        Assert.Contains(nameof(MacchinaInElenco.MostraDaQuanto), notificate);
+        Assert.Contains(nameof(MacchinaInElenco.Suggerimento), notificate);
+    }
+
+    [Fact]
     public void UnaMacchinaCheTornaSuNonMostraPiuLaDurata()
     {
         MacchinaInElenco voce = new(Remota("altra"));
@@ -381,6 +414,74 @@ public class StatoMacchineTests
         }
 
         Assert.True(guardato.Letture > prima, "il giro principale si e' fermato");
+
+        await Ferma(arresto, ciclo);
+    }
+
+    [Fact]
+    public async Task RileggendoLaMacchinaLaDurataRiparteDaCapo()
+    {
+        // Stesso posto nell'elenco, macchina cambiata sotto: "giu' da mezz'ora" riferito alla
+        // precedente sarebbe una bugia, ed e' una bugia che nessuno andrebbe a cercare.
+        // Il percorso passa da rileggiPunto -> SondaAsync -> Aggiorna, che e' interno: si
+        // prova da qui, dove e' raggiungibile, invece di allargare la superficie della classe.
+        // Il client rifiuta ANCHE la credenziale nuova, altrimenti una lettura buona azzererebbe
+        // tutto per un'altra strada e il test passerebbe anche senza l'azzeramento.
+        ObserverEndpoint locale = ObserverEndpoint.CanaleLocale();
+        ObserverEndpoint vecchia = Remota("ruotata");
+        ObserverEndpoint nuova = vecchia with { ApiToken = "nuovo" };
+        OrologioFinto orologio = new();
+        bool ruota = false;
+
+        MainViewModel viewModel = new(
+            client: new ClientCheRisponde(locale),
+            problemaDiConfigurazione: null,
+            orologio: orologio.Adesso,
+            elenco: new MachineListResult([locale, vecchia], []),
+            apriMacchina: punto => new ClientRifiutato(punto),
+            rileggiPunto: _ => ruota ? nuova : null);
+
+        using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(20));
+        Task ciclo = viewModel.EseguiAsync(arresto.Token);
+
+        // Un token rifiutato e' rosso dal primo istante: niente tolleranza da aspettare.
+        while (!arresto.IsCancellationRequested && !viewModel.Macchine[1].Guasto)
+        {
+            await Task.Delay(50, CancellationToken.None);
+        }
+
+        // Il guasto invecchia. L'orologio si sposta una volta sola: sono le sonde successive
+        // a leggerlo, e la riga arriva a dire mezz'ora.
+        orologio.Avanza(TimeSpan.FromMinutes(30));
+
+        while (!arresto.IsCancellationRequested
+            && !viewModel.Macchine[1].DaQuanto.Contains("30 min", StringComparison.Ordinal))
+        {
+            await Task.Delay(50, CancellationToken.None);
+        }
+
+        Assert.Equal("for 30 min", viewModel.Macchine[1].DaQuanto);
+
+        // Adesso la macchina cambia sotto: la sonda successiva la rilegge. L'orologio deve
+        // avanzare, altrimenti la sonda non scatta piu' e non c'e' nessuna lettura successiva.
+        ruota = true;
+
+        while (!arresto.IsCancellationRequested && viewModel.Macchine[1].Punto != nuova)
+        {
+            orologio.Avanza(MainViewModel.RicaricaStati + TimeSpan.FromSeconds(1));
+            await Task.Delay(50, CancellationToken.None);
+        }
+
+        // La macchina e' ancora giu', ma e' un'ALTRA macchina: la misura ricomincia da zero e
+        // il rifiuto successivo riparte da "under 1 min", invece di continuare la mezz'ora
+        // della precedente. Senza l'azzeramento dentro Aggiorna la durata proseguirebbe.
+        Assert.Equal(nuova, viewModel.Macchine[1].Punto);
+        Assert.True(viewModel.Macchine[1].Guasto || viewModel.Macchine[1].Attenzione);
+        // Vuota se si guarda fra l'azzeramento e la lettura successiva, "under 1 min" se si
+        // guarda dopo. Senza l'azzeramento sarebbe la mezz'ora di prima, che continua a
+        // crescere: un'asserzione su un valore preciso non basterebbe a distinguerlo.
+        string dopo = viewModel.Macchine[1].DaQuanto;
+        Assert.True(dopo.Length == 0 || dopo == "for under 1 min", $"durata dopo la rilettura: '{dopo}'");
 
         await Ferma(arresto, ciclo);
     }

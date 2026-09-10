@@ -321,7 +321,9 @@ pieno se risponde, un anello ambra mentre un guasto dura da meno di dieci second
 rosso dopo. Pieno o vuoto, cerchio o rombo: si legge anche da chi non distingue i colori,
 perche' nel tema chiaro ambra e rosso, per la forma piu' comune di daltonismo, sono lo stesso
 colore. I colori sono quelli della barra di stato, cosi' un
-segno rosso vuol dire cio' che vuol dire una barra rossa; un token rifiutato o una versione
+segno rosso vuol dire cio' che vuol dire una barra rossa. Sotto il nome, quando c'e' un guasto
+da raccontare, si legge anche **da quanto dura** - "for 3 min", "for 2 h 10 min" - e la stessa
+frase sta nel suggerimento; un token rifiutato o una versione
 incompatibile sono rossi subito. Le macchine che non stai guardando vengono sondate ogni
 quindici secondi, tutte insieme e senza trattenere i quadranti: una macchina spenta costa un
 timeout di otto secondi, e i quadranti non devono pagarlo. Il suggerimento sulla riga dice il
