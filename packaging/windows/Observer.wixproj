@@ -47,8 +47,12 @@
   <!-- L'estensione Firewall: l'unico modo, dentro un MSI, di aprire la porta del servizio in
        modo transazionale - la regola nasce con il componente e muore con lui alla
        disinstallazione, senza uno script netsh che poi nessuno ricorda di annullare. -->
+  <!-- L'estensione Util: serve solo per le azioni di ripristino del servizio. L'elemento
+       nativo ServiceConfigFailureActions esiste ma WiX 6 lo rifiuta con WIX1149, citando la
+       documentazione del Windows Installer SDK, e rimanda a questa. -->
   <ItemGroup>
     <PackageReference Include="WixToolset.Firewall.wixext" Version="6.0.2" />
+    <PackageReference Include="WixToolset.Util.wixext" Version="6.0.2" />
   </ItemGroup>
 
 </Project>

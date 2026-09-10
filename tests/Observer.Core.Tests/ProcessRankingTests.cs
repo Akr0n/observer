@@ -242,6 +242,120 @@ public class ProcessRankingTests
         Assert.Equal(["grosso", "medio"], ordinati.Select(processo => processo.Name));
     }
 
+    [Fact]
+    public void DueLettureInsiemeNonSiCalpestano()
+    {
+        // TryLeggi svuota e riscrive un dizionario, e l'endpoint /processes lo chiama
+        // direttamente dentro la richiesta HTTP. La finestra lo interroga una volta al
+        // secondo mentre il pannello e' aperto: due dashboard sulla stessa macchina bastano
+        // a farne partire due insieme. Il caso peggiore di un Dictionary scritto da due
+        // thread non e' un'eccezione, e' un ciclo dentro Insert: un core al 100% per sempre,
+        // la richiesta che non torna, e nessun errore da nessuna parte.
+        //
+        // Due Thread veri e non il pool: su un runner a un solo processore Parallel.For
+        // esegue le iterazioni una dopo l'altra sul chiamante, e il test passerebbe verde
+        // anche senza serratura. E un appuntamento invece di un'attesa a tempo: chi entra
+        // per primo aspetta il compagno, che con la serratura al posto giusto non arrivera'
+        // mai. Cosi' il verde non dipende da come e' andata la corsa.
+        using Incontro incontro = new();
+        ElencoSpione elenco = new(incontro)
+        {
+            Processi = [.. Enumerable.Range(1, 200).Select(i => Processo(i, $"p{i}", i, i * 1000))],
+        };
+        ProcessRanking classifica = new(elenco, new OrologioSpione(incontro), Core);
+
+        Exception? guasto = null;
+
+        void Corri()
+        {
+            try
+            {
+                classifica.TryLeggi(out IReadOnlyList<ProcessUsage> _);
+            }
+#pragma warning disable CA1031 // Qui l'eccezione E' il risultato: va portata al test, non
+            catch (Exception ex) // lasciata uccidere il processo che esegue i test.
+#pragma warning restore CA1031
+            {
+                Interlocked.CompareExchange(ref guasto, ex, null);
+            }
+        }
+
+        Thread uno = new(Corri);
+        Thread due = new(Corri);
+
+        uno.Start();
+        due.Start();
+        uno.Join();
+        due.Join();
+
+        Assert.Null(guasto);
+
+        // Non "non ha lanciato": quello lo passerebbe anche il codice rotto, quattro volte su
+        // dieci. Si guarda quante letture sono state dentro insieme, e dev'essere una.
+        Assert.Equal(1, incontro.MassimeInsieme);
+    }
+
+    /// <summary>L'appuntamento in cui due letture si incontrano, se il codice glielo permette.</summary>
+    private sealed class Incontro : IDisposable
+    {
+        private readonly ManualResetEventSlim insieme = new();
+        private int dentro;
+        private int massime;
+
+        public int MassimeInsieme => Volatile.Read(ref massime);
+
+        public void Passa()
+        {
+            int quante = Interlocked.Increment(ref dentro);
+
+            int visto;
+            while (quante > (visto = Volatile.Read(ref massime)))
+            {
+                Interlocked.CompareExchange(ref massime, quante, visto);
+            }
+
+            if (quante >= 2)
+            {
+                insieme.Set();
+            }
+            else
+            {
+                // Con la serratura al posto giusto il compagno non arriva mai: si esce dopo
+                // l'attesa, e il massimo resta uno.
+                insieme.Wait(TimeSpan.FromMilliseconds(250));
+            }
+
+            Interlocked.Decrement(ref dentro);
+        }
+
+        public void Dispose() => insieme.Dispose();
+    }
+
+    private sealed class OrologioSpione(Incontro incontro) : TimeProvider
+    {
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp()
+        {
+            incontro.Passa();
+
+            return 0;
+        }
+    }
+
+    private sealed class ElencoSpione(Incontro incontro) : IProcessLister
+    {
+        public IReadOnlyList<ProcessTimes> Processi { get; set; } = [];
+
+        public bool TryList(out IReadOnlyList<ProcessTimes> processes)
+        {
+            incontro.Passa();
+            processes = Processi;
+
+            return true;
+        }
+    }
+
     /// <summary>Classifica, elenco finto e orologio finto tenuti insieme, uno per test.</summary>
     private sealed class Banco
     {

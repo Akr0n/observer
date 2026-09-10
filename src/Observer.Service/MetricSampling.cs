@@ -47,6 +47,8 @@ public sealed partial class MetricSamplingService : BackgroundService
     private static readonly TimeSpan CollectorTimeout = TimeSpan.FromMilliseconds(750);
 
     private readonly IReadOnlyList<IMetricCollector> collectors;
+    private readonly FrenoDiRipetizione[] freni;
+    private readonly FrenoDiRipetizione giroLungo = new();
     private readonly MetricSnapshotCache cache;
     private readonly IMetricSnapshotSink sink;
     private readonly ILogger<MetricSamplingService> logger;
@@ -76,6 +78,10 @@ public sealed partial class MetricSamplingService : BackgroundService
         this.cache = cache;
         this.sink = sink;
         this.logger = logger;
+
+        // Un freno per sorgente, per indice e non per Id: due collector con lo stesso Id
+        // farebbero saltare un dizionario, e qui non c'e' niente da guadagnare a rischiarlo.
+        freni = [.. collectors.Select(_ => new FrenoDiRipetizione())];
     }
 
     /// <inheritdoc />
@@ -97,11 +103,20 @@ public sealed partial class MetricSamplingService : BackgroundService
             // cadere in SILENZIO: il campione non c'e', e a valle si legge come un momento in
             // cui non si stava misurando - indistinguibile da una macchina spenta. Se succede,
             // che almeno resti scritto da qualche parte quale sorgente ha allungato il giro.
+            // Scritto UNA volta: una macchina che resta sotto sforzo allunga tutti i giri, e
+            // il messaggio a 1 Hz e' 86 400 righe al giorno nel registro eventi.
             TimeSpan durata = Stopwatch.GetElapsedTime(inizio);
 
             if (durata > Interval)
             {
-                LogGiroTroppoLungo(logger, durata.TotalMilliseconds, Interval.TotalMilliseconds);
+                if (giroLungo.Segnala("lungo"))
+                {
+                    LogGiroTroppoLungo(logger, durata.TotalMilliseconds, Interval.TotalMilliseconds);
+                }
+            }
+            else if (giroLungo.Cessato(out int giriTaciuti))
+            {
+                LogGiroTornatoInOrario(logger, giriTaciuti);
             }
 
             cache.Publish(snapshot);
@@ -146,7 +161,7 @@ public sealed partial class MetricSamplingService : BackgroundService
         // L'ordine dei risultati resta quello dei collector, perche' WhenAll conserva
         // l'ordine dei task: i riquadri a schermo non si scambiano di posto a ogni giro.
         MetricSnapshot[] results = await Task.WhenAll(
-            collectors.Select(collector => CollectOneAsync(collector, cancellationToken)))
+            collectors.Select((collector, indice) => CollectOneAsync(collector, freni[indice], cancellationToken)))
             .ConfigureAwait(false);
 
         return new MachineSnapshot(MachineSnapshot.CurrentSchemaVersion, DateTimeOffset.UtcNow, results);
@@ -155,6 +170,7 @@ public sealed partial class MetricSamplingService : BackgroundService
     /// <summary>Interroga una sorgente, e non lascia mai passare un guasto suo.</summary>
     private async Task<MetricSnapshot> CollectOneAsync(
         IMetricCollector collector,
+        FrenoDiRipetizione freno,
         CancellationToken cancellationToken)
     {
         using CancellationTokenSource attempt =
@@ -164,7 +180,14 @@ public sealed partial class MetricSamplingService : BackgroundService
 
         try
         {
-            return await collector.CollectAsync(attempt.Token).ConfigureAwait(false);
+            MetricSnapshot esito = await collector.CollectAsync(attempt.Token).ConfigureAwait(false);
+
+            if (freno.Cessato(out int taciute))
+            {
+                LogCollectorTornato(logger, collector.Id, taciute);
+            }
+
+            return esito;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -173,8 +196,12 @@ public sealed partial class MetricSamplingService : BackgroundService
         }
         catch (OperationCanceledException)
         {
-            // Scaduto il tempo: la sorgente e' lenta, non rotta. Le altre proseguono.
-            LogCollectorTimedOut(logger, collector.Id, CollectorTimeout.TotalMilliseconds);
+            // Scaduto il tempo: la sorgente e' lenta, non rotta. Le altre proseguono. E lo
+            // si dice una volta: una sorgente che scade una volta scade a ogni giro.
+            if (freno.Segnala("scaduto"))
+            {
+                LogCollectorTimedOut(logger, collector.Id, CollectorTimeout.TotalMilliseconds);
+            }
 
             return new MetricSnapshot(
                 collector.Id,
@@ -187,7 +214,12 @@ public sealed partial class MetricSamplingService : BackgroundService
         catch (Exception ex) // abbattere il campionamento di tutte le altre metriche.
 #pragma warning restore CA1031
         {
-            LogCollectorFaulted(logger, collector.Id, ex);
+            // Il TIPO dell'eccezione come motivo, non il messaggio: un messaggio che porta
+            // dentro un percorso o un contatore cambia a ogni giro e non frenerebbe niente.
+            if (freno.Segnala(ex.GetType().FullName ?? "?"))
+            {
+                LogCollectorFaulted(logger, collector.Id, ex);
+            }
 
             return new MetricSnapshot(collector.Id, CollectorStatus.Faulted, ex.Message, []);
         }
@@ -210,4 +242,20 @@ public sealed partial class MetricSamplingService : BackgroundService
         Level = LogLevel.Warning,
         Message = "Collector {CollectorId} exceeded {TimeoutMs} ms: skipped for this round, the other metrics continue.")]
     private static partial void LogCollectorTimedOut(ILogger logger, string collectorId, double timeoutMs);
+
+    // Warning e non Information, e non e' pedanteria: UseWindowsService registra il provider
+    // del registro eventi, che lascia passare da Warning in su. A Information queste righe
+    // non arriverebbero MAI nel registro di Windows, e il registro resterebbe con l'inizio
+    // del guasto e nessuna fine - cioe' esattamente il malinteso che vogliono togliere.
+    [LoggerMessage(
+        EventId = 4,
+        Level = LogLevel.Warning,
+        Message = "Sampling rounds are back within the period ({Silenced} late rounds were not logged).")]
+    private static partial void LogGiroTornatoInOrario(ILogger logger, int silenced);
+
+    [LoggerMessage(
+        EventId = 5,
+        Level = LogLevel.Warning,
+        Message = "Collector {CollectorId} is answering again ({Silenced} failures were not logged).")]
+    private static partial void LogCollectorTornato(ILogger logger, string collectorId, int silenced);
 }
