@@ -52,8 +52,21 @@ public sealed class ProcessRanking
     /// <see cref="precedenti"/>: due scritture contemporanee su un
     /// <see cref="Dictionary{TKey, TValue}"/> non lanciano in modo affidabile, e nel caso
     /// peggiore avvitano un thread dentro Insert — un core al 100% per sempre, la richiesta
-    /// che non torna, e nessun errore da nessuna parte. E' la stessa difesa che
-    /// <c>MetricSnapshotCache</c> da' ai collector, sull'unico percorso che non l'aveva.
+    /// che non torna, e nessun errore da nessuna parte. E' lo stesso pericolo da cui
+    /// <c>MetricSnapshotCache</c> difende i collector — due letture della stessa sorgente che
+    /// si sovrappongono — sull'unico percorso che non l'aveva; li' pero' bastava una scrittura
+    /// atomica, qui no, perche' qui lo stato non e' un riferimento solo ma un dizionario
+    /// svuotato e riempito.
+    /// <para>
+    /// Il prezzo, misurato su questa macchina con circa 200 processi: la sezione critica e'
+    /// l'INTERA lettura del sistema, da 14 a 66 ms, e con otto chiamanti insieme l'ultimo ha
+    /// aspettato fra 300 e 650 ms. Il servizio non impone una scadenza alle richieste; il
+    /// tetto e' il <c>RequestTimeout</c> di 8 s del client, cioe' due ordini di grandezza piu'
+    /// in la'. Per questo non c'e' un tentativo con scadenza: sarebbe complessita' su un
+    /// numero che non si avvicina. Il prezzo vero e' un altro, ed e' dichiarato: una lettura
+    /// che si piantasse adesso fermerebbe <c>/processes</c> per tutti, non solo per chi l'ha
+    /// chiesta.
+    /// </para>
     /// </remarks>
     public bool TryLeggi(out IReadOnlyList<ProcessUsage> processi)
     {

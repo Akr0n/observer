@@ -384,6 +384,12 @@ sudo ufw allow Observer
 sia tutto quello che serve, e la nota a fine installazione lo dice. Per guardare la macchina su
 cui si e' seduti non serve in nessuno dei due casi: la dashboard entra dal canale locale.
 
+**Se il servizio muore, riparte da solo.** L'MSI imposta le azioni di ripristino di Windows:
+riavvio dopo cinque secondi, al primo guasto come a quelli successivi, con il conteggio azzerato
+dopo un giorno senza guasti. Su Linux lo fa la unit di systemd, che ha `Restart=on-failure` dalla
+prima versione. Prima della 0.14.1 il lato Windows non ne aveva nessuna, e un processo che moriva
+lasciava il servizio fermo fino al riavvio della macchina, senza che niente lo dicesse.
+
 **Disinstallando l'MSI dal Pannello di controllo se ne va tutto**: il servizio, i file, il
 deposito delle credenziali sotto `ProgramData` e lo storico, che vive nel profilo dell'account
 di sistema e non e' un posto che qualcuno andrebbe a cercare a mano. Un **aggiornamento** e'
@@ -396,7 +402,7 @@ procura da se' al primo avvio, quindi non c'e' alcun segreto da passare all'inst
 registrare in un log, o da lasciarsi dietro se fallisce a meta'.
 
 Il `.deb` installa anche `man observer` e `man observer-dashboard`, ed e' verificato da
-**lintian** dentro la CI: il job `pack-linux` lo esegue con `--fail-on error` sul pacchetto
+**lintian** dentro la CI: il job `pack-linux` lo esegue con `--fail-on error,warning` sul pacchetto
 appena costruito. L'unico tag sovrascritto e' `embedded-library` - `libSkiaSharp.so` porta
 `freetype`, `libjpeg` e `libpng` compilati dentro, e una variante collegata alle librerie di
 sistema non esiste. La ragione sta scritta in `packaging/linux/debian/lintian-overrides`,

@@ -6,15 +6,18 @@ observer (0.14.1) unstable; urgency=medium
     two dashboards watching the same machine could interleave two writes,
     and the worst case of that is a thread spinning inside Insert forever,
     not an exception.
-  * A repeated fault is logged once, not once per round. A collector that
-    fails, a sampling round that overruns its period, or a history write
-    that keeps failing used to write one line per second: 86400 a day in
-    the Windows Application event log, which holds 20 MB and would evict
-    the whole machine's event history within hours. The line is now written
-    when the reason changes, and a second line says when it stopped.
-  * On Windows the service is restarted if it dies. The MSI sets recovery
-    actions to restart three times, five seconds apart, resetting after a
-    day. They used to be "take no action", so the service stayed down until
+  * A repeated fault is logged when it starts, when it changes and when it
+    ends, plus once every five minutes while it lasts - instead of once per
+    round. A collector that fails, a sampling round that overruns its
+    period, or a history write or maintenance pass that keeps failing used
+    to write one line per second: 86400 a day in the Windows Application
+    event log, which holds 20 MB and would evict the whole machine's event
+    history within hours. A fault that flickers on and off is silenced too,
+    which the reason alone would not have caught.
+  * On Windows the service is restarted if it dies: the MSI sets the
+    recovery actions to restart on the first, second and every later
+    failure, five seconds apart, with the count reset after a day without
+    one. They used to be "take no action", so the service stayed down until
     the machine rebooted, while systemd had Restart=on-failure all along.
 
  -- Federico Cardinali <noreply@example.invalid>  Thu, 10 Sep 2026 09:30:00 +0000

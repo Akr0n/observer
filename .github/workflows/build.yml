@@ -78,6 +78,42 @@ jobs:
           }
           Write-Host "Nessun segreto fra i $n file impacchettati."
 
+      - name: Il servizio riparte se muore
+        # Le azioni di ripristino arrivano da una custom action dell'estensione util: "ha
+        # compilato" non dice che la riga sia finita nel pacchetto. Senza questo passo la
+        # configurazione resterebbe verificata una volta sola, a mano, il giorno in cui e'
+        # stata scritta. Il nome della tabella e' "Wix4..." anche con WiX 6, come "Wix5..."
+        # per il firewall: le tabelle delle estensioni tengono la versione in cui sono nate.
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem packaging/windows/bin/Release/Observer.msi
+          $inst = New-Object -ComObject WindowsInstaller.Installer
+          $db = $inst.GetType().InvokeMember('OpenDatabase','InvokeMethod',$null,$inst,@($msi.FullName,0))
+          $sql = 'SELECT `ServiceName`,`FirstFailureActionType`,`SecondFailureActionType`,' +
+                 '`ThirdFailureActionType`,`RestartServiceDelayInSeconds` FROM `Wix4ServiceConfig`'
+          $v = $db.GetType().InvokeMember('OpenView','InvokeMethod',$null,$db,@($sql))
+          $v.GetType().InvokeMember('Execute','InvokeMethod',$null,$v,$null)
+          $righe = @()
+          while ($true) {
+            $r = $v.GetType().InvokeMember('Fetch','InvokeMethod',$null,$v,$null)
+            if (-not $r) { break }
+            $campi = @()
+            for ($i = 1; $i -le 5; $i++) {
+              $campi += [string]$r.GetType().InvokeMember('StringData','GetProperty',$null,$r,@($i))
+            }
+            $righe += ,$campi
+          }
+          $observer = $righe | Where-Object { $_[0] -eq 'Observer' }
+          if (-not $observer) {
+            Write-Error "L'MSI non configura le azioni di ripristino del servizio: se muore, resta giu'."
+            exit 1
+          }
+          if ($observer[1] -ne 'restart' -or $observer[2] -ne 'restart' -or $observer[3] -ne 'restart') {
+            Write-Error "Azioni di ripristino inattese: $($observer[1])/$($observer[2])/$($observer[3])"
+            exit 1
+          }
+          Write-Host "Ripristino: $($observer[1])/$($observer[2])/$($observer[3]), ritardo $($observer[4]) s."
+
       - name: Pubblica l'artefatto
         uses: actions/upload-artifact@v4
         with:

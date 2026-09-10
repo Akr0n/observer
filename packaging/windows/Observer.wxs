@@ -206,12 +206,20 @@
                transazionale, che sembra la scelta migliore, ma WiX 6 lo RIFIUTA con WIX1149
                ("documented in the Windows Installer SDK to not work as expected") e rimanda
                proprio qui. Provato: l'MSI non compila.
-               ResetPeriodInDays e RestartServiceDelayInSeconds sono obbligatori da WiX 4:
-               senza, il compilatore assegna il minimo di un intero e muore con un
-               InvalidOperationException su un valore fuori intervallo, che non nomina
-               l'attributo mancante.
-               Tre riavvii e non due: il terzo copre una causa transitoria ma lunga, per
-               esempio un disco che torna dopo qualche minuto. -->
+               ResetPeriodInDays e RestartServiceDelayInSeconds sono scritti a mano di
+               proposito: omessi, il pacchetto compila lo stesso ma le due colonne restano
+               nulle e la custom action le legge come zero, cioe' periodo di azzeramento nullo
+               e riavvio istantaneo. Non e' il compilatore a pretenderli, e' la politica.
+               Attenzione a cosa vogliono dire davvero tre azioni: la terza vale per il terzo
+               guasto E PER TUTTI I SUCCESSIVI, quindi questo non e' "riavvia tre volte" ma
+               "riavvia sempre, a cinque secondi l'uno dall'altro", con il conteggio azzerato
+               dopo un giorno senza guasti. E' voluto, ed e' anche cio' che fa la unit systemd
+               (Restart=on-failure con RestartSec=5). Il prezzo, dichiarato: un guasto che
+               impedisce l'avvio - per esempio un deposito credenziali che non si puo' mettere
+               in sicurezza, caso in cui il servizio si rifiuta di partire - diventa un ciclo
+               di avvii ogni cinque secondi finche' qualcuno non interviene. E' preferibile al
+               contrario, cioe' a un monitor che resta zitto: un servizio di monitoraggio che
+               non c'e' e' il difetto peggiore che questo programma possa avere. -->
           <util:ServiceConfig FirstFailureActionType="restart"
                               SecondFailureActionType="restart"
                               ThirdFailureActionType="restart"

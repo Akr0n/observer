@@ -114,7 +114,7 @@ public sealed partial class MetricSamplingService : BackgroundService
                     LogGiroTroppoLungo(logger, durata.TotalMilliseconds, Interval.TotalMilliseconds);
                 }
             }
-            else if (giroLungo.Cessato(out int giriTaciuti) && giriTaciuti > 0)
+            else if (giroLungo.Cessato(out int giriTaciuti))
             {
                 LogGiroTornatoInOrario(logger, giriTaciuti);
             }
@@ -182,7 +182,7 @@ public sealed partial class MetricSamplingService : BackgroundService
         {
             MetricSnapshot esito = await collector.CollectAsync(attempt.Token).ConfigureAwait(false);
 
-            if (freno.Cessato(out int taciute) && taciute > 0)
+            if (freno.Cessato(out int taciute))
             {
                 LogCollectorTornato(logger, collector.Id, taciute);
             }
@@ -243,15 +243,19 @@ public sealed partial class MetricSamplingService : BackgroundService
         Message = "Collector {CollectorId} exceeded {TimeoutMs} ms: skipped for this round, the other metrics continue.")]
     private static partial void LogCollectorTimedOut(ILogger logger, string collectorId, double timeoutMs);
 
+    // Warning e non Information, e non e' pedanteria: UseWindowsService registra il provider
+    // del registro eventi, che lascia passare da Warning in su. A Information queste righe
+    // non arriverebbero MAI nel registro di Windows, e il registro resterebbe con l'inizio
+    // del guasto e nessuna fine - cioe' esattamente il malinteso che vogliono togliere.
     [LoggerMessage(
         EventId = 4,
-        Level = LogLevel.Information,
-        Message = "Sampling rounds are back within the period; {Silenced} further late rounds were not logged.")]
+        Level = LogLevel.Warning,
+        Message = "Sampling rounds are back within the period ({Silenced} late rounds were not logged).")]
     private static partial void LogGiroTornatoInOrario(ILogger logger, int silenced);
 
     [LoggerMessage(
         EventId = 5,
-        Level = LogLevel.Information,
-        Message = "Collector {CollectorId} is answering again; {Silenced} further failures were not logged.")]
+        Level = LogLevel.Warning,
+        Message = "Collector {CollectorId} is answering again ({Silenced} failures were not logged).")]
     private static partial void LogCollectorTornato(ILogger logger, string collectorId, int silenced);
 }

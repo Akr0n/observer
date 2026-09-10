@@ -34,6 +34,7 @@ public sealed partial class MetricPersistenceService : BackgroundService
     private readonly ILogger<MetricPersistenceService> logger;
 
     private readonly FrenoDiRipetizione frenoScrittura = new();
+    private readonly FrenoDiRipetizione frenoManutenzione = new();
 
     private long lastReportedDrops;
 
@@ -110,7 +111,7 @@ public sealed partial class MetricPersistenceService : BackgroundService
         {
             writer.FlushPending();
 
-            if (frenoScrittura.Cessato(out int taciute) && taciute > 0)
+            if (frenoScrittura.Cessato(out int taciute))
             {
                 LogFlushRipreso(logger, taciute);
             }
@@ -133,6 +134,12 @@ public sealed partial class MetricPersistenceService : BackgroundService
         try
         {
             MaintenanceReport report = store.RunMaintenance(now, options);
+
+            if (frenoManutenzione.Cessato(out int taciute))
+            {
+                LogManutenzioneRipresa(logger, taciute);
+            }
+
             LogMaintenance(
                 logger,
                 report.MinuteBucketsWritten,
@@ -143,7 +150,13 @@ public sealed partial class MetricPersistenceService : BackgroundService
         catch (Exception ex) // perche' il segnaposto non avanza se la transazione fallisce.
 #pragma warning restore CA1031
         {
-            LogMaintenanceFailed(logger, ex);
+            // Ogni trenta secondi, cioe' 2 880 righe al giorno: meno del diluvio della
+            // scrittura, ma con la stessa fine e per lo stesso motivo, che non si ripara da
+            // solo.
+            if (frenoManutenzione.Segnala(ex.GetType().FullName ?? "?"))
+            {
+                LogMaintenanceFailed(logger, ex);
+            }
         }
     }
 
@@ -186,9 +199,18 @@ public sealed partial class MetricPersistenceService : BackgroundService
         Message = "History dropped {NewDrops} samples (total {TotalDrops}): the disk writer isn't keeping up with the sampler.")]
     private static partial void LogDropped(ILogger logger, long newDrops, long totalDrops);
 
+    // Warning e non Information: il provider del registro eventi di Windows, che
+    // UseWindowsService registra, lascia passare da Warning in su. A Information il registro
+    // vedrebbe l'inizio del guasto e mai la sua fine.
     [LoggerMessage(
         EventId = 14,
-        Level = LogLevel.Information,
-        Message = "History writing works again; {Silenced} further failures were not logged.")]
+        Level = LogLevel.Warning,
+        Message = "History writing works again ({Silenced} failures were not logged).")]
     private static partial void LogFlushRipreso(ILogger logger, int silenced);
+
+    [LoggerMessage(
+        EventId = 15,
+        Level = LogLevel.Warning,
+        Message = "History maintenance works again ({Silenced} failures were not logged).")]
+    private static partial void LogManutenzioneRipresa(ILogger logger, int silenced);
 }
