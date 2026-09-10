@@ -277,6 +277,23 @@ public sealed partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool PuoTerminare { get; set; }
 
+    /// <summary>Il nome della macchina da riaprire la prossima volta, o null per questo computer.</summary>
+    /// <remarks>
+    /// Il nome GREZZO del punto, non <c>MacchinaInElenco.Nome</c>: quello e' il nome
+    /// <i>visibile</i>, che ripiega sull'indirizzo quando una voce non ne ha uno — il caso
+    /// della vecchia configurazione a macchina singola — e sulla parola "This machine" per il
+    /// canale locale. Nessuna delle due e' una chiave: la prima e' un indirizzo che finirebbe
+    /// in un file dove non deve stare, la seconda non corrisponde a niente in
+    /// <c>machines.json</c>.
+    /// <para>
+    /// E' la macchina davvero LETTA, non quella selezionata: la selezione puo' essere nulla
+    /// mentre il giro continua a leggere, ed e' la stessa distinzione per cui esiste
+    /// <c>voceGuardata</c>. Non e' osservabile perche' la finestra la legge una volta sola,
+    /// alla chiusura.
+    /// </para>
+    /// </remarks>
+    public string? MacchinaDaRicordare => voceGuardata?.Punto.Nome?.Trim();
+
     /// <summary>True quando gli appunti sono raggiungibili: senza, i comandi restano spenti.</summary>
     /// <remarks>
     /// La cucitura verso gli appunti arriva da chi costruisce il view model, ed e' opzionale

@@ -62,6 +62,11 @@ il titolo lo dice: i contatori sono per processo, e nessuno dei due sistemi dice
 dispositivo sono finiti i byte. I quadranti dello spazio non aprono niente: lo spazio occupato
 su un volume non si attribuisce a un processo in esecuzione.
 
+La finestra ricorda anche **quale macchina si stava guardando** e riapre su quella: chi tiene
+d'occhio un computer in rete non deve piu' sceglierlo a ogni avvio. Si salva il nome, mai
+l'indirizzo e tanto meno il token, ed e' lo stesso nome che sta in `machines.json`; se quella
+voce non c'e' piu' si riparte da questo computer, senza dire niente.
+
 La finestra **ricorda dov'era**, quanto era grande e se era a tutto schermo, e riapre li' - a
 meno che quel posto stia su uno schermo che non c'e' piu', nel qual caso apre dove la mette il
 sistema. In alto a destra c'e' lo **zoom** (75, 85, 100, 115, 130, 150 %): scala tutta la
