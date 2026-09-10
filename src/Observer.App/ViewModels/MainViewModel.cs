@@ -128,6 +128,8 @@ public sealed partial class MainViewModel : ViewModelBase
     /// Come rileggere da disco la voce di una macchina non guardata quando una sonda torna
     /// con un token rifiutato o un'impronta che non corrisponde, oppure null per non rileggere.
     /// </param>
+    private readonly Func<string, Task>? copiaNegliAppunti;
+
     public MainViewModel(
         IMetricsClient? client,
         string? problemaDiConfigurazione,
@@ -135,8 +137,10 @@ public sealed partial class MainViewModel : ViewModelBase
         Func<DateTimeOffset>? orologio = null,
         MachineListResult? elenco = null,
         Func<ObserverEndpoint, IMetricsClient>? apriMacchina = null,
-        Func<ObserverEndpoint, ObserverEndpoint?>? rileggiPunto = null)
+        Func<ObserverEndpoint, ObserverEndpoint?>? rileggiPunto = null,
+        Func<string, Task>? copiaNegliAppunti = null)
     {
+        this.copiaNegliAppunti = copiaNegliAppunti;
         this.client = client;
         this.rileggiConfigurazione = rileggiConfigurazione;
         this.apriMacchina = apriMacchina;
@@ -263,7 +267,22 @@ public sealed partial class MainViewModel : ViewModelBase
 
     /// <summary>True quando c'e' una riga selezionata da poter terminare.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PuoCopiareLaRiga))]
+    [NotifyCanExecuteChangedFor(nameof(CopiaProcessoCommand))]
     public partial bool PuoTerminare { get; set; }
+
+    /// <summary>True quando gli appunti sono raggiungibili: senza, i comandi restano spenti.</summary>
+    /// <remarks>
+    /// La cucitura verso gli appunti arriva da chi costruisce il view model, ed e' opzionale
+    /// perche' una prova senza finestra non ce l'ha. Se un giorno qualcuno la dimenticasse
+    /// nella radice di composizione, un comando che esce da se' sul null lascerebbe un
+    /// pulsante che non fa niente e non lo dice — e i test resterebbero verdi, perche' loro il
+    /// finto ce l'hanno. Spento si vede al primo avvio.
+    /// </remarks>
+    public bool PuoCopiare => copiaNegliAppunti is not null;
+
+    /// <summary>True quando c'e' una riga di processo da copiare.</summary>
+    public bool PuoCopiareLaRiga => PuoCopiare && PuoTerminare;
 
     /// <summary>
     /// True quando il pulsante di terminazione e' gia' stato premuto una volta e sta
@@ -1001,6 +1020,57 @@ public sealed partial class MainViewModel : ViewModelBase
         ProcessiProblema = string.Empty;
 
         await AggiornaProcessiAsync(CancellationToken.None);
+    }
+
+    /// <summary>Copia negli appunti cio' che dice la barra di stato.</summary>
+    /// <returns>L'attesa della scrittura negli appunti.</returns>
+    /// <remarks>
+    /// E' il caso che pesa: un messaggio d'errore lungo — un'impronta che non corrisponde, con
+    /// le due impronte per intero — altrimenti va ricopiato a mano per incollarlo in una
+    /// ricerca. Il titolo e il messaggio su due righe, perche' sono due frasi.
+    /// <para>
+    /// <c>AllowConcurrentExecutions</c> non e' decorazione: un <c>AsyncRelayCommand</c> in
+    /// esecuzione si disabilita e rifiuta ogni altra chiamata, quindi un secondo clic mentre
+    /// gli appunti stanno scrivendo cadrebbe nel vuoto con il pulsante che lampeggia spento.
+    /// E' il difetto gia' pagato dai sei pulsanti dei quadranti.
+    /// </para>
+    /// </remarks>
+    [RelayCommand(AllowConcurrentExecutions = true, CanExecute = nameof(PuoCopiare))]
+    private Task CopiaStatoAsync() =>
+        NegliAppuntiAsync(StatoTitolo + Environment.NewLine + StatoMessaggio);
+
+    /// <summary>Copia negli appunti la riga di processo selezionata, col suo PID.</summary>
+    /// <returns>L'attesa della scrittura negli appunti.</returns>
+    [RelayCommand(AllowConcurrentExecutions = true, CanExecute = nameof(PuoCopiareLaRiga))]
+    private Task CopiaProcessoAsync() =>
+        ProcessoSelezionato is { } scelto ? NegliAppuntiAsync(scelto.PerGliAppunti) : Task.CompletedTask;
+
+    /// <summary>Scrive negli appunti, e non lascia che un loro guasto si veda altrove.</summary>
+    /// <param name="testo">Cio' che va negli appunti.</param>
+    /// <returns>L'attesa della scrittura.</returns>
+    /// <remarks>
+    /// Un guasto degli appunti non ha dove dirsi: l'unico posto sarebbe la barra di stato, che
+    /// e' proprio cio' che si sta copiando, e sovrascriverla cancellerebbe il messaggio.
+    /// Meglio non fare niente che perdere il testo per raccontare che non si e' riusciti a
+    /// copiarlo.
+    /// </remarks>
+    private async Task NegliAppuntiAsync(string testo)
+    {
+        if (copiaNegliAppunti is not { } copia)
+        {
+            return;
+        }
+
+        try
+        {
+            await copia(testo);
+        }
+#pragma warning disable CA1031 // Gli appunti possono essere tenuti da un altro programma: e'
+        catch (Exception) // un fallimento del sistema, non un guasto della dashboard.
+#pragma warning restore CA1031
+        {
+            // Niente: vedi il commento sopra.
+        }
     }
 
     /// <summary>Chiude il pannello e dimentica cosa c'era dentro.</summary>

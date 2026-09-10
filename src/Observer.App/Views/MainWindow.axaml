@@ -147,7 +147,21 @@
                       IsClosable="False"
                       Severity="{Binding StatoGravita}"
                       Title="{Binding StatoTitolo}"
-                      Message="{Binding StatoMessaggio}" />
+                      Message="{Binding StatoMessaggio}">
+            <!-- Un pulsante e non testo selezionabile. Il titolo e il messaggio appartengono
+                 al template di FAInfoBar: per renderli selezionabili bisognerebbe riscrivere
+                 il template di una libreria di terze parti, ed ereditarlo per sempre.
+                 ActionButton e' lo slot che il controllo espone apposta, e il caso che pesa
+                 e' proprio questo: un'impronta che non corrisponde stampa due impronte
+                 intere, che nessuno ricopia a mano. Il pulsante compare anche sulla barra
+                 "Connecting" dell'avvio, che dura un secondo: accettato, il primo Copy che si
+                 vede copia una frase che non serve a nessuno, ma la barra sparisce da sola. -->
+            <ui:FAInfoBar.ActionButton>
+                <Button Content="Copy"
+                        Command="{Binding CopiaStatoCommand}"
+                        AutomationProperties.Name="Copy status message" />
+            </ui:FAInfoBar.ActionButton>
+        </ui:FAInfoBar>
 
         <!-- L'elenco delle macchine, SEMPRE visibile. Prima compariva solo quando ce n'era
              gia' una seconda, e cosi' nessuno poteva scoprire di poterne aggiungere: l'unico
@@ -383,6 +397,26 @@
                                          ItemsSource="{Binding Processi}"
                                          SelectedItem="{Binding ProcessoSelezionato}"
                                          AutomationProperties.Name="{Binding ProcessiTitolo}">
+                                    <!-- Ctrl+C sull'ELENCO e non sulla finestra: sulla finestra
+                                         scatterebbe con il fuoco ovunque, copiando una riga che
+                                         chi guarda non sta nemmeno vedendo. Qui vale quando il
+                                         fuoco e' dentro l'elenco, che e' dove il code-behind lo
+                                         mette da solo all'apertura del pannello. -->
+                                    <ListBox.KeyBindings>
+                                        <KeyBinding Gesture="Ctrl+C" Command="{Binding CopiaProcessoCommand}" />
+                                    </ListBox.KeyBindings>
+                                    <!-- Il tasto destro SELEZIONA la riga su cui si preme, e la
+                                         selezione e' anche il bersaglio di "End process". Un
+                                         gesto che chi lo fa considera di sola lettura sposta
+                                         quindi quel bersaglio: non e' pericoloso, perche' la
+                                         terminazione chiede conferma e la conferma si disarma
+                                         da sola quando la selezione cambia, ma va saputo. -->
+                                    <ListBox.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Copy row"
+                                                      Command="{Binding CopiaProcessoCommand}" />
+                                        </ContextMenu>
+                                    </ListBox.ContextMenu>
                                     <!-- Il nome accessibile sta sulla RIGA, il ListBoxItem: e'
                                          cio' che le frecce selezionano e che un lettore di
                                          schermo annuncia. Messo sulla Grid dentro il modello

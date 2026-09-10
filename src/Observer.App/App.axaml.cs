@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Styling;
@@ -69,6 +70,11 @@ public partial class App : Application
             viewModel = new MainViewModel(
                 client,
                 problemaDiConfigurazione: null,
+                // Gli appunti stanno su un TopLevel, cioe' su un controllo: il view model non
+                // referenzia Avalonia.Controls, quindi la cucitura si lega qui, dove la
+                // finestra c'e' gia'.
+                copiaNegliAppunti: testo => desktop.MainWindow?.Clipboard?.SetTextAsync(testo)
+                    ?? Task.CompletedTask,
                 rileggiConfigurazione: () =>
                 {
                     // Rilegge dal disco la voce della macchina che si sta guardando. Serve

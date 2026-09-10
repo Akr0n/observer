@@ -40,6 +40,18 @@ public sealed record ProcessoMostrato(int Pid, string Nome, string Cpu, string M
     /// mente, per l'orecchio non esistono.
     /// </remarks>
     public string Descrizione => $"{Nome}, CPU {Cpu}, memory {Memoria}, I/O {Io}";
+
+    /// <summary>La riga per gli appunti: come <see cref="Descrizione"/>, ma col PID.</summary>
+    /// <remarks>
+    /// Due frasi quasi identiche, e la differenza e' voluta. Il PID serve a chi incolla la
+    /// riga da qualche parte — in una ricerca, in un messaggio, accanto a un comando — perche'
+    /// e' l'unica cosa che identifica il processo senza ambiguita': di "chrome" ce ne sono
+    /// dodici. In <see cref="Descrizione"/> invece non ci va, perche' quella la pronuncia un
+    /// lettore di schermo a OGNI freccia sull'elenco, e un numero di cinque cifre letto cifra
+    /// per cifra a ogni riga e' rumore fra chi scorre e cio' che sta cercando.
+    /// </remarks>
+    public string PerGliAppunti =>
+        $"{Nome} (pid {Pid.ToString(CultureInfo.InvariantCulture)}), CPU {Cpu}, memory {Memoria}, I/O {Io}";
     /// <summary>Traduce una riga arrivata dal filo in una riga da mostrare.</summary>
     /// <param name="riga">La riga arrivata.</param>
     /// <returns>La riga da mostrare.</returns>
