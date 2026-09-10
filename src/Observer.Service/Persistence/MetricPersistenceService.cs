@@ -33,6 +33,8 @@ public sealed partial class MetricPersistenceService : BackgroundService
     private readonly StorageOptions options;
     private readonly ILogger<MetricPersistenceService> logger;
 
+    private readonly FrenoDiRipetizione frenoScrittura = new();
+
     private long lastReportedDrops;
 
     /// <summary>Crea il servizio di persistenza.</summary>
@@ -107,12 +109,22 @@ public sealed partial class MetricPersistenceService : BackgroundService
         try
         {
             writer.FlushPending();
+
+            if (frenoScrittura.Cessato(out int taciute) && taciute > 0)
+            {
+                LogFlushRipreso(logger, taciute);
+            }
         }
 #pragma warning disable CA1031 // Un disco pieno o un file agganciato devono far perdere un
         catch (Exception ex) // giro di storico, non fermare il monitoraggio dal vivo.
 #pragma warning restore CA1031
         {
-            LogFlushFailed(logger, ex);
+            // Un disco pieno non si libera da solo: senza freno questa riga esce ogni
+            // secondo, e il registro che segnala il disco pieno consuma disco.
+            if (frenoScrittura.Segnala(ex.GetType().FullName ?? "?"))
+            {
+                LogFlushFailed(logger, ex);
+            }
         }
     }
 
@@ -173,4 +185,10 @@ public sealed partial class MetricPersistenceService : BackgroundService
         Level = LogLevel.Warning,
         Message = "History dropped {NewDrops} samples (total {TotalDrops}): the disk writer isn't keeping up with the sampler.")]
     private static partial void LogDropped(ILogger logger, long newDrops, long totalDrops);
+
+    [LoggerMessage(
+        EventId = 14,
+        Level = LogLevel.Information,
+        Message = "History writing works again; {Silenced} further failures were not logged.")]
+    private static partial void LogFlushRipreso(ILogger logger, int silenced);
 }

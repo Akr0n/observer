@@ -1,3 +1,24 @@
+observer (0.14.1) unstable; urgency=medium
+
+  * The process ranking behind GET /processes is now serialised. It is one
+    shared object that empties and rewrites a dictionary on every read, and
+    the dashboard polls it once a second while the process panel is open:
+    two dashboards watching the same machine could interleave two writes,
+    and the worst case of that is a thread spinning inside Insert forever,
+    not an exception.
+  * A repeated fault is logged once, not once per round. A collector that
+    fails, a sampling round that overruns its period, or a history write
+    that keeps failing used to write one line per second: 86400 a day in
+    the Windows Application event log, which holds 20 MB and would evict
+    the whole machine's event history within hours. The line is now written
+    when the reason changes, and a second line says when it stopped.
+  * On Windows the service is restarted if it dies. The MSI sets recovery
+    actions to restart three times, five seconds apart, resetting after a
+    day. They used to be "take no action", so the service stayed down until
+    the machine rebooted, while systemd had Restart=on-failure all along.
+
+ -- Federico Cardinali <noreply@example.invalid>  Thu, 10 Sep 2026 09:30:00 +0000
+
 observer (0.14.0) unstable; urgency=medium
 
   * The "Text size" selector is now "Zoom" and also goes below 100 %: 75

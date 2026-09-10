@@ -243,6 +243,57 @@ public class ProcessRankingTests
     }
 
     /// <summary>Classifica, elenco finto e orologio finto tenuti insieme, uno per test.</summary>
+    [Fact]
+    public void DueLettureInsiemeNonSiCalpestano()
+    {
+        // TryLeggi svuota e riscrive un dizionario, e l'endpoint /processes lo chiama
+        // direttamente dentro la richiesta HTTP. La finestra lo interroga una volta al
+        // secondo mentre il pannello e' aperto: due dashboard sulla stessa macchina bastano
+        // a farne partire due insieme. Il caso peggiore di un Dictionary scritto da due
+        // thread non e' un'eccezione, e' un ciclo dentro Insert: un core al 100% per sempre,
+        // la richiesta che non torna, e nessun errore da nessuna parte.
+        ElencoSpione elenco = new()
+        {
+            Processi = [.. Enumerable.Range(1, 200).Select(i => Processo(i, $"p{i}", i, i * 1000))],
+        };
+        ProcessRanking classifica = new(elenco, new OrologioFinto(), Core);
+
+        Parallel.For(0, 8, giro => classifica.TryLeggi(out IReadOnlyList<ProcessUsage> _));
+
+        // Non "non ha lanciato": quello lo passerebbe anche il codice rotto, quasi sempre.
+        // Si guarda se le letture si sono davvero sovrapposte.
+        Assert.Equal(1, elenco.MassimeInsieme);
+    }
+
+    private sealed class ElencoSpione : IProcessLister
+    {
+        private int adesso;
+        private int massime;
+
+        public IReadOnlyList<ProcessTimes> Processi { get; set; } = [];
+
+        public int MassimeInsieme => Volatile.Read(ref massime);
+
+        public bool TryList(out IReadOnlyList<ProcessTimes> processes)
+        {
+            int quante = Interlocked.Increment(ref adesso);
+
+            int visto;
+            while (quante > (visto = Volatile.Read(ref massime)))
+            {
+                Interlocked.CompareExchange(ref massime, quante, visto);
+            }
+
+            // Abbastanza da far entrare l'altra lettura, se nessuno glielo impedisce.
+            Thread.Sleep(5);
+
+            processes = Processi;
+            Interlocked.Decrement(ref adesso);
+
+            return true;
+        }
+    }
+
     private sealed class Banco
     {
         public Banco(IReadOnlyList<ProcessTimes> processi)

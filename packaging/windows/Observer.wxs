@@ -7,7 +7,8 @@
   account. Questo installer copia file, registra un servizio e crea un collegamento.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall">
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
   <Package Name="Observer"
            Manufacturer="Federico Cardinali"
@@ -193,7 +194,30 @@
                         Start="auto"
                         Account="LocalSystem"
                         ErrorControl="normal"
-                        Vital="yes" />
+                        Vital="yes">
+
+          <!-- Se il processo muore, Windows lo rialza. Senza questo le azioni di ripristino
+               restano "Nessuna operazione" e il servizio sta fermo fino al riavvio della
+               macchina: misurato con sc.exe qfailure sull'installazione 0.14.0, che rispondeva
+               PERIODO_REIMPOSTAZIONE 0 e nessuna azione. L'unita' systemd ha Restart=on-failure
+               dalla prima versione, quindi l'asimmetria era solo fra i due sistemi.
+               E' l'ESTENSIONE util, non l'elemento nativo, e non per gusto: il nativo
+               <ServiceConfigFailureActions> scriverebbe MsiServiceConfigFailureActions in modo
+               transazionale, che sembra la scelta migliore, ma WiX 6 lo RIFIUTA con WIX1149
+               ("documented in the Windows Installer SDK to not work as expected") e rimanda
+               proprio qui. Provato: l'MSI non compila.
+               ResetPeriodInDays e RestartServiceDelayInSeconds sono obbligatori da WiX 4:
+               senza, il compilatore assegna il minimo di un intero e muore con un
+               InvalidOperationException su un valore fuori intervallo, che non nomina
+               l'attributo mancante.
+               Tre riavvii e non due: il terzo copre una causa transitoria ma lunga, per
+               esempio un disco che torna dopo qualche minuto. -->
+          <util:ServiceConfig FirstFailureActionType="restart"
+                              SecondFailureActionType="restart"
+                              ThirdFailureActionType="restart"
+                              ResetPeriodInDays="1"
+                              RestartServiceDelayInSeconds="5" />
+        </ServiceInstall>
 
         <!-- Stop="both" ferma il servizio SIA in installazione SIA in disinstallazione: e' cio'
              che rende sicuro aggiornare mentre il servizio sta girando. E tutto questo e'
