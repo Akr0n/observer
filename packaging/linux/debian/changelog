@@ -1,3 +1,18 @@
+observer (0.15.0) unstable; urgency=medium
+
+  * The row of a machine that is down now says for how long: "for 3 min",
+    "for 2 h 10 min", "for 2 days 3 h", under its name and in the tooltip.
+    The red diamond used to look the same after a minute and after three
+    days, and the difference decides whether you get up from your chair.
+    Nothing appears during the ten-second grace period, because a counter
+    that starts on every hiccup teaches you to ignore it. The duration is
+    truncated rather than rounded, so a reading that is a few seconds late
+    still understates rather than overstates. It is measured from the first
+    failure this window saw, not from when the machine actually went down:
+    the machine that could tell us that is the one not answering.
+
+ -- Federico Cardinali <noreply@example.invalid>  Thu, 10 Sep 2026 14:00:00 +0000
+
 observer (0.14.1) unstable; urgency=medium
 
   * The process ranking behind GET /processes is now serialised. It is one
