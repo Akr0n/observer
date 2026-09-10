@@ -343,7 +343,13 @@ entro 8 secondi, che di solito e' una porta chiusa o un firewall. I due rimedi s
 confonderli costa un pomeriggio. Nei primi 10 secondi la barra resta gialla, non rossa: un
 servizio che sta ancora partendo rifiuta anche lui. Un token rifiutato, un'impronta diversa o
 un servizio piu' vecchio della dashboard sono rossi da subito, perche' fra un minuto saranno
-identici.
+identici. Quel messaggio si puo' **copiare**, col pulsante `Copy` sulla barra stessa: un'impronta
+che non corrisponde ne stampa due per intero, e nessuno le ricopia a mano. Anche una riga
+dell'elenco dei processi si copia, dal menu del tasto destro, e porta con se' il PID - che
+identifica il processo quando di "chrome" ce ne sono dodici. Il resto delle scritte non e'
+selezionabile di proposito:
+un testo selezionabile si prende il clic per cominciare la selezione, e trascinare su un
+quadrante ne aprirebbe il pannello invece di scegliere le parole.
 
 **Sulla rete il servizio risponde solo in HTTPS.** Prima rispondeva in chiaro, e il token
 attraversava la rete una volta al secondo: una sola cattura di pacchetti consegnava una
