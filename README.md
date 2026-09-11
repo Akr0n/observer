@@ -62,6 +62,11 @@ il titolo lo dice: i contatori sono per processo, e nessuno dei due sistemi dice
 dispositivo sono finiti i byte. I quadranti dello spazio non aprono niente: lo spazio occupato
 su un volume non si attribuisce a un processo in esecuzione.
 
+La finestra ricorda anche **quale macchina si stava guardando** e riapre su quella: chi tiene
+d'occhio un computer in rete non deve piu' sceglierlo a ogni avvio. Si salva il nome, mai
+l'indirizzo e tanto meno il token, ed e' lo stesso nome che sta in `machines.json`; se quella
+voce non c'e' piu' si riparte da questo computer, senza dire niente.
+
 La finestra **ricorda dov'era**, quanto era grande e se era a tutto schermo, e riapre li' - a
 meno che quel posto stia su uno schermo che non c'e' piu', nel qual caso apre dove la mette il
 sistema. In alto a destra c'e' lo **zoom** (75, 85, 100, 115, 130, 150 %): scala tutta la
@@ -71,7 +76,8 @@ finestra alla misura predefinita, una colonna di quadranti in piu' - al prezzo d
 piu' piccole. Il 75 % e' il pavimento, misurato: i pulsanti vanno da 32 a 24 px e l'anello
 di stato tiene il buco. Accanto
 c'e' il **tema**: System (segue il sistema, come prima), Light o Dark, con cambio immediato,
-tendine comprese e, su Windows 11, anche la barra del titolo. Le tre cose stanno in
+tendine comprese e, su Windows 11, anche la barra del titolo. Queste, con la macchina che si
+stava guardando, stanno in
 `preferences.json` accanto a `client.json` - un file a parte, perche' `client.json` puo'
 contenere una credenziale e non va riscritto a ogni chiusura. I quadranti, la striscia e la
 riga selezionata hanno il colore di accento del PC, letto all'avvio: su Windows seguono anche

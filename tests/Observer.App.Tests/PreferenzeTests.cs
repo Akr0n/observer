@@ -46,12 +46,82 @@ public class PreferenzeTests
     [Fact]
     public void AndataERitornoDalJson()
     {
-        Preferenze originali = new(new PosizioneFinestra(192, 100, 900, 700, Maximized: false), 1.3d, "dark");
+        Preferenze originali = new(
+            new PosizioneFinestra(192, 100, 900, 700, Maximized: false), 1.3d, "dark", "laptop");
 
         Assert.Equal(originali, Preferenze.Da(originali.InJson()));
         Assert.Contains("\"textScale\":1.3", originali.InJson(), StringComparison.Ordinal);
         Assert.Contains("\"theme\":\"dark\"", originali.InJson(), StringComparison.Ordinal);
+        Assert.Contains("\"machine\":\"laptop\"", originali.InJson(), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void UnFileSenzaIlCampoDellaMacchinaApreSuQuestoComputer()
+    {
+        // Cioe' ogni file scritto prima di questa versione: l'assenza del campo e' esattamente
+        // cio' che si vuole dire con "questo computer", quindi non serve nessuna migrazione.
+        Assert.Null(Preferenze.Da("""{"textScale": 1.15, "theme": "dark"}""").Macchina);
+    }
+
+    [Fact]
+    public void LaMacchinaRicordataSiRitrovaPerNome()
+    {
+        ObserverEndpoint locale = ObserverEndpoint.CanaleLocale();
+        ObserverEndpoint remota = Remota("laptop");
+
+        Assert.Equal(remota, Preferenze.MacchinaRicordata([locale, remota], "laptop"));
+
+        // Gli spazi attorno non contano: dentro machines.json il nome arriva grezzo.
+        Assert.Equal(remota, Preferenze.MacchinaRicordata([locale, remota], "  laptop  "));
+
+        // E non contano NEMMENO dal lato della voce, che e' il caso vero: MachineDirectory
+        // passa il nome cosi' com'e' scritto nel file, e una voce " laptop " e' la stessa
+        // macchina di "laptop". Senza il Trim da questa parte la si perderebbe.
+        ObserverEndpoint conSpazi = ObserverEndpoint.Remoto(
+            new Uri("https://laptop:5058/"), "token", "machines.json", new string('a', 64), " laptop ");
+
+        Assert.Equal(conSpazi, Preferenze.MacchinaRicordata([locale, conSpazi], "laptop"));
+    }
+
+    [Fact]
+    public void UnNomeCheNonCEPiuNonEUnErrore()
+    {
+        // La voce puo' essere stata tolta o rinominata: si riparte da questo computer, che e'
+        // il posto da cui si era partiti la prima volta. Aprire il vuoto, o lamentarsi di una
+        // preferenza, sarebbe peggio del dimenticarla.
+        ObserverEndpoint locale = ObserverEndpoint.CanaleLocale();
+        ObserverEndpoint remota = Remota("laptop");
+
+        Assert.Equal(locale, Preferenze.MacchinaRicordata([locale, remota], "sparita"));
+        Assert.Equal(locale, Preferenze.MacchinaRicordata([locale, remota], null));
+        Assert.Equal(locale, Preferenze.MacchinaRicordata([locale, remota], "   "));
+    }
+
+    [Fact]
+    public void IlConfrontoDeiNomiDistingueLeMaiuscole()
+    {
+        // Su Linux la credenziale di "Laptop" e quella di "laptop" sono due file diversi,
+        // quindi sono due MACCHINE diverse: trattarle come lo stesso nome riaprirebbe l'altra.
+        ObserverEndpoint locale = ObserverEndpoint.CanaleLocale();
+        ObserverEndpoint remota = Remota("laptop");
+
+        Assert.Equal(locale, Preferenze.MacchinaRicordata([locale, remota], "Laptop"));
+    }
+
+    [Fact]
+    public void SenzaMacchineNonCEniente() =>
+        Assert.Null(Preferenze.MacchinaRicordata([], "laptop"));
+
+    // Il NOME e' il quinto parametro: il terzo e' l'origine, cioe' da dove viene la
+    // configurazione. Passare il nome li' lascia Nome a null, ed e' proprio il caso della
+    // vecchia configurazione a macchina singola: una voce senza nome non si ricorda.
+    private static ObserverEndpoint Remota(string nome) =>
+        ObserverEndpoint.Remoto(
+            new Uri($"https://{nome}:5058/"),
+            "token",
+            "machines.json",
+            new string('a', 64),
+            nome);
 
     [Theory]
     [InlineData("""{}""", "system")]

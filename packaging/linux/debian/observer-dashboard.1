@@ -1,4 +1,4 @@
-.TH OBSERVER-DASHBOARD 1 "2026-09-04" "observer 0.16.0" "User Commands"
+.TH OBSERVER-DASHBOARD 1 "2026-09-04" "observer 0.17.0" "User Commands"
 .SH NAME
 observer-dashboard \- watch a machine's vital signs
 .SH SYNOPSIS
@@ -84,8 +84,10 @@ and
 It carries another machine's credential, so it is not something to share.
 .TP
 .I ~/.local/share/Observer/preferences.json
-Where the window remembers its place and size, the zoom and the theme.
-No credential goes here, which is why it is a separate file that is rewritten
-at every close.
+Where the window remembers its place and size, the zoom, the theme and which
+machine was being watched - by name, the same name as in
+.IR machines.json .
+No address and no credential goes here, which is why it is a separate file that
+is rewritten at every close.
 .SH SEE ALSO
 .BR observer (1)

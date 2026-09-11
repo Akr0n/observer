@@ -61,9 +61,14 @@ public partial class App : Application
                 return nuovo;
             }
 
-            // La prima voce e' SEMPRE il canale locale, che non ha bisogno di configurazione:
-            // dopo l'installazione non c'e' niente da impostare perche' la finestra parta.
-            MetricsClient client = Apri(elenco.Machines[0]);
+            // La macchina che si stava guardando l'ultima volta, se e' ancora nell'elenco;
+            // altrimenti la prima voce, che e' SEMPRE il canale locale e non ha bisogno di
+            // configurazione: dopo l'installazione non c'e' niente da impostare perche' la
+            // finestra parta. Chi tiene d'occhio una macchina in rete non deve piu' sceglierla
+            // a ogni avvio e aspettare che si colleghi.
+            MetricsClient client = Apri(
+                Preferenze.MacchinaRicordata(elenco.Machines, preferenze.Macchina)
+                ?? elenco.Machines[0]);
 
             MainViewModel? viewModel = null;
 

@@ -197,7 +197,11 @@ public partial class MainWindow : Window
             preferenze.Finestra,
             Attuale());
 
-        preferenze = new Preferenze(posizione, scalaDaSalvare, temaDaSalvare);
+        // Niente ?? sul nome: null qui vuol dire "questo computer", non "non lo so". Con un
+        // ripiego sul valore vecchio, chi passa da una macchina remota a quella locale si
+        // ritroverebbe la remota riaperta per sempre.
+        preferenze = new Preferenze(
+            posizione, scalaDaSalvare, temaDaSalvare, modello?.MacchinaDaRicordare);
         PreferenzeStore.Scrivi(preferenze);
     }
 

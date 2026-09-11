@@ -176,19 +176,28 @@ public sealed record OpzioneTema(string Chiave)
 /// <param name="ScalaTesto">Quanto e' scalata la finestra: 1 e' la misura normale, sotto 1 e'
 /// piu' piccola.</param>
 /// <param name="Tema">Il tema scelto: <c>system</c>, <c>light</c> o <c>dark</c>.</param>
+/// <param name="Macchina">
+/// Il nome della macchina che si stava guardando, o null per questo computer.
+/// </param>
 /// <remarks>
 /// Un file a parte e non <c>client.json</c>: quello porta una credenziale, e un programma che lo
-/// riscrivesse a ogni chiusura per salvare tre valori sarebbe un programma che riscrive una
-/// credenziale a ogni chiusura. Il tema e' un parametro posizionale SENZA valore predefinito
-/// di proposito: chi costruisce le preferenze deve dire anche quello, e un
-/// <c>new Preferenze(posizione, scala)</c> che lo dimentica non compila.
+/// riscrivesse a ogni chiusura per salvare quattro valori sarebbe un programma che riscrive una
+/// credenziale a ogni chiusura. Sono TUTTI parametri posizionali senza valore predefinito, di
+/// proposito: chi costruisce le preferenze deve dirli tutti, e un
+/// <c>new Preferenze(posizione, scala)</c> che ne dimentica uno non compila — che e' come si
+/// scopre, il giorno che se ne aggiunge un altro, ogni punto da aggiornare.
 /// </remarks>
 public sealed record Preferenze(
     [property: JsonPropertyName("window")] PosizioneFinestra? Finestra,
     // La chiave resta textScale anche se l'interfaccia dice Zoom: rinominarla farebbe perdere
     // lo zoom salvato a tutti, e una versione precedente non la leggerebbe piu'.
     [property: JsonPropertyName("textScale")] double ScalaTesto,
-    [property: JsonPropertyName("theme")] string Tema)
+    [property: JsonPropertyName("theme")] string Tema,
+    // Il NOME della macchina, non il suo indirizzo e tanto meno il suo token: e' gia' la
+    // chiave con cui il client trova la credenziale, ed e' l'unica cosa che machines.json non
+    // puo' cambiare sotto senza che sia un'altra macchina. Null vuol dire "questo computer",
+    // che e' anche cio' che si legge in un file scritto da una versione precedente.
+    [property: JsonPropertyName("machine")] string? Macchina)
 {
     /// <summary>La misura normale: 1.</summary>
     public const double ScalaNormale = 1.0d;
@@ -214,7 +223,49 @@ public sealed record Preferenze(
     private static readonly JsonSerializerOptions Opzioni = new(JsonSerializerDefaults.Web);
 
     /// <summary>Le preferenze di chi non ne ha ancora salvate.</summary>
-    public static Preferenze Predefinite => new(null, ScalaNormale, TemiAmmessi[0]);
+    public static Preferenze Predefinite => new(null, ScalaNormale, TemiAmmessi[0], null);
+
+    /// <summary>La macchina da riaprire: quella ricordata se c'e' ancora, altrimenti la prima.</summary>
+    /// <param name="macchine">L'elenco letto adesso, in ordine: la prima e' questo computer.</param>
+    /// <param name="nome">Il nome ricordato, o null.</param>
+    /// <returns>La voce su cui aprirsi, o null se l'elenco e' vuoto.</returns>
+    /// <remarks>
+    /// Il nome e non l'indice: basta riordinare <c>machines.json</c> e un indice aprirebbe
+    /// un'altra macchina, con un'altra credenziale, senza che niente lo dica. Un nome che non
+    /// c'e' piu' — voce tolta, rinominata — non e' un errore da segnalare: si riparte da questo
+    /// computer, che e' il posto da cui si era partiti la prima volta.
+    /// <para>
+    /// Il confronto e' ordinale e ripulito dagli spazi da entrambe le parti: dentro
+    /// <c>machines.json</c> il nome arriva grezzo, e su Linux due nomi che differiscono solo
+    /// per le maiuscole sono due credenziali diverse.
+    /// </para>
+    /// </remarks>
+    public static ObserverEndpoint? MacchinaRicordata(IReadOnlyList<ObserverEndpoint> macchine, string? nome)
+    {
+        ArgumentNullException.ThrowIfNull(macchine);
+
+        if (macchine.Count == 0)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(nome))
+        {
+            return macchine[0];
+        }
+
+        string cercato = nome.Trim();
+
+        foreach (ObserverEndpoint punto in macchine)
+        {
+            if (string.Equals(punto.Nome?.Trim(), cercato, StringComparison.Ordinal))
+            {
+                return punto;
+            }
+        }
+
+        return macchine[0];
+    }
 
     /// <summary>La scala richiesta se e' una di quelle ammesse, altrimenti quella normale.</summary>
     /// <param name="scala">La scala letta dal file, o scelta.</param>
