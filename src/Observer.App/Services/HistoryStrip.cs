@@ -117,6 +117,40 @@ public static class HistoryStrip
         return striscia;
     }
 
+    /// <summary>Quanto e' larga davvero una barra, in proporzione a quanto ha coperto.</summary>
+    /// <param name="barra">La barra da disegnare.</param>
+    /// <param name="larghezza">La larghezza piena della colonna.</param>
+    /// <returns>La larghezza da disegnare, mai sotto un pixel.</returns>
+    /// <remarks>
+    /// Serve per l'ULTIMA barra della striscia, che e' sempre l'intervallo <b>in corso</b>: a
+    /// passo di un minuto contiene fra zero e sessanta secondi di misure e la differenza non
+    /// si nota, ma a passo di due ore puo' contenerne cinque minuti e disegnarsi identica a
+    /// una barra piena — proprio dove l'occhio legge "adesso". Una barra che ha coperto un
+    /// dodicesimo del suo intervallo si disegna larga un dodicesimo, e cresce mentre
+    /// l'intervallo si riempie.
+    /// <para>
+    /// Vale per ogni barra parziale, non solo per l'ultima: anche a meta' striscia, un
+    /// intervallo coperto a meta' sa meno di uno coperto per intero, e la larghezza lo dice
+    /// senza bisogno di un terzo colore. Le barre intere e i buchi non si toccano: un buco ha
+    /// gia' il suo segno, e stringere una barra piena sarebbe una bugia al contrario.
+    /// </para>
+    /// </remarks>
+    public static double LarghezzaDi(HistoryBar barra, double larghezza)
+    {
+        ArgumentNullException.ThrowIfNull(barra);
+
+        if (barra.Genere != BarKind.Parziale || barra.Attesi <= 0)
+        {
+            return larghezza;
+        }
+
+        double coperta = Math.Clamp((double)barra.Campioni / barra.Attesi, 0d, 1d);
+
+        // Almeno un pixel: una barra che esiste non deve sparire del tutto, o si leggerebbe
+        // come un buco, che vuol dire un'altra cosa.
+        return Math.Max(1d, larghezza * coperta);
+    }
+
     /// <summary>Raggruppa campioni fitti in intervalli piu' larghi.</summary>
     /// <param name="punti">I punti da raggruppare.</param>
     /// <param name="passo">La durata dell'intervallo di destinazione.</param>

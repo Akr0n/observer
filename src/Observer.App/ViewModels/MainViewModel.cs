@@ -35,31 +35,26 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </remarks>
     public static readonly TimeSpan IntervalloRidotto = TimeSpan.FromSeconds(10);
 
-    /// <summary>Quanto storico mostra la striscia.</summary>
-    private static readonly TimeSpan FinestraStorico = TimeSpan.FromHours(1);
-
-    /// <summary>Quanto dura un intervallo della striscia.</summary>
-    private static readonly TimeSpan PassoStorico = TimeSpan.FromMinutes(1);
-
-    /// <summary>
-    /// Ogni quanto si rilegge lo storico.
-    /// </summary>
+    /// <summary>Ogni quanto si riprova una lettura di storico fallita.</summary>
     /// <remarks>
-    /// Non a ogni giro: interrogare tutto lo storico una volta al secondo sarebbe assurdo su
-    /// dati che si muovono ogni minuto, e questa e' una finestra che esiste per NON disturbare
-    /// la macchina che misura. Un minuto e' anche il passo della striscia: piu' spesso non
-    /// aggiungerebbe una barretta, aggiungerebbe solo traffico.
+    /// Non il passo del periodo: a sette giorni quello vale due ore, e un timeout lascerebbe
+    /// accanto alla striscia un "No history" vecchio di due ore su dati che intanto sono
+    /// tornati. Si riprova presto, e si rallenta solo quando e' andata bene - dove il passo
+    /// del periodo e' la cadenza giusta, perche' piu' spesso non aggiungerebbe una barretta,
+    /// aggiungerebbe solo traffico a una macchina che questa finestra esiste per non
+    /// disturbare.
     /// </remarks>
-    private static readonly TimeSpan RicaricaStorico = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan RiprovaStorico = TimeSpan.FromSeconds(15);
 
-    /// <summary>Da quanto indietro si rilegge il grezzo per la coda della striscia.</summary>
+    /// <summary>Il minimo da cui rileggere il grezzo, quale che sia il periodo.</summary>
     /// <remarks>
     /// Il consolidamento degli aggregati ha una grazia di quattro minuti: il livello a un
     /// minuto e' indietro di cinque o sei rispetto ad adesso. Senza questa seconda lettura le
     /// ultime barrette sarebbero SEMPRE vuote, e la striscia direbbe "non misurato" proprio
-    /// sull'adesso, mentre il quadrante sopra mostra un valore vivo.
+    /// sull'adesso, mentre il quadrante sopra mostra un valore vivo. Con una sorgente a cinque
+    /// minuti il ritardo cresce, e la coda si allarga con lei: vedi CodaDi.
     /// </remarks>
-    private static readonly TimeSpan CodaStorico = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan CodaMinima = TimeSpan.FromMinutes(10);
 
     /// <summary>Quante righe chiedere al pannello dei processi.</summary>
     /// <remarks>
@@ -398,6 +393,32 @@ public sealed partial class MainViewModel : ViewModelBase
     public static IReadOnlyList<OpzioneTema> OpzioniTema { get; } =
         [.. Preferenze.TemiAmmessi.Select(chiave => new OpzioneTema(chiave))];
 
+    /// <summary>Quanto storico mostra la striscia: <c>1h</c>, <c>24h</c> o <c>7d</c>.</summary>
+    /// <remarks>
+    /// La chiave e non la voce, per la stessa ragione del tema: e' cio' che finisce nel file.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PeriodoScelto), nameof(TitoloStorico))]
+    public partial string Periodo { get; set; } = Preferenze.PeriodiAmmessi[0];
+
+    /// <summary>I periodi fra cui si sceglie, come voci del selettore.</summary>
+    public static IReadOnlyList<OpzionePeriodo> OpzioniPeriodo { get; } =
+        [.. Preferenze.PeriodiAmmessi.Select(chiave => new OpzionePeriodo(chiave))];
+
+    /// <summary>Il periodo come voce del selettore.</summary>
+    /// <remarks>
+    /// Il getter non lancia MAI, come quello del tema: una chiave che non e' nella tabella
+    /// ricadrebbe sulla prima voce invece di far cadere la finestra mentre si disegna.
+    /// </remarks>
+    public OpzionePeriodo PeriodoScelto
+    {
+        get => OpzioniPeriodo.FirstOrDefault(voce => voce.Chiave == Periodo) ?? OpzioniPeriodo[0];
+        set => Periodo = value?.Chiave ?? Periodo;
+    }
+
+    /// <summary>Il titolo sopra la striscia: cambia con il periodo.</summary>
+    public string TitoloStorico => PeriodoScelto.Titolo;
+
     /// <summary>Il tema come voce del selettore: e' <see cref="Tema"/> con un'etichetta.</summary>
     /// <remarks>Il selettore puo' assegnare null mentre cambia elenco: allora il tema resta com'e'.</remarks>
     public OpzioneTema TemaScelto
@@ -416,6 +437,29 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             Tema = valido;
         }
+    }
+
+    /// <summary>Un periodo non ammesso non entra, e quello nuovo si legge subito.</summary>
+    /// <param name="value">Il periodo richiesto.</param>
+    /// <remarks>
+    /// Subito e non al prossimo giro: chi sceglie "7 days" guarda la striscia, e aspettare fino
+    /// a due ore per vederla cambiare sarebbe indistinguibile da un selettore che non funziona.
+    /// La scadenza torna indietro invece di chiamare la lettura da qui: cosi' la richiesta
+    /// parte dal ciclo, dove c'e' gia' il token di annullamento e la guardia sull'esito, e non
+    /// da un setter che il selettore chiama sul thread dell'interfaccia.
+    /// </remarks>
+    partial void OnPeriodoChanged(string value)
+    {
+        string valido = Preferenze.PeriodoValido(value);
+
+        if (!string.Equals(valido, value, StringComparison.Ordinal))
+        {
+            Periodo = valido;
+
+            return;
+        }
+
+        prossimoStorico = DateTimeOffset.MinValue;
     }
 
     /// <summary>Quale risorsa sta guardando il pannello: <c>cpu</c>, <c>memory</c>, o null.</summary>
@@ -581,9 +625,12 @@ public sealed partial class MainViewModel : ViewModelBase
                 // finestra che sta gia' aspettando, senza poter dire niente di nuovo.
                 if (esito == ServiceOutcome.Ok && adesso() >= prossimoStorico)
                 {
-                    prossimoStorico = adesso() + RicaricaStorico;
+                    // La scadenza si sposta DOPO, e solo se e' andata: assegnarla prima
+                    // significava che un timeout congelava la striscia per un intero passo,
+                    // che a sette giorni sono due ore di "No history" su dati gia' tornati.
+                    bool letto = await AggiornaStoricoAsync(cancellationToken);
 
-                    await AggiornaStoricoAsync(cancellationToken);
+                    prossimoStorico = adesso() + (letto ? PeriodoScelto.Passo : RiprovaStorico);
                 }
 
                 // I processi seguono lo stesso giro dei quadranti, ma solo a pannello aperto:
@@ -881,14 +928,16 @@ public sealed partial class MainViewModel : ViewModelBase
     /// finestra per questo insegnerebbe a ignorare anche gli allarmi veri. Il motivo finisce
     /// accanto alla striscia, dove riguarda.
     /// </remarks>
-    private async Task AggiornaStoricoAsync(CancellationToken cancellationToken)
+    /// <returns>True se le strisce sono state riscritte; false se non c'era da chi leggere.</returns>
+    private async Task<bool> AggiornaStoricoAsync(CancellationToken cancellationToken)
     {
         if (client is not { } corrente)
         {
-            return;
+            return false;
         }
 
         DateTimeOffset ora = adesso();
+        OpzionePeriodo periodo = PeriodoScelto;
 
         // Tutte le strisce insieme, non una dopo l'altra: sei quadranti facevano dodici
         // richieste in fila, e il tempo del giro era la SOMMA delle latenze. Le richieste
@@ -897,19 +946,47 @@ public sealed partial class MainViewModel : ViewModelBase
         List<MetricRow> righe = [.. Quadranti];
 
         (HistoryFetch Aggregato, HistoryFetch? Coda)[] letture = await Task.WhenAll(
-            righe.Select(riga => LeggiStoricoAsync(corrente, riga.Key, ora, cancellationToken)))
+            righe.Select(riga => LeggiStoricoAsync(corrente, riga.Key, periodo, ora, cancellationToken)))
             .ConfigureAwait(true);
+
+        // A sette giorni una lettura puo' durare l'intero budget di otto secondi, e in quel
+        // tempo possono essere cambiate DUE cose: il periodo scelto e la macchina guardata.
+        // Scrivere queste barre adesso vorrebbe dire disegnare una settimana dentro una
+        // striscia da un'ora, o lo storico della macchina sbagliata.
+        if (!ReferenceEquals(client, corrente) || PeriodoScelto != periodo)
+        {
+            return false;
+        }
 
         for (int i = 0; i < righe.Count; i++)
         {
-            ApplicaStorico(righe[i], letture[i].Aggregato, letture[i].Coda, ora);
+            ApplicaStorico(righe[i], letture[i].Aggregato, letture[i].Coda, periodo, ora);
         }
+
+        return true;
+    }
+
+    /// <summary>Da quanto indietro leggere il grezzo per la coda, dato il passo della sorgente.</summary>
+    /// <remarks>
+    /// Tre punti di sorgente, mai meno del minimo. Con la sorgente a un minuto restano i dieci
+    /// minuti di sempre; a cinque minuti servono quindici, perche' il consolidamento di quel
+    /// livello aspetta anche il livello sotto e resta indietro piu' a lungo.
+    /// </remarks>
+    private static TimeSpan CodaDi(OpzionePeriodo periodo)
+    {
+        TimeSpan tre = periodo.PassoSorgente * 3;
+
+        return tre > CodaMinima ? tre : CodaMinima;
     }
 
     /// <summary>Le due letture dello storico di UNA metrica: l'aggregato al minuto e la coda grezza.</summary>
     /// <returns>La coda e' null quando l'aggregato non c'e': senza quello non serve.</returns>
     private static async Task<(HistoryFetch Aggregato, HistoryFetch? Coda)> LeggiStoricoAsync(
-        IMetricsClient corrente, string chiave, DateTimeOffset ora, CancellationToken cancellationToken)
+        IMetricsClient corrente,
+        string chiave,
+        OpzionePeriodo periodo,
+        DateTimeOffset ora,
+        CancellationToken cancellationToken)
     {
         string[] pezzi = chiave.Split('|');
 
@@ -921,7 +998,7 @@ public sealed partial class MainViewModel : ViewModelBase
         string? istanza = pezzi.Length > 2 && pezzi[2].Length > 0 ? pezzi[2] : null;
 
         HistoryFetch aggregato = await corrente.GetHistoryAsync(
-            new HistoryQuery(pezzi[0], pezzi[1], istanza, ora - FinestraStorico, "1m"),
+            new HistoryQuery(pezzi[0], pezzi[1], istanza, ora - periodo.Finestra, periodo.Risoluzione),
             cancellationToken).ConfigureAwait(false);
 
         if (aggregato.Outcome != ServiceOutcome.Ok || aggregato.Points is null)
@@ -930,13 +1007,18 @@ public sealed partial class MainViewModel : ViewModelBase
         }
 
         HistoryFetch coda = await corrente.GetHistoryAsync(
-            new HistoryQuery(pezzi[0], pezzi[1], istanza, ora - CodaStorico, "raw"),
+            new HistoryQuery(pezzi[0], pezzi[1], istanza, ora - CodaDi(periodo), "raw"),
             cancellationToken).ConfigureAwait(false);
 
         return (aggregato, coda);
     }
 
-    private static void ApplicaStorico(MetricRow riga, HistoryFetch aggregato, HistoryFetch? coda, DateTimeOffset ora)
+    private static void ApplicaStorico(
+        MetricRow riga,
+        HistoryFetch aggregato,
+        HistoryFetch? coda,
+        OpzionePeriodo periodo,
+        DateTimeOffset ora)
     {
         if (aggregato.Outcome != ServiceOutcome.Ok || aggregato.Points is null)
         {
@@ -946,19 +1028,18 @@ public sealed partial class MainViewModel : ViewModelBase
             return;
         }
 
+        // La coda grezza si raggruppa al passo della SORGENTE, non a quello della barra: e'
+        // cio' che la rende confrontabile con i punti aggregati prima di unirli. Il passo
+        // della barra lo applica Costruisci, una volta sola e su tutto.
         IReadOnlyList<HistoryPoint> punti = coda is { Outcome: ServiceOutcome.Ok, Points: not null }
-            ? HistoryStrip.Unisci(aggregato.Points, HistoryStrip.Raggruppa(coda.Points, PassoStorico))
+            ? HistoryStrip.Unisci(aggregato.Points, HistoryStrip.Raggruppa(coda.Points, periodo.PassoSorgente))
             : aggregato.Points;
 
         riga.NotaStorico = punti.Count > 0
             ? string.Empty
             : "No history recorded for this metric yet.";
 
-        riga.Storico = HistoryStrip.Costruisci(
-            InFrazioni(punti),
-            ora,
-            (int)(FinestraStorico / PassoStorico),
-            PassoStorico);
+        riga.Storico = HistoryStrip.Costruisci(InFrazioni(punti), ora, periodo.Barre, periodo.Passo);
     }
 
     /// <summary>Porta i valori dello storico nella scala 0..1 dei quadranti.</summary>

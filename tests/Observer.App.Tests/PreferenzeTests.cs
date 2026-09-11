@@ -47,12 +47,62 @@ public class PreferenzeTests
     public void AndataERitornoDalJson()
     {
         Preferenze originali = new(
-            new PosizioneFinestra(192, 100, 900, 700, Maximized: false), 1.3d, "dark", "laptop");
+            new PosizioneFinestra(192, 100, 900, 700, Maximized: false), 1.3d, "dark", "laptop", "24h");
 
         Assert.Equal(originali, Preferenze.Da(originali.InJson()));
         Assert.Contains("\"textScale\":1.3", originali.InJson(), StringComparison.Ordinal);
         Assert.Contains("\"theme\":\"dark\"", originali.InJson(), StringComparison.Ordinal);
         Assert.Contains("\"machine\":\"laptop\"", originali.InJson(), StringComparison.Ordinal);
+        Assert.Contains("\"historyWindow\":\"24h\"", originali.InJson(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UnFileSenzaIlPeriodoMostraLOraComePrima()
+    {
+        // Ogni file scritto prima di questa versione: l'assenza vuol dire l'ora, che e' cio'
+        // che quella versione mostrava. Nessuna migrazione.
+        Assert.Equal("1h", Preferenze.Da("""{"theme": "dark"}""").Periodo);
+        Assert.Equal("1h", Preferenze.Predefinite.Periodo);
+    }
+
+    [Fact]
+    public void UnPeriodoInventatoTornaAllOra()
+    {
+        Assert.Equal("1h", Preferenze.Da("""{"historyWindow": "1y"}""").Periodo);
+        Assert.Equal("24h", Preferenze.Da("""{"historyWindow": "24H"}""").Periodo);
+    }
+
+    [Theory]
+    [InlineData("1h", 60, 1)]
+    [InlineData("24h", 96, 15)]
+    [InlineData("7d", 84, 120)]
+    public void OgniPeriodoStaNellaStrisciaSenzaBarreSottoIlPixel(
+        string chiave, int barre, int minutiPerBarra)
+    {
+        // Il vincolo che tiene in piedi la tabella: circa novanta barre su ottocento pixel
+        // danno barrette da nove, che e' il minimo per vederle separate. Duemila barre - che
+        // e' cio' che darebbero sette giorni al passo della sorgente - sarebbero sotto il
+        // pixel, cioe' una striscia che non si puo' leggere.
+        OpzionePeriodo periodo = new(chiave);
+
+        Assert.Equal(barre, periodo.Barre);
+        Assert.Equal(TimeSpan.FromMinutes(minutiPerBarra), periodo.Passo);
+        Assert.InRange(periodo.Barre, 50, 120);
+
+        // E il passo della barra dev'essere un multiplo di quello della sorgente, altrimenti
+        // un intervallo conterrebbe un numero di punti diverso da quello vicino.
+        Assert.Equal(TimeSpan.Zero, periodo.Passo - (periodo.PassoSorgente * (int)(periodo.Passo / periodo.PassoSorgente)));
+    }
+
+    [Fact]
+    public void LaVoceDelPeriodoSiLeggeComeSiVede()
+    {
+        Assert.Equal("1 hour", new OpzionePeriodo("1h").ToString());
+        Assert.Equal("24 hours", new OpzionePeriodo("24h").ToString());
+        Assert.Equal("7 days", new OpzionePeriodo("7d").ToString());
+
+        Assert.Equal("Last hour", new OpzionePeriodo("1h").Titolo);
+        Assert.Equal("Last 7 days", new OpzionePeriodo("7d").Titolo);
     }
 
     [Fact]

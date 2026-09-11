@@ -22,6 +22,39 @@ public class HistoryStripTests
         new(Adesso - TimeSpan.FromMinutes(minutiFa), campioni, media, media, media, media);
 
     [Fact]
+    public void UnaBarraParzialeSiDisegnaLargaQuantoHaCoperto()
+    {
+        // L'ultima barra della striscia e' sempre l'intervallo IN CORSO. A un minuto di passo
+        // la differenza non si nota; a due ore, dopo cinque minuti, una barra piena direbbe
+        // "due ore cosi'" proprio dove l'occhio legge "adesso".
+        HistoryBar unDodicesimo = new(Adesso, BarKind.Parziale, 0.5d, 0.5d, 0.5d, 600, 7200);
+
+        Assert.Equal(10d, HistoryStrip.LarghezzaDi(unDodicesimo, 120d), 9);
+    }
+
+    [Fact]
+    public void UnaBarraParzialeNonSpariscaMaiDeltutto()
+    {
+        // Sotto il pixel si leggerebbe come un buco, che vuol dire un'altra cosa: la' non si
+        // e' misurato, qui si e' misurato poco.
+        HistoryBar appenaNata = new(Adesso, BarKind.Parziale, 0.5d, 0.5d, 0.5d, 1, 7200);
+
+        Assert.Equal(1d, HistoryStrip.LarghezzaDi(appenaNata, 6d), 9);
+    }
+
+    [Fact]
+    public void LeBarrePieneEIBuchiRestanoLarghiUguali()
+    {
+        // Stringere una barra piena sarebbe una bugia al contrario, e un buco ha gia' il suo
+        // segno: la larghezza parla solo di quanto un intervallo e' stato coperto.
+        HistoryBar piena = new(Adesso, BarKind.Misurata, 0.5d, 0.5d, 0.5d, 60, 60);
+        HistoryBar buco = new(Adesso, BarKind.Assente, 0d, 0d, 0d, 0, 60);
+
+        Assert.Equal(6d, HistoryStrip.LarghezzaDi(piena, 6d), 9);
+        Assert.Equal(6d, HistoryStrip.LarghezzaDi(buco, 6d), 9);
+    }
+
+    [Fact]
     public void PiuPuntiNellaStessaBarraSiMedianoInveceDiPerdersi()
     {
         // Il caso che nasce appena il passo della barra supera quello dei punti: un quarto

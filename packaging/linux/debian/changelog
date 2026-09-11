@@ -1,3 +1,23 @@
+observer (0.18.0) unstable; urgency=medium
+
+  * The history strip is no longer stuck on the last hour: a selector next
+    to its title offers 1 hour, 24 hours and 7 days, and the choice is
+    remembered. The service has kept that data since the first release and
+    nothing ever showed it. Each period has its own bar width - one minute,
+    a quarter of an hour, two hours - so the strip always holds between 60
+    and 96 bars: more would be thinner than a pixel. 90 days is deliberately
+    not offered; the data exists, but at that width one bar would stand for
+    a day and a half.
+  * A bar that covers only part of its interval is now drawn as narrow as
+    the part it covers. The rightmost bar is always the interval in
+    progress, and at a two-hour step it could hold five minutes of samples
+    while drawing full width - exactly where the eye reads "now".
+  * Several samples falling in the same bar are averaged instead of one
+    surviving. Indexing by aligned instant kept the last one iterated, so
+    the bar showed that sample as if it were the average of all of them.
+
+ -- Federico Cardinali <noreply@example.invalid>  Fri, 11 Sep 2026 16:00:00 +0000
+
 observer (0.17.0) unstable; urgency=medium
 
   * The window reopens on the machine you were watching. It used to open

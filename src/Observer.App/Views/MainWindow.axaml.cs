@@ -183,12 +183,13 @@ public partial class MainWindow : Window
         ApplicaMinimi();
     }
 
-    /// <summary>Scrive dov'e' la finestra, lo zoom e il tema, per la prossima volta.</summary>
+    /// <summary>Scrive dov'e' la finestra, lo zoom, il tema e il resto, per la prossima volta.</summary>
     private void Ricorda()
     {
         MainViewModel? modello = DataContext as MainViewModel;
         double scalaDaSalvare = modello?.ScalaTesto ?? preferenze.ScalaTesto;
         string temaDaSalvare = modello?.Tema ?? preferenze.Tema;
+        string periodoDaSalvare = modello?.Periodo ?? preferenze.Periodo;
 
         PosizioneFinestra? posizione = PosizioneFinestra.AllaChiusura(
             ridottaAIcona: WindowState == WindowState.Minimized,
@@ -201,7 +202,11 @@ public partial class MainWindow : Window
         // ripiego sul valore vecchio, chi passa da una macchina remota a quella locale si
         // ritroverebbe la remota riaperta per sempre.
         preferenze = new Preferenze(
-            posizione, scalaDaSalvare, temaDaSalvare, modello?.MacchinaDaRicordare);
+            posizione,
+            scalaDaSalvare,
+            temaDaSalvare,
+            modello?.MacchinaDaRicordare,
+            periodoDaSalvare);
         PreferenzeStore.Scrivi(preferenze);
     }
 
@@ -226,6 +231,7 @@ public partial class MainWindow : Window
             modello.ScalaTesto = preferenze.ScalaTesto;
             ApplicaScala(modello.ScalaTesto);
             modello.Tema = preferenze.Tema;
+            modello.Periodo = preferenze.Periodo;
         }
 
         if (osservato is not null)
