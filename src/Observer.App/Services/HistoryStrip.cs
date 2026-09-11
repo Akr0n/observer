@@ -83,6 +83,15 @@ public static class HistoryStrip
 
         int attesi = AttesiIn(passo);
 
+        // PRIMA si raggruppa, e non e' un di piu': quando il passo della barra e' piu' largo
+        // di quello dei punti - un quarto d'ora di barra su punti da cinque minuti - nello
+        // stesso intervallo ne cadono tre, e indicizzarli per istante ne terrebbe UNO,
+        // l'ultimo iterato, buttando gli altri due. La barra mostrerebbe l'ultimo campione
+        // spacciandolo per la media di tutti, e il conteggio direbbe 1 su 900. Raggruppa
+        // ricalcola la media dalla SOMMA, che e' l'unico modo di non far pesare uguale
+        // intervalli con un numero diverso di campioni.
+        punti = Raggruppa(punti, passo);
+
         // I punti si indicizzano per l'inizio del proprio intervallo, arrotondato al passo:
         // cosi' un timestamp che arriva con qualche millisecondo di scarto cade lo stesso
         // nella casella giusta invece di sparire.
@@ -106,6 +115,45 @@ public static class HistoryStrip
         }
 
         return striscia;
+    }
+
+    /// <summary>Quanto e' larga davvero una barra, in proporzione a quanto ha coperto.</summary>
+    /// <param name="barra">La barra da disegnare.</param>
+    /// <param name="larghezza">La larghezza piena della colonna.</param>
+    /// <returns>La larghezza da disegnare, mai sotto un pixel.</returns>
+    /// <remarks>
+    /// Serve per l'ULTIMA barra della striscia, che e' sempre l'intervallo <b>in corso</b>: a
+    /// passo di un minuto contiene fra zero e sessanta secondi di misure e la differenza non
+    /// si nota, ma a passo di due ore puo' contenerne cinque minuti e disegnarsi identica a
+    /// una barra piena — proprio dove l'occhio legge "adesso". Una barra che ha coperto un
+    /// dodicesimo del suo intervallo si disegna larga un dodicesimo.
+    /// <para>
+    /// Quanto la si veda crescere dipende da chi rilegge, non da qui, ed e' il motivo per cui
+    /// <c>MainViewModel.ProssimaLettura</c> non rilegge ogni passo: rileggendo al passo si
+    /// guarderebbe ogni volta una barra appena nata, sempre alla stessa frazione, e l'estremo
+    /// destro della striscia resterebbe congelato per tutta la sessione a quella larghezza li'.
+    /// </para>
+    /// <para>
+    /// Vale per ogni barra parziale, non solo per l'ultima: anche a meta' striscia, un
+    /// intervallo coperto a meta' sa meno di uno coperto per intero, e la larghezza lo dice
+    /// senza bisogno di un terzo colore. Le barre intere e i buchi non si toccano: un buco ha
+    /// gia' il suo segno, e stringere una barra piena sarebbe una bugia al contrario.
+    /// </para>
+    /// </remarks>
+    public static double LarghezzaDi(HistoryBar barra, double larghezza)
+    {
+        ArgumentNullException.ThrowIfNull(barra);
+
+        if (barra.Genere != BarKind.Parziale || barra.Attesi <= 0)
+        {
+            return larghezza;
+        }
+
+        double coperta = Math.Clamp((double)barra.Campioni / barra.Attesi, 0d, 1d);
+
+        // Almeno un pixel: una barra che esiste non deve sparire del tutto, o si leggerebbe
+        // come un buco, che vuol dire un'altra cosa.
+        return Math.Max(1d, larghezza * coperta);
     }
 
     /// <summary>Raggruppa campioni fitti in intervalli piu' larghi.</summary>
@@ -182,11 +230,23 @@ public static class HistoryStrip
             uniti[punto.Timestamp] = punto;
         }
 
-        // La coda vince dove le due si sovrappongono: e' la lettura piu' fresca, e su un
-        // intervallo che l'aggregato ha consolidato solo a meta' sarebbe l'aggregato a mentire.
+        // Dove le due si sovrappongono vince quella con PIU' campioni, non la piu' fresca.
+        // Quasi sempre e' la coda, ed e' il motivo per cui questa funzione esiste: su un
+        // intervallo consolidato a meta' l'aggregato ha meno campioni e mentirebbe. Ma c'e'
+        // un intervallo in cui perde, ed e' sempre lo stesso: il piu' VECCHIO della coda. Il
+        // grezzo si chiede da un istante qualsiasi - "dieci minuti fa" - che non cade sul
+        // confine di un intervallo, quindi quel primo intervallo arriva tagliato, con trenta
+        // campioni su sessanta, mentre l'aggregato ce li ha tutti. Lasciandolo vincere, una
+        // barra misurata per intero si disegnava larga la meta' (e' parziale), il suggerimento
+        // diceva "30 of 60 samples", e media, minimo e massimo saltavano la prima meta' del
+        // minuto: un picco li' dentro spariva. Il confine si sposta a ogni lettura, quindi la
+        // barra sbagliata era sempre la stessa posizione della striscia.
         foreach (HistoryPoint punto in coda)
         {
-            uniti[punto.Timestamp] = punto;
+            uniti[punto.Timestamp] =
+                uniti.TryGetValue(punto.Timestamp, out HistoryPoint? gia) && gia.Count > punto.Count
+                    ? gia
+                    : punto;
         }
 
         return [.. uniti.Values.OrderBy(punto => punto.Timestamp)];
@@ -231,9 +291,10 @@ public static class HistoryStrip
     /// <param name="indice">Quale barra.</param>
     /// <returns>La frase da mostrare, vuota se l'indice non esiste.</returns>
     /// <remarks>
-    /// Dice l'INTERVALLO, non l'istante: una barra copre un minuto, e mostrarne solo l'inizio
-    /// lascerebbe indovinare quanto e' larga. Il passo si ricava dalle barre stesse invece di
-    /// essere una costante, cosi' resta vero anche se un giorno la striscia cambia risoluzione.
+    /// Dice l'INTERVALLO, non l'istante: una barra copre da un minuto a due ore secondo il
+    /// periodo scelto, e mostrarne solo l'inizio lascerebbe indovinare quanto e' larga. Il
+    /// passo si ricava dalle barre stesse invece di essere una costante, cosi' resta vero
+    /// qualunque periodo la striscia stia mostrando.
     /// <para>
     /// Su una barra vuota lo dice: "non misurato" non e' "zero", ed e' la stessa distinzione
     /// che il disegno gia' fa con il tratteggio.
@@ -249,14 +310,25 @@ public static class HistoryStrip
         }
 
         HistoryBar barra = barre[indice];
-        string da = Ora(barra.Inizio);
 
         if (barre.Count < 2)
         {
-            return da;
+            return Ora(barra.Inizio, colGiorno: false);
         }
 
-        string intervallo = da + " – " + Ora(barra.Inizio + (barre[1].Inizio - barre[0].Inizio));
+        TimeSpan passo = barre[1].Inizio - barre[0].Inizio;
+
+        // Oltre le ventiquattro ore l'ora da sola non colloca piu' niente: a sette giorni la
+        // stessa frase - "04:00 – 06:00" - compare su SETTE barre, una per giorno, e chi vede
+        // un picco (che e' il motivo per cui si guarda una settimana) non ha modo di sapere di
+        // che giorno sia. Il nome del giorno basta, la data no: fra due barre della stessa
+        // striscia passano al massimo 83 x 2 h = 166 ore, meno di una settimana, quindi la
+        // coppia (giorno, ora) non puo' ripetersi. La soglia e' stretta di proposito: a
+        // ventiquattro ore l'arco vale esattamente un giorno, gli estremi non si toccano, e la
+        // frase resta corta dove non serve allungarla.
+        bool colGiorno = (passo * barre.Count) > TimeSpan.FromHours(24);
+
+        string intervallo = Ora(barra.Inizio, colGiorno) + " – " + Ora(barra.Inizio + passo, colGiorno);
 
         return barra.Genere switch
         {
@@ -266,6 +338,6 @@ public static class HistoryStrip
         };
     }
 
-    private static string Ora(DateTimeOffset istante) =>
-        istante.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
+    private static string Ora(DateTimeOffset istante, bool colGiorno) =>
+        istante.ToLocalTime().ToString(colGiorno ? "ddd HH:mm" : "HH:mm", CultureInfo.InvariantCulture);
 }

@@ -140,6 +140,74 @@ public sealed record OpzioneScala(double Fattore)
     public override string ToString() => Fattore.ToString("P0", CultureInfo.CurrentCulture);
 }
 
+/// <summary>Una voce del selettore del periodo dello storico.</summary>
+/// <param name="Chiave">Cio' che va nel file: <c>1h</c>, <c>24h</c> o <c>7d</c>.</param>
+/// <remarks>
+/// Il passo della barra non e' quello della sorgente, e i due numeri rispondono a domande
+/// diverse. La SORGENTE e' cio' che il servizio conserva: campioni al minuto per sette giorni,
+/// a cinque minuti per novanta. Il PASSO della barra e' quanto largo dev'essere un intervallo
+/// perche' la striscia ci stia: circa novanta barre su ottocento pixel danno barrette da nove,
+/// che e' il minimo per vederle separate. Da qui la tabella: un'ora a un minuto fa sessanta
+/// barre, un giorno a un quarto d'ora ne fa novantasei, una settimana a due ore ottantaquattro.
+/// <para>
+/// Novanta giorni NON c'e', anche se il servizio li conserva: a cinque minuti sarebbero 25 920
+/// punti, oltre il tetto che il servizio impone a una risposta, e allargando la barra fino a
+/// farceli stare la striscia direbbe una cosa sola per ogni giorno e mezzo. Un grafico che
+/// mente e' peggio di un grafico che manca.
+/// </para>
+/// </remarks>
+public sealed record OpzionePeriodo(string Chiave)
+{
+    /// <inheritdoc />
+    public override string ToString() => Chiave switch
+    {
+        "24h" => "24 hours",
+        "7d" => "7 days",
+        _ => "1 hour",
+    };
+
+    /// <summary>Quanto storico mostra la striscia.</summary>
+    public TimeSpan Finestra => Chiave switch
+    {
+        "24h" => TimeSpan.FromHours(24),
+        "7d" => TimeSpan.FromDays(7),
+        _ => TimeSpan.FromHours(1),
+    };
+
+    /// <summary>Quanto dura un intervallo della striscia.</summary>
+    public TimeSpan Passo => Chiave switch
+    {
+        "24h" => TimeSpan.FromMinutes(15),
+        "7d" => TimeSpan.FromHours(2),
+        _ => TimeSpan.FromMinutes(1),
+    };
+
+    /// <summary>La risoluzione da chiedere al servizio.</summary>
+    public string Risoluzione => Chiave switch
+    {
+        "1h" => "1m",
+        _ => "5m",
+    };
+
+    /// <summary>Quanto dura un punto della sorgente, per allineare la coda grezza.</summary>
+    public TimeSpan PassoSorgente => Chiave switch
+    {
+        "1h" => TimeSpan.FromMinutes(1),
+        _ => TimeSpan.FromMinutes(5),
+    };
+
+    /// <summary>Il titolo sopra la striscia.</summary>
+    public string Titolo => Chiave switch
+    {
+        "24h" => "Last 24 hours",
+        "7d" => "Last 7 days",
+        _ => "Last hour",
+    };
+
+    /// <summary>Quante barre ha la striscia.</summary>
+    public int Barre => (int)(Finestra / Passo);
+}
+
 /// <summary>Una voce del selettore del tema: quello del sistema, chiaro o scuro.</summary>
 /// <param name="Chiave">Cio' che va nel file: <c>system</c>, <c>light</c> o <c>dark</c>.</param>
 /// <remarks>
@@ -179,9 +247,10 @@ public sealed record OpzioneTema(string Chiave)
 /// <param name="Macchina">
 /// Il nome della macchina che si stava guardando, o null per questo computer.
 /// </param>
+/// <param name="Periodo">Quanto storico mostra la striscia: <c>1h</c>, <c>24h</c> o <c>7d</c>.</param>
 /// <remarks>
 /// Un file a parte e non <c>client.json</c>: quello porta una credenziale, e un programma che lo
-/// riscrivesse a ogni chiusura per salvare quattro valori sarebbe un programma che riscrive una
+/// riscrivesse a ogni chiusura per salvare qualche preferenza sarebbe un programma che riscrive una
 /// credenziale a ogni chiusura. Sono TUTTI parametri posizionali senza valore predefinito, di
 /// proposito: chi costruisce le preferenze deve dirli tutti, e un
 /// <c>new Preferenze(posizione, scala)</c> che ne dimentica uno non compila — che e' come si
@@ -197,7 +266,8 @@ public sealed record Preferenze(
     // chiave con cui il client trova la credenziale, ed e' l'unica cosa che machines.json non
     // puo' cambiare sotto senza che sia un'altra macchina. Null vuol dire "questo computer",
     // che e' anche cio' che si legge in un file scritto da una versione precedente.
-    [property: JsonPropertyName("machine")] string? Macchina)
+    [property: JsonPropertyName("machine")] string? Macchina,
+    [property: JsonPropertyName("historyWindow")] string Periodo)
 {
     /// <summary>La misura normale: 1.</summary>
     public const double ScalaNormale = 1.0d;
@@ -220,10 +290,14 @@ public sealed record Preferenze(
     /// <summary>I temi che si possono scegliere. Il primo e' quello del sistema.</summary>
     public static readonly IReadOnlyList<string> TemiAmmessi = ["system", "light", "dark"];
 
+    /// <summary>I periodi dello storico fra cui si sceglie. Il primo e' quello di sempre.</summary>
+    public static readonly IReadOnlyList<string> PeriodiAmmessi = ["1h", "24h", "7d"];
+
     private static readonly JsonSerializerOptions Opzioni = new(JsonSerializerDefaults.Web);
 
     /// <summary>Le preferenze di chi non ne ha ancora salvate.</summary>
-    public static Preferenze Predefinite => new(null, ScalaNormale, TemiAmmessi[0], null);
+    public static Preferenze Predefinite =>
+        new(null, ScalaNormale, TemiAmmessi[0], null, PeriodiAmmessi[0]);
 
     /// <summary>La macchina da riaprire: quella ricordata se c'e' ancora, altrimenti la prima.</summary>
     /// <param name="macchine">L'elenco letto adesso, in ordine: la prima e' questo computer.</param>
@@ -293,6 +367,26 @@ public sealed record Preferenze(
         return TemiAmmessi[0];
     }
 
+    /// <summary>Il periodo richiesto se e' uno di quelli ammessi, altrimenti l'ora.</summary>
+    /// <param name="periodo">Il periodo letto dal file, o scelto; anche null.</param>
+    /// <returns>Una chiave ammessa.</returns>
+    /// <remarks>
+    /// Un file scritto da una versione precedente non ha il campo, quindi qui arriva null e si
+    /// torna all'ora, che e' cio' che quella versione mostrava: nessuna migrazione da fare.
+    /// </remarks>
+    public static string PeriodoValido(string? periodo)
+    {
+        foreach (string ammesso in PeriodiAmmessi)
+        {
+            if (string.Equals(ammesso, periodo, StringComparison.OrdinalIgnoreCase))
+            {
+                return ammesso;
+            }
+        }
+
+        return PeriodiAmmessi[0];
+    }
+
     /// <summary>Legge le preferenze da un file, tollerando tutto cio' che puo' andare storto.</summary>
     /// <param name="json">Il contenuto del file, oppure null se non c'e'.</param>
     /// <returns>Le preferenze, oppure quelle predefinite: un file rotto non ferma la finestra.</returns>
@@ -309,7 +403,12 @@ public sealed record Preferenze(
 
             return lette is null
                 ? Predefinite
-                : lette with { ScalaTesto = ScalaValida(lette.ScalaTesto), Tema = TemaValido(lette.Tema) };
+                : lette with
+                {
+                    ScalaTesto = ScalaValida(lette.ScalaTesto),
+                    Tema = TemaValido(lette.Tema),
+                    Periodo = PeriodoValido(lette.Periodo),
+                };
         }
         catch (JsonException)
         {

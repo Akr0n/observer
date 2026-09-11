@@ -9,7 +9,8 @@ e dei dispositivi presenti sulla rete locale. Gira su Windows e Linux.
 > e su Linux - CPU, memoria, spazio per volume, attivita' per disco - conserva le serie su
 > SQLite, si genera da solo il proprio token di macchina, ed espone i dati sia sulla rete sia
 > su un canale locale che non richiede credenziali. Il client desktop li mostra dal vivo, con
-> un'ora di storico sotto i quadranti, e dal quadrante della CPU, della memoria o dell'attivita'
+> lo storico sotto i quadranti - un'ora, un giorno o una settimana - e dal quadrante della CPU,
+> della memoria o dell'attivita'
 > di un disco apre l'elenco dei processi che la stanno consumando, da cui un processo si puo'
 > terminare. Ci sono un
 > pacchetto MSI per Windows e un `.deb` per Linux, che registrano il servizio e installano

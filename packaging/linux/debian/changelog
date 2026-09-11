@@ -1,3 +1,44 @@
+observer (0.18.0) unstable; urgency=medium
+
+  * The history strip is no longer stuck on the last hour: a selector next
+    to its title offers 1 hour, 24 hours and 7 days, and the choice is
+    remembered. The service has kept that data since the first release and
+    nothing ever showed it. Each period has its own bar width - one minute,
+    a quarter of an hour, two hours - so the strip always holds between 60
+    and 96 bars: more would be thinner than a pixel. 90 days is deliberately
+    not offered; the data exists, but at that width one bar would stand for
+    a day and a half.
+  * A bar that covers only part of its interval is now drawn as narrow as
+    the part it covers. The rightmost bar is always the interval in
+    progress, and at a two-hour step it could hold five minutes of samples
+    while drawing full width - exactly where the eye reads "now".
+  * Several samples falling in the same bar are averaged instead of one
+    surviving. Indexing by aligned instant kept the last one iterated, so
+    the bar showed that sample as if it were the average of all of them.
+  * A failed history read is retried in fifteen seconds instead of at the
+    next step. It used to count as a success, so a single timeout left "No
+    history" under every gauge for a whole step - two hours at seven days -
+    on data the service had been serving again a second later.
+  * Switching machines redraws the strip at once. The deadline belonged to
+    the machine before it, so the new rows appeared with neither bars nor a
+    reason for their absence, and stayed that way until it expired.
+  * The title over the strip names the period being DRAWN, not the one
+    picked. On a machine that is down the history is not re-read at all, so
+    the title used to call sixty one-minute bars "Last 7 days": a machine
+    idle for an hour read as idle for a week.
+  * The history is re-read four times per bar, so the interval in progress
+    visibly fills up instead of being frozen at the width it had when the
+    period was chosen.
+  * A fully measured interval is no longer replaced by a truncated one. The
+    raw tail is asked for from a moment that does not fall on an interval
+    boundary, so its oldest interval always arrives cut in half, and it used
+    to overwrite the complete one: a whole minute drew half width, and a
+    peak in its first half disappeared.
+  * Over a day, a bar's tooltip names the weekday as well as the hour. At
+    seven days "04:00 - 06:00" appeared on seven different bars.
+
+ -- Federico Cardinali <noreply@example.invalid>  Fri, 11 Sep 2026 16:00:00 +0000
+
 observer (0.17.0) unstable; urgency=medium
 
   * The window reopens on the machine you were watching. It used to open

@@ -1,4 +1,5 @@
 using Observer.App.Services;
+using Observer.App.ViewModels;
 
 namespace Observer.App.Tests;
 
@@ -47,12 +48,62 @@ public class PreferenzeTests
     public void AndataERitornoDalJson()
     {
         Preferenze originali = new(
-            new PosizioneFinestra(192, 100, 900, 700, Maximized: false), 1.3d, "dark", "laptop");
+            new PosizioneFinestra(192, 100, 900, 700, Maximized: false), 1.3d, "dark", "laptop", "24h");
 
         Assert.Equal(originali, Preferenze.Da(originali.InJson()));
         Assert.Contains("\"textScale\":1.3", originali.InJson(), StringComparison.Ordinal);
         Assert.Contains("\"theme\":\"dark\"", originali.InJson(), StringComparison.Ordinal);
         Assert.Contains("\"machine\":\"laptop\"", originali.InJson(), StringComparison.Ordinal);
+        Assert.Contains("\"historyWindow\":\"24h\"", originali.InJson(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UnFileSenzaIlPeriodoMostraLOraComePrima()
+    {
+        // Ogni file scritto prima di questa versione: l'assenza vuol dire l'ora, che e' cio'
+        // che quella versione mostrava. Nessuna migrazione.
+        Assert.Equal("1h", Preferenze.Da("""{"theme": "dark"}""").Periodo);
+        Assert.Equal("1h", Preferenze.Predefinite.Periodo);
+    }
+
+    [Fact]
+    public void UnPeriodoInventatoTornaAllOra()
+    {
+        Assert.Equal("1h", Preferenze.Da("""{"historyWindow": "1y"}""").Periodo);
+        Assert.Equal("24h", Preferenze.Da("""{"historyWindow": "24H"}""").Periodo);
+    }
+
+    [Theory]
+    [InlineData("1h", 60, 1)]
+    [InlineData("24h", 96, 15)]
+    [InlineData("7d", 84, 120)]
+    public void OgniPeriodoStaNellaStrisciaSenzaBarreSottoIlPixel(
+        string chiave, int barre, int minutiPerBarra)
+    {
+        // Il vincolo che tiene in piedi la tabella: circa novanta barre su ottocento pixel
+        // danno barrette da nove, che e' il minimo per vederle separate. Duemila barre - che
+        // e' cio' che darebbero sette giorni al passo della sorgente - sarebbero sotto il
+        // pixel, cioe' una striscia che non si puo' leggere.
+        OpzionePeriodo periodo = new(chiave);
+
+        Assert.Equal(barre, periodo.Barre);
+        Assert.Equal(TimeSpan.FromMinutes(minutiPerBarra), periodo.Passo);
+        Assert.InRange(periodo.Barre, 50, 120);
+
+        // E il passo della barra dev'essere un multiplo di quello della sorgente, altrimenti
+        // un intervallo conterrebbe un numero di punti diverso da quello vicino.
+        Assert.Equal(TimeSpan.Zero, periodo.Passo - (periodo.PassoSorgente * (int)(periodo.Passo / periodo.PassoSorgente)));
+    }
+
+    [Fact]
+    public void LaVoceDelPeriodoSiLeggeComeSiVede()
+    {
+        Assert.Equal("1 hour", new OpzionePeriodo("1h").ToString());
+        Assert.Equal("24 hours", new OpzionePeriodo("24h").ToString());
+        Assert.Equal("7 days", new OpzionePeriodo("7d").ToString());
+
+        Assert.Equal("Last hour", new OpzionePeriodo("1h").Titolo);
+        Assert.Equal("Last 7 days", new OpzionePeriodo("7d").Titolo);
     }
 
     [Fact]
@@ -309,5 +360,46 @@ public class PreferenzeTests
         // e' 0,75 e non scende: e' la scala a cui un controllo Fluent da 32 px e' ancora
         // 24 px, e l'anello di stato tiene il buco (misurato su catture reali).
         Assert.Equal([0.75d, 0.85d, 1.0d, 1.15d, 1.3d, 1.5d], Preferenze.ScaleAmmesse);
+    }
+
+    [Fact]
+    public void IPeriodiAmmessiSonoTreESonoQuelli()
+    {
+        // La lista esatta, per la stessa ragione delle scale: il vincolo vero - la striscia
+        // sta fra 60 e 96 barre - lo prova un altro test, ma con quello SOLO si potrebbe
+        // togliere "24h" senza che niente diventi rosso. E il primo e' il predefinito, quindi
+        // l'ordine conta: un file senza il campo apre sull'ora, non su una settimana.
+        Assert.Equal(["1h", "24h", "7d"], Preferenze.PeriodiAmmessi);
+
+        // 90 giorni NON c'e' pur essendo conservati dal servizio: sarebbero venticinquemila
+        // punti, oltre il tetto di una risposta, e alla larghezza necessaria una barra starebbe
+        // per un giorno e mezzo. Un grafico che mente e' peggio di un grafico che manca.
+        Assert.DoesNotContain("90d", Preferenze.PeriodiAmmessi);
+    }
+
+    [Fact]
+    public void ILaPreferenzaSalvataArrivaAlSelettore()
+    {
+        // Il ponte fra il file e la tendina: la finestra assegna Periodo, e da li' devono
+        // uscire la voce selezionata, il titolo e il passo giusti. Erano tre proprieta' senza
+        // un solo test, e una mutazione in mezzo (PeriodoScelto che ricade sempre sulla prima
+        // voce) lasciava la suite verde con la finestra ferma su un'ora.
+        MainViewModel modello = new(client: null, problemaDiConfigurazione: null)
+        {
+            Periodo = "7d",
+        };
+
+        Assert.Equal("7d", modello.PeriodoScelto.Chiave);
+        Assert.Contains(modello.PeriodoScelto, MainViewModel.OpzioniPeriodo);
+        Assert.Equal(TimeSpan.FromHours(2), modello.PeriodoScelto.Passo);
+
+        // E la tendina mostra OpzioniPeriodo, non PeriodiAmmessi: una voce persa fra le due
+        // liste sarebbe un periodo che si salva e non si sceglie.
+        Assert.Equal(Preferenze.PeriodiAmmessi, MainViewModel.OpzioniPeriodo.Select(voce => voce.Chiave));
+
+        // Un periodo inventato nel file non blocca la finestra su una tendina vuota.
+        modello.Periodo = "90d";
+
+        Assert.Equal(Preferenze.PeriodiAmmessi[0], modello.PeriodoScelto.Chiave);
     }
 }

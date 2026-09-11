@@ -183,12 +183,13 @@ public partial class MainWindow : Window
         ApplicaMinimi();
     }
 
-    /// <summary>Scrive dov'e' la finestra, lo zoom e il tema, per la prossima volta.</summary>
+    /// <summary>Scrive dov'e' la finestra, lo zoom, il tema e il resto, per la prossima volta.</summary>
     private void Ricorda()
     {
         MainViewModel? modello = DataContext as MainViewModel;
         double scalaDaSalvare = modello?.ScalaTesto ?? preferenze.ScalaTesto;
         string temaDaSalvare = modello?.Tema ?? preferenze.Tema;
+        string periodoDaSalvare = modello?.Periodo ?? preferenze.Periodo;
 
         PosizioneFinestra? posizione = PosizioneFinestra.AllaChiusura(
             ridottaAIcona: WindowState == WindowState.Minimized,
@@ -201,7 +202,36 @@ public partial class MainWindow : Window
         // ripiego sul valore vecchio, chi passa da una macchina remota a quella locale si
         // ritroverebbe la remota riaperta per sempre.
         preferenze = new Preferenze(
-            posizione, scalaDaSalvare, temaDaSalvare, modello?.MacchinaDaRicordare);
+            posizione,
+            scalaDaSalvare,
+            temaDaSalvare,
+            modello?.MacchinaDaRicordare,
+            periodoDaSalvare);
+        PreferenzeStore.Scrivi(preferenze);
+    }
+
+    /// <summary>Scrive le preferenze prendendo dal view model TUTTO cio' che sa lui.</summary>
+    /// <param name="modello">Il view model a schermo.</param>
+    /// <remarks>
+    /// Non <c>preferenze with { la sola cosa cambiata }</c>: <c>preferenze</c> e' ancora il
+    /// record letto all'avvio, e periodo e macchina si cambiano SENZA scrivere - li salva solo
+    /// la chiusura. Scegliendo "7 days" e poi cambiando zoom, sul disco finiva lo zoom nuovo
+    /// accanto al periodo dell'avvio; se poi il processo moriva prima della chiusura (spegnimento
+    /// forzato, kill) si perdeva la scelta fatta PRIMA e sopravviveva quella fatta DOPO, che e'
+    /// il contrario di quello che chiunque si aspetta. La posizione no: quella la sa la finestra,
+    /// non il view model, e va letta alla chiusura - vedi <c>Ricorda</c>.
+    /// </remarks>
+    private void Salva(MainViewModel modello)
+    {
+        // Niente ?? sulla macchina, per la stessa ragione scritta in Ricorda: null vuol dire
+        // "questo computer", non "non lo so".
+        preferenze = preferenze with
+        {
+            ScalaTesto = modello.ScalaTesto,
+            Tema = modello.Tema,
+            Macchina = modello.MacchinaDaRicordare,
+            Periodo = modello.Periodo,
+        };
         PreferenzeStore.Scrivi(preferenze);
     }
 
@@ -226,6 +256,7 @@ public partial class MainWindow : Window
             modello.ScalaTesto = preferenze.ScalaTesto;
             ApplicaScala(modello.ScalaTesto);
             modello.Tema = preferenze.Tema;
+            modello.Periodo = preferenze.Periodo;
         }
 
         if (osservato is not null)
@@ -244,8 +275,7 @@ public partial class MainWindow : Window
         if (e.PropertyName == nameof(MainViewModel.ScalaTesto))
         {
             ApplicaScala(modello.ScalaTesto);
-            preferenze = preferenze with { ScalaTesto = modello.ScalaTesto };
-            PreferenzeStore.Scrivi(preferenze);
+            Salva(modello);
 
             return;
         }
@@ -253,8 +283,7 @@ public partial class MainWindow : Window
         if (e.PropertyName == nameof(MainViewModel.Tema))
         {
             (Application.Current as App)?.ApplicaTema(modello.Tema);
-            preferenze = preferenze with { Tema = modello.Tema };
-            PreferenzeStore.Scrivi(preferenze);
+            Salva(modello);
 
             return;
         }

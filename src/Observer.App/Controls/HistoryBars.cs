@@ -205,6 +205,12 @@ public sealed class HistoryBars : Control
         double alta = Math.Max(Pavimento, media * altezza);
         double punta = Math.Max(alta, massimo * altezza);
 
+        // Una barra che ha coperto solo in parte il suo intervallo si disegna stretta in
+        // proporzione: l'ultima della striscia e' sempre l'intervallo IN CORSO, e a passo
+        // largo si disegnerebbe piena sapendo di pochi minuti. La regola sta in HistoryStrip
+        // perche' e' aritmetica e si prova senza disegnare niente.
+        larghezza = HistoryStrip.LarghezzaDi(barra, larghezza);
+
         // Il prolungamento, da dove stava di solito fino a dove e' arrivato. Senza, una
         // barretta bassa con un picco breve e una barretta bassa e basta sarebbero identiche,
         // e il picco - che di solito e' la cosa che si sta cercando - sparirebbe nella media.

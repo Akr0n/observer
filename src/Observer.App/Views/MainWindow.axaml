@@ -467,11 +467,23 @@
                              l'aveva mai guardato nessuno. Sta a larghezza piena e non sotto
                              ogni quadrante: sessanta barrette in centocinquanta pixel non si
                              leggono. -->
-                        <TextBlock Text="Last hour"
-                                   Margin="0,14,0,0"
-                                   Theme="{StaticResource BodyStrongTextBlockStyle}"
-                                   Classes="secondario"
-                                   IsVisible="{Binding MostraQuadranti}" />
+                        <!-- Titolo a sinistra e selettore del periodo a destra, sulla stessa
+                             riga: il titolo dice cosa si sta guardando e la tendina come
+                             cambiarlo, e tenerli vicini evita di far cercare l'uno per capire
+                             l'altro. Nel DockPanel la tendina va dichiarata PRIMA, perche' un
+                             figlio agganciato a destra prende il suo spazio prima di quello
+                             che riempie il resto. -->
+                        <DockPanel Margin="0,14,0,0" IsVisible="{Binding MostraQuadranti}">
+                            <ComboBox DockPanel.Dock="Right"
+                                      ItemsSource="{x:Static vm:MainViewModel.OpzioniPeriodo}"
+                                      SelectedItem="{Binding PeriodoScelto}"
+                                      MinWidth="104"
+                                      AutomationProperties.Name="History period" />
+                            <TextBlock Text="{Binding TitoloStorico}"
+                                       VerticalAlignment="Center"
+                                       Theme="{StaticResource BodyStrongTextBlockStyle}"
+                                       Classes="secondario" />
+                        </DockPanel>
 
                         <ItemsControl ItemsSource="{Binding Quadranti}">
                             <ItemsControl.ItemTemplate>
