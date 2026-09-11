@@ -152,8 +152,27 @@ public partial class MainWindow : Window
         schermo.WorkingArea.X, schermo.WorkingArea.Y, schermo.WorkingArea.Width, schermo.WorkingArea.Height);
 
     /// <summary>Annota la geometria, se la finestra e' normale e sta su uno schermo.</summary>
+    /// <remarks>
+    /// Ci si arriva solo da un Post: i due gestori di geometria rimandano in coda, e fra
+    /// l'accodamento e il turno la finestra puo' essersi chiusa. Da li' in poi
+    /// <c>Screens.ScreenFromWindow</c>, che <c>ApplicaMinimi</c> chiama sempre, lancia
+    /// ObjectDisposedException: il contratto lo dichiara, e la condizione del lancio e'
+    /// esattamente <c>PlatformImpl == null</c>, cioe' la guardia qui sopra. Disiscrivere i due
+    /// gestori alla chiusura non basterebbe: un'operazione gia' accodata si toglie solo con
+    /// Abort, e Post non ne restituisce l'handle.
+    /// Misurato su un banco Avalonia: con la X, con Alt+F4 e chiudendo subito dopo un
+    /// trascinamento vero non e' mai successo (0 su 160 corse); con una Close() secca nello
+    /// stesso giro di una raffica di geometria succede sempre (20 su 20). Perche' le due vie
+    /// si comportino diversamente non e' stato dimostrato, quindi qui non c'e' scritto: la
+    /// guardia copre tutte e due. Oggi l'applicazione non chiama mai Close().
+    /// </remarks>
     private void AnnotaSeNormale()
     {
+        if (PlatformImpl is null)
+        {
+            return;
+        }
+
         if (WindowState == WindowState.Normal && Attuale().SuUnoDegli(Aree()) is { } normale)
         {
             ultimaNormale = normale;
