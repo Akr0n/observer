@@ -1,3 +1,23 @@
+observer (0.17.0) unstable; urgency=medium
+
+  * The window reopens on the machine you were watching. It used to open
+    on this computer every time, so watching a machine over the network
+    meant picking it again at every start and waiting for it to connect.
+    What is saved is the NAME, the same one as in machines.json - never
+    the address, never the token, and not the position in the list either,
+    because reordering the file would then open a different machine with a
+    different credential and say nothing. A name that is no longer there
+    is not an error: it falls back to this computer, quietly. A file
+    written by an earlier version has no such field, and its absence means
+    exactly "this computer", so there is nothing to migrate.
+  * Closing the window no longer risks taking the process down with it.
+    The geometry handlers post their work to the dispatcher queue, and
+    between the posting and its turn the window can be gone; reading the
+    screens from there throws. Measured on a bench: never with the X or
+    Alt+F4 across 160 runs, always with an immediate programmatic close.
+
+ -- Federico Cardinali <noreply@example.invalid>  Fri, 11 Sep 2026 14:00:00 +0000
+
 observer (0.16.0) unstable; urgency=medium
 
   * The status message can be copied, with a "Copy" button on the bar
