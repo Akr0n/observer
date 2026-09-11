@@ -206,6 +206,25 @@ public class HistoryStripTests
     }
 
     [Fact]
+    public void UnIntervalloCompletoNonLoSostituisceUnoTroncato()
+    {
+        // Il grezzo si chiede da un istante qualsiasi - "dieci minuti fa" - che non cade sul
+        // confine di un intervallo, quindi il PRIMO intervallo della coda arriva sempre
+        // tagliato. Se vincesse per il solo fatto di essere piu' fresco, una barra misurata
+        // per intero si disegnerebbe larga la meta' (e' parziale), il suggerimento direbbe
+        // "30 of 60 samples", e media, minimo e massimo salterebbero mezzo minuto di misure:
+        // un picco li' dentro sparirebbe. Vince chi ha piu' campioni, non chi arriva dopo.
+        IReadOnlyList<HistoryPoint> uniti = HistoryStrip.Unisci(
+            [new(Adesso, 60, 0.30d, 0.05d, 0.95d, 0.30d)],
+            [new(Adesso, 30, 0.30d, 0.28d, 0.32d, 0.30d)]);
+
+        HistoryPoint punto = Assert.Single(uniti);
+
+        Assert.Equal(60, punto.Count);
+        Assert.Equal(0.95d, punto.Max);
+    }
+
+    [Fact]
     public void UnendoNonSiPerdonoGliIntervalliCheSoloUnaLetturaHa()
     {
         IReadOnlyList<HistoryPoint> uniti = HistoryStrip.Unisci(
@@ -259,12 +278,34 @@ public class HistoryStripTests
     [Fact]
     public void IlSuggerimentoDiceLIntervalloNonLIstante()
     {
-        // Una barra copre un minuto: mostrarne solo l'inizio lascerebbe indovinare quanto e'
-        // larga. Il passo si ricava dalle barre stesse, non da una costante.
+        // Una barra copre da un minuto a due ore secondo il periodo: mostrarne solo l'inizio
+        // lascerebbe indovinare quanto e' larga. Il passo si ricava dalle barre stesse, non da
+        // una costante.
         IReadOnlyList<HistoryBar> striscia =
             HistoryStrip.Costruisci([Punto(1, 0.5d)], Adesso, quanti: 3, Minuto);
 
         Assert.Matches(@"^\d{2}:\d{2} – \d{2}:\d{2}$", HistoryStrip.Descrivi(striscia, 1));
+    }
+
+    [Fact]
+    public void OltreLaGiornataIlSuggerimentoDiceAncheIlGiorno()
+    {
+        // A sette giorni la striscia copre 168 ore in 84 barre e non ha assi ne' etichette:
+        // il suggerimento e' l'unico modo di collocare una barra nel tempo, e "04:00 – 06:00"
+        // da solo compare su SETTE barre, una per giorno. Chi vede un picco - che e' il motivo
+        // per cui si guarda una settimana - non saprebbe di che giorno e'. Il nome del giorno
+        // basta: fra due barre passano al massimo 166 ore, quindi la coppia non si ripete.
+        IReadOnlyList<HistoryBar> settimana =
+            HistoryStrip.Costruisci([], Adesso, quanti: 84, TimeSpan.FromHours(2));
+
+        Assert.Matches(@"^[A-Za-z]{3} \d{2}:\d{2} – [A-Za-z]{3} \d{2}:\d{2} · ", HistoryStrip.Descrivi(settimana, 40));
+
+        // A ventiquattro ore l'arco vale esattamente un giorno: la soglia e' stretta, e la
+        // frase resta corta dove non serve allungarla.
+        IReadOnlyList<HistoryBar> giornata =
+            HistoryStrip.Costruisci([], Adesso, quanti: 96, TimeSpan.FromMinutes(15));
+
+        Assert.Matches(@"^\d{2}:\d{2} – \d{2}:\d{2} · ", HistoryStrip.Descrivi(giornata, 40));
     }
 
     [Fact]

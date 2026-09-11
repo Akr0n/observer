@@ -250,7 +250,7 @@ public sealed record OpzioneTema(string Chiave)
 /// <param name="Periodo">Quanto storico mostra la striscia: <c>1h</c>, <c>24h</c> o <c>7d</c>.</param>
 /// <remarks>
 /// Un file a parte e non <c>client.json</c>: quello porta una credenziale, e un programma che lo
-/// riscrivesse a ogni chiusura per salvare quattro valori sarebbe un programma che riscrive una
+/// riscrivesse a ogni chiusura per salvare qualche preferenza sarebbe un programma che riscrive una
 /// credenziale a ogni chiusura. Sono TUTTI parametri posizionali senza valore predefinito, di
 /// proposito: chi costruisce le preferenze deve dirli tutti, e un
 /// <c>new Preferenze(posizione, scala)</c> che ne dimentica uno non compila — che e' come si

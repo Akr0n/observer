@@ -39,12 +39,33 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <remarks>
     /// Non il passo del periodo: a sette giorni quello vale due ore, e un timeout lascerebbe
     /// accanto alla striscia un "No history" vecchio di due ore su dati che intanto sono
-    /// tornati. Si riprova presto, e si rallenta solo quando e' andata bene - dove il passo
-    /// del periodo e' la cadenza giusta, perche' piu' spesso non aggiungerebbe una barretta,
-    /// aggiungerebbe solo traffico a una macchina che questa finestra esiste per non
-    /// disturbare.
+    /// tornati. Si riprova presto, e si rallenta solo quando e' andata bene.
     /// </remarks>
     private static readonly TimeSpan RiprovaStorico = TimeSpan.FromSeconds(15);
+
+    /// <summary>In quante riletture si divide un passo, quando la lettura e' andata bene.</summary>
+    /// <remarks>
+    /// Rileggere OGNI passo sembrava la cadenza giusta - piu' spesso non aggiunge una barra,
+    /// aggiunge solo traffico - e non lo era: l'ultima barra della striscia e' l'intervallo IN
+    /// CORSO, e da 0.18.0 si disegna larga quanto la parte che ha coperto. Rileggendo ogni
+    /// passo si guarda ogni volta una barra appena nata, sempre alla stessa frazione: a sette
+    /// giorni l'estremo destro - quello che l'occhio legge come "adesso" - resterebbe una riga
+    /// da un pixel per tutta la sessione, accanto a quadranti vivi. Un quarto del passo la fa
+    /// crescere in quattro scatti, e resta un trentesimo del traffico della vista da un'ora.
+    /// </remarks>
+    private const int RiletturePerPasso = 4;
+
+    /// <summary>Il minimo fra due riletture dello storico, quale che sia il periodo.</summary>
+    /// <remarks>
+    /// Tocca solo la vista da un'ora, il cui passo vale gia' un minuto: li' la barra in corso
+    /// resta congelata alla frazione che aveva quando si e' scelto il periodo, e si accetta.
+    /// Scenderebbe a quindici secondi, ma sono dodici richieste ogni quindici secondi - una
+    /// volta e mezza il campionamento stesso - per animare una barretta da tredici pixel. Il
+    /// prezzo lo paga la macchina che questa finestra sta misurando, e compare nel numero che
+    /// la finestra mostra. Sui periodi lunghi il quarto di passo costa molto meno di cosi' e
+    /// il difetto e' molto piu' grosso: e' li' che si spende.
+    /// </remarks>
+    private static readonly TimeSpan RiletturaMinima = TimeSpan.FromMinutes(1);
 
     /// <summary>Il minimo da cui rileggere il grezzo, quale che sia il periodo.</summary>
     /// <remarks>
@@ -398,7 +419,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// La chiave e non la voce, per la stessa ragione del tema: e' cio' che finisce nel file.
     /// </remarks>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(PeriodoScelto), nameof(TitoloStorico))]
+    [NotifyPropertyChangedFor(nameof(PeriodoScelto))]
     public partial string Periodo { get; set; } = Preferenze.PeriodiAmmessi[0];
 
     /// <summary>I periodi fra cui si sceglie, come voci del selettore.</summary>
@@ -416,8 +437,19 @@ public sealed partial class MainViewModel : ViewModelBase
         set => Periodo = value?.Chiave ?? Periodo;
     }
 
-    /// <summary>Il titolo sopra la striscia: cambia con il periodo.</summary>
-    public string TitoloStorico => PeriodoScelto.Titolo;
+    /// <summary>Il titolo sopra la striscia: dice il periodo DISEGNATO, non quello scelto.</summary>
+    /// <remarks>
+    /// Non si calcola da <see cref="Periodo"/>, ed e' una scelta. Calcolato, cambiava con il
+    /// selettore - cioe' all'istante - mentre sotto restavano le barre del periodo precedente
+    /// finche' la lettura nuova non atterrava: fino a otto secondi su una macchina lenta, e per
+    /// SEMPRE su una macchina che non risponde, perche' li' lo storico non si rilegge affatto.
+    /// La finestra chiamava "Last 7 days" sessanta barre da un minuto, e una macchina a riposo
+    /// da un'ora si leggeva come a riposo da una settimana. Adesso lo scrive chi disegna, dopo
+    /// la guardia sulle risposte in ritardo: il selettore dice cosa e' stato chiesto, il titolo
+    /// cosa si sta guardando, e quando divergono e' perche' divergono davvero.
+    /// </remarks>
+    [ObservableProperty]
+    public partial string TitoloStorico { get; set; } = new OpzionePeriodo(Preferenze.PeriodiAmmessi[0]).Titolo;
 
     /// <summary>Il tema come voce del selettore: e' <see cref="Tema"/> con un'etichetta.</summary>
     /// <remarks>Il selettore puo' assegnare null mentre cambia elenco: allora il tema resta com'e'.</remarks>
@@ -457,6 +489,14 @@ public sealed partial class MainViewModel : ViewModelBase
             Periodo = valido;
 
             return;
+        }
+
+        // Finche' non c'e' niente disegnato il titolo segue il selettore: non c'e' striscia da
+        // contraddire, e all'avvio con "7d" nel file dire "Last hour" sopra il vuoto sarebbe
+        // sbagliato e basta. Appena una lettura atterra, il titolo torna a dire cio' che si vede.
+        if (!Quadranti.Any(riga => riga.MostraStorico))
+        {
+            TitoloStorico = PeriodoScelto.Titolo;
         }
 
         prossimoStorico = DateTimeOffset.MinValue;
@@ -554,6 +594,12 @@ public sealed partial class MainViewModel : ViewModelBase
         Quadranti.Clear();
         MostraQuadranti = false;
 
+        // E anche la scadenza dello storico e' un derivato della macchina precedente. Le righe
+        // rinascono senza striscia e senza nota - ne' barre ne' il motivo per cui non ci sono -
+        // e senza questa riga restano cosi' fino alla scadenza EREDITATA: mezz'ora a sette
+        // giorni, quasi quattro minuti a ventiquattro ore, con i quadranti sopra gia' vivi.
+        prossimoStorico = DateTimeOffset.MinValue;
+
         Mostra(FAInfoBarSeverity.Informational, "Connecting", "Taking the first reading...");
         SottoIntestazione = "Connecting...";
     }
@@ -625,12 +671,14 @@ public sealed partial class MainViewModel : ViewModelBase
                 // finestra che sta gia' aspettando, senza poter dire niente di nuovo.
                 if (esito == ServiceOutcome.Ok && adesso() >= prossimoStorico)
                 {
-                    // La scadenza si sposta DOPO, e solo se e' andata: assegnarla prima
-                    // significava che un timeout congelava la striscia per un intero passo,
-                    // che a sette giorni sono due ore di "No history" su dati gia' tornati.
-                    bool letto = await AggiornaStoricoAsync(cancellationToken);
-
-                    prossimoStorico = adesso() + (letto ? PeriodoScelto.Passo : RiprovaStorico);
+                    // La scadenza la sposta la lettura, non questa riga: e' l'unica che sa se
+                    // e' andata bene, male, o se la risposta e' arrivata quando non serviva
+                    // piu'. Spostarla da qui significava tre cose sbagliate insieme - un
+                    // timeout rimandava di un passo intero, cioe' due ore di "No history" su
+                    // dati gia' tornati; una risposta scartata cancellava l'azzeramento che il
+                    // selettore aveva appena fatto, spegnendolo per quindici secondi; e la
+                    // scadenza si leggeva dal periodo di ADESSO invece che da quello chiesto.
+                    await AggiornaStoricoAsync(cancellationToken);
                 }
 
                 // I processi seguono lo stesso giro dei quadranti, ma solo a pannello aperto:
@@ -922,18 +970,26 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Rilegge lo storico di ogni metrica che ha un quadrante.</summary>
     /// <param name="cancellationToken">Annullato alla chiusura.</param>
     /// <remarks>
+    /// <para>
     /// Non lancia e non tocca <c>guastoDa</c> ne' la barra di stato, di proposito: <b>un
     /// guasto dello storico non e' un guasto della macchina</b>. Il servizio puo' rispondere
     /// benissimo al campionamento e avere la persistenza spenta, e colorare di rosso la
     /// finestra per questo insegnerebbe a ignorare anche gli allarmi veri. Il motivo finisce
     /// accanto alla striscia, dove riguarda.
+    /// </para>
+    /// <para>
+    /// Questa funzione possiede <c>prossimoStorico</c>, e ci sono TRE esiti, non due: andata
+    /// bene, andata male, e arrivata quando non serviva piu'. Il terzo non tocca la scadenza -
+    /// chi ha cambiato periodo o macchina l'ha appena riportata indietro di proposito, e
+    /// spostarla qui vorrebbe dire lasciare a schermo la striscia vecchia sotto il titolo nuovo
+    /// per quindici secondi, che da fuori e' indistinguibile da un selettore rotto.
+    /// </para>
     /// </remarks>
-    /// <returns>True se le strisce sono state riscritte; false se non c'era da chi leggere.</returns>
-    private async Task<bool> AggiornaStoricoAsync(CancellationToken cancellationToken)
+    private async Task AggiornaStoricoAsync(CancellationToken cancellationToken)
     {
         if (client is not { } corrente)
         {
-            return false;
+            return;
         }
 
         DateTimeOffset ora = adesso();
@@ -953,17 +1009,62 @@ public sealed partial class MainViewModel : ViewModelBase
         // tempo possono essere cambiate DUE cose: il periodo scelto e la macchina guardata.
         // Scrivere queste barre adesso vorrebbe dire disegnare una settimana dentro una
         // striscia da un'ora, o lo storico della macchina sbagliata.
-        if (!ReferenceEquals(client, corrente) || PeriodoScelto != periodo)
+        // Il confronto sulle righe non e' un di piu' rispetto a quello sul client: App.Apri
+        // tiene UN client per punto, quindi due cambi di macchina in fila (A->B->A) riportano
+        // lo stesso identico oggetto, mentre Quadranti e' stata svuotata due volte e queste
+        // righe non sono piu' a schermo. Scriverci dentro perderebbe la lettura in silenzio.
+        if (!ReferenceEquals(client, corrente)
+            || PeriodoScelto != periodo
+            || !righe.SequenceEqual(Quadranti))
         {
-            return false;
+            return;
         }
+
+        // Il titolo lo scrive chi disegna, qui e non nel selettore: da questa riga in poi la
+        // striscia e la frase sopra parlano dello stesso periodo.
+        TitoloStorico = periodo.Titolo;
+
+        // "Andata bene" vuol dire TUTTE, non almeno una. Con "almeno una" cinque strisce su sei
+        // possono restare due ore a dire "No history" mentre la sesta si aggiorna, che e' lo
+        // stesso difetto di prima ridotto di un sesto. Solo l'aggregato conta: la coda grezza
+        // puo' mancare senza che la striscia ne soffra - la disegna comunque l'aggregato - e
+        // guardarla qui trasformerebbe un guasto innocuo in una richiesta ogni quindici secondi
+        // per sempre. Zero quadranti conta come non andata: non e' partita nessuna richiesta,
+        // quindi riprovare presto e' gratis e copre i quadranti che compaiono piu' tardi.
+        bool riuscita = righe.Count > 0;
 
         for (int i = 0; i < righe.Count; i++)
         {
             ApplicaStorico(righe[i], letture[i].Aggregato, letture[i].Coda, periodo, ora);
+            riuscita &= letture[i].Aggregato.Outcome == ServiceOutcome.Ok;
         }
 
-        return true;
+        prossimoStorico = adesso() + ProssimaLettura(periodo, riuscita);
+    }
+
+    /// <summary>Fra quanto si rilegge lo storico, dato il periodo e com'e' andata.</summary>
+    /// <param name="periodo">Il periodo mostrato.</param>
+    /// <param name="riuscita">True se ogni striscia ha ricevuto i suoi dati.</param>
+    /// <returns>Quanto aspettare prima della lettura successiva.</returns>
+    /// <remarks>
+    /// Pura e pubblica perche' i due errori che ha gia' fatto non si vedono da nessuna parte
+    /// se non qui: <b>rimandare un guasto di un passo intero</b> - a sette giorni due ore di
+    /// "No history" su dati tornati da un secondo - e <b>rileggere esattamente ogni passo</b>,
+    /// che sembra la cadenza giusta e non lo e', perche' guarderebbe ogni volta una barra
+    /// appena nata e l'estremo destro della striscia resterebbe un pixel per sempre.
+    /// </remarks>
+    public static TimeSpan ProssimaLettura(OpzionePeriodo periodo, bool riuscita)
+    {
+        ArgumentNullException.ThrowIfNull(periodo);
+
+        if (!riuscita)
+        {
+            return RiprovaStorico;
+        }
+
+        TimeSpan cadenza = periodo.Passo / RiletturePerPasso;
+
+        return cadenza > RiletturaMinima ? cadenza : RiletturaMinima;
     }
 
     /// <summary>Da quanto indietro leggere il grezzo per la coda, dato il passo della sorgente.</summary>
