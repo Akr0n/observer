@@ -73,6 +73,14 @@ public class PreferenzeTests
 
         // Gli spazi attorno non contano: dentro machines.json il nome arriva grezzo.
         Assert.Equal(remota, Preferenze.MacchinaRicordata([locale, remota], "  laptop  "));
+
+        // E non contano NEMMENO dal lato della voce, che e' il caso vero: MachineDirectory
+        // passa il nome cosi' com'e' scritto nel file, e una voce " laptop " e' la stessa
+        // macchina di "laptop". Senza il Trim da questa parte la si perderebbe.
+        ObserverEndpoint conSpazi = ObserverEndpoint.Remoto(
+            new Uri("https://laptop:5058/"), "token", "machines.json", new string('a', 64), " laptop ");
+
+        Assert.Equal(conSpazi, Preferenze.MacchinaRicordata([locale, conSpazi], "laptop"));
     }
 
     [Fact]
@@ -92,8 +100,8 @@ public class PreferenzeTests
     [Fact]
     public void IlConfrontoDeiNomiDistingueLeMaiuscole()
     {
-        // Su Linux la credenziale di "Laptop" e quella di "laptop" sono due file diversi:
-        // trattarli come lo stesso nome aprirebbe una macchina con il token di un'altra.
+        // Su Linux la credenziale di "Laptop" e quella di "laptop" sono due file diversi,
+        // quindi sono due MACCHINE diverse: trattarle come lo stesso nome riaprirebbe l'altra.
         ObserverEndpoint locale = ObserverEndpoint.CanaleLocale();
         ObserverEndpoint remota = Remota("laptop");
 

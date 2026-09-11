@@ -44,6 +44,49 @@ public class MacchinaRicordataTests
     }
 
     [Fact]
+    public void UnaDeselezioneNonFaDimenticareLaMacchina()
+    {
+        // Si ricorda la macchina che il giro sta davvero LEGGENDO, non quella evidenziata: la
+        // selezione puo' diventare nulla mentre la lettura continua, ed e' la stessa
+        // distinzione per cui il view model tiene voceGuardata separata dalla selezione.
+        ObserverEndpoint locale = ObserverEndpoint.CanaleLocale();
+        ObserverEndpoint remota = Remota("laptop");
+
+        MainViewModel viewModel = new(
+            client: new ClientMuto(remota),
+            problemaDiConfigurazione: null,
+            elenco: new MachineListResult([locale, remota], []));
+
+        viewModel.MacchinaSelezionata = null;
+
+        Assert.Equal("laptop", viewModel.MacchinaDaRicordare);
+    }
+
+    [Fact]
+    public void CambiandoMacchinaAMetaSessioneSiRicordaLUltima()
+    {
+        ObserverEndpoint locale = ObserverEndpoint.CanaleLocale();
+        ObserverEndpoint remota = Remota("laptop");
+
+        MainViewModel viewModel = new(
+            client: new ClientMuto(locale),
+            problemaDiConfigurazione: null,
+            elenco: new MachineListResult([locale, remota], []),
+            apriMacchina: punto => new ClientMuto(punto));
+
+        Assert.Null(viewModel.MacchinaDaRicordare);
+
+        viewModel.MacchinaSelezionata = viewModel.Macchine.Single(voce => voce.Punto == remota);
+        Assert.Equal("laptop", viewModel.MacchinaDaRicordare);
+
+        // E tornando su questo computer si torna a non ricordare niente, che e' cio' che il
+        // null nel file vuol dire. Senza, chi passa dalla remota alla locale si ritroverebbe
+        // la remota riaperta per sempre.
+        viewModel.MacchinaSelezionata = viewModel.Macchine[0];
+        Assert.Null(viewModel.MacchinaDaRicordare);
+    }
+
+    [Fact]
     public void UnaMacchinaSenzaNomeNonFinisceNelFile()
     {
         // La vecchia configurazione a macchina singola (client.json, Observer__BaseAddress)

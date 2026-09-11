@@ -76,7 +76,8 @@ finestra alla misura predefinita, una colonna di quadranti in piu' - al prezzo d
 piu' piccole. Il 75 % e' il pavimento, misurato: i pulsanti vanno da 32 a 24 px e l'anello
 di stato tiene il buco. Accanto
 c'e' il **tema**: System (segue il sistema, come prima), Light o Dark, con cambio immediato,
-tendine comprese e, su Windows 11, anche la barra del titolo. Le tre cose stanno in
+tendine comprese e, su Windows 11, anche la barra del titolo. Queste, con la macchina che si
+stava guardando, stanno in
 `preferences.json` accanto a `client.json` - un file a parte, perche' `client.json` puo'
 contenere una credenziale e non va riscritto a ogni chiusura. I quadranti, la striscia e la
 riga selezionata hanno il colore di accento del PC, letto all'avvio: su Windows seguono anche

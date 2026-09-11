@@ -176,12 +176,16 @@ public sealed record OpzioneTema(string Chiave)
 /// <param name="ScalaTesto">Quanto e' scalata la finestra: 1 e' la misura normale, sotto 1 e'
 /// piu' piccola.</param>
 /// <param name="Tema">Il tema scelto: <c>system</c>, <c>light</c> o <c>dark</c>.</param>
+/// <param name="Macchina">
+/// Il nome della macchina che si stava guardando, o null per questo computer.
+/// </param>
 /// <remarks>
 /// Un file a parte e non <c>client.json</c>: quello porta una credenziale, e un programma che lo
-/// riscrivesse a ogni chiusura per salvare tre valori sarebbe un programma che riscrive una
-/// credenziale a ogni chiusura. Il tema e' un parametro posizionale SENZA valore predefinito
-/// di proposito: chi costruisce le preferenze deve dire anche quello, e un
-/// <c>new Preferenze(posizione, scala)</c> che lo dimentica non compila.
+/// riscrivesse a ogni chiusura per salvare quattro valori sarebbe un programma che riscrive una
+/// credenziale a ogni chiusura. Sono TUTTI parametri posizionali senza valore predefinito, di
+/// proposito: chi costruisce le preferenze deve dirli tutti, e un
+/// <c>new Preferenze(posizione, scala)</c> che ne dimentica uno non compila — che e' come si
+/// scopre, il giorno che se ne aggiunge un altro, ogni punto da aggiornare.
 /// </remarks>
 public sealed record Preferenze(
     [property: JsonPropertyName("window")] PosizioneFinestra? Finestra,

@@ -503,6 +503,7 @@ CLAUDE.md
 credentials.json
 client.json
 machines.json
+preferences.json
 
 # Payload dell'installer: e' output di dotnet publish, si rigenera.
 packaging/windows/payload/
