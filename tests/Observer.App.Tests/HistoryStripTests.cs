@@ -22,6 +22,37 @@ public class HistoryStripTests
         new(Adesso - TimeSpan.FromMinutes(minutiFa), campioni, media, media, media, media);
 
     [Fact]
+    public void PiuPuntiNellaStessaBarraSiMedianoInveceDiPerdersi()
+    {
+        // Il caso che nasce appena il passo della barra supera quello dei punti: un quarto
+        // d'ora di barra su punti da cinque minuti. Senza il raggruppamento dentro Costruisci
+        // ne sopravviveva UNO — l'ultimo iterato — e la barra mostrava quel campione
+        // spacciandolo per la media di tutti e tre. Con tre punti a 0,2, 0,5 e 0,8 la
+        // differenza fra la media vera e l'ultimo valore e' l'intera scala.
+        List<HistoryPoint> punti =
+        [
+            Punto(14, 0.2d, campioni: 300),
+            Punto(9, 0.5d, campioni: 300),
+            Punto(4, 0.8d, campioni: 300),
+        ];
+
+        // Due barre: i tre punti cadono tutti nel quarto d'ora PRECEDENTE a quello in corso,
+        // perche' Adesso e' allineato alle 12:00 in punto.
+        IReadOnlyList<HistoryBar> striscia =
+            HistoryStrip.Costruisci(punti, Adesso, quanti: 2, TimeSpan.FromMinutes(15));
+
+        HistoryBar piena = striscia[0];
+
+        Assert.Equal(0.5d, piena.Media, 9);
+        Assert.Equal(0.2d, piena.Minimo, 9);
+        Assert.Equal(0.8d, piena.Massimo, 9);
+
+        // E i campioni si sommano: 900 su 900, cioe' un quarto d'ora coperto per intero.
+        Assert.Equal(900, piena.Campioni);
+        Assert.Equal(BarKind.Misurata, piena.Genere);
+    }
+
+    [Fact]
     public void UnBucoRestaUnBucoENonSiStringe()
     {
         // IL test. Tre punti su dieci intervalli devono dare DIECI barrette, non tre: sette

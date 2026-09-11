@@ -83,6 +83,15 @@ public static class HistoryStrip
 
         int attesi = AttesiIn(passo);
 
+        // PRIMA si raggruppa, e non e' un di piu': quando il passo della barra e' piu' largo
+        // di quello dei punti - un quarto d'ora di barra su punti da cinque minuti - nello
+        // stesso intervallo ne cadono tre, e indicizzarli per istante ne terrebbe UNO,
+        // l'ultimo iterato, buttando gli altri due. La barra mostrerebbe l'ultimo campione
+        // spacciandolo per la media di tutti, e il conteggio direbbe 1 su 900. Raggruppa
+        // ricalcola la media dalla SOMMA, che e' l'unico modo di non far pesare uguale
+        // intervalli con un numero diverso di campioni.
+        punti = Raggruppa(punti, passo);
+
         // I punti si indicizzano per l'inizio del proprio intervallo, arrotondato al passo:
         // cosi' un timestamp che arriva con qualche millisecondo di scarto cade lo stesso
         // nella casella giusta invece di sparire.
