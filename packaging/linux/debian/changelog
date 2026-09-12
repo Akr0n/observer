@@ -1,3 +1,36 @@
+observer (0.20.0) unstable; urgency=medium
+
+  * When the window opens it says what it missed. A bar at the top - "While
+    you were away" - names, for each machine that answers, the stretches in
+    which it was not measuring: "not measured for 1 day 9 h in 2 periods
+    (longest Thu 18:40 - Fri 12:15)". It is closable, because a fact about
+    the past is read once; the status bar is not, because it reports what is
+    happening now.
+  * No process stays running, nothing starts at login, no new dependency.
+    The data was already on the remote machine's own disk - the service
+    keeps seven days of per-minute samples - so it is asked for on the way
+    back in, once per machine per period, not on a timer.
+  * A real-time alert was designed and NOT built, and the reason is written
+    down: on this stack it cannot fail loudly. Avalonia's tray icon cannot
+    be interrogated from application code; on Linux without a
+    StatusNotifierItem host it never appears and logs nothing; on Windows
+    the return value of Shell_NotifyIcon is discarded. An alert that can go
+    missing without saying so is worse than no alert - the same reason
+    Ctrl+C was removed in 0.16.0.
+  * Everything is read in the REMOTE machine's clock, never the viewer's.
+    Two clocks twenty minutes apart - a virtual machine, a Windows box
+    outside a domain - would otherwise manufacture gaps at both edges of
+    every window.
+  * A gap that touches the oldest edge is reported as "nothing known
+    before", not as an outage: retention deletes a prefix, and a missing
+    prefix is indistinguishable from a machine switched on halfway through.
+  * What this does NOT do, plainly: it wakes nobody, and it says nothing
+    about a machine that is still down right now - that data is on the
+    machine that is not answering. For that there are still the red diamond
+    and "for 3 min".
+
+ -- Federico Cardinali <noreply@example.invalid>  Sat, 12 Sep 2026 15:30:00 +0000
+
 observer (0.19.0) unstable; urgency=medium
 
   * Every machine in the sidebar now says how hard it is working, not just

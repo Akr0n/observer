@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using FluentAvalonia.UI.Controls;
 using Observer.App.Services;
 using Observer.Core.Metrics;
+using Observer.Core.Metrics.Cpu;
 
 namespace Observer.App.ViewModels;
 
@@ -500,6 +501,45 @@ public sealed partial class MainViewModel : ViewModelBase
         }
 
         prossimoStorico = DateTimeOffset.MinValue;
+
+        // Cambiando periodo cambia la DOMANDA del riepilogo, non solo la sua risposta: "cosa mi
+        // sono perso nell'ultima ora" e "negli ultimi sette giorni" sono due cose diverse. Si
+        // ricomincia da capo, congedo compreso - chi chiude un riquadro chiude quello, non ogni
+        // riquadro futuro.
+        riepilogoCongedato = false;
+        RiepilogoAssenze = string.Empty;
+        MostraRiepilogo = false;
+
+        foreach (MacchinaInElenco voce in Macchine)
+        {
+            voce.PeriodoDelRiepilogo = null;
+            voce.RigaRiepilogo = string.Empty;
+        }
+    }
+
+    /// <summary>Cosa e' successo mentre la finestra era chiusa, una riga per macchina.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CopiaRiepilogoCommand))]
+    public partial string RiepilogoAssenze { get; set; } = string.Empty;
+
+    /// <summary>True quando c'e' un riepilogo da mostrare e nessuno lo ha ancora congedato.</summary>
+    /// <remarks>
+    /// A due vie: la barra ha la sua X, e chiuderla scrive qui. Non e' un dettaglio - la barra
+    /// di STATO non e' chiudibile di proposito, perche' dice una cosa in corso; questa dice una
+    /// cosa del passato, e un fatto del passato si legge una volta e si archivia.
+    /// </remarks>
+    [ObservableProperty]
+    public partial bool MostraRiepilogo { get; set; }
+
+    /// <summary>True quando l'utente ha chiuso il riquadro per questo periodo.</summary>
+    private bool riepilogoCongedato;
+
+    partial void OnMostraRiepilogoChanged(bool value)
+    {
+        if (!value && RiepilogoAssenze.Length > 0)
+        {
+            riepilogoCongedato = true;
+        }
     }
 
     /// <summary>Quale risorsa sta guardando il pannello: <c>cpu</c>, <c>memory</c>, o null.</summary>
@@ -706,6 +746,10 @@ public sealed partial class MainViewModel : ViewModelBase
                     SondaLeAltre(cancellationToken);
                 }
 
+                // E cosa e' successo mentre la finestra era chiusa. Una volta per macchina e
+                // per periodo, non a ogni giro: vedi AvviaRiepiloghi.
+                AvviaRiepiloghi(cancellationToken);
+
                 // Un 401 su una finestra GIA' collegata significa quasi sempre che il token e'
                 // stato ruotato. Senza rileggere qui, la finestra resterebbe bloccata su
                 // "Token rejected" fino al riavvio: e' lo stesso incidente di "Configuration
@@ -882,6 +926,147 @@ public sealed partial class MainViewModel : ViewModelBase
     /// di timeout, e i quadranti della macchina guardata non devono fermarsi per questo. Ogni
     /// sonda aggiorna la propria voce quando torna, e finche' e' in volo non ne parte un'altra.
     /// </remarks>
+    /// <summary>Cosa e' successo mentre nessuno guardava, macchina per macchina.</summary>
+    /// <remarks>
+    /// <para>
+    /// Questa e' la risposta che questo progetto puo' dare ONESTAMENTE alla domanda "avvisami
+    /// se una macchina cade mentre la finestra e' chiusa". L'avviso vero - icona nell'area di
+    /// notifica, o notifica di sistema - non e' consegnabile su questo stack senza poter
+    /// fallire in SILENZIO, che e' la cosa che questo programma non fa: l'icona di Avalonia non
+    /// si puo' interrogare (<c>TrayIcon._impl</c> e' internal e ogni chiamata e' <c>?.</c>), su
+    /// Linux senza un host StatusNotifierItem non compare e non logga niente, e su Windows il
+    /// valore di ritorno di <c>Shell_NotifyIcon</c> e' ignorato. Un avviso che puo' non
+    /// comparire senza dirlo e' peggio di nessun avviso - la stessa ragione per cui in 0.16.0
+    /// e' stato tolto Ctrl+C.
+    /// </para>
+    /// <para>
+    /// Il dato pero' c'e' gia', e non su questa macchina: il servizio remoto conserva sette
+    /// giorni di campioni al minuto. Quindi non serve nessun processo acceso, nessuna
+    /// dipendenza e nessun avvio automatico - si chiede al rientro. Una richiesta per macchina
+    /// per periodo scelto, non periodica: la guardia e' <c>PeriodoDelRiepilogo</c>, ed e' anche
+    /// cio' che fa ripartire il conto quando si cambia periodo, perche' li' cambia la domanda.
+    /// </para>
+    /// <para>
+    /// Cio' che NON copre, e va detto: non sveglia nessuno, e non dice niente della macchina
+    /// ancora giu' adesso - quel dato ce l'ha lei, e lei non risponde. Per quella restano il
+    /// rombo rosso e "for 3 min", con il limite gia' dichiarato su <c>GuastoDa</c>.
+    /// </para>
+    /// </remarks>
+    private void AvviaRiepiloghi(CancellationToken cancellationToken)
+    {
+        OpzionePeriodo periodo = PeriodoScelto;
+
+        foreach (MacchinaInElenco voce in Macchine)
+        {
+            // Solo le macchine che rispondono: a una che non risponde lo storico non si puo'
+            // chiedere, ed e' proprio quella dove servirebbe di piu'. Lo dice la riga, non il
+            // silenzio - vedi ComponiRiepilogo.
+            if (voce.InRiepilogo
+                || voce.Stato != StatoVoce.Raggiungibile
+                || string.Equals(voce.PeriodoDelRiepilogo, periodo.Chiave, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            IMetricsClient? suo = ReferenceEquals(voce, voceGuardata) ? client : apriMacchina?.Invoke(voce.Punto);
+
+            if (suo is null)
+            {
+                continue;
+            }
+
+            voce.InRiepilogo = true;
+            _ = RiepilogoAsync(voce, suo, periodo, cancellationToken);
+        }
+    }
+
+    /// <summary>Legge lo storico di una macchina e ne ricava la riga del riepilogo.</summary>
+    private async Task RiepilogoAsync(
+        MacchinaInElenco voce,
+        IMetricsClient suo,
+        OpzionePeriodo periodo,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // UNA serie sola, e fissa: la domanda non e' "cosa misurava" ma "stava misurando",
+            // e a quella risponde qualunque metrica che il servizio campiona sempre. Stesso
+            // argomento di Carico, stessa costante condivisa da Observer.Core.
+            HistoryFetch storico = await suo.GetHistoryAsync(
+                new HistoryQuery(
+                    "cpu",
+                    CpuCollector.TotalUsageMetricId,
+                    null,
+                    adesso() - periodo.Finestra,
+                    periodo.Risoluzione),
+                cancellationToken).ConfigureAwait(true);
+
+            // Il periodo puo' essere cambiato durante l'attesa: quella risposta risponde a una
+            // domanda che non e' piu' quella sullo schermo.
+            if (PeriodoScelto != periodo)
+            {
+                return;
+            }
+
+            voce.RigaRiepilogo = Riga(voce, storico, periodo);
+            voce.PeriodoDelRiepilogo = periodo.Chiave;
+            ComponiRiepilogo();
+        }
+        catch (OperationCanceledException)
+        {
+            // Chiusura: niente da dire.
+        }
+#pragma warning disable CA1031 // Come la sonda: un riepilogo che lancia non deve far cadere niente.
+        catch (Exception errore)
+#pragma warning restore CA1031
+        {
+            voce.RigaRiepilogo = $"{voce.Nome}: history could not be read ({errore.Message})";
+            voce.PeriodoDelRiepilogo = periodo.Chiave;
+            ComponiRiepilogo();
+        }
+        finally
+        {
+            voce.InRiepilogo = false;
+        }
+    }
+
+    private static string Riga(MacchinaInElenco voce, HistoryFetch storico, OpzionePeriodo periodo)
+    {
+        if (storico.Outcome != ServiceOutcome.Ok || storico.Points is null)
+        {
+            return $"{voce.Nome}: history could not be read ({storico.Problem})";
+        }
+
+        if (storico.Points.Count == 0)
+        {
+            // Zero punti non e' "sempre giu'": puo' essere una macchina installata ieri, o la
+            // persistenza spenta. Dirlo cosi' com'e' costa una parola e non inventa niente.
+            return $"{voce.Nome}: no history for this period";
+        }
+
+        return Riepilogo.Riga(
+            voce.Nome,
+            HistoryStrip.Assenze(storico.Points, periodo.Finestra, periodo.PassoSorgente),
+
+            // Stessa soglia di HistoryStrip.Descrivi: oltre la giornata l'ora da sola non
+            // colloca piu' niente.
+            periodo.Finestra > TimeSpan.FromHours(24));
+    }
+
+    /// <summary>Mette insieme le righe delle macchine in un testo solo.</summary>
+    private void ComponiRiepilogo()
+    {
+        string testo = string.Join(
+            Environment.NewLine,
+            Macchine.Select(voce => voce.RigaRiepilogo).Where(riga => riga.Length > 0));
+
+        RiepilogoAssenze = testo;
+
+        // Chiuso dall'utente resta chiuso, finche' non cambia il periodo: una riga in piu' che
+        // arriva dieci secondi dopo non deve far ricomparire un riquadro appena congedato.
+        MostraRiepilogo = testo.Length > 0 && !riepilogoCongedato;
+    }
+
     private void SondaLeAltre(CancellationToken cancellationToken)
     {
         if (apriMacchina is null)
@@ -1278,6 +1463,20 @@ public sealed partial class MainViewModel : ViewModelBase
     [RelayCommand(AllowConcurrentExecutions = true, CanExecute = nameof(PuoCopiare))]
     private Task CopiaStatoAsync() =>
         NegliAppuntiAsync(StatoTitolo + Environment.NewLine + StatoMessaggio);
+
+    /// <summary>Copia negli appunti il riepilogo di cio' che e' successo mentre nessuno guardava.</summary>
+    /// <returns>L'attesa della scrittura negli appunti.</returns>
+    /// <remarks>
+    /// Il caso che pesa e' una riga per macchina con date e durate: e' esattamente il testo che
+    /// si incolla in un messaggio a chi tiene quella macchina, e ricopiarlo a mano da un
+    /// riquadro e' come ricopiare un'impronta. Stessa fila degli altri due Copy, stesso
+    /// <c>AllowConcurrentExecutions</c>, stessa ragione.
+    /// </remarks>
+    [RelayCommand(AllowConcurrentExecutions = true, CanExecute = nameof(PuoCopiareIlRiepilogo))]
+    private Task CopiaRiepilogoAsync() => NegliAppuntiAsync(RiepilogoAssenze);
+
+    /// <summary>True quando c'e' un riepilogo da copiare.</summary>
+    private bool PuoCopiareIlRiepilogo() => copiaNegliAppunti is not null && RiepilogoAssenze.Length > 0;
 
     /// <summary>Copia negli appunti la riga di processo selezionata, col suo PID.</summary>
     /// <returns>L'attesa della scrittura negli appunti.</returns>

@@ -32,6 +32,19 @@ public sealed record HistoryBar(
     int Campioni,
     int Attesi);
 
+/// <summary>Un intervallo in cui una macchina non stava misurando.</summary>
+/// <param name="Inizio">Quando ha smesso, nell'orologio di QUELLA macchina.</param>
+/// <param name="Fine">Quando ha ripreso, nell'orologio di quella macchina.</param>
+/// <param name="DalBordo">
+/// True quando il vuoto tocca il bordo piu' vecchio della finestra esaminata, cioe' quando non
+/// si sa se e' un'interruzione o semplicemente la fine di cio' che il servizio conserva.
+/// </param>
+public sealed record Assenza(DateTimeOffset Inizio, DateTimeOffset Fine, bool DalBordo)
+{
+    /// <summary>Quanto e' durata.</summary>
+    public TimeSpan Durata => Fine - Inizio;
+}
+
 /// <summary>
 /// Da cio' che il servizio manda a cio' che si disegna: la griglia degli intervalli.
 /// </summary>
@@ -115,6 +128,94 @@ public static class HistoryStrip
         }
 
         return striscia;
+    }
+
+    /// <summary>Quando quella macchina NON stava misurando, nella finestra data.</summary>
+    /// <param name="punti">I punti arrivati dal servizio di quella macchina.</param>
+    /// <param name="finestra">Quanto indietro guardare.</param>
+    /// <param name="passo">La risoluzione con cui cercare i vuoti.</param>
+    /// <returns>I vuoti dal piu' vecchio al piu' recente, vuoto se non ce ne sono.</returns>
+    /// <remarks>
+    /// <para>
+    /// Poggia sull'invariante che <see cref="Costruisci"/> esiste per far rispettare — <b>il
+    /// servizio non manda i buchi</b>, quindi la griglia si costruisce dai tempi attesi e i
+    /// punti ci si cercano dentro. Qui non si disegna: si contano le caselle rimaste vuote.
+    /// </para>
+    /// <para>
+    /// <b>Tutto sta nell'orologio della MACCHINA, mai in quello del client.</b> La finestra si
+    /// ancora al punto piu' recente che quella macchina ha mandato, non a "adesso" di chi
+    /// guarda. E' la differenza fra un riepilogo e un generatore di falsi allarmi: due orologi
+    /// che divergono di venti minuti - una macchina virtuale, un Windows fuori dominio - non
+    /// producono nessun vuoto, perche' uno scarto trasla l'intera serie e non apre buchi in
+    /// mezzo. E il ritardo del consolidamento si esclude da se': dopo l'ultimo punto non c'e'
+    /// nessuna casella da riempire, quindi non si segnala mai un vuoto che tocca l'adesso.
+    /// </para>
+    /// <para>
+    /// Il passo e' quello della SORGENTE e non quello della barra della striscia, ed e' la cosa
+    /// che si sbaglia per prima: a sette giorni una barra copre due ore, e un'interruzione di
+    /// quaranta minuti ci finisce dentro come intervallo <i>parziale</i>, cioe' non verrebbe
+    /// vista affatto.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<Assenza> Assenze(
+        IReadOnlyList<HistoryPoint> punti,
+        TimeSpan finestra,
+        TimeSpan passo)
+    {
+        ArgumentNullException.ThrowIfNull(punti);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(passo, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(finestra, passo);
+
+        if (punti.Count == 0)
+        {
+            // Nessun punto non vuol dire "sempre assente": vuol dire che non si sa niente, e il
+            // chiamante lo dice con un'altra frase. Restituire un vuoto lungo quanto la
+            // finestra sarebbe inventare un'interruzione mai osservata.
+            return [];
+        }
+
+        DateTimeOffset ultimo = punti[0].Timestamp;
+
+        foreach (HistoryPoint punto in punti)
+        {
+            if (punto.Timestamp > ultimo)
+            {
+                ultimo = punto.Timestamp;
+            }
+        }
+
+        IReadOnlyList<HistoryBar> barre = Costruisci(punti, ultimo, (int)(finestra / passo), passo);
+        List<Assenza> assenze = [];
+        int apertura = -1;
+
+        for (int i = 0; i < barre.Count; i++)
+        {
+            if (barre[i].Genere == BarKind.Assente)
+            {
+                if (apertura < 0)
+                {
+                    apertura = i;
+                }
+
+                continue;
+            }
+
+            if (apertura >= 0)
+            {
+                assenze.Add(new Assenza(barre[apertura].Inizio, barre[i].Inizio, DalBordo: apertura == 0));
+                apertura = -1;
+            }
+        }
+
+        // Una corsa che arriva in fondo non puo' esistere: l'ultima barra contiene per
+        // costruzione il punto piu' recente, quindi e' misurata. Se un giorno l'ancoraggio
+        // cambiasse, questa riga la chiuderebbe lo stesso invece di perderla in silenzio.
+        if (apertura >= 0)
+        {
+            assenze.Add(new Assenza(barre[apertura].Inizio, barre[^1].Inizio + passo, DalBordo: apertura == 0));
+        }
+
+        return assenze;
     }
 
     /// <summary>Quanto e' larga davvero una barra, in proporzione a quanto ha coperto.</summary>
