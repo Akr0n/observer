@@ -68,6 +68,10 @@ public sealed partial class MacchinaInElenco : ObservableObject
         GuastoDa = null;
         DaQuanto = string.Empty;
 
+        // E il carico con loro: era di quell'altro endpoint. Un numero vero riferito a una
+        // macchina che non e' piu' quella si legge come se fosse di questa.
+        Carico = Carico.Nessuno;
+
         OnPropertyChanged(nameof(Nome));
         OnPropertyChanged(nameof(Descrizione));
     }

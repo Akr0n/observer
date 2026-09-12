@@ -563,6 +563,15 @@ public sealed partial class MainViewModel : ViewModelBase
 
         voceGuardata = value;
 
+        // Il carico e' un derivato della macchina guardata come il catalogo e i quadranti, e va
+        // buttato QUI, prima delle uscite anticipate, perche' l'invariante e' legata a
+        // voceGuardata e non al client. Senza questa riga la voce appena cliccata continua a
+        // mostrare i numeri che la sonda le aveva scritto fino a quindici secondi prima: circa
+        // un secondo se la macchina risponde, ma gli interi otto del budget di richiesta se non
+        // risponde - cioe' proprio quando la si e' cliccata per capire cosa le succede, sotto
+        // il nome evidenziato resta scritto che sta lavorando mentre la barra dice "Connecting".
+        value.Carico = Carico.Nessuno;
+
         if (apriMacchina is null)
         {
             return;
@@ -900,7 +909,22 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             SnapshotFetch fetch = await apriMacchina!(voce.Punto).GetLatestAsync(cancellationToken);
 
-            Scrivi(voce, fetch.Outcome, fetch.Problem, fetch.Snapshot);
+            // La voce e' diventata la GUARDATA mentre la sonda era in volo: non si scrive, e
+            // non si rilegge nemmeno il punto. La sonda parte saltando la guardata ma torna
+            // fino a otto secondi dopo, e un clic basta. Scrivere vorrebbe dire due letture
+            // della stessa macchina a cadenze diverse, che con i numeri accanto al nome si
+            // contraddicono a vista. E rileggere sarebbe peggio che inutile: Aggiorna
+            // sostituisce Punto senza toccare client, e AdottaConfigurazioneAggiornata
+            // confronta proprio quel Punto con il disco - trovandolo gia' aggiornato non
+            // riparerebbe piu', e la finestra resterebbe su "Token rejected" dopo un
+            // "observer token set" andato a buon fine. Sulla guardata ci pensa il giro
+            // principale, che ha in mano sia il punto sia il client.
+            if (ReferenceEquals(voce, voceGuardata))
+            {
+                return;
+            }
+
+            voce.Registra(fetch.Outcome, fetch.Problem, adesso(), fetch.Snapshot);
 
             // Token rifiutato o impronta che non corrisponde: la voce va riletta da disco,
             // come fa gia' il giro principale per la macchina guardata. Altrimenti la sonda
@@ -921,33 +945,16 @@ public sealed partial class MainViewModel : ViewModelBase
         catch (Exception errore)
 #pragma warning restore CA1031
         {
-            Scrivi(voce, ServiceOutcome.Unknown, errore.Message, campionamento: null);
+            // Stessa guardia del ramo riuscito, e per la stessa ragione.
+            if (!ReferenceEquals(voce, voceGuardata))
+            {
+                voce.Registra(ServiceOutcome.Unknown, errore.Message, adesso());
+            }
         }
         finally
         {
             voce.InSonda = false;
         }
-    }
-
-    /// <summary>Porta l'esito di una sonda nella voce, se quella voce e' ancora sua.</summary>
-    /// <remarks>
-    /// La sonda PARTE filtrando la macchina guardata (vedi <see cref="SondaLeAltre"/>) ma TORNA
-    /// fino a otto secondi dopo, e in quel tempo un clic basta a farla diventare la guardata.
-    /// Scrivere lo stesso vorrebbe dire due scritture concorrenti sulla stessa voce - la sonda
-    /// ogni quindici secondi, il giro principale ogni secondo - cioe' la voce che mostra a
-    /// strappi due letture diverse della stessa macchina. Finche' erano un pallino e una frase
-    /// si notava appena; con il carico accanto al nome sono due numeri che si contraddicono a
-    /// vista. La rilettura del punto resta fuori di qui di proposito: cambiare credenziale
-    /// serve comunque, e anzi serve di piu' sulla macchina che si sta guardando.
-    /// </remarks>
-    private void Scrivi(MacchinaInElenco voce, ServiceOutcome esito, string problema, MachineSnapshot? campionamento)
-    {
-        if (ReferenceEquals(voce, voceGuardata))
-        {
-            return;
-        }
-
-        voce.Registra(esito, problema, adesso(), campionamento);
     }
 
     private static FAInfoBarSeverity Gravita(StatusTone tono) => tono switch

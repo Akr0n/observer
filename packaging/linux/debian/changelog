@@ -14,8 +14,15 @@ observer (0.19.0) unstable; urgency=medium
     working - and its space is always reserved, so a blip no longer makes
     the row jump twice.
   * A probe that comes back after you have switched to that machine no
-    longer writes into it. It starts by skipping the watched machine but
-    returns up to eight seconds later, and a click is enough in between.
+    longer writes into it, and no longer re-reads its entry either. It
+    starts by skipping the watched machine but returns up to eight seconds
+    later, and a click is enough in between; re-reading there would swap
+    the endpoint without swapping the client, and then a corrected token
+    would never be picked up.
+  * Clicking a machine clears its numbers at once. They belonged to a probe
+    up to fifteen seconds old, and the first real reading can be eight
+    seconds away - which is exactly the case when you click a machine
+    because it stopped answering.
 
  -- Federico Cardinali <noreply@example.invalid>  Sat, 12 Sep 2026 10:00:00 +0000
 

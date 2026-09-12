@@ -48,14 +48,23 @@ public class CaricoTests
         // Il per-core passa dalla stessa interfaccia, con lo STESSO identificativo e un'istanza
         // valorizzata. Prendere il primo punto che capita darebbe il carico di un core solo
         // spacciato per quello della macchina - e sarebbe verosimile, quindi invisibile.
-        Carico carico = Carico.Da(Campionamento(Gruppo(
+        // In ENTRAMBI gli ordini, perche' l'ordine dei punti non e' dichiarato da nessuna
+        // parte: con i core solo in coda, un codice che prende il primo punto passerebbe.
+        Carico dopo = Carico.Da(Campionamento(Gruppo(
             "cpu",
             MetricPoint.Measured(CpuCollector.TotalUsageMetricId, "0", MetricValue.FromNumber(99d)),
             MetricPoint.Measured(CpuCollector.TotalUsageMetricId, "1", MetricValue.FromNumber(97d)),
             MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(12d)))));
 
-        Assert.Equal(12d, carico.Cpu);
-        Assert.Equal("CPU 12%", carico.Frase);
+        Assert.Equal(12d, dopo.Cpu);
+        Assert.Equal("CPU 12%", dopo.Frase);
+
+        Carico prima = Carico.Da(Campionamento(Gruppo(
+            "cpu",
+            MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(12d)),
+            MetricPoint.Measured(CpuCollector.TotalUsageMetricId, "0", MetricValue.FromNumber(99d)))));
+
+        Assert.Equal(12d, prima.Cpu);
     }
 
     [Fact]
@@ -133,12 +142,64 @@ public class CaricoTests
     [Fact]
     public void LaDurataDelGuastoVinceSulCarico()
     {
+        // La precedenza si prova solo se i due CONVIVONO, e per costruzione non convivono mai:
+        // Registra azzera il carico su ogni esito non Ok. Quindi si forza la convivenza dal di
+        // fuori, che e' l'unico modo di mettere alla prova la regola invece del ramo che oggi
+        // la rende irraggiungibile - e di accorgersene se un giorno smettesse di esserlo.
         MacchinaInElenco voce = Voce();
 
         voce.Registra(ServiceOutcome.TokenRifiutato, "rejected", T0);
+        voce.Registra(ServiceOutcome.TokenRifiutato, "rejected", T0 + TimeSpan.FromMinutes(2));
 
         Assert.Equal(Carico.Nessuno, voce.Carico);
-        Assert.StartsWith("for ", voce.SottoIlNome, StringComparison.Ordinal);
+        Assert.Equal("for 2 min", voce.SottoIlNome);
+
+        voce.Carico = new Carico(80d, 90d);
+
+        Assert.Equal("for 2 min", voce.SottoIlNome);
+        Assert.Contains("for 2 min", voce.Suggerimento, StringComparison.Ordinal);
+        Assert.DoesNotContain("CPU", voce.Suggerimento, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LaMacchinaGuardataNonMostraNumeriNellaBarraLaterale()
+    {
+        // E' la decisione che tiene insieme tutto il resto: i numeri della macchina guardata
+        // sono nei quadranti, e ripeterli accanto al nome vorrebbe dire due letture della
+        // stessa macchina a cadenze diverse - quindici secondi contro uno - che si
+        // contraddicono a vista. La voce guardata e' anche l'unica sempre selezionata, cioe'
+        // l'unica che un lettore di schermo riannuncia: con i numeri il suo nome accessibile
+        // cambierebbe a ogni secondo, per sempre.
+        ObserverEndpoint locale = ObserverEndpoint.CanaleLocale();
+        ObserverEndpoint altra = ObserverEndpoint.Remoto(
+            new Uri("https://altra:5058/"), "token", "machines.json", new string('a', 64), "altra");
+
+        MainViewModel viewModel = new(
+            client: null,
+            problemaDiConfigurazione: null,
+            elenco: new MachineListResult([locale, altra], []));
+
+        MacchinaInElenco voce = viewModel.Macchine.Single(v => v.Punto == altra);
+
+        // La sonda le ha scritto il carico mentre NON era guardata: e' il caso normale.
+        voce.Registra(
+            ServiceOutcome.Ok,
+            string.Empty,
+            T0,
+            Campionamento(
+                Gruppo("cpu", MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(42d))),
+                Gruppo("memory", MetricPoint.Measured(MemoryCollector.UsedPercentMetricId, null, MetricValue.FromNumber(61d)))));
+
+        Assert.Equal("CPU 42% · RAM 61%", voce.SottoIlNome);
+
+        // Il clic. SUBITO, senza aspettare un giro: fra la selezione e la prima risposta
+        // passano fino a otto secondi di timeout, e in quel tempo la riga evidenziata direbbe
+        // che la macchina sta lavorando mentre la barra di stato dice "Connecting".
+        viewModel.MacchinaSelezionata = voce;
+
+        Assert.Equal(Carico.Nessuno, voce.Carico);
+        Assert.Equal(string.Empty, voce.SottoIlNome);
+        Assert.DoesNotContain("CPU", voce.Descrizione, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -147,13 +208,20 @@ public class CaricoTests
         // Il suggerimento del mouse e il nome accessibile passano dallo stesso testo della
         // riga, cosi' non possono divergere. Il punto medio separa due fatti accostati.
         MacchinaInElenco voce = Voce();
+
+        // Una prima lettura riuscita SENZA carico, cosi' Stato e Dettaglio sono gia' al valore
+        // finale: da qui in poi l'unica cosa che cambia e' il carico, e le notifiche che si
+        // osservano possono venire solo da lui. Senza questo passo le tre asserzioni sarebbero
+        // soddisfatte da Dettaglio, che notifica Suggerimento e Descrizione per conto suo.
+        voce.Registra(ServiceOutcome.Ok, string.Empty, T0);
+
         List<string> notificate = [];
         voce.PropertyChanged += (_, e) => notificate.Add(e.PropertyName ?? string.Empty);
 
         voce.Registra(
             ServiceOutcome.Ok,
             string.Empty,
-            T0,
+            T0 + TimeSpan.FromSeconds(15),
             Campionamento(
                 Gruppo("cpu", MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(42d))),
                 Gruppo("memory", MetricPoint.Measured(MemoryCollector.UsedPercentMetricId, null, MetricValue.FromNumber(61d)))));
