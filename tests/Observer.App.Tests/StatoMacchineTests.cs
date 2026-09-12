@@ -73,7 +73,7 @@ public class StatoMacchineTests
 
         Assert.True(voce.Attenzione);
         Assert.Equal(string.Empty, voce.DaQuanto);
-        Assert.False(voce.MostraDaQuanto);
+        Assert.Equal(string.Empty, voce.SottoIlNome);
     }
 
     [Fact]
@@ -86,7 +86,7 @@ public class StatoMacchineTests
 
         Assert.True(voce.Guasto);
         Assert.Equal("for 3 min", voce.DaQuanto);
-        Assert.True(voce.MostraDaQuanto);
+        Assert.Equal("for 3 min", voce.SottoIlNome);
 
         // La durata si sente anche senza vedere la riga: il suggerimento e il nome accessibile
         // passano dallo stesso testo, cosi' non possono divergere.
@@ -112,10 +112,10 @@ public class StatoMacchineTests
     }
 
     [Fact]
-    public void ScrivereLaDurataNotificaAncheCheVaMostrata()
+    public void ScrivereLaDurataNotificaAncheLaRigaCheLaMostra()
     {
-        // MostraDaQuanto e' legato a IsVisible della seconda riga: senza la sua notifica il
-        // testo cambierebbe e la riga resterebbe invisibile per sempre, con la suite verde.
+        // SottoIlNome e' il Text della seconda riga: senza la sua notifica la durata
+        // cambierebbe e la riga continuerebbe a dire la cosa di prima, con la suite verde.
         MacchinaInElenco voce = new(Remota("altra"));
         List<string> notificate = [];
         voce.PropertyChanged += (_, e) => notificate.Add(e.PropertyName ?? string.Empty);
@@ -123,7 +123,7 @@ public class StatoMacchineTests
         voce.Registra(ServiceOutcome.TokenRifiutato, "rejected", T0);
 
         Assert.Contains(nameof(MacchinaInElenco.DaQuanto), notificate);
-        Assert.Contains(nameof(MacchinaInElenco.MostraDaQuanto), notificate);
+        Assert.Contains(nameof(MacchinaInElenco.SottoIlNome), notificate);
         Assert.Contains(nameof(MacchinaInElenco.Suggerimento), notificate);
     }
 
@@ -137,7 +137,6 @@ public class StatoMacchineTests
         voce.Registra(ServiceOutcome.Ok, string.Empty, T0 + TimeSpan.FromMinutes(4));
 
         Assert.Equal(string.Empty, voce.DaQuanto);
-        Assert.False(voce.MostraDaQuanto);
 
         // Niente coda: la descrizione torna a essere nome e stato, senza durata appiccicata.
         Assert.EndsWith(": Reachable", voce.Descrizione, StringComparison.Ordinal);

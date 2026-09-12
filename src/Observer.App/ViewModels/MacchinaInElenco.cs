@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Observer.App.Services;
+using Observer.Core.Metrics;
 
 namespace Observer.App.ViewModels;
 
@@ -67,6 +68,10 @@ public sealed partial class MacchinaInElenco : ObservableObject
         GuastoDa = null;
         DaQuanto = string.Empty;
 
+        // E il carico con loro: era di quell'altro endpoint. Un numero vero riferito a una
+        // macchina che non e' piu' quella si legge come se fosse di questa.
+        Carico = Carico.Nessuno;
+
         OnPropertyChanged(nameof(Nome));
         OnPropertyChanged(nameof(Descrizione));
     }
@@ -112,11 +117,30 @@ public sealed partial class MacchinaInElenco : ObservableObject
     /// successiva, ed e' per questo che <see cref="Downtime.Frase"/> tronca.
     /// </remarks>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(MostraDaQuanto), nameof(Suggerimento), nameof(Descrizione))]
+    [NotifyPropertyChangedFor(nameof(SottoIlNome), nameof(Suggerimento), nameof(Descrizione))]
     public partial string DaQuanto { get; set; } = string.Empty;
 
-    /// <summary>True quando c'e' una durata da mostrare sotto il nome.</summary>
-    public bool MostraDaQuanto => DaQuanto.Length > 0;
+    /// <summary>Quanto sta lavorando questa macchina, quando si sa.</summary>
+    /// <remarks>
+    /// Lo scrive <see cref="Registra"/> dal campionamento che la sonda ha gia' in mano, e resta
+    /// <see cref="Carico.Nessuno"/> per la macchina GUARDATA: li' i numeri sono nei quadranti,
+    /// grandi, a due centimetri di distanza, e ripeterli piccoli accanto al nome vorrebbe dire
+    /// due letture della stessa macchina che possono contraddirsi a vista - la sonda gira ogni
+    /// quindici secondi, il giro principale ogni secondo. La barra laterale risponde a "devo
+    /// cambiare macchina?", e per quella su cui si e' gia' la risposta e' gia' a schermo.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SottoIlNome), nameof(Suggerimento), nameof(Descrizione))]
+    public partial Carico Carico { get; set; } = Carico.Nessuno;
+
+    /// <summary>La riga sotto il nome: o da quanto e' giu', o quanto sta lavorando.</summary>
+    /// <remarks>
+    /// Una riga sola e non due, perche' i due contenuti si escludono per costruzione: il carico
+    /// esiste solo quando la lettura e' andata, e <see cref="DaQuanto"/> si scrive solo quando
+    /// NON e' andata. La durata vince comunque, esplicitamente: se un giorno le due potessero
+    /// coesistere, "giu' da tre minuti" e' cio' che si deve leggere.
+    /// </remarks>
+    public string SottoIlNome => DaQuanto.Length > 0 ? DaQuanto : Carico.Frase;
 
     /// <summary>Cio' che dice il suggerimento del mouse: il motivo, e da quanto dura.</summary>
     /// <remarks>
@@ -126,7 +150,14 @@ public sealed partial class MacchinaInElenco : ObservableObject
     /// il contrario di cio' che sta succedendo. Il punto medio spezza la frase e lascia due
     /// fatti accostati, che e' quello che sono.
     /// </remarks>
-    public string Suggerimento => DaQuanto.Length == 0 ? Dettaglio : $"{Dettaglio} · {DaQuanto}";
+    /// <remarks>
+    /// Dice cio' che dice la riga, non <see cref="DaQuanto"/>: cosi' il carico di una macchina
+    /// arriva anche a chi la riga non la vede. Non cambia di continuo, e non e' un caso - la
+    /// sonda gira ogni quindici secondi e la macchina guardata non ha carico, quindi la voce
+    /// SELEZIONATA, che e' l'unica che un lettore di schermo riannuncia, ha esattamente il
+    /// testo che aveva prima di questa aggiunta.
+    /// </remarks>
+    public string Suggerimento => SottoIlNome.Length == 0 ? Dettaglio : $"{Dettaglio} · {SottoIlNome}";
 
     /// <summary>True finche' nessuno l'ha interrogata.</summary>
     public bool Ignoto => Stato == StatoVoce.Ignoto;
@@ -152,8 +183,21 @@ public sealed partial class MacchinaInElenco : ObservableObject
     /// <param name="esito">Com'e' andata.</param>
     /// <param name="problema">La frase del client, quando non e' andata.</param>
     /// <param name="adesso">L'ora, per misurare da quanto dura un guasto.</param>
-    public void Registra(ServiceOutcome esito, string problema, DateTimeOffset adesso)
+    /// <param name="campionamento">
+    /// Cio' che la lettura ha riportato, da cui si ricava il carico. Null - ed e' il valore
+    /// predefinito - per la macchina GUARDATA: vedi <see cref="Carico"/>.
+    /// </param>
+    public void Registra(
+        ServiceOutcome esito,
+        string problema,
+        DateTimeOffset adesso,
+        MachineSnapshot? campionamento = null)
     {
+        // Sta QUI e non nei chiamanti per la stessa ragione scritta in Aggiorna: i chiamanti
+        // sono tre, e uno si dimenticherebbe di azzerarlo - lasciando sotto il nome di una
+        // macchina che non risponde il carico che aveva l'ultima volta che rispondeva.
+        Carico = esito == ServiceOutcome.Ok ? Carico.Da(campionamento) : Carico.Nessuno;
+
         if (esito == ServiceOutcome.Ok)
         {
             GuastoDa = null;

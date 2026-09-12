@@ -1,4 +1,4 @@
-.TH OBSERVER-DASHBOARD 1 "2026-09-04" "observer 0.18.0" "User Commands"
+.TH OBSERVER-DASHBOARD 1 "2026-09-12" "observer 0.19.0" "User Commands"
 .SH NAME
 observer-dashboard \- watch a machine's vital signs
 .SH SYNOPSIS
@@ -7,7 +7,8 @@ observer-dashboard \- watch a machine's vital signs
 .B observer-dashboard
 opens a window that polls an Observer service once a second and shows what it
 reports: CPU, memory, disk space per volume and disk activity per device, on
-gauges, with the last hour drawn underneath. Clicking the CPU, the memory or a
+gauges, with an hour, a day or a week of history drawn underneath. Clicking the
+CPU, the memory or a
 disk activity gauge lists the processes consuming most of it, refreshed once a
 second, and the selected one can be ended from there. The list behind a disk
 gauge is ranked by I/O over the whole machine, because the counters are per

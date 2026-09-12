@@ -167,10 +167,18 @@
              gia' una seconda, e cosi' nessuno poteva scoprire di poterne aggiungere: l'unico
              posto in cui la funzione si annunciava era la funzione stessa. Con una macchina
              sola, al suo posto c'e' la frase che dice come aggiungerne un'altra. -->
-        <!-- Larga quanto i nomi che contiene, fra 150 e 240: prima erano 210 px fissi anche
-             per due voci di dieci lettere, cioe' un terzo della finestra minima speso per il
+        <!-- Larga quanto il suo contenuto, fra 150 e 240: prima erano 210 px fissi anche per
+             due voci di dieci lettere, cioe' un terzo della finestra minima speso per il
              vuoto. Il massimo serve al suggerimento su come aggiungere una macchina, che va
-             a capo invece di allargare la barra. -->
+             a capo invece di allargare la barra.
+             Da 0.19.0 non sono piu' i NOMI a decidere: la riga del carico e' piu' larga di
+             quasi ogni nome, e la barra passa da 163 a 191 px misurati quando compare. E'
+             spazio tolto ai quadranti, quindi vale la pena sapere quanto: la griglia cambia
+             numero di colonne solo quando lo spazio scende sotto 646 px (quattro celle da
+             148 piu' tre spazi da 18, vedi GaugeGridLayout), e i 28 px non bastano ad
+             attraversare quella soglia ne' a 900 px di finestra - dove le colonne sono tre
+             prima e dopo - ne' a 1125, dove sono quattro prima e dopo. Chi allarga ancora
+             questa riga rifaccia il conto. -->
         <Border DockPanel.Dock="Left"
                 MinWidth="150"
                 MaxWidth="240"
@@ -265,15 +273,22 @@
                                            Grid.Column="1"
                                            Text="{Binding Nome}"
                                            TextWrapping="Wrap" />
-                                <!-- Da quanto dura il guasto, sotto il nome. Compare solo
-                                     quando c'e' qualcosa da dire: finche' la barra direbbe
-                                     "Connecting" la riga non c'e', mentre su un token
-                                     rifiutato, che e' rosso da subito, c'e' dal primo
-                                     istante. Una macchina sana resta com'era prima. -->
+                                <!-- Una riga sotto il nome che dice una cosa alla volta: da
+                                     quanto dura il guasto, oppure - quando la macchina
+                                     risponde - quanto sta lavorando. I due si escludono per
+                                     costruzione, vedi SottoIlNome.
+                                     Niente IsVisible, ed e' il punto: con IsVisible la riga
+                                     usciva dal layout e la voce si accorciava di colpo, cosa
+                                     che capita a ogni singhiozzo - i dieci secondi di
+                                     tolleranza di StatusEscalation tengono la durata vuota,
+                                     quindi ogni blip faceva due salti di altezza. Lo spazio
+                                     lo riserva la riga VUOTA: un TextBlock Caption senza
+                                     testo misura comunque una riga alta quanto il font,
+                                     quindi non serve un MinHeight - ce n'era uno da 15 px
+                                     che non legava mai, perche' la riga ne misura 16. -->
                                 <TextBlock Grid.Row="1"
                                            Grid.Column="1"
-                                           Text="{Binding DaQuanto}"
-                                           IsVisible="{Binding MostraDaQuanto}"
+                                           Text="{Binding SottoIlNome}"
                                            Theme="{StaticResource CaptionTextBlockStyle}"
                                            Classes="secondario"
                                            TextWrapping="Wrap" />
