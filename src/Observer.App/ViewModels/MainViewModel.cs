@@ -900,7 +900,7 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             SnapshotFetch fetch = await apriMacchina!(voce.Punto).GetLatestAsync(cancellationToken);
 
-            voce.Registra(fetch.Outcome, fetch.Problem, adesso());
+            Scrivi(voce, fetch.Outcome, fetch.Problem, fetch.Snapshot);
 
             // Token rifiutato o impronta che non corrisponde: la voce va riletta da disco,
             // come fa gia' il giro principale per la macchina guardata. Altrimenti la sonda
@@ -921,12 +921,33 @@ public sealed partial class MainViewModel : ViewModelBase
         catch (Exception errore)
 #pragma warning restore CA1031
         {
-            voce.Registra(ServiceOutcome.Unknown, errore.Message, adesso());
+            Scrivi(voce, ServiceOutcome.Unknown, errore.Message, campionamento: null);
         }
         finally
         {
             voce.InSonda = false;
         }
+    }
+
+    /// <summary>Porta l'esito di una sonda nella voce, se quella voce e' ancora sua.</summary>
+    /// <remarks>
+    /// La sonda PARTE filtrando la macchina guardata (vedi <see cref="SondaLeAltre"/>) ma TORNA
+    /// fino a otto secondi dopo, e in quel tempo un clic basta a farla diventare la guardata.
+    /// Scrivere lo stesso vorrebbe dire due scritture concorrenti sulla stessa voce - la sonda
+    /// ogni quindici secondi, il giro principale ogni secondo - cioe' la voce che mostra a
+    /// strappi due letture diverse della stessa macchina. Finche' erano un pallino e una frase
+    /// si notava appena; con il carico accanto al nome sono due numeri che si contraddicono a
+    /// vista. La rilettura del punto resta fuori di qui di proposito: cambiare credenziale
+    /// serve comunque, e anzi serve di piu' sulla macchina che si sta guardando.
+    /// </remarks>
+    private void Scrivi(MacchinaInElenco voce, ServiceOutcome esito, string problema, MachineSnapshot? campionamento)
+    {
+        if (ReferenceEquals(voce, voceGuardata))
+        {
+            return;
+        }
+
+        voce.Registra(esito, problema, adesso(), campionamento);
     }
 
     private static FAInfoBarSeverity Gravita(StatusTone tono) => tono switch

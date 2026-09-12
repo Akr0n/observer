@@ -1,3 +1,24 @@
+observer (0.19.0) unstable; urgency=medium
+
+  * Every machine in the sidebar now says how hard it is working, not just
+    whether it answers: CPU and memory sit under its name. The data was
+    already arriving and being thrown away - the probe that draws the status
+    dot asks for the full sample once every fifteen seconds and used to keep
+    only the outcome - so this costs no extra request.
+  * The machine you are WATCHING deliberately shows no numbers there: they
+    are already in the gauges, larger, an inch away. Repeating them small
+    would mean two readings of one machine, fifteen seconds apart, able to
+    contradict each other on screen.
+  * The line under the name no longer appears and disappears. It says one
+    thing at a time - how long a machine has been down, or how hard it is
+    working - and its space is always reserved, so a blip no longer makes
+    the row jump twice.
+  * A probe that comes back after you have switched to that machine no
+    longer writes into it. It starts by skipping the watched machine but
+    returns up to eight seconds later, and a click is enough in between.
+
+ -- Federico Cardinali <noreply@example.invalid>  Sat, 12 Sep 2026 10:00:00 +0000
+
 observer (0.18.0) unstable; urgency=medium
 
   * The history strip is no longer stuck on the last hour: a selector next

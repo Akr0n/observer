@@ -265,15 +265,22 @@
                                            Grid.Column="1"
                                            Text="{Binding Nome}"
                                            TextWrapping="Wrap" />
-                                <!-- Da quanto dura il guasto, sotto il nome. Compare solo
-                                     quando c'e' qualcosa da dire: finche' la barra direbbe
-                                     "Connecting" la riga non c'e', mentre su un token
-                                     rifiutato, che e' rosso da subito, c'e' dal primo
-                                     istante. Una macchina sana resta com'era prima. -->
+                                <!-- Una riga sotto il nome che dice una cosa alla volta: da
+                                     quanto dura il guasto, oppure - quando la macchina
+                                     risponde - quanto sta lavorando. I due si escludono per
+                                     costruzione, vedi SottoIlNome.
+                                     MinHeight e non IsVisible, ed e' il punto: con IsVisible
+                                     la riga usciva dal layout e la voce si accorciava di
+                                     colpo, cosa che capita a ogni singhiozzo - i dieci
+                                     secondi di tolleranza di StatusEscalation tengono la
+                                     durata vuota, quindi ogni blip faceva due salti. Lo
+                                     spazio ora e' sempre riservato: 15 px e' l'altezza di
+                                     una riga Caption, e scala col resto perche' tutta la
+                                     finestra sta dentro il LayoutTransformControl. -->
                                 <TextBlock Grid.Row="1"
                                            Grid.Column="1"
-                                           Text="{Binding DaQuanto}"
-                                           IsVisible="{Binding MostraDaQuanto}"
+                                           MinHeight="15"
+                                           Text="{Binding SottoIlNome}"
                                            Theme="{StaticResource CaptionTextBlockStyle}"
                                            Classes="secondario"
                                            TextWrapping="Wrap" />
