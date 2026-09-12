@@ -44,6 +44,40 @@ builder.Host.UseSystemd();
 builder.Services.AddObserverMetrics();
 builder.Services.AddSingleton<MetricSnapshotCache>();
 
+// La compressione delle risposte, con UNA sola opzione, e quella riga e' una decisione di
+// sicurezza presa, non un dettaglio di configurazione.
+//
+// PERCHE' ACCENDERLA SU HTTPS. Il predefinito di ASP.NET Core e' EnableForHttps = false, e
+// serve a tenere lontano BREACH. BREACH pero' vuole TRE cose insieme: un segreto nella
+// risposta, input dell'attaccante riflesso nella stessa risposta, e la possibilita' di
+// osservarne molte. Qui ne regge UNA sola. La riflessione c'e' ed e' totale - /metrics/history
+// rimanda collector, metrica e istanza verbatim - ma nei corpi non c'e' nessun segreto: il
+// token non compare in nessuna risposta, e l'impronta del certificato non e' un segreto, e'
+// proprio cio' che il client si aspetta di vedere. Soprattutto: NESSUNO puo' far produrre al
+// servizio un corpo comprimibile senza avere gia' il token - senza, la risposta e' 401 con
+// Content-Length 0, misurato su ogni rotta. L'attaccante di BREACH qui e' qualcuno che ha gia'
+// la credenziale, e con quella legge tutto in chiaro e puo' anche terminare processi. Non c'e'
+// browser, non ci sono cookie, non c'e' autorita' ambientale da rubare.
+// Cio' che si apre davvero, e si accetta per iscritto: le lunghezze dei record TLS diventano
+// funzione del contenuto invece che quasi costanti, quindi chi sta in mezzo puo' dedurre
+// qualcosa sulla forma del traffico. E' un canale di lato modesto, contro un guadagno misurato.
+//
+// E lasciare il predefinito non sarebbe "piu' prudente", sarebbe il verso SBAGLIATO: senza
+// questa riga si comprimerebbe solo il canale locale - named pipe e unix socket sono HTTP, non
+// HTTPS - cioe' si spenderebbe la CPU della macchina misurata per zero byte di rete, lasciando
+// scoperto l'unico percorso dove i byte costano davvero.
+//
+// Encoder e livello restano quelli predefiniti (Brotli, poi Gzip come ripiego, entrambi a
+// Fastest), e non e' pigrizia: misurato sui corpi veri di questa macchina, Brotli Fastest fa la
+// stessa dimensione di Gzip Optimal a un terzo della CPU (storico di 7 giorni: 15 631 byte in
+// 0,505 ms contro 15 235 in 1,490), mentre Brotli Optimal costa da 4 a 30 volte Fastest per il
+// 3-12 % di byte in meno - ed e' l'unico livello capace di farsi vedere nel numero che questo
+// servizio pubblica su se' stesso. Costo a regime con un cruscotto sulla vista da un'ora:
+// 6,6 ms di CPU al minuto, lo 0,011 % di un core, per togliere dalla rete circa 860 MB al
+// giorno. Il grosso non e' /metrics/latest (3,2 kB) ma /metrics/history: la coda grezza pesa
+// 76 kB a un'ora e 114 kB a ventiquattro, ed e' chiesta una volta per quadrante.
+builder.Services.AddResponseCompression(opzioni => opzioni.EnableForHttps = true);
+
 // Singleton e non transient, per la stessa ragione dei collector: la classifica dei processi
 // conserva il campione precedente per PID, e ricrearla a ogni richiesta lascerebbe la CPU di
 // ogni processo eternamente sconosciuta.
@@ -183,6 +217,13 @@ if (OperatingSystem.IsLinux() && percorsoDelSocket is { } socketLocale)
 }
 
 app.UseObserverAccessControl(credenziali.Credentials);
+
+// DOPO il controllo d'accesso, e l'ordine e' misurato. Cosi' le risposte che il middleware
+// corto-circuita - 401 e 404 - non passano dal compressore: non ha senso spendere CPU per un
+// chiamante che non ha la credenziale, ed e' anche gratis da rispettare, perche' quei corpi
+// sono di zero byte. Cio' che si comprime resta tutto: il middleware degli endpoint viene
+// accodato in fondo da app.Run(), quindi qualunque cosa registrata qui gira prima di loro.
+app.UseResponseCompression();
 
 // Il catalogo descrive le metriche esistenti, comprese quelle non misurabili qui: e' cio'
 // che permette al client di disegnare una metrica che non conosceva a tempo di compilazione.

@@ -197,10 +197,20 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
 
     private Uri BaseAddress => Endpoint.BaseAddress;
 
+    /// <remarks>
+    /// La decompressione automatica solo sul ramo di RETE, e l'asimmetria e' la scelta. Sul filo
+    /// i byte costano - la coda grezza dello storico pesa 76 kB a un'ora e 114 a ventiquattro,
+    /// una volta per quadrante - e il servizio comprime solo se il client lo chiede, perche' la
+    /// codifica si negozia per richiesta. Sul canale locale quei byte non attraversano niente:
+    /// chiederla li' significherebbe far comprimere e decomprimere la macchina che questo
+    /// programma misura, cioe' pagare CPU che finisce nel numero mostrato per risparmiare byte
+    /// che non esistono. E l'esclusione non ha bisogno di un ramo nel servizio: basta non
+    /// chiedere.
+    /// </remarks>
     private static SocketsHttpHandler HandlerPer(ObserverEndpoint endpoint) =>
         endpoint.Kind == EndpointKind.Locale
             ? LocalChannelHandler.Crea()
-            : new SocketsHttpHandler();
+            : new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All };
 
     /// <inheritdoc />
     public async Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken)

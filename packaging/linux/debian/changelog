@@ -1,3 +1,36 @@
+observer (0.21.0) unstable; urgency=medium
+
+  * Responses are compressed on the network. The history the dashboard draws
+    is what costs: its raw tail weighs 76 kB over an hour and 114 kB over a
+    day, asked once per gauge, against 3.2 kB a second for the live sample.
+    Measured on this machine's real bodies, compression takes 4 to 6 times
+    off that - roughly 860 MB a day for one dashboard watching one machine
+    over an hour window.
+  * The local channel is deliberately left alone. A named pipe or a unix
+    socket carries no bytes anywhere, so compressing there would spend the
+    CPU of the very machine being measured to save nothing. It needs no
+    branch in the service: encoding is negotiated per request, and the local
+    client simply does not ask.
+  * Compressing over HTTPS is off by default in ASP.NET Core, to keep BREACH
+    away, and turning it on here is a decision with its reasons written in
+    the code. BREACH needs three things at once: a secret in the response,
+    attacker-controlled input reflected in that same response, and many
+    responses to measure. Only the second holds. No response carries the
+    token, and nobody gets a compressible body without already holding it -
+    without it the answer is 401 with Content-Length 0, on every route.
+    What it does open, accepted in writing: TLS record lengths become a
+    function of content rather than near-constant.
+  * Leaving the default would not have been the cautious choice but the
+    wrong way round: it compresses only the local channel, where bytes are
+    free, and leaves the network in the clear.
+  * Encoders and level stay at the framework defaults - Brotli, then gzip,
+    both at Fastest. Measured: Brotli at Fastest matches gzip at Optimal in
+    size for a third of the CPU, while Brotli at Optimal costs 4 to 30 times
+    that for 3-12 % fewer bytes, and is the only setting large enough to
+    show up in the number this service publishes about itself.
+
+ -- Federico Cardinali <noreply@example.invalid>  Sat, 12 Sep 2026 20:00:00 +0000
+
 observer (0.20.0) unstable; urgency=medium
 
   * When the window opens it says what it missed. A bar at the top - "While
