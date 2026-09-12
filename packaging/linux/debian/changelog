@@ -24,6 +24,20 @@ observer (0.20.0) unstable; urgency=medium
   * A gap that touches the oldest edge is reported as "nothing known
     before", not as an outage: retention deletes a prefix, and a missing
     prefix is indistinguishable from a machine switched on halfway through.
+  * The history is asked for further back than the window being examined.
+    The grid is anchored to the machine's most recent point, and that point
+    lags by the consolidation grace, so asking for exactly the window left
+    the first buckets outside the request - empty by construction, read as
+    an edge, and printed as "nothing known before" on every healthy machine
+    at every open.
+  * A failed read is retried instead of being written in stone. It used to
+    mark the period as done even on a timeout, so one blip left "history
+    could not be read" at the top of the window for the whole session while
+    the machine sat green beside it.
+  * An outage that crosses midnight names the weekday at both ends. Over a
+    24-hour window a gap can last almost the whole window, and without the
+    day the line read "not measured for 23 h 45 min (09:25 - 09:10)": a
+    duration of almost a day beside an interval that reads backwards.
   * What this does NOT do, plainly: it wakes nobody, and it says nothing
     about a machine that is still down right now - that data is on the
     machine that is not answering. For that there are still the red diamond

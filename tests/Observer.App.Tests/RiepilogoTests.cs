@@ -91,6 +91,24 @@ public class RiepilogoTests
     }
 
     [Fact]
+    public void UnInterruzioneCheAttraversaLaMezzanotteNonSiLeggeAllIndietro()
+    {
+        // A ventiquattro ore un'assenza puo' durare quasi l'intera finestra, e i due estremi
+        // cadono allora sullo stesso orario di due giorni diversi: senza il giorno la riga
+        // direbbe "not measured for 23 h 45 min (09:25 – 09:10)", cioe' una durata di quasi un
+        // giorno accanto a un intervallo che si legge come un quarto d'ora all'indietro.
+        // Succede anche a un'ora, su una macchina spenta a cavallo di mezzanotte: per questo la
+        // regola guarda la COPPIA e non la soglia della finestra.
+        string riga = Riepilogo.Riga("lavoro", [Vuoto(-755, -710)], colGiorno: false);
+
+        Assert.Matches(@"\([A-Za-z]{3} \d{2}:\d{2} – [A-Za-z]{3} \d{2}:\d{2}\)", riga);
+
+        // E quando i due estremi stanno nella stessa giornata il giorno NON compare: aggiungerlo
+        // sempre allungherebbe la frase dove non serve.
+        Assert.DoesNotMatch(@"[A-Za-z]{3} \d{2}:\d{2}", Riepilogo.Riga("lavoro", [Vuoto(10, 20)], colGiorno: false));
+    }
+
+    [Fact]
     public async Task UnoStoricoCheNonSiPuoLeggereLoDiceInveceDiTacere()
     {
         // E' il punto in cui questa strada si distingue da un avviso che non compare: quando non
@@ -116,26 +134,31 @@ public class RiepilogoTests
         Assert.Contains("persistenza spenta", viewModel.RiepilogoAssenze, StringComparison.Ordinal);
         Assert.True(viewModel.MostraRiepilogo);
 
-        // E si chiede UNA volta per periodo, non a ogni giro: il ciclo gira una volta al
-        // secondo, e due secondi dopo la richiesta deve essere ancora una sola.
-        int dopoIlPrimo = cliente.Letture;
-
-        await Task.Delay(2200, CancellationToken.None);
-
-        Assert.Equal(dopoIlPrimo, cliente.Letture);
+        // Il riepilogo chiede PIU' indietro della finestra che esamina, ed e' la correzione che
+        // tiene in piedi tutto il resto: senza quel margine la griglia, ancorata all'ultimo
+        // punto, sfora a sinistra e ogni macchina sana apre con "nothing known before".
+        Assert.True(
+            cliente.Riepiloghi(TimeSpan.FromHours(1), DateTimeOffset.UtcNow) > 0,
+            "il riepilogo non ha chiesto oltre la finestra: la griglia sforerebbe a sinistra");
 
         // Cambiando periodo cambia la domanda, quindi si ricomincia da capo.
+        int aUnOra = cliente.Riepiloghi(TimeSpan.FromHours(1), DateTimeOffset.UtcNow);
+
         viewModel.Periodo = "24h";
 
         Assert.Equal(string.Empty, viewModel.RiepilogoAssenze);
         Assert.False(viewModel.MostraRiepilogo);
 
-        while (!arresto.IsCancellationRequested && cliente.Letture <= dopoIlPrimo)
+        while (!arresto.IsCancellationRequested
+            && cliente.Riepiloghi(TimeSpan.FromHours(24), DateTimeOffset.UtcNow) == 0)
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.True(cliente.Letture > dopoIlPrimo, "cambiando periodo il riepilogo non e' stato rifatto");
+        Assert.True(
+            cliente.Riepiloghi(TimeSpan.FromHours(24), DateTimeOffset.UtcNow) > 0,
+            "cambiando periodo il riepilogo non e' stato rifatto sulla finestra nuova");
+        Assert.True(aUnOra > 0, "la prima richiesta non era quella del riepilogo");
 
         await arresto.CancelAsync();
 
@@ -152,9 +175,17 @@ public class RiepilogoTests
     /// <summary>Campiona benissimo, e lo storico non c'e'.</summary>
     private sealed class ClientConStoricoGuasto : IMetricsClient
     {
-        private int letture;
+        private readonly System.Collections.Concurrent.ConcurrentBag<HistoryQuery> chieste = [];
 
-        public int Letture => Volatile.Read(ref letture);
+        /// <summary>Le sole richieste del RIEPILOGO, riconosciute dal margine che solo lui chiede.</summary>
+        /// <remarks>
+        /// Contarle tutte non distinguerebbe niente: la striscia interroga la stessa serie a
+        /// ogni passo, quindi un contatore unico sale comunque e il test resterebbe verde anche
+        /// se il riepilogo non partisse mai. Il riepilogo e' l'unico che guarda PIU' indietro
+        /// della finestra, ed e' proprio la correzione che questo test deve inchiodare.
+        /// </remarks>
+        public int Riepiloghi(TimeSpan finestra, DateTimeOffset adesso) =>
+            chieste.Count(q => q.Da < adesso - finestra - TimeSpan.FromMinutes(1));
 
         public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.CanaleLocale();
 
@@ -186,7 +217,7 @@ public class RiepilogoTests
 
         public Task<HistoryFetch> GetHistoryAsync(HistoryQuery richiesta, CancellationToken cancellationToken)
         {
-            Interlocked.Increment(ref letture);
+            chieste.Add(richiesta);
 
             return Task.FromResult(new HistoryFetch(ServiceOutcome.NonRaggiungibile, "persistenza spenta", null));
         }

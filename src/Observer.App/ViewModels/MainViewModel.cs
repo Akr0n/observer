@@ -744,11 +744,14 @@ public sealed partial class MainViewModel : ViewModelBase
                 {
                     prossimaSonda = adesso() + RicaricaStati;
                     SondaLeAltre(cancellationToken);
-                }
 
-                // E cosa e' successo mentre la finestra era chiusa. Una volta per macchina e
-                // per periodo, non a ogni giro: vedi AvviaRiepiloghi.
-                AvviaRiepiloghi(cancellationToken);
+                    // E, allo stesso passo, cosa e' successo mentre la finestra era chiusa. Sta
+                    // QUI dentro e non fuori per due ragioni: una richiesta riuscita non si
+                    // ripete mai (la guardia e' PeriodoDelRiepilogo), ma una FALLITA si', e
+                    // questa e' la sua cadenza - la stessa con cui la sonda riprova il pallino.
+                    // Fuori dal cancello girerebbe una volta al secondo per non fare niente.
+                    AvviaRiepiloghi(cancellationToken);
+                }
 
                 // Un 401 su una finestra GIA' collegata significa quasi sempre che il token e'
                 // stato ruotato. Senza rileggere qui, la finestra resterebbe bloccata su
@@ -959,8 +962,11 @@ public sealed partial class MainViewModel : ViewModelBase
         foreach (MacchinaInElenco voce in Macchine)
         {
             // Solo le macchine che rispondono: a una che non risponde lo storico non si puo'
-            // chiedere, ed e' proprio quella dove servirebbe di piu'. Lo dice la riga, non il
-            // silenzio - vedi ComponiRiepilogo.
+            // chiedere, ed e' proprio quella dove servirebbe di piu'. Quella non produce alcuna
+            // riga, di proposito - a dirlo ci sono gia' il rombo rosso e "for 3 min" accanto al
+            // nome, e ripeterlo qui sarebbe la stessa cosa scritta due volte. La riga
+            // "history could not be read" e' per il caso diverso: la macchina risponde e lo
+            // storico no, che senza una frase resterebbe indistinguibile dal "tutto bene".
             if (voce.InRiepilogo
                 || voce.Stato != StatoVoce.Raggiungibile
                 || string.Equals(voce.PeriodoDelRiepilogo, periodo.Chiave, StringComparison.Ordinal))
@@ -992,12 +998,22 @@ public sealed partial class MainViewModel : ViewModelBase
             // UNA serie sola, e fissa: la domanda non e' "cosa misurava" ma "stava misurando",
             // e a quella risponde qualunque metrica che il servizio campiona sempre. Stesso
             // argomento di Carico, stessa costante condivisa da Observer.Core.
+            // Si chiede PIU' indietro di quanto si esamina, e non e' un di piu'. La griglia si
+            // ancora all'ULTIMO punto che la macchina manda, e quel punto e' indietro rispetto
+            // ad adesso quanto dura il consolidamento: chiedendo esattamente la finestra, le
+            // prime caselle cadrebbero prima del "da" della richiesta e sarebbero vuote PER
+            // COSTRUZIONE, non perche' la macchina fosse spenta. Essendo contigue all'inizio
+            // verrebbero lette come bordo, cioe' "nothing known before" su OGNI macchina sana a
+            // OGNI apertura - una barra che si apre sempre dicendo sempre la stessa cosa non
+            // vera si impara a chiudere senza leggerla. Il margine e' CodaDi, il numero che
+            // questo progetto ha gia' misurato per lo stesso ritardo nella striscia; i punti in
+            // piu' cadono fuori dalla griglia e Costruisci li ignora.
             HistoryFetch storico = await suo.GetHistoryAsync(
                 new HistoryQuery(
                     "cpu",
                     CpuCollector.TotalUsageMetricId,
                     null,
-                    adesso() - periodo.Finestra,
+                    adesso() - periodo.Finestra - CodaDi(periodo),
                     periodo.Risoluzione),
                 cancellationToken).ConfigureAwait(true);
 
@@ -1009,7 +1025,18 @@ public sealed partial class MainViewModel : ViewModelBase
             }
 
             voce.RigaRiepilogo = Riga(voce, storico, periodo);
-            voce.PeriodoDelRiepilogo = periodo.Chiave;
+
+            // La chiave si marca SOLO quando si e' letto davvero. Marcarla anche sul guasto
+            // vorrebbe dire che un singolo timeout - otto secondi per l'intera risposta, e a
+            // sette giorni sono duemila punti - lascia in cima alla finestra "history could not
+            // be read" per tutta la sessione, mentre accanto al nome la macchina e' verde e i
+            // quadranti si aggiornano ogni secondo. Non marcandola si riprova al giro delle
+            // sonde, e la riga stantia si sostituisce da sola.
+            if (storico.Outcome == ServiceOutcome.Ok)
+            {
+                voce.PeriodoDelRiepilogo = periodo.Chiave;
+            }
+
             ComponiRiepilogo();
         }
         catch (OperationCanceledException)
@@ -1020,8 +1047,8 @@ public sealed partial class MainViewModel : ViewModelBase
         catch (Exception errore)
 #pragma warning restore CA1031
         {
+            // Come sopra: non si marca la chiave, cosi' si riprova.
             voce.RigaRiepilogo = $"{voce.Nome}: history could not be read ({errore.Message})";
-            voce.PeriodoDelRiepilogo = periodo.Chiave;
             ComponiRiepilogo();
         }
         finally

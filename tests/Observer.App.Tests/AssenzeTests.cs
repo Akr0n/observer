@@ -83,14 +83,33 @@ public class AssenzeTests
     }
 
     [Fact]
-    public void NonSiSegnalaMaiUnVuotoCheToccaLAdesso()
+    public void LaFormaVERADiUnaRispostaNonProduceNessunVuoto()
     {
-        // Il livello aggregato e' indietro rispetto ad adesso di qualche minuto, per il
-        // consolidamento. Ancorando la finestra all'ULTIMO punto della macchina, dopo di lui
-        // non c'e' nessuna casella da riempire: il ritardo si esclude da se'. Senza questo,
-        // OGNI macchina sana verrebbe segnalata "non misura da cinque minuti" a ogni apertura,
-        // e il riepilogo si imparerebbe a chiudere senza leggerlo.
-        Assert.Empty(HistoryStrip.Assenze([.. Serie(Mezzogiorno, 30)], TimeSpan.FromMinutes(30), Minuto));
+        // La forma vera, che e' l'unica che conta e che le altre prove qui NON hanno: il
+        // livello aggregato e' indietro di qualche minuto per il consolidamento, quindi
+        // l'ultimo punto NON e' adesso; e il chiamante chiede piu' indietro della finestra che
+        // esamina, proprio perche' la griglia si ancora a quell'ultimo punto e sfora a
+        // sinistra. Con le due cose insieme non deve uscire nessun vuoto.
+        //
+        // Costruita come la manderebbe il servizio: 60 minuti di finestra, margine di dieci
+        // minuti davanti (CodaDi a un'ora), e la serie che finisce cinque minuti prima di
+        // adesso. Senza il margine nella richiesta, qui esce un'assenza DalBordo e la riga
+        // diventa "nothing known before" su una macchina che ha misurato tutto il tempo.
+        TimeSpan finestra = TimeSpan.FromHours(1);
+        TimeSpan margine = TimeSpan.FromMinutes(10);
+        DateTimeOffset adesso = Mezzogiorno;
+
+        IReadOnlyList<HistoryPoint> risposta =
+            [.. Serie(adesso - finestra - margine, (int)((finestra + margine - TimeSpan.FromMinutes(5)) / Minuto))];
+
+        Assert.Empty(HistoryStrip.Assenze(risposta, finestra, Minuto));
+
+        // E la controprova, che e' cio' che rende questa una prova e non un rito: la stessa
+        // serie SENZA il margine - cioe' cio' che il codice faceva prima - un vuoto lo produce.
+        IReadOnlyList<HistoryPoint> senzaMargine =
+            [.. Serie(adesso - finestra, (int)((finestra - TimeSpan.FromMinutes(5)) / Minuto))];
+
+        Assert.True(Assert.Single(HistoryStrip.Assenze(senzaMargine, finestra, Minuto)).DalBordo);
     }
 
     [Fact]

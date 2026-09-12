@@ -61,7 +61,7 @@ public static class Riepilogo
             }
         }
 
-        string quando = Istante(piuLunga.Inizio, colGiorno) + " – " + Istante(piuLunga.Fine, colGiorno);
+        string quando = Intervallo(piuLunga, colGiorno);
 
         // Con una sola interruzione il totale E' quella: ripetere "in 1 period" sarebbe rumore.
         // Con piu' di una il totale da solo mentirebbe per omissione - tre ore in un colpo e tre
@@ -74,10 +74,28 @@ public static class Riepilogo
         return coda.Length == 0 ? $"{nome}: {corpo}" : $"{nome}: {corpo}; {coda}";
     }
 
+    /// <summary>I due estremi di un'interruzione, col giorno quando serve davvero.</summary>
     /// <remarks>
-    /// Stessa regola di <see cref="HistoryStrip.Descrivi"/>, e per la stessa ragione: oltre la
-    /// giornata l'ora da sola non colloca piu' niente, e "14:20" puo' essere uno qualunque di
-    /// sette giorni. InvariantCulture perche' cio' che si vede e' in inglese.
+    /// Il giorno si mette anche quando <paramref name="colGiorno"/> e' falso ma i due estremi
+    /// cadono in due GIORNATE diverse, e non e' pignoleria: qui si stampa l'arco di
+    /// un'interruzione intera, non i due lati di una barra. A ventiquattro ore un'assenza puo'
+    /// durare quasi l'intera finestra, e senza il giorno la riga direbbe
+    /// "not measured for 23 h 45 min (09:25 – 09:10)" - una durata di quasi un giorno accanto a
+    /// un intervallo che si legge come un quarto d'ora all'indietro. Succede anche a un'ora, su
+    /// una macchina spenta a cavallo di mezzanotte. Per coppia e non per soglia, cosi' e' giusto
+    /// in ogni periodo invece che in quelli che si e' pensato di controllare.
+    /// </remarks>
+    private static string Intervallo(Assenza assenza, bool colGiorno)
+    {
+        bool giorniDiversi = assenza.Inizio.ToLocalTime().Date != assenza.Fine.ToLocalTime().Date;
+        bool conGiorno = colGiorno || giorniDiversi;
+
+        return Istante(assenza.Inizio, conGiorno) + " – " + Istante(assenza.Fine, conGiorno);
+    }
+
+    /// <remarks>
+    /// Stesso formato di <see cref="HistoryStrip.Descrivi"/>: InvariantCulture perche' cio' che
+    /// si vede e' in inglese.
     /// </remarks>
     private static string Istante(DateTimeOffset istante, bool colGiorno) =>
         istante.ToLocalTime().ToString(colGiorno ? "ddd HH:mm" : "HH:mm", CultureInfo.InvariantCulture);
