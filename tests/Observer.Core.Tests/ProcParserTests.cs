@@ -229,10 +229,10 @@ public class ProcMountInfoParserTests
         // DriveInfo fallirebbe: il volume sparirebbe dall'elenco senza un errore e senza un
         // motivo. Succede coi dischi esterni, che spesso hanno spazi nel nome.
         const string mountinfo = """
-            27 1 8:2 / /media/feder/Disco\040Esterno rw,relatime - vfat /dev/sdb1 rw
+            27 1 8:2 / /media/tizio/Disco\040Esterno rw,relatime - vfat /dev/sdb1 rw
             """;
 
-        Assert.Equal(["/media/feder/Disco Esterno"], ProcMountInfoParser.MountPoints(mountinfo, Ammessi));
+        Assert.Equal(["/media/tizio/Disco Esterno"], ProcMountInfoParser.MountPoints(mountinfo, Ammessi));
     }
 
     [Fact]
