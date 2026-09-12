@@ -163,6 +163,28 @@
             </ui:FAInfoBar.ActionButton>
         </ui:FAInfoBar>
 
+        <!-- Cosa e' successo mentre la finestra era chiusa. Una barra SEPARATA da quella di
+             stato, e le differenze sono tutte volute:
+             - quella parla della macchina guardata e di ADESSO, questa di tutte e del PASSATO;
+               due messaggi nella stessa barra la farebbero litigare con se stessa;
+             - IsClosable="True" mentre quella di stato e' False: un fatto del passato si legge
+               una volta e si archivia, uno stato in corso no;
+             - Severity Informational e non Warning: e' un resoconto, non un allarme. Cio' che
+               e' rotto ADESSO lo dicono il rombo rosso e la barra di stato. -->
+        <ui:FAInfoBar DockPanel.Dock="Top"
+                      Margin="0,8,0,0"
+                      IsOpen="{Binding MostraRiepilogo, Mode=TwoWay}"
+                      IsClosable="True"
+                      Severity="Informational"
+                      Title="While you were away"
+                      Message="{Binding RiepilogoAssenze}">
+            <ui:FAInfoBar.ActionButton>
+                <Button Content="Copy"
+                        Command="{Binding CopiaRiepilogoCommand}"
+                        AutomationProperties.Name="Copy what happened while away" />
+            </ui:FAInfoBar.ActionButton>
+        </ui:FAInfoBar>
+
         <!-- L'elenco delle macchine, SEMPRE visibile. Prima compariva solo quando ce n'era
              gia' una seconda, e cosi' nessuno poteva scoprire di poterne aggiungere: l'unico
              posto in cui la funzione si annunciava era la funzione stessa. Con una macchina

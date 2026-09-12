@@ -69,8 +69,11 @@ public sealed partial class MacchinaInElenco : ObservableObject
         DaQuanto = string.Empty;
 
         // E il carico con loro: era di quell'altro endpoint. Un numero vero riferito a una
-        // macchina che non e' piu' quella si legge come se fosse di questa.
+        // macchina che non e' piu' quella si legge come se fosse di questa. Vale identico per
+        // il riepilogo, che racconta la storia di un'altra macchina: va rifatto, non tradotto.
         Carico = Carico.Nessuno;
+        RigaRiepilogo = string.Empty;
+        PeriodoDelRiepilogo = null;
 
         OnPropertyChanged(nameof(Nome));
         OnPropertyChanged(nameof(Descrizione));
@@ -98,6 +101,20 @@ public sealed partial class MacchinaInElenco : ObservableObject
     /// <summary>True mentre una sonda e' in volo: la prossima non le parte sopra.</summary>
     /// <remarks>Leggibile da fuori perche' un test lo osserva; lo scrive solo il view model.</remarks>
     public bool InSonda { get; internal set; }
+
+    /// <summary>True mentre si legge lo storico per il riepilogo. Gemella di <see cref="InSonda"/>.</summary>
+    public bool InRiepilogo { get; internal set; }
+
+    /// <summary>Per quale periodo il riepilogo e' stato calcolato, o null se mai.</summary>
+    /// <remarks>
+    /// La chiave e non la voce, come ovunque: e' cio' che si confronta per sapere se va rifatto.
+    /// Cambiando periodo cambia la domanda - "cosa mi sono perso nell'ultima ora" non e' "negli
+    /// ultimi sette giorni" - quindi la risposta vecchia non vale piu'.
+    /// </remarks>
+    public string? PeriodoDelRiepilogo { get; internal set; }
+
+    /// <summary>Cosa e' successo a questa macchina mentre nessuno guardava. Vuota se niente.</summary>
+    public string RigaRiepilogo { get; internal set; } = string.Empty;
 
     /// <summary>Come sta.</summary>
     [ObservableProperty]
