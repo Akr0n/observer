@@ -10,7 +10,7 @@ namespace Observer.App.Services;
 /// separata da <see cref="HistoryStrip.Assenze"/> di proposito - quella produce i fatti, questa
 /// li mette in parole.
 /// </remarks>
-public static class Riepilogo
+public static class AwaySummary
 {
     /// <summary>La riga per una macchina, vuota quando non c'e' niente da dire.</summary>
     /// <param name="nome">Come si chiama la macchina a schermo.</param>
@@ -31,13 +31,13 @@ public static class Riepilogo
     /// nessuno ha visto, e una sola frase inventata insegna a non fidarsi di tutte le altre.
     /// </para>
     /// </remarks>
-    public static string Riga(string nome, IReadOnlyList<Assenza> assenze, bool colGiorno)
+    public static string Riga(string nome, IReadOnlyList<HistoryGap> assenze, bool colGiorno)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(nome);
         ArgumentNullException.ThrowIfNull(assenze);
 
-        Assenza? bordo = assenze.FirstOrDefault(assenza => assenza.DalBordo);
-        Assenza[] vere = [.. assenze.Where(assenza => !assenza.DalBordo)];
+        HistoryGap? bordo = assenze.FirstOrDefault(assenza => assenza.DalBordo);
+        HistoryGap[] vere = [.. assenze.Where(assenza => !assenza.DalBordo)];
 
         string coda = bordo is null
             ? string.Empty
@@ -49,9 +49,9 @@ public static class Riepilogo
         }
 
         TimeSpan totale = TimeSpan.Zero;
-        Assenza piuLunga = vere[0];
+        HistoryGap piuLunga = vere[0];
 
-        foreach (Assenza assenza in vere)
+        foreach (HistoryGap assenza in vere)
         {
             totale += assenza.Durata;
 
@@ -85,7 +85,7 @@ public static class Riepilogo
     /// una macchina spenta a cavallo di mezzanotte. Per coppia e non per soglia, cosi' e' giusto
     /// in ogni periodo invece che in quelli che si e' pensato di controllare.
     /// </remarks>
-    private static string Intervallo(Assenza assenza, bool colGiorno)
+    private static string Intervallo(HistoryGap assenza, bool colGiorno)
     {
         bool giorniDiversi = assenza.Inizio.ToLocalTime().Date != assenza.Fine.ToLocalTime().Date;
         bool conGiorno = colGiorno || giorniDiversi;

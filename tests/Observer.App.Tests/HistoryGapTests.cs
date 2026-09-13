@@ -25,7 +25,7 @@ public class AssenzeTests
     [Fact]
     public void UnaMacchinaCheHaSempreMisuratoNonHaNienteDaDire()
     {
-        IReadOnlyList<Assenza> assenze = HistoryStrip.Assenze(
+        IReadOnlyList<HistoryGap> assenze = HistoryStrip.Assenze(
             [.. Serie(Mezzogiorno, 30)],
             TimeSpan.FromMinutes(30),
             Minuto);
@@ -40,7 +40,7 @@ public class AssenzeTests
         // riepilogo esiste.
         List<HistoryPoint> punti = [.. Serie(Mezzogiorno, 10), .. Serie(Mezzogiorno + TimeSpan.FromMinutes(30), 10)];
 
-        Assenza assenza = Assert.Single(HistoryStrip.Assenze(punti, TimeSpan.FromMinutes(40), Minuto));
+        HistoryGap assenza = Assert.Single(HistoryStrip.Assenze(punti, TimeSpan.FromMinutes(40), Minuto));
 
         Assert.Equal(Mezzogiorno + TimeSpan.FromMinutes(10), assenza.Inizio);
         Assert.Equal(Mezzogiorno + TimeSpan.FromMinutes(30), assenza.Fine);
@@ -58,7 +58,7 @@ public class AssenzeTests
             .. Serie(Mezzogiorno + TimeSpan.FromMinutes(25), 5),
         ];
 
-        IReadOnlyList<Assenza> assenze = HistoryStrip.Assenze(punti, TimeSpan.FromMinutes(30), Minuto);
+        IReadOnlyList<HistoryGap> assenze = HistoryStrip.Assenze(punti, TimeSpan.FromMinutes(30), Minuto);
 
         Assert.Equal(2, assenze.Count);
         Assert.Equal(TimeSpan.FromMinutes(5), assenze[0].Durata);
@@ -74,7 +74,7 @@ public class AssenzeTests
         // A sinistra non si sa se e' un'interruzione o la fine di cio' che il servizio
         // conserva: la ritenzione cancella un PREFISSO, ed e' indistinguibile da una macchina
         // accesa a meta' finestra. Chiamarla "interruzione di 40 minuti" sarebbe inventare.
-        IReadOnlyList<Assenza> assenze = HistoryStrip.Assenze(
+        IReadOnlyList<HistoryGap> assenze = HistoryStrip.Assenze(
             [.. Serie(Mezzogiorno + TimeSpan.FromMinutes(40), 20)],
             TimeSpan.FromHours(1),
             Minuto);
@@ -126,8 +126,8 @@ public class AssenzeTests
             .. Serie(Mezzogiorno + TimeSpan.FromMinutes(45), 10),
         ];
 
-        IReadOnlyList<Assenza> a = HistoryStrip.Assenze(qui, TimeSpan.FromMinutes(35), Minuto);
-        IReadOnlyList<Assenza> b = HistoryStrip.Assenze(avanti, TimeSpan.FromMinutes(35), Minuto);
+        IReadOnlyList<HistoryGap> a = HistoryStrip.Assenze(qui, TimeSpan.FromMinutes(35), Minuto);
+        IReadOnlyList<HistoryGap> b = HistoryStrip.Assenze(avanti, TimeSpan.FromMinutes(35), Minuto);
 
         Assert.Equal(TimeSpan.FromMinutes(15), Assert.Single(a).Durata);
         Assert.Equal(a.Count, b.Count);
@@ -160,7 +160,7 @@ public class AssenzeTests
             .. Serie(Mezzogiorno + TimeSpan.FromMinutes(50), 1, cinque),
         ];
 
-        Assenza fine = Assert.Single(HistoryStrip.Assenze(punti, TimeSpan.FromMinutes(55), cinque));
+        HistoryGap fine = Assert.Single(HistoryStrip.Assenze(punti, TimeSpan.FromMinutes(55), cinque));
 
         Assert.Equal(TimeSpan.FromMinutes(40), fine.Durata);
         Assert.False(fine.DalBordo);

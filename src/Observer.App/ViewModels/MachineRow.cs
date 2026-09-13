@@ -5,7 +5,7 @@ using Observer.Core.Metrics;
 namespace Observer.App.ViewModels;
 
 /// <summary>Come sta una macchina dell'elenco, per il pallino accanto al nome.</summary>
-public enum StatoVoce
+public enum MachineStatus
 {
     /// <summary>Non e' ancora stata interrogata. Grigio.</summary>
     Ignoto = 0,
@@ -34,11 +34,11 @@ public enum StatoVoce
 /// bisognava cliccarci sopra.
 /// </para>
 /// </remarks>
-public sealed partial class MacchinaInElenco : ObservableObject
+public sealed partial class MachineRow : ObservableObject
 {
     /// <summary>Costruisce la voce, ancora senza stato.</summary>
     /// <param name="punto">La macchina.</param>
-    public MacchinaInElenco(ObserverEndpoint punto)
+    public MachineRow(ObserverEndpoint punto)
     {
         ArgumentNullException.ThrowIfNull(punto);
 
@@ -71,12 +71,12 @@ public sealed partial class MacchinaInElenco : ObservableObject
         // E il carico con loro: era di quell'altro endpoint. Un numero vero riferito a una
         // macchina che non e' piu' quella si legge come se fosse di questa. Vale identico per
         // il riepilogo, che racconta la storia di un'altra macchina: va rifatto, non tradotto.
-        Carico = Carico.Nessuno;
+        MachineLoad = MachineLoad.Nessuno;
         RigaRiepilogo = string.Empty;
         PeriodoDelRiepilogo = null;
 
         OnPropertyChanged(nameof(Nome));
-        OnPropertyChanged(nameof(Descrizione));
+        OnPropertyChanged(nameof(AccessibleName));
     }
 
     /// <summary>Il nome scritto nell'elenco.</summary>
@@ -118,12 +118,12 @@ public sealed partial class MacchinaInElenco : ObservableObject
 
     /// <summary>Come sta.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Ignoto), nameof(Raggiungibile), nameof(Attenzione), nameof(Guasto), nameof(Descrizione))]
-    public partial StatoVoce Stato { get; set; }
+    [NotifyPropertyChangedFor(nameof(Ignoto), nameof(Raggiungibile), nameof(Attenzione), nameof(Guasto), nameof(AccessibleName))]
+    public partial MachineStatus Stato { get; set; }
 
     /// <summary>Perche' sta cosi', in una frase corta: il titolo che avrebbe la barra di stato.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Descrizione), nameof(Suggerimento))]
+    [NotifyPropertyChangedFor(nameof(AccessibleName), nameof(ToolTipText))]
     public partial string Dettaglio { get; set; } = "Not checked yet";
 
     /// <summary>Da quanto dura il guasto, gia' scritto: <c>for 2 h 10 min</c>. Vuoto se non c'e'.</summary>
@@ -134,21 +134,21 @@ public sealed partial class MacchinaInElenco : ObservableObject
     /// successiva, ed e' per questo che <see cref="Downtime.Frase"/> tronca.
     /// </remarks>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SottoIlNome), nameof(Suggerimento), nameof(Descrizione))]
+    [NotifyPropertyChangedFor(nameof(SottoIlNome), nameof(ToolTipText), nameof(AccessibleName))]
     public partial string DaQuanto { get; set; } = string.Empty;
 
     /// <summary>Quanto sta lavorando questa macchina, quando si sa.</summary>
     /// <remarks>
     /// Lo scrive <see cref="Registra"/> dal campionamento che la sonda ha gia' in mano, e resta
-    /// <see cref="Carico.Nessuno"/> per la macchina GUARDATA: li' i numeri sono nei quadranti,
+    /// <see cref="MachineLoad.Nessuno"/> per la macchina GUARDATA: li' i numeri sono nei quadranti,
     /// grandi, a due centimetri di distanza, e ripeterli piccoli accanto al nome vorrebbe dire
     /// due letture della stessa macchina che possono contraddirsi a vista - la sonda gira ogni
     /// quindici secondi, il giro principale ogni secondo. La barra laterale risponde a "devo
     /// cambiare macchina?", e per quella su cui si e' gia' la risposta e' gia' a schermo.
     /// </remarks>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SottoIlNome), nameof(Suggerimento), nameof(Descrizione))]
-    public partial Carico Carico { get; set; } = Carico.Nessuno;
+    [NotifyPropertyChangedFor(nameof(SottoIlNome), nameof(ToolTipText), nameof(AccessibleName))]
+    public partial MachineLoad MachineLoad { get; set; } = MachineLoad.Nessuno;
 
     /// <summary>La riga sotto il nome: o da quanto e' giu', o quanto sta lavorando.</summary>
     /// <remarks>
@@ -157,7 +157,7 @@ public sealed partial class MacchinaInElenco : ObservableObject
     /// NON e' andata. La durata vince comunque, esplicitamente: se un giorno le due potessero
     /// coesistere, "giu' da tre minuti" e' cio' che si deve leggere.
     /// </remarks>
-    public string SottoIlNome => DaQuanto.Length > 0 ? DaQuanto : Carico.Frase;
+    public string SottoIlNome => DaQuanto.Length > 0 ? DaQuanto : MachineLoad.Frase;
 
     /// <summary>Cio' che dice il suggerimento del mouse: il motivo, e da quanto dura.</summary>
     /// <remarks>
@@ -174,27 +174,27 @@ public sealed partial class MacchinaInElenco : ObservableObject
     /// SELEZIONATA, che e' l'unica che un lettore di schermo riannuncia, ha esattamente il
     /// testo che aveva prima di questa aggiunta.
     /// </remarks>
-    public string Suggerimento => SottoIlNome.Length == 0 ? Dettaglio : $"{Dettaglio} · {SottoIlNome}";
+    public string ToolTipText => SottoIlNome.Length == 0 ? Dettaglio : $"{Dettaglio} · {SottoIlNome}";
 
     /// <summary>True finche' nessuno l'ha interrogata.</summary>
-    public bool Ignoto => Stato == StatoVoce.Ignoto;
+    public bool Ignoto => Stato == MachineStatus.Ignoto;
 
     /// <summary>True quando l'ultima lettura e' andata.</summary>
-    public bool Raggiungibile => Stato == StatoVoce.Raggiungibile;
+    public bool Raggiungibile => Stato == MachineStatus.Raggiungibile;
 
     /// <summary>True quando c'e' un problema che potrebbe ancora passare da solo.</summary>
-    public bool Attenzione => Stato == StatoVoce.Attenzione;
+    public bool Attenzione => Stato == MachineStatus.Attenzione;
 
     /// <summary>True su un guasto vero.</summary>
-    public bool Guasto => Stato == StatoVoce.Guasto;
+    public bool Guasto => Stato == MachineStatus.Guasto;
 
     /// <summary>Nome e stato insieme, per chi non vede il pallino.</summary>
     /// <remarks>
-    /// Passa da <see cref="Suggerimento"/> e non da <see cref="Dettaglio"/>: cosi' il
+    /// Passa da <see cref="ToolTipText"/> e non da <see cref="Dettaglio"/>: cosi' il
     /// suggerimento del mouse e cio' che annuncia un lettore di schermo non possono divergere,
     /// e la durata la sente anche chi la riga non la vede.
     /// </remarks>
-    public string Descrizione => $"{Nome}: {Suggerimento}";
+    public string AccessibleName => $"{Nome}: {ToolTipText}";
 
     /// <summary>Registra l'esito di una lettura, dalla sonda o dal giro principale.</summary>
     /// <param name="esito">Com'e' andata.</param>
@@ -202,7 +202,7 @@ public sealed partial class MacchinaInElenco : ObservableObject
     /// <param name="adesso">L'ora, per misurare da quanto dura un guasto.</param>
     /// <param name="campionamento">
     /// Cio' che la lettura ha riportato, da cui si ricava il carico. Null - ed e' il valore
-    /// predefinito - per la macchina GUARDATA: vedi <see cref="Carico"/>.
+    /// predefinito - per la macchina GUARDATA: vedi <see cref="MachineLoad"/>.
     /// </param>
     public void Registra(
         ServiceOutcome esito,
@@ -213,13 +213,13 @@ public sealed partial class MacchinaInElenco : ObservableObject
         // Sta QUI e non nei chiamanti per la stessa ragione scritta in Aggiorna: i chiamanti
         // sono tre, e uno si dimenticherebbe di azzerarlo - lasciando sotto il nome di una
         // macchina che non risponde il carico che aveva l'ultima volta che rispondeva.
-        Carico = esito == ServiceOutcome.Ok ? Carico.Da(campionamento) : Carico.Nessuno;
+        MachineLoad = esito == ServiceOutcome.Ok ? MachineLoad.Da(campionamento) : MachineLoad.Nessuno;
 
         if (esito == ServiceOutcome.Ok)
         {
             GuastoDa = null;
             DaQuanto = string.Empty;
-            Stato = StatoVoce.Raggiungibile;
+            Stato = MachineStatus.Raggiungibile;
             Dettaglio = "Reachable";
 
             return;
@@ -230,7 +230,7 @@ public sealed partial class MacchinaInElenco : ObservableObject
         StatusMessage messaggio = StatusEscalation.Per(
             esito, problema, adesso - GuastoDa.Value, Punto, valoriGiaMostrati: false);
 
-        Stato = messaggio.Tone == StatusTone.Error ? StatoVoce.Guasto : StatoVoce.Attenzione;
+        Stato = messaggio.Tone == StatusTone.Error ? MachineStatus.Guasto : MachineStatus.Attenzione;
         Dettaglio = messaggio.Title;
 
         // Il cancello e' il TONO, non lo stato: dentro i dieci secondi di tolleranza il tono

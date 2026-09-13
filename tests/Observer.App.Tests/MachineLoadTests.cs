@@ -24,13 +24,13 @@ public class CaricoTests
     private static MetricSnapshot Gruppo(string id, params MetricPoint[] punti) =>
         new(id, CollectorStatus.Ok, null, punti);
 
-    private static MacchinaInElenco Voce() => new(ObserverEndpoint.Remoto(
+    private static MachineRow Voce() => new(ObserverEndpoint.Remoto(
         new Uri("https://altra:5058/"), "token", "machines.json", new string('a', 64), "altra"));
 
     [Fact]
     public void IDueNumeriSiLeggonoDalCampionamentoCheLaSondaHaGiaInMano()
     {
-        Carico carico = Carico.Da(Campionamento(
+        MachineLoad carico = MachineLoad.Da(Campionamento(
             Gruppo("cpu", MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(42.7d))),
             Gruppo("memory", MetricPoint.Measured(MemoryCollector.UsedPercentMetricId, null, MetricValue.FromNumber(61.2d)))));
 
@@ -50,7 +50,7 @@ public class CaricoTests
         // spacciato per quello della macchina - e sarebbe verosimile, quindi invisibile.
         // In ENTRAMBI gli ordini, perche' l'ordine dei punti non e' dichiarato da nessuna
         // parte: con i core solo in coda, un codice che prende il primo punto passerebbe.
-        Carico dopo = Carico.Da(Campionamento(Gruppo(
+        MachineLoad dopo = MachineLoad.Da(Campionamento(Gruppo(
             "cpu",
             MetricPoint.Measured(CpuCollector.TotalUsageMetricId, "0", MetricValue.FromNumber(99d)),
             MetricPoint.Measured(CpuCollector.TotalUsageMetricId, "1", MetricValue.FromNumber(97d)),
@@ -59,7 +59,7 @@ public class CaricoTests
         Assert.Equal(12d, dopo.Cpu);
         Assert.Equal("CPU 12%", dopo.Frase);
 
-        Carico prima = Carico.Da(Campionamento(Gruppo(
+        MachineLoad prima = MachineLoad.Da(Campionamento(Gruppo(
             "cpu",
             MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(12d)),
             MetricPoint.Measured(CpuCollector.TotalUsageMetricId, "0", MetricValue.FromNumber(99d)))));
@@ -72,14 +72,14 @@ public class CaricoTests
     {
         // Su una piattaforma dove la CPU non e' leggibile la memoria lo e' lo stesso, e meta'
         // risposta e' meglio di nessuna.
-        Carico soloMemoria = Carico.Da(Campionamento(
+        MachineLoad soloMemoria = MachineLoad.Da(Campionamento(
             Gruppo("cpu", MetricPoint.Unsupported(CpuCollector.TotalUsageMetricId, null, "non misurabile qui")),
             Gruppo("memory", MetricPoint.Measured(MemoryCollector.UsedPercentMetricId, null, MetricValue.FromNumber(61d)))));
 
         Assert.Null(soloMemoria.Cpu);
         Assert.Equal("RAM 61%", soloMemoria.Frase);
 
-        Carico soloCpu = Carico.Da(Campionamento(
+        MachineLoad soloCpu = MachineLoad.Da(Campionamento(
             Gruppo("cpu", MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(8d)))));
 
         Assert.Null(soloCpu.Memoria);
@@ -91,16 +91,16 @@ public class CaricoTests
     {
         // Uno zero accanto al nome di una macchina si legge "ferma", che e' l'opposto di "non
         // si sa". La differenza conta proprio sulle macchine che non rispondono.
-        Assert.Equal(Carico.Nessuno, Carico.Da(null));
-        Assert.Equal(string.Empty, Carico.Nessuno.Frase);
-        Assert.Null(Carico.Nessuno.Cpu);
-        Assert.Equal(string.Empty, Carico.Da(Campionamento()).Frase);
+        Assert.Equal(MachineLoad.Nessuno, MachineLoad.Da(null));
+        Assert.Equal(string.Empty, MachineLoad.Nessuno.Frase);
+        Assert.Null(MachineLoad.Nessuno.Cpu);
+        Assert.Equal(string.Empty, MachineLoad.Da(Campionamento()).Frase);
     }
 
     [Fact]
     public void UnValoreCheNonEUnNumeroNonDiventaZero()
     {
-        Carico carico = Carico.Da(Campionamento(Gruppo(
+        MachineLoad carico = MachineLoad.Da(Campionamento(Gruppo(
             "cpu",
             MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromText("parecchio")))));
 
@@ -114,7 +114,7 @@ public class CaricoTests
         // Il carico si azzera dentro Registra e non nei chiamanti: sono tre, e uno si
         // dimenticherebbe, lasciando sotto il nome di una macchina spenta i numeri di quando
         // rispondeva - numeri veri, riferiti a un momento che non c'e' piu'.
-        MacchinaInElenco voce = Voce();
+        MachineRow voce = Voce();
 
         voce.Registra(
             ServiceOutcome.Ok,
@@ -130,12 +130,12 @@ public class CaricoTests
         // di tolleranza StatusEscalation non dice niente, di proposito. La riga resta quindi
         // vuota per un momento, ed e' la ragione per cui lo spazio sotto il nome e' riservato
         // sempre invece di comparire e sparire - il vuoto non deve far saltare la voce.
-        Assert.Equal(Carico.Nessuno, voce.Carico);
+        Assert.Equal(MachineLoad.Nessuno, voce.MachineLoad);
         Assert.Equal(string.Empty, voce.SottoIlNome);
 
         voce.Registra(ServiceOutcome.ConnessioneRifiutata, "refused", T0 + TimeSpan.FromMinutes(4));
 
-        Assert.Equal(Carico.Nessuno, voce.Carico);
+        Assert.Equal(MachineLoad.Nessuno, voce.MachineLoad);
         Assert.Equal("for 3 min", voce.SottoIlNome);
     }
 
@@ -146,19 +146,19 @@ public class CaricoTests
         // Registra azzera il carico su ogni esito non Ok. Quindi si forza la convivenza dal di
         // fuori, che e' l'unico modo di mettere alla prova la regola invece del ramo che oggi
         // la rende irraggiungibile - e di accorgersene se un giorno smettesse di esserlo.
-        MacchinaInElenco voce = Voce();
+        MachineRow voce = Voce();
 
         voce.Registra(ServiceOutcome.TokenRifiutato, "rejected", T0);
         voce.Registra(ServiceOutcome.TokenRifiutato, "rejected", T0 + TimeSpan.FromMinutes(2));
 
-        Assert.Equal(Carico.Nessuno, voce.Carico);
+        Assert.Equal(MachineLoad.Nessuno, voce.MachineLoad);
         Assert.Equal("for 2 min", voce.SottoIlNome);
 
-        voce.Carico = new Carico(80d, 90d);
+        voce.MachineLoad = new MachineLoad(80d, 90d);
 
         Assert.Equal("for 2 min", voce.SottoIlNome);
-        Assert.Contains("for 2 min", voce.Suggerimento, StringComparison.Ordinal);
-        Assert.DoesNotContain("CPU", voce.Suggerimento, StringComparison.Ordinal);
+        Assert.Contains("for 2 min", voce.ToolTipText, StringComparison.Ordinal);
+        Assert.DoesNotContain("CPU", voce.ToolTipText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -179,7 +179,7 @@ public class CaricoTests
             problemaDiConfigurazione: null,
             elenco: new MachineListResult([locale, altra], []));
 
-        MacchinaInElenco voce = viewModel.Macchine.Single(v => v.Punto == altra);
+        MachineRow voce = viewModel.Macchine.Single(v => v.Punto == altra);
 
         // La sonda le ha scritto il carico mentre NON era guardata: e' il caso normale.
         voce.Registra(
@@ -197,9 +197,9 @@ public class CaricoTests
         // che la macchina sta lavorando mentre la barra di stato dice "Connecting".
         viewModel.MacchinaSelezionata = voce;
 
-        Assert.Equal(Carico.Nessuno, voce.Carico);
+        Assert.Equal(MachineLoad.Nessuno, voce.MachineLoad);
         Assert.Equal(string.Empty, voce.SottoIlNome);
-        Assert.DoesNotContain("CPU", voce.Descrizione, StringComparison.Ordinal);
+        Assert.DoesNotContain("CPU", voce.AccessibleName, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -207,12 +207,12 @@ public class CaricoTests
     {
         // Il suggerimento del mouse e il nome accessibile passano dallo stesso testo della
         // riga, cosi' non possono divergere. Il punto medio separa due fatti accostati.
-        MacchinaInElenco voce = Voce();
+        MachineRow voce = Voce();
 
         // Una prima lettura riuscita SENZA carico, cosi' Stato e Dettaglio sono gia' al valore
         // finale: da qui in poi l'unica cosa che cambia e' il carico, e le notifiche che si
         // osservano possono venire solo da lui. Senza questo passo le tre asserzioni sarebbero
-        // soddisfatte da Dettaglio, che notifica Suggerimento e Descrizione per conto suo.
+        // soddisfatte da Dettaglio, che notifica ToolTipText e AccessibleName per conto suo.
         voce.Registra(ServiceOutcome.Ok, string.Empty, T0);
 
         List<string> notificate = [];
@@ -226,13 +226,13 @@ public class CaricoTests
                 Gruppo("cpu", MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(42d))),
                 Gruppo("memory", MetricPoint.Measured(MemoryCollector.UsedPercentMetricId, null, MetricValue.FromNumber(61d)))));
 
-        Assert.Equal("Reachable · CPU 42% · RAM 61%", voce.Suggerimento);
-        Assert.Contains("CPU 42%", voce.Descrizione, StringComparison.Ordinal);
+        Assert.Equal("Reachable · CPU 42% · RAM 61%", voce.ToolTipText);
+        Assert.Contains("CPU 42%", voce.AccessibleName, StringComparison.Ordinal);
 
         // Senza queste notifiche la riga direbbe ancora la cosa di prima, con la suite verde.
-        Assert.Contains(nameof(MacchinaInElenco.SottoIlNome), notificate);
-        Assert.Contains(nameof(MacchinaInElenco.Suggerimento), notificate);
-        Assert.Contains(nameof(MacchinaInElenco.Descrizione), notificate);
+        Assert.Contains(nameof(MachineRow.SottoIlNome), notificate);
+        Assert.Contains(nameof(MachineRow.ToolTipText), notificate);
+        Assert.Contains(nameof(MachineRow.AccessibleName), notificate);
     }
 
     [Fact]
@@ -257,7 +257,7 @@ public class CaricoTests
         using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(20));
         Task ciclo = viewModel.EseguiAsync(arresto.Token);
 
-        MacchinaInElenco voce = viewModel.Macchine.Single(v => v.Punto == altra);
+        MachineRow voce = viewModel.Macchine.Single(v => v.Punto == altra);
 
         // Si aspetta che la sonda sia DAVVERO in volo, non che sia passato del tempo.
         while (!arresto.IsCancellationRequested && !lenta.Entrata)
@@ -278,7 +278,7 @@ public class CaricoTests
         }
 
         // La sonda aveva in mano una CPU al 99 %: se avesse scritto, la riga lo direbbe.
-        Assert.Equal(Carico.Nessuno, voce.Carico);
+        Assert.Equal(MachineLoad.Nessuno, voce.MachineLoad);
         Assert.Equal(string.Empty, voce.SottoIlNome);
 
         await arresto.CancelAsync();

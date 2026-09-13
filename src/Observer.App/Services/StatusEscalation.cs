@@ -94,7 +94,7 @@ public static class StatusEscalation
                 // che da qui non si puo' fare. Si dice cio' che si sta facendo, e basta.
                 punto.Kind == EndpointKind.Locale
                     ? "Waiting for the Observer service on this machine to answer. It may still be starting up."
-                    : $"Contacting {punto.Descrizione}…",
+                    : $"Contacting {punto.Description}…",
                 Attesa(valoriGiaMostrati)),
 
             ServiceOutcome.NonAncoraPronto when ancoraInTempo => new StatusMessage(
@@ -109,7 +109,7 @@ public static class StatusEscalation
             ServiceOutcome.NonAncoraPronto => new StatusMessage(
                 StatusTone.Warning,
                 "No readings yet",
-                $"The service on {punto.Descrizione} is answering, but it still hasn't produced a " +
+                $"The service on {punto.Description} is answering, but it still hasn't produced a " +
                 "reading. Sampling is not working there: run \"observer doctor\" on that machine to " +
                 "see what it reports.",
                 Guasto(valoriGiaMostrati)),

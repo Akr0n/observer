@@ -107,7 +107,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// allora la sonda la interrogherebbe una seconda volta e il suo pallino smetterebbe di
     /// seguire la barra. E' questa voce che le sonde saltano e che la barra aggiorna.
     /// </remarks>
-    private MacchinaInElenco? voceGuardata;
+    private MachineRow? voceGuardata;
 
 
     private IMetricsClient? client;
@@ -172,7 +172,7 @@ public sealed partial class MainViewModel : ViewModelBase
 
         foreach (ObserverEndpoint punto in elenco?.Machines ?? [])
         {
-            Macchine.Add(new MacchinaInElenco(punto));
+            Macchine.Add(new MachineRow(punto));
         }
 
         foreach (string problema in elenco?.Problems ?? [])
@@ -270,7 +270,7 @@ public sealed partial class MainViewModel : ViewModelBase
     public partial bool MostraQuadranti { get; set; }
 
     /// <summary>I processi mostrati nel pannello, quando e' aperto.</summary>
-    public ObservableCollection<ProcessoMostrato> Processi { get; } = [];
+    public ObservableCollection<ProcessRowState> Processi { get; } = [];
 
     /// <summary>True quando il pannello dei processi e' aperto.</summary>
     [ObservableProperty]
@@ -288,7 +288,7 @@ public sealed partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PuoCopiareLaRiga))]
     [NotifyCanExecuteChangedFor(nameof(CopiaProcessoCommand))]
-    public partial ProcessoMostrato? ProcessoSelezionato { get; set; }
+    public partial ProcessRowState? ProcessoSelezionato { get; set; }
 
     /// <summary>True quando c'e' una riga selezionata da poter terminare.</summary>
     [ObservableProperty]
@@ -296,7 +296,7 @@ public sealed partial class MainViewModel : ViewModelBase
 
     /// <summary>Il nome della macchina da riaprire la prossima volta, o null per questo computer.</summary>
     /// <remarks>
-    /// Il nome GREZZO del punto, non <c>MacchinaInElenco.Nome</c>: quello e' il nome
+    /// Il nome GREZZO del punto, non <c>MachineRow.Nome</c>: quello e' il nome
     /// <i>visibile</i>, che ripiega sull'indirizzo quando una voce non ne ha uno — il caso
     /// della vecchia configurazione a macchina singola — e sulla parola "This machine" per il
     /// canale locale. Nessuna delle due e' una chiave: la prima e' un indirizzo che finirebbe
@@ -374,17 +374,17 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ScalaScelta))]
-    public partial double ScalaTesto { get; set; } = Preferenze.ScalaNormale;
+    public partial double ScalaTesto { get; set; } = Preferences.ScalaNormale;
 
     /// <summary>Le scale fra cui si sceglie, come voci del selettore.</summary>
-    public static IReadOnlyList<OpzioneScala> OpzioniScala { get; } =
-        [.. Preferenze.ScaleAmmesse.Select(fattore => new OpzioneScala(fattore))];
+    public static IReadOnlyList<ZoomOption> OpzioniScala { get; } =
+        [.. Preferences.ScaleAmmesse.Select(fattore => new ZoomOption(fattore))];
 
     /// <summary>La scala come voce del selettore: e' <see cref="ScalaTesto"/> con un'etichetta.</summary>
     /// <remarks>
     /// Il selettore puo' assegnare null mentre cambia elenco: allora la scala resta com'e'.
     /// </remarks>
-    public OpzioneScala ScalaScelta
+    public ZoomOption ScalaScelta
     {
         get => new(ScalaTesto);
         set => ScalaTesto = value?.Fattore ?? ScalaTesto;
@@ -394,7 +394,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <param name="value">La scala richiesta.</param>
     partial void OnScalaTestoChanged(double value)
     {
-        double valida = Preferenze.ScalaValida(value);
+        double valida = Preferences.ScalaValida(value);
 
         if (valida != value)
         {
@@ -409,11 +409,11 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(TemaScelto))]
-    public partial string Tema { get; set; } = Preferenze.TemiAmmessi[0];
+    public partial string Tema { get; set; } = Preferences.TemiAmmessi[0];
 
     /// <summary>I temi fra cui si sceglie, come voci del selettore.</summary>
-    public static IReadOnlyList<OpzioneTema> OpzioniTema { get; } =
-        [.. Preferenze.TemiAmmessi.Select(chiave => new OpzioneTema(chiave))];
+    public static IReadOnlyList<ThemeOption> OpzioniTema { get; } =
+        [.. Preferences.TemiAmmessi.Select(chiave => new ThemeOption(chiave))];
 
     /// <summary>Quanto storico mostra la striscia: <c>1h</c>, <c>24h</c> o <c>7d</c>.</summary>
     /// <remarks>
@@ -421,18 +421,18 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PeriodoScelto))]
-    public partial string Periodo { get; set; } = Preferenze.PeriodiAmmessi[0];
+    public partial string Periodo { get; set; } = Preferences.PeriodiAmmessi[0];
 
     /// <summary>I periodi fra cui si sceglie, come voci del selettore.</summary>
-    public static IReadOnlyList<OpzionePeriodo> OpzioniPeriodo { get; } =
-        [.. Preferenze.PeriodiAmmessi.Select(chiave => new OpzionePeriodo(chiave))];
+    public static IReadOnlyList<HistoryPeriodOption> OpzioniPeriodo { get; } =
+        [.. Preferences.PeriodiAmmessi.Select(chiave => new HistoryPeriodOption(chiave))];
 
     /// <summary>Il periodo come voce del selettore.</summary>
     /// <remarks>
     /// Il getter non lancia MAI, come quello del tema: una chiave che non e' nella tabella
     /// ricadrebbe sulla prima voce invece di far cadere la finestra mentre si disegna.
     /// </remarks>
-    public OpzionePeriodo PeriodoScelto
+    public HistoryPeriodOption PeriodoScelto
     {
         get => OpzioniPeriodo.FirstOrDefault(voce => voce.Chiave == Periodo) ?? OpzioniPeriodo[0];
         set => Periodo = value?.Chiave ?? Periodo;
@@ -450,11 +450,11 @@ public sealed partial class MainViewModel : ViewModelBase
     /// cosa si sta guardando, e quando divergono e' perche' divergono davvero.
     /// </remarks>
     [ObservableProperty]
-    public partial string TitoloStorico { get; set; } = new OpzionePeriodo(Preferenze.PeriodiAmmessi[0]).Titolo;
+    public partial string TitoloStorico { get; set; } = new HistoryPeriodOption(Preferences.PeriodiAmmessi[0]).Titolo;
 
     /// <summary>Il tema come voce del selettore: e' <see cref="Tema"/> con un'etichetta.</summary>
     /// <remarks>Il selettore puo' assegnare null mentre cambia elenco: allora il tema resta com'e'.</remarks>
-    public OpzioneTema TemaScelto
+    public ThemeOption TemaScelto
     {
         get => new(Tema);
         set => Tema = value?.Chiave ?? Tema;
@@ -464,7 +464,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <param name="value">Il tema richiesto.</param>
     partial void OnTemaChanged(string value)
     {
-        string valido = Preferenze.TemaValido(value);
+        string valido = Preferences.TemaValido(value);
 
         if (!string.Equals(valido, value, StringComparison.Ordinal))
         {
@@ -483,7 +483,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </remarks>
     partial void OnPeriodoChanged(string value)
     {
-        string valido = Preferenze.PeriodoValido(value);
+        string valido = Preferences.PeriodoValido(value);
 
         if (!string.Equals(valido, value, StringComparison.Ordinal))
         {
@@ -510,7 +510,7 @@ public sealed partial class MainViewModel : ViewModelBase
         RiepilogoAssenze = string.Empty;
         MostraRiepilogo = false;
 
-        foreach (MacchinaInElenco voce in Macchine)
+        foreach (MachineRow voce in Macchine)
         {
             voce.PeriodoDelRiepilogo = null;
             voce.RigaRiepilogo = string.Empty;
@@ -546,7 +546,7 @@ public sealed partial class MainViewModel : ViewModelBase
     private string? risorsaMostrata;
 
     /// <summary>Le macchine fra cui si puo' scegliere, ognuna col suo stato. La prima e' sempre questa.</summary>
-    public ObservableCollection<MacchinaInElenco> Macchine { get; } = [];
+    public ObservableCollection<MachineRow> Macchine { get; } = [];
 
     /// <summary>Ogni quanto si sondano le macchine che NON si stanno guardando.</summary>
     /// <remarks>
@@ -588,11 +588,11 @@ public sealed partial class MainViewModel : ViewModelBase
 
     /// <summary>La macchina attualmente guardata.</summary>
     [ObservableProperty]
-    public partial MacchinaInElenco? MacchinaSelezionata { get; set; }
+    public partial MachineRow? MacchinaSelezionata { get; set; }
 
     /// <summary>Cambia macchina senza riavviare la finestra.</summary>
     /// <param name="value">La macchina scelta nell'elenco.</param>
-    partial void OnMacchinaSelezionataChanged(MacchinaInElenco? value)
+    partial void OnMacchinaSelezionataChanged(MachineRow? value)
     {
         if (value is null)
         {
@@ -610,7 +610,7 @@ public sealed partial class MainViewModel : ViewModelBase
         // un secondo se la macchina risponde, ma gli interi otto del budget di richiesta se non
         // risponde - cioe' proprio quando la si e' cliccata per capire cosa le succede, sotto
         // il nome evidenziato resta scritto che sta lavorando mentre la barra dice "Connecting".
-        value.Carico = Carico.Nessuno;
+        value.MachineLoad = MachineLoad.Nessuno;
 
         if (apriMacchina is null)
         {
@@ -957,9 +957,9 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </remarks>
     private void AvviaRiepiloghi(CancellationToken cancellationToken)
     {
-        OpzionePeriodo periodo = PeriodoScelto;
+        HistoryPeriodOption periodo = PeriodoScelto;
 
-        foreach (MacchinaInElenco voce in Macchine)
+        foreach (MachineRow voce in Macchine)
         {
             // Solo le macchine che rispondono: a una che non risponde lo storico non si puo'
             // chiedere, ed e' proprio quella dove servirebbe di piu'. Quella non produce alcuna
@@ -968,7 +968,7 @@ public sealed partial class MainViewModel : ViewModelBase
             // "history could not be read" e' per il caso diverso: la macchina risponde e lo
             // storico no, che senza una frase resterebbe indistinguibile dal "tutto bene".
             if (voce.InRiepilogo
-                || voce.Stato != StatoVoce.Raggiungibile
+                || voce.Stato != MachineStatus.Raggiungibile
                 || string.Equals(voce.PeriodoDelRiepilogo, periodo.Chiave, StringComparison.Ordinal))
             {
                 continue;
@@ -988,16 +988,16 @@ public sealed partial class MainViewModel : ViewModelBase
 
     /// <summary>Legge lo storico di una macchina e ne ricava la riga del riepilogo.</summary>
     private async Task RiepilogoAsync(
-        MacchinaInElenco voce,
+        MachineRow voce,
         IMetricsClient suo,
-        OpzionePeriodo periodo,
+        HistoryPeriodOption periodo,
         CancellationToken cancellationToken)
     {
         try
         {
             // UNA serie sola, e fissa: la domanda non e' "cosa misurava" ma "stava misurando",
             // e a quella risponde qualunque metrica che il servizio campiona sempre. Stesso
-            // argomento di Carico, stessa costante condivisa da Observer.Core.
+            // argomento di MachineLoad, stessa costante condivisa da Observer.Core.
             // Si chiede PIU' indietro di quanto si esamina, e non e' un di piu'. La griglia si
             // ancora all'ULTIMO punto che la macchina manda, e quel punto e' indietro rispetto
             // ad adesso quanto dura il consolidamento: chiedendo esattamente la finestra, le
@@ -1057,7 +1057,7 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
-    private static string Riga(MacchinaInElenco voce, HistoryFetch storico, OpzionePeriodo periodo)
+    private static string Riga(MachineRow voce, HistoryFetch storico, HistoryPeriodOption periodo)
     {
         if (storico.Outcome != ServiceOutcome.Ok || storico.Points is null)
         {
@@ -1071,7 +1071,7 @@ public sealed partial class MainViewModel : ViewModelBase
             return $"{voce.Nome}: no history for this period";
         }
 
-        return Riepilogo.Riga(
+        return AwaySummary.Riga(
             voce.Nome,
             HistoryStrip.Assenze(storico.Points, periodo.Finestra, periodo.PassoSorgente),
 
@@ -1101,7 +1101,7 @@ public sealed partial class MainViewModel : ViewModelBase
             return;
         }
 
-        foreach (MacchinaInElenco voce in Macchine)
+        foreach (MachineRow voce in Macchine)
         {
             // Si salta la voce che il giro principale legge DAVVERO, non la selezione della
             // lista: vedi voceGuardata.
@@ -1115,7 +1115,7 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
-    private async Task SondaAsync(MacchinaInElenco voce, CancellationToken cancellationToken)
+    private async Task SondaAsync(MachineRow voce, CancellationToken cancellationToken)
     {
         try
         {
@@ -1233,7 +1233,7 @@ public sealed partial class MainViewModel : ViewModelBase
         }
 
         DateTimeOffset ora = adesso();
-        OpzionePeriodo periodo = PeriodoScelto;
+        HistoryPeriodOption periodo = PeriodoScelto;
 
         // Tutte le strisce insieme, non una dopo l'altra: sei quadranti facevano dodici
         // richieste in fila, e il tempo del giro era la SOMMA delle latenze. Le richieste
@@ -1293,7 +1293,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// che sembra la cadenza giusta e non lo e', perche' guarderebbe ogni volta una barra
     /// appena nata e l'estremo destro della striscia resterebbe un pixel per sempre.
     /// </remarks>
-    public static TimeSpan ProssimaLettura(OpzionePeriodo periodo, bool riuscita)
+    public static TimeSpan ProssimaLettura(HistoryPeriodOption periodo, bool riuscita)
     {
         ArgumentNullException.ThrowIfNull(periodo);
 
@@ -1313,7 +1313,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// minuti di sempre; a cinque minuti servono quindici, perche' il consolidamento di quel
     /// livello aspetta anche il livello sotto e resta indietro piu' a lungo.
     /// </remarks>
-    private static TimeSpan CodaDi(OpzionePeriodo periodo)
+    private static TimeSpan CodaDi(HistoryPeriodOption periodo)
     {
         TimeSpan tre = periodo.PassoSorgente * 3;
 
@@ -1325,7 +1325,7 @@ public sealed partial class MainViewModel : ViewModelBase
     private static async Task<(HistoryFetch Aggregato, HistoryFetch? Coda)> LeggiStoricoAsync(
         IMetricsClient corrente,
         string chiave,
-        OpzionePeriodo periodo,
+        HistoryPeriodOption periodo,
         DateTimeOffset ora,
         CancellationToken cancellationToken)
     {
@@ -1358,7 +1358,7 @@ public sealed partial class MainViewModel : ViewModelBase
         MetricRow riga,
         HistoryFetch aggregato,
         HistoryFetch? coda,
-        OpzionePeriodo periodo,
+        HistoryPeriodOption periodo,
         DateTimeOffset ora)
     {
         if (aggregato.Outcome != ServiceOutcome.Ok || aggregato.Points is null)
@@ -1611,7 +1611,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// Senza, una conferma armata su un processo resterebbe armata dopo aver selezionato un
     /// altro processo, e il secondo clic terminerebbe quello sbagliato.
     /// </remarks>
-    partial void OnProcessoSelezionatoChanged(ProcessoMostrato? value)
+    partial void OnProcessoSelezionatoChanged(ProcessRowState? value)
     {
         ConfermaTerminazione = false;
         PuoTerminare = value is not null;
@@ -1651,7 +1651,7 @@ public sealed partial class MainViewModel : ViewModelBase
 
         Processi.Clear();
 
-        foreach (ProcessoMostrato riga in esito.Processi)
+        foreach (ProcessRowState riga in esito.Processi)
         {
             Processi.Add(riga);
         }

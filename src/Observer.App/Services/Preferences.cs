@@ -17,7 +17,7 @@ namespace Observer.App.Services;
 /// e convertire da una parte all'altra con la scala dello schermo di ieri darebbe una finestra
 /// di misura diversa il giorno in cui la scala cambia.
 /// </remarks>
-public sealed record PosizioneFinestra(
+public sealed record WindowPlacement(
     [property: JsonPropertyName("x")] int X,
     [property: JsonPropertyName("y")] int Y,
     [property: JsonPropertyName("width")] int Width,
@@ -43,19 +43,19 @@ public sealed record PosizioneFinestra(
     public const int Tolleranza = 16;
 
     /// <summary>Una posizione che porta solo lo stato: non passa <see cref="SuUnoDegli"/>.</summary>
-    private static PosizioneFinestra SoloStato => new(0, 0, 0, 0, Maximized: false);
+    private static WindowPlacement SoloStato => new(0, 0, 0, 0, Maximized: false);
 
     /// <summary>Un'area di lavoro, in pixel fisici.</summary>
     /// <param name="X">Bordo sinistro.</param>
     /// <param name="Y">Bordo superiore.</param>
     /// <param name="Width">Larghezza.</param>
     /// <param name="Height">Altezza.</param>
-    public readonly record struct AreaDiLavoro(int X, int Y, int Width, int Height);
+    public readonly record struct WorkArea(int X, int Y, int Width, int Height);
 
     /// <summary>Questa posizione, se sta su uno degli schermi di adesso; altrimenti null.</summary>
     /// <param name="schermi">Le aree di lavoro degli schermi collegati.</param>
     /// <returns>Se stessa, oppure null quando la finestra riaprirebbe fuori da tutto.</returns>
-    public PosizioneFinestra? SuUnoDegli(IReadOnlyList<AreaDiLavoro> schermi)
+    public WindowPlacement? SuUnoDegli(IReadOnlyList<WorkArea> schermi)
     {
         ArgumentNullException.ThrowIfNull(schermi);
 
@@ -64,7 +64,7 @@ public sealed record PosizioneFinestra(
             return null;
         }
 
-        foreach (AreaDiLavoro schermo in schermi)
+        foreach (WorkArea schermo in schermi)
         {
             // Le costanti si sommano e sottraggono dal lato dello schermo, MAI da X o Y:
             // con un file scritto a mano che dice x = 2147483647 la somma traboccava, il
@@ -102,12 +102,12 @@ public sealed record PosizioneFinestra(
     /// normale e' nota, lo stato a tutto schermo si ricorda da solo, con una posizione che
     /// <see cref="SuUnoDegli"/> scarta: la finestra si apre dove decide il sistema, ma piena.
     /// </remarks>
-    public static PosizioneFinestra? AllaChiusura(
+    public static WindowPlacement? AllaChiusura(
         bool ridottaAIcona,
         bool massimizzata,
-        PosizioneFinestra? ultimaNormale,
-        PosizioneFinestra? salvata,
-        PosizioneFinestra attuale)
+        WindowPlacement? ultimaNormale,
+        WindowPlacement? salvata,
+        WindowPlacement attuale)
     {
         ArgumentNullException.ThrowIfNull(attuale);
 
@@ -116,7 +116,7 @@ public sealed record PosizioneFinestra(
             return attuale with { Maximized = false };
         }
 
-        PosizioneFinestra? normale = ultimaNormale ?? salvata;
+        WindowPlacement? normale = ultimaNormale ?? salvata;
 
         if (massimizzata)
         {
@@ -134,7 +134,7 @@ public sealed record PosizioneFinestra(
 /// quello, e con un double nudo annunciava "1,15" al posto di "115 %". L'uguaglianza per
 /// valore del record e' cio' che fa ritrovare la voce a partire dal numero.
 /// </remarks>
-public sealed record OpzioneScala(double Fattore)
+public sealed record ZoomOption(double Fattore)
 {
     /// <inheritdoc />
     public override string ToString() => Fattore.ToString("P0", CultureInfo.CurrentCulture);
@@ -156,7 +156,7 @@ public sealed record OpzioneScala(double Fattore)
 /// mente e' peggio di un grafico che manca.
 /// </para>
 /// </remarks>
-public sealed record OpzionePeriodo(string Chiave)
+public sealed record HistoryPeriodOption(string Chiave)
 {
     /// <inheritdoc />
     public override string ToString() => Chiave switch
@@ -211,10 +211,10 @@ public sealed record OpzionePeriodo(string Chiave)
 /// <summary>Una voce del selettore del tema: quello del sistema, chiaro o scuro.</summary>
 /// <param name="Chiave">Cio' che va nel file: <c>system</c>, <c>light</c> o <c>dark</c>.</param>
 /// <remarks>
-/// Come <see cref="OpzioneScala"/>: il testo della voce e' il suo <see cref="ToString"/>, ed e'
+/// Come <see cref="ZoomOption"/>: il testo della voce e' il suo <see cref="ToString"/>, ed e'
 /// cio' che la tendina mostra e che un lettore di schermo annuncia.
 /// </remarks>
-public sealed record OpzioneTema(string Chiave)
+public sealed record ThemeOption(string Chiave)
 {
     /// <inheritdoc />
     public override string ToString() => Chiave switch
@@ -253,11 +253,11 @@ public sealed record OpzioneTema(string Chiave)
 /// riscrivesse a ogni chiusura per salvare qualche preferenza sarebbe un programma che riscrive una
 /// credenziale a ogni chiusura. Sono TUTTI parametri posizionali senza valore predefinito, di
 /// proposito: chi costruisce le preferenze deve dirli tutti, e un
-/// <c>new Preferenze(posizione, scala)</c> che ne dimentica uno non compila — che e' come si
+/// <c>new Preferences(posizione, scala)</c> che ne dimentica uno non compila — che e' come si
 /// scopre, il giorno che se ne aggiunge un altro, ogni punto da aggiornare.
 /// </remarks>
-public sealed record Preferenze(
-    [property: JsonPropertyName("window")] PosizioneFinestra? Finestra,
+public sealed record Preferences(
+    [property: JsonPropertyName("window")] WindowPlacement? Finestra,
     // La chiave resta textScale anche se l'interfaccia dice Zoom: rinominarla farebbe perdere
     // lo zoom salvato a tutti, e una versione precedente non la leggerebbe piu'.
     [property: JsonPropertyName("textScale")] double ScalaTesto,
@@ -296,7 +296,7 @@ public sealed record Preferenze(
     private static readonly JsonSerializerOptions Opzioni = new(JsonSerializerDefaults.Web);
 
     /// <summary>Le preferenze di chi non ne ha ancora salvate.</summary>
-    public static Preferenze Predefinite =>
+    public static Preferences Predefinite =>
         new(null, ScalaNormale, TemiAmmessi[0], null, PeriodiAmmessi[0]);
 
     /// <summary>La macchina da riaprire: quella ricordata se c'e' ancora, altrimenti la prima.</summary>
@@ -390,7 +390,7 @@ public sealed record Preferenze(
     /// <summary>Legge le preferenze da un file, tollerando tutto cio' che puo' andare storto.</summary>
     /// <param name="json">Il contenuto del file, oppure null se non c'e'.</param>
     /// <returns>Le preferenze, oppure quelle predefinite: un file rotto non ferma la finestra.</returns>
-    public static Preferenze Da(string? json)
+    public static Preferences Da(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
         {
@@ -399,7 +399,7 @@ public sealed record Preferenze(
 
         try
         {
-            Preferenze? lette = JsonSerializer.Deserialize<Preferenze>(json, Opzioni);
+            Preferences? lette = JsonSerializer.Deserialize<Preferences>(json, Opzioni);
 
             return lette is null
                 ? Predefinite
@@ -422,7 +422,7 @@ public sealed record Preferenze(
 }
 
 /// <summary>Il file delle preferenze, accanto a quello della configurazione.</summary>
-public static class PreferenzeStore
+public static class PreferencesStore
 {
     /// <summary>Percorso del file: <c>preferences.json</c> nella cartella di <c>client.json</c>.</summary>
     public static string FilePath => Path.Combine(
@@ -431,25 +431,25 @@ public static class PreferenzeStore
 
     /// <summary>Legge il file. Un file assente o illeggibile vale come preferenze predefinite.</summary>
     /// <returns>Le preferenze.</returns>
-    public static Preferenze Leggi()
+    public static Preferences Leggi()
     {
         try
         {
-            return Preferenze.Da(File.Exists(FilePath) ? File.ReadAllText(FilePath) : null);
+            return Preferences.Da(File.Exists(FilePath) ? File.ReadAllText(FilePath) : null);
         }
         catch (IOException)
         {
-            return Preferenze.Predefinite;
+            return Preferences.Predefinite;
         }
         catch (UnauthorizedAccessException)
         {
-            return Preferenze.Predefinite;
+            return Preferences.Predefinite;
         }
     }
 
     /// <summary>Scrive il file. Se non ci riesce, non lo dice: una preferenza persa non e' un guasto.</summary>
     /// <param name="preferenze">Cosa ricordare.</param>
-    public static void Scrivi(Preferenze preferenze)
+    public static void Scrivi(Preferences preferenze)
     {
         ArgumentNullException.ThrowIfNull(preferenze);
 

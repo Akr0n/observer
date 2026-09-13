@@ -226,7 +226,7 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             // campi a zero marcati "Ok", che e' peggio di un messaggio d'errore.
             return new SnapshotFetch(
                 ServiceOutcome.VersioneIncompatibile,
-                $"The service on {Endpoint.Descrizione} uses data format version " +
+                $"The service on {Endpoint.Description} uses data format version " +
                 snapshot.SchemaVersion.ToString(CultureInfo.InvariantCulture) +
                 ", but this application only understands version " +
                 MachineSnapshot.CurrentSchemaVersion.ToString(CultureInfo.InvariantCulture) +
@@ -290,7 +290,7 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             await LeggiAsync<ProcessListWire>(
                 percorso,
                 cancellationToken,
-                $"The service on {Endpoint.Descrizione} doesn't know how to list processes: it " +
+                $"The service on {Endpoint.Description} doesn't know how to list processes: it " +
                 "is older than this dashboard. Update Observer on that machine.")
             .ConfigureAwait(false);
 
@@ -303,7 +303,7 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
         {
             return new ProcessFetch(
                 ServiceOutcome.VersioneIncompatibile,
-                $"The service on {Endpoint.Descrizione} cannot rank processes by I/O: it is " +
+                $"The service on {Endpoint.Description} cannot rank processes by I/O: it is " +
                 "older than this dashboard. Update Observer on that machine.",
                 []);
         }
@@ -312,7 +312,7 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             ? new ProcessFetch(
                 ServiceOutcome.Ok,
                 string.Empty,
-                [.. risposta.Processes.Select(ProcessoMostrato.Da)])
+                [.. risposta.Processes.Select(ProcessRowState.Da)])
             : new ProcessFetch(esito, problema, []);
     }
 
@@ -352,16 +352,16 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
 
                 HttpStatusCode.Forbidden => new KillFetch(
                     ServiceOutcome.RispostaInattesa,
-                    $"{Endpoint.Descrizione} refused to terminate it: the operating system " +
+                    $"{Endpoint.Description} refused to terminate it: the operating system " +
                     "protects that process."),
 
                 HttpStatusCode.Unauthorized => new KillFetch(
                     ServiceOutcome.TokenRifiutato,
-                    $"{Endpoint.Descrizione} rejected the token."),
+                    $"{Endpoint.Description} rejected the token."),
 
                 _ => new KillFetch(
                     ServiceOutcome.RispostaInattesa,
-                    $"{Endpoint.Descrizione} replied " +
+                    $"{Endpoint.Description} replied " +
                     ((int)risposta.StatusCode).ToString(CultureInfo.InvariantCulture) +
                     ", which this application doesn't know how to interpret."),
             };
@@ -437,7 +437,7 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             {
                 return (
                     ServiceOutcome.NonAncoraPronto,
-                    $"The service on {Endpoint.Descrizione} is listening but hasn't produced its first " +
+                    $"The service on {Endpoint.Description} is listening but hasn't produced its first " +
                     "reading yet. This usually clears on its own after a second or two.",
                     null);
             }
@@ -455,7 +455,7 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             {
                 return (
                     ServiceOutcome.RispostaInattesa,
-                    $"The service on {Endpoint.Descrizione} replied {codice} ({risposta.ReasonPhrase}), " +
+                    $"The service on {Endpoint.Description} replied {codice} ({risposta.ReasonPhrase}), " +
                     "which this application doesn't know how to interpret.",
                     null);
             }
@@ -490,7 +490,7 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             {
                 return (
                     ServiceOutcome.ImprontaNonCorrisponde,
-                    fissaggio.Spiegazione(Endpoint.Descrizione),
+                    fissaggio.Spiegazione(Endpoint.Description),
                     null);
             }
 
@@ -536,7 +536,7 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
         Endpoint.Kind == EndpointKind.Locale
             ? "The Observer service isn't running on this machine: the local channel refused the " +
               "connection. Start the service, or run \"observer doctor\". Technical detail: " + dettaglio
-            : $"{Endpoint.Descrizione} answered, but nothing is listening on port " +
+            : $"{Endpoint.Description} answered, but nothing is listening on port " +
               Endpoint.BaseAddress.Port.ToString(CultureInfo.InvariantCulture) +
               ". The machine is reachable, so Observer is stopped there or it is on another port. " +
               $"Technical detail: {dettaglio}";
@@ -550,7 +550,7 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             ? "The Observer service on this machine didn't answer within " +
               RequestTimeout.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture) +
               " seconds. It is listening but not replying: run \"observer doctor\"."
-            : $"{Endpoint.Descrizione} didn't answer within " +
+            : $"{Endpoint.Description} didn't answer within " +
               RequestTimeout.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture) +
               " seconds, and nothing refused the connection either. Either that machine is off, " +
               "or something is dropping the packets: check that inbound TCP " +
@@ -561,12 +561,12 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
         Endpoint.Kind == EndpointKind.Locale
             ? "The Observer service isn't answering on this machine. Check that it is running, " +
               "or start it by hand. Technical detail: " + dettaglio
-            : $"Can't reach the service on {Endpoint.Descrizione}. Check that the machine is on, " +
+            : $"Can't reach the service on {Endpoint.Description}. Check that the machine is on, " +
               "that Observer is running there, and that the address is correct. " +
               $"Technical detail: {dettaglio}";
 
     private string TestoRispostaIlleggibile(string dettaglio) =>
-        $"{Endpoint.Descrizione} responded, but not with a sample this application can read. " +
+        $"{Endpoint.Description} responded, but not with a sample this application can read. " +
         $"It probably isn't Observer. Technical detail: {dettaglio}";
 
     /// <summary>Il 401 sul canale locale: non c'e' alcun token da correggere.</summary>
@@ -581,7 +581,7 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
         "callers without any credential. Run \"observer doctor\" to see what it reports.";
 
     private string TestoTokenRifiutato(string codice) =>
-        $"The service on {Endpoint.Descrizione} rejected the token ({codice}). The token in use " +
+        $"The service on {Endpoint.Description} rejected the token ({codice}). The token in use " +
         $"comes {Endpoint.Origine}, and it has to be the one that machine reports when you run " +
         "\"observer share\" on it.";
 }

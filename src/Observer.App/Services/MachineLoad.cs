@@ -27,10 +27,10 @@ namespace Observer.App.Services;
 /// il contratto che le due parti condividono gia', non una stringa ricopiata a mano.
 /// </para>
 /// </remarks>
-public sealed record Carico(double? Cpu, double? Memoria)
+public sealed record MachineLoad(double? Cpu, double? Memoria)
 {
     /// <summary>Non si sa niente: macchina giu', o campionamento mai arrivato.</summary>
-    public static readonly Carico Nessuno = new(null, null);
+    public static readonly MachineLoad Nessuno = new(null, null);
 
     /// <summary>Legge i due numeri da un campionamento completo.</summary>
     /// <param name="campionamento">Cio' che <c>/metrics/latest</c> ha risposto, o null.</param>
@@ -43,10 +43,10 @@ public sealed record Carico(double? Cpu, double? Memoria)
     /// testuale letto come numero darebbe zero, e uno zero inventato accanto al nome di una
     /// macchina si legge come "ferma", che e' l'opposto di "non si sa".
     /// </remarks>
-    public static Carico Da(MachineSnapshot? campionamento) =>
+    public static MachineLoad Da(MachineSnapshot? campionamento) =>
         campionamento is null
             ? Nessuno
-            : new Carico(
+            : new MachineLoad(
                 Numero(campionamento, CpuCollector.TotalUsageMetricId),
                 Numero(campionamento, MemoryCollector.UsedPercentMetricId));
 

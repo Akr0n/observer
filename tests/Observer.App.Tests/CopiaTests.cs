@@ -43,7 +43,7 @@ public class CopiaTests
             problemaDiConfigurazione: null,
             copiaNegliAppunti: appunti.Scrivi)
         {
-            ProcessoSelezionato = new ProcessoMostrato(22, "tranquillo", "1.0 %", "10 MiB"),
+            ProcessoSelezionato = new ProcessRowState(22, "tranquillo", "1.0 %", "10 MiB"),
         };
 
         await viewModel.CopiaProcessoCommand.ExecuteAsync(null);
@@ -59,10 +59,10 @@ public class CopiaTests
         // Cio' che un lettore di schermo pronuncia a OGNI freccia sull'elenco: un numero di
         // cinque cifre letto cifra per cifra a ogni riga e' rumore fra chi scorre e cio' che
         // sta cercando. Due frasi quasi identiche, e la differenza e' voluta.
-        ProcessoMostrato riga = new(31337, "claude", "15.1 %", "228.5 MiB", "1.1 MiB/s");
+        ProcessRowState riga = new(31337, "claude", "15.1 %", "228.5 MiB", "1.1 MiB/s");
 
-        Assert.DoesNotContain("pid", riga.Descrizione, StringComparison.Ordinal);
-        Assert.DoesNotContain("31337", riga.Descrizione, StringComparison.Ordinal);
+        Assert.DoesNotContain("pid", riga.AccessibleName, StringComparison.Ordinal);
+        Assert.DoesNotContain("31337", riga.AccessibleName, StringComparison.Ordinal);
         Assert.Contains("31337", riga.PerGliAppunti, StringComparison.Ordinal);
     }
 
@@ -93,7 +93,7 @@ public class CopiaTests
         // l'hanno. Spento si vede al primo avvio.
         MainViewModel viewModel = new(client: null, problemaDiConfigurazione: "qualcosa")
         {
-            ProcessoSelezionato = new ProcessoMostrato(1, "x", "0 %", "1 MiB"),
+            ProcessoSelezionato = new ProcessRowState(1, "x", "0 %", "1 MiB"),
         };
 
         Assert.False(viewModel.PuoCopiare);

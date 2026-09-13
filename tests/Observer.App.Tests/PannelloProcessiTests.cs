@@ -66,8 +66,8 @@ public class PannelloProcessiTests
     {
         // Un trattino e non "0 B/s": sono due affermazioni diverse, e la seconda su un elenco
         // ordinato per I/O sposterebbe l'attenzione sul programma sbagliato.
-        Assert.Equal("1.5 MiB/s", ProcessoMostrato.Da(new ProcessWire(1, "copia", 0d, 10, 1_572_864d)).Io);
-        Assert.Equal("—", ProcessoMostrato.Da(new ProcessWire(1, "ignoto", 0d, 10, null)).Io);
+        Assert.Equal("1.5 MiB/s", ProcessRowState.Da(new ProcessWire(1, "copia", 0d, 10, 1_572_864d)).Io);
+        Assert.Equal("—", ProcessRowState.Da(new ProcessWire(1, "ignoto", 0d, 10, null)).Io);
     }
 
     [Fact]
@@ -192,7 +192,7 @@ public class PannelloProcessiTests
     public void UnaRigaSiLeggePerInteroConLeIntestazioni() =>
         Assert.Equal(
             "claude, CPU 15.1 %, memory 228.5 MiB, I/O 1.1 MiB/s",
-            new ProcessoMostrato(1, "claude", "15.1 %", "228.5 MiB", "1.1 MiB/s").Descrizione);
+            new ProcessRowState(1, "claude", "15.1 %", "228.5 MiB", "1.1 MiB/s").AccessibleName);
 
     [Fact]
     public async Task ChiudereIlPannelloDimenticaTutto()
@@ -232,7 +232,7 @@ public class PannelloProcessiTests
 
         // E la risposta arrivata in ritardo per un pannello ormai chiuso non lo riempie.
         cliente.Attesa.SetResult(new ProcessFetch(
-            ServiceOutcome.Ok, string.Empty, [new ProcessoMostrato(99, "in ritardo", "99 %", "1 MiB")]));
+            ServiceOutcome.Ok, string.Empty, [new ProcessRowState(99, "in ritardo", "99 %", "1 MiB")]));
         await prima;
 
         Assert.False(viewModel.ProcessiVisibili);
@@ -257,7 +257,7 @@ public class PannelloProcessiTests
         Assert.Equal(["affamato", "tranquillo"], viewModel.Processi.Select(riga => riga.Nome));
 
         inVolo.SetResult(new ProcessFetch(
-            ServiceOutcome.Ok, string.Empty, [new ProcessoMostrato(99, "in ritardo", "99 %", "1 MiB")]));
+            ServiceOutcome.Ok, string.Empty, [new ProcessRowState(99, "in ritardo", "99 %", "1 MiB")]));
         await cpu;
 
         Assert.Equal(["affamato", "tranquillo"], viewModel.Processi.Select(riga => riga.Nome));
@@ -300,8 +300,8 @@ public class PannelloProcessiTests
                 ServiceOutcome.Ok,
                 string.Empty,
                 [
-                    new ProcessoMostrato(11, "affamato", Cpu[0], "100 MiB"),
-                    new ProcessoMostrato(22, "tranquillo", Cpu[1], "10 MiB"),
+                    new ProcessRowState(11, "affamato", Cpu[0], "100 MiB"),
+                    new ProcessRowState(22, "tranquillo", Cpu[1], "10 MiB"),
                 ]));
         }
 

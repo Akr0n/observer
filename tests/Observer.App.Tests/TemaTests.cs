@@ -20,24 +20,24 @@ public class TemaTests
     [InlineData("light", "Light")]
     [InlineData("dark", "Dark")]
     public void LaVoceSiLeggeComeSiVede(string chiave, string testo) =>
-        Assert.Equal(testo, new OpzioneTema(chiave).ToString());
+        Assert.Equal(testo, new ThemeOption(chiave).ToString());
 
     [Fact]
     public void LaChiaveTrovaLaSuaVariante()
     {
-        Assert.Equal(ThemeVariant.Light, OpzioneTema.Variante("light"));
-        Assert.Equal(ThemeVariant.Dark, OpzioneTema.Variante("dark"));
-        Assert.Equal(ThemeVariant.Default, OpzioneTema.Variante("system"));
+        Assert.Equal(ThemeVariant.Light, ThemeOption.Variante("light"));
+        Assert.Equal(ThemeVariant.Dark, ThemeOption.Variante("dark"));
+        Assert.Equal(ThemeVariant.Default, ThemeOption.Variante("system"));
 
         // Una chiave che non esiste segue il sistema, mai una variante a caso.
-        Assert.Equal(ThemeVariant.Default, OpzioneTema.Variante("nero"));
+        Assert.Equal(ThemeVariant.Default, ThemeOption.Variante("nero"));
     }
 
     [Fact]
     public void LeVociDelSelettoreSonoTreNellOrdineGiusto()
     {
         Assert.Equal(["System", "Light", "Dark"], MainViewModel.OpzioniTema.Select(voce => voce.ToString()));
-        Assert.Equal(new OpzioneTema("dark"), new OpzioneTema("dark"));
+        Assert.Equal(new ThemeOption("dark"), new ThemeOption("dark"));
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public class TemaTests
         Assert.Equal("system", viewModel.Tema);
 
         viewModel.Tema = "dark";
-        Assert.Equal(new OpzioneTema("dark"), viewModel.TemaScelto);
+        Assert.Equal(new ThemeOption("dark"), viewModel.TemaScelto);
 
         viewModel.Tema = "nero";
         Assert.Equal("system", viewModel.Tema);
@@ -86,11 +86,11 @@ public class TemaTests
         // primo elemento della lista, che da 0.14.0 e' 0,75.
         MainViewModel viewModel = new(client: null, problemaDiConfigurazione: null);
 
-        Assert.Equal(Preferenze.ScalaNormale, viewModel.ScalaTesto);
-        Assert.Equal(Preferenze.ScaleAmmesse, MainViewModel.OpzioniScala.Select(voce => voce.Fattore));
+        Assert.Equal(Preferences.ScalaNormale, viewModel.ScalaTesto);
+        Assert.Equal(Preferences.ScaleAmmesse, MainViewModel.OpzioniScala.Select(voce => voce.Fattore));
 
         // Come per il tema: una scala inventata non entra, torna alla normale.
         viewModel.ScalaTesto = 0.5d;
-        Assert.Equal(Preferenze.ScalaNormale, viewModel.ScalaTesto);
+        Assert.Equal(Preferences.ScalaNormale, viewModel.ScalaTesto);
     }
 }

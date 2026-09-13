@@ -165,7 +165,7 @@ public static class MachineDirectory
         if (singola.BaseAddress.Scheme != Uri.UriSchemeHttps || !singola.ImprontaFissata)
         {
             problemi.Add(
-                $"{singola.Descrizione} comes from the older single-machine configuration and " +
+                $"{singola.Description} comes from the older single-machine configuration and " +
                 "can't be used as it stands: a remote machine needs an https address and a " +
                 "certificate fingerprint. " + Esempio());
 

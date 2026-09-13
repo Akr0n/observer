@@ -92,7 +92,7 @@ public class ObserverEndpointTests
     {
         // Finisce nell'intestazione della finestra: deve dire dove si sta guardando, non
         // menzionare una credenziale che li' non esiste.
-        string descrizione = ObserverEndpoint.CanaleLocale().Descrizione;
+        string descrizione = ObserverEndpoint.CanaleLocale().Description;
 
         Assert.False(string.IsNullOrWhiteSpace(descrizione));
         Assert.DoesNotContain("token", descrizione, StringComparison.OrdinalIgnoreCase);

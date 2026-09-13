@@ -7,7 +7,7 @@ namespace Observer.App.Services;
 /// </summary>
 /// <remarks>
 /// Sta qui e non nel view model per la stessa ragione di <see cref="StatusEscalation"/> e di
-/// <c>PosizioneFinestra</c>: e' una regola che si puo' provare senza una finestra, e un refuso
+/// <c>WindowPlacement</c>: e' una regola che si puo' provare senza una finestra, e un refuso
 /// qui non fa rumore — mostra un numero plausibile e sbagliato accanto a una macchina giu'.
 /// <para>
 /// La durata si TRONCA, non si arrotonda, ed e' una scelta che tiene onesto anche un testo in

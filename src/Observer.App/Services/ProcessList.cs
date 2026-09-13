@@ -31,7 +31,7 @@ public sealed record ProcessListWire(
 /// <param name="Cpu">La CPU gia' formattata, oppure un trattino se non si sa ancora.</param>
 /// <param name="Memoria">La memoria gia' formattata coi prefissi binari.</param>
 /// <param name="Io">I byte al secondo gia' formattati, oppure un trattino se non si sa.</param>
-public sealed record ProcessoMostrato(int Pid, string Nome, string Cpu, string Memoria, string Io = "—")
+public sealed record ProcessRowState(int Pid, string Nome, string Cpu, string Memoria, string Io = "—")
 {
     /// <summary>La riga letta per intero, per chi non la vede: nome e le tre colonne col loro titolo.</summary>
     /// <remarks>
@@ -39,14 +39,14 @@ public sealed record ProcessoMostrato(int Pid, string Nome, string Cpu, string M
     /// MiB, 1.1 MiB/s" senza dire cosa siano: le intestazioni di colonna, che l'occhio tiene a
     /// mente, per l'orecchio non esistono.
     /// </remarks>
-    public string Descrizione => $"{Nome}, CPU {Cpu}, memory {Memoria}, I/O {Io}";
+    public string AccessibleName => $"{Nome}, CPU {Cpu}, memory {Memoria}, I/O {Io}";
 
-    /// <summary>La riga per gli appunti: come <see cref="Descrizione"/>, ma col PID.</summary>
+    /// <summary>La riga per gli appunti: come <see cref="AccessibleName"/>, ma col PID.</summary>
     /// <remarks>
     /// Due frasi quasi identiche, e la differenza e' voluta. Il PID serve a chi incolla la
     /// riga da qualche parte — in una ricerca, in un messaggio, accanto a un comando — perche'
     /// e' l'unica cosa che identifica il processo senza ambiguita': di "chrome" ce ne sono
-    /// dodici. In <see cref="Descrizione"/> invece non ci va, perche' quella la pronuncia un
+    /// dodici. In <see cref="AccessibleName"/> invece non ci va, perche' quella la pronuncia un
     /// lettore di schermo a OGNI freccia sull'elenco, e un numero di cinque cifre letto cifra
     /// per cifra a ogni riga e' rumore fra chi scorre e cio' che sta cercando.
     /// </remarks>
@@ -60,11 +60,11 @@ public sealed record ProcessoMostrato(int Pid, string Nome, string Cpu, string M
     /// "non lo so ancora" contro "questo processo e' fermo" - e la seconda, su un elenco
     /// ordinato per consumo, sposterebbe l'attenzione sul programma sbagliato.
     /// </remarks>
-    public static ProcessoMostrato Da(ProcessWire riga)
+    public static ProcessRowState Da(ProcessWire riga)
     {
         ArgumentNullException.ThrowIfNull(riga);
 
-        return new ProcessoMostrato(
+        return new ProcessRowState(
             riga.Pid,
             riga.Name,
             riga.CpuPercent is { } quota
@@ -84,7 +84,7 @@ public sealed record ProcessoMostrato(int Pid, string Nome, string Cpu, string M
 public sealed record ProcessFetch(
     ServiceOutcome Outcome,
     string Problem,
-    IReadOnlyList<ProcessoMostrato> Processi);
+    IReadOnlyList<ProcessRowState> Processi);
 
 /// <summary>Esito di un tentativo di terminare un processo.</summary>
 /// <param name="Outcome">Come e' andata.</param>

@@ -24,7 +24,7 @@ public class StatoMacchineTests
     [Fact]
     public void AllInizioNessunaMacchinaHaUnoStato()
     {
-        MacchinaInElenco voce = new(Remota("altra"));
+        MachineRow voce = new(Remota("altra"));
 
         Assert.True(voce.Ignoto);
         Assert.False(voce.Raggiungibile);
@@ -34,13 +34,13 @@ public class StatoMacchineTests
     [Fact]
     public void UnaRispostaBuonaSegnaRaggiungibile()
     {
-        MacchinaInElenco voce = new(Remota("altra"));
+        MachineRow voce = new(Remota("altra"));
 
         voce.Registra(ServiceOutcome.Ok, string.Empty, T0);
 
         Assert.True(voce.Raggiungibile);
         Assert.Equal("Reachable", voce.Dettaglio);
-        Assert.Contains("Reachable", voce.Descrizione, StringComparison.Ordinal);
+        Assert.Contains("Reachable", voce.AccessibleName, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class StatoMacchineTests
     {
         // La stessa regola della barra di stato: un servizio che sta ancora partendo rifiuta,
         // e per dieci secondi e' normale. Dopo, no.
-        MacchinaInElenco voce = new(Remota("altra"));
+        MachineRow voce = new(Remota("altra"));
 
         voce.Registra(ServiceOutcome.ConnessioneRifiutata, "refused", T0);
         Assert.True(voce.Attenzione);
@@ -67,7 +67,7 @@ public class StatoMacchineTests
     {
         // Un contatore che parte su ogni singhiozzo insegna a ignorarlo, ed e' esattamente
         // cio' che i dieci secondi di tolleranza esistono per impedire.
-        MacchinaInElenco voce = new(Remota("altra"));
+        MachineRow voce = new(Remota("altra"));
 
         voce.Registra(ServiceOutcome.ConnessioneRifiutata, "refused", T0);
 
@@ -79,7 +79,7 @@ public class StatoMacchineTests
     [Fact]
     public void PassataLaTolleranzaLaRigaDiceDaQuantoDuraIlGuasto()
     {
-        MacchinaInElenco voce = new(Remota("altra"));
+        MachineRow voce = new(Remota("altra"));
 
         voce.Registra(ServiceOutcome.ConnessioneRifiutata, "refused", T0);
         voce.Registra(ServiceOutcome.ConnessioneRifiutata, "refused", T0 + TimeSpan.FromMinutes(3));
@@ -90,8 +90,8 @@ public class StatoMacchineTests
 
         // La durata si sente anche senza vedere la riga: il suggerimento e il nome accessibile
         // passano dallo stesso testo, cosi' non possono divergere.
-        Assert.Contains("for 3 min", voce.Suggerimento, StringComparison.Ordinal);
-        Assert.Contains("for 3 min", voce.Descrizione, StringComparison.Ordinal);
+        Assert.Contains("for 3 min", voce.ToolTipText, StringComparison.Ordinal);
+        Assert.Contains("for 3 min", voce.AccessibleName, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class StatoMacchineTests
         // Guasto: un servizio raggiungibile che non ha ancora campionato resta un avviso, mai
         // un rosso, e puo' durare giorni. Un cancello scritto sul rosso lo lascerebbe senza
         // durata proprio mentre e' la cosa che dura di piu'.
-        MacchinaInElenco voce = new(Remota("altra"));
+        MachineRow voce = new(Remota("altra"));
 
         voce.Registra(ServiceOutcome.NonAncoraPronto, "warming up", T0);
         voce.Registra(ServiceOutcome.NonAncoraPronto, "warming up", T0 + TimeSpan.FromMinutes(7));
@@ -116,21 +116,21 @@ public class StatoMacchineTests
     {
         // SottoIlNome e' il Text della seconda riga: senza la sua notifica la durata
         // cambierebbe e la riga continuerebbe a dire la cosa di prima, con la suite verde.
-        MacchinaInElenco voce = new(Remota("altra"));
+        MachineRow voce = new(Remota("altra"));
         List<string> notificate = [];
         voce.PropertyChanged += (_, e) => notificate.Add(e.PropertyName ?? string.Empty);
 
         voce.Registra(ServiceOutcome.TokenRifiutato, "rejected", T0);
 
-        Assert.Contains(nameof(MacchinaInElenco.DaQuanto), notificate);
-        Assert.Contains(nameof(MacchinaInElenco.SottoIlNome), notificate);
-        Assert.Contains(nameof(MacchinaInElenco.Suggerimento), notificate);
+        Assert.Contains(nameof(MachineRow.DaQuanto), notificate);
+        Assert.Contains(nameof(MachineRow.SottoIlNome), notificate);
+        Assert.Contains(nameof(MachineRow.ToolTipText), notificate);
     }
 
     [Fact]
     public void UnaMacchinaCheTornaSuNonMostraPiuLaDurata()
     {
-        MacchinaInElenco voce = new(Remota("altra"));
+        MachineRow voce = new(Remota("altra"));
 
         voce.Registra(ServiceOutcome.ConnessioneRifiutata, "refused", T0);
         voce.Registra(ServiceOutcome.ConnessioneRifiutata, "refused", T0 + TimeSpan.FromMinutes(3));
@@ -139,14 +139,14 @@ public class StatoMacchineTests
         Assert.Equal(string.Empty, voce.DaQuanto);
 
         // Niente coda: la descrizione torna a essere nome e stato, senza durata appiccicata.
-        Assert.EndsWith(": Reachable", voce.Descrizione, StringComparison.Ordinal);
+        Assert.EndsWith(": Reachable", voce.AccessibleName, StringComparison.Ordinal);
     }
 
     [Fact]
     public void UnTokenRifiutatoDiceDaQuantoDalPrimoIstante()
     {
         // Non ha tolleranza: fra un minuto sara' identico, quindi la durata parte subito.
-        MacchinaInElenco voce = new(Remota("altra"));
+        MachineRow voce = new(Remota("altra"));
 
         voce.Registra(ServiceOutcome.TokenRifiutato, "rejected", T0);
 
@@ -158,7 +158,7 @@ public class StatoMacchineTests
     public void UnTokenRifiutatoEGuastoDaSubito()
     {
         // Fra un minuto sara' identico: non c'e' grazia che tenga.
-        MacchinaInElenco voce = new(Remota("altra"));
+        MachineRow voce = new(Remota("altra"));
 
         voce.Registra(ServiceOutcome.TokenRifiutato, "rejected", T0);
 
@@ -220,17 +220,17 @@ public class StatoMacchineTests
     {
         // Sono i nomi a cui sono legate le Classes dell'Ellipse: toglierne uno dall'attributo
         // lascerebbe il pallino grigio per sempre, e nessun test lo direbbe.
-        MacchinaInElenco voce = new(Remota("altra"));
+        MachineRow voce = new(Remota("altra"));
         List<string> notificate = [];
         voce.PropertyChanged += (_, e) => notificate.Add(e.PropertyName ?? string.Empty);
 
         voce.Registra(ServiceOutcome.Ok, string.Empty, T0);
 
-        Assert.Contains(nameof(MacchinaInElenco.Ignoto), notificate);
-        Assert.Contains(nameof(MacchinaInElenco.Raggiungibile), notificate);
-        Assert.Contains(nameof(MacchinaInElenco.Attenzione), notificate);
-        Assert.Contains(nameof(MacchinaInElenco.Guasto), notificate);
-        Assert.Contains(nameof(MacchinaInElenco.Descrizione), notificate);
+        Assert.Contains(nameof(MachineRow.Ignoto), notificate);
+        Assert.Contains(nameof(MachineRow.Raggiungibile), notificate);
+        Assert.Contains(nameof(MachineRow.Attenzione), notificate);
+        Assert.Contains(nameof(MachineRow.Guasto), notificate);
+        Assert.Contains(nameof(MachineRow.AccessibleName), notificate);
     }
 
     [Fact]

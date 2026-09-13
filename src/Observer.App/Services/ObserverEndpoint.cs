@@ -75,7 +75,7 @@ public sealed record ObserverEndpoint(
     /// Sul canale locale non nomina alcun token, perche' li' non ne esiste uno: dirlo
     /// manderebbe l'utente a cercare una credenziale che non serve.
     /// </remarks>
-    public string Descrizione =>
+    public string Description =>
         Kind == EndpointKind.Locale
             ? "this machine"
             : BaseAddress.ToString();
@@ -86,13 +86,13 @@ public sealed record ObserverEndpoint(
     /// "https://192.168.1.24:5058/" non dice a nessuno di quale macchina si tratti.
     /// </remarks>
     /// <remarks>
-    /// Non coincide con <see cref="Descrizione"/>, e la differenza non e' un capriccio: quella
+    /// Non coincide con <see cref="Description"/>, e la differenza non e' un capriccio: quella
     /// vive DENTRO una frase ("Connected to this machine"), questo e' una voce di elenco a se'
     /// stante e vuole l'iniziale maiuscola.
     /// </remarks>
     public string NomeVisibile =>
         string.IsNullOrWhiteSpace(Nome)
-            ? (Kind == EndpointKind.Locale ? "This machine" : Descrizione)
+            ? (Kind == EndpointKind.Locale ? "This machine" : Description)
             : Nome.Trim();
 
     /// <summary>Vero quando questo punto viaggia cifrato e con l'impronta fissata.</summary>
@@ -105,5 +105,5 @@ public sealed record ObserverEndpoint(
     /// </summary>
     /// <returns>Una descrizione senza segreti dentro.</returns>
     public override string ToString() =>
-        FormattableString.Invariant($"ObserverEndpoint {{ {Kind}, {Descrizione}, {Origine} }}");
+        FormattableString.Invariant($"ObserverEndpoint {{ {Kind}, {Description}, {Origine} }}");
 }

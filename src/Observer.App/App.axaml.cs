@@ -34,7 +34,7 @@ public partial class App : Application
             // Le preferenze si leggono UNA volta, qui, e si passano alla finestra: il tema va
             // applicato prima che la finestra esista, perche' un TopLevel copia il tema alla
             // costruzione e dopo si aprirebbe chiaro per poi scattare.
-            Preferenze preferenze = PreferenzeStore.Leggi();
+            Preferences preferenze = PreferencesStore.Leggi();
             ApplicaTema(preferenze.Tema);
 
             MachineListResult elenco = MachineDirectory.Read();
@@ -67,7 +67,7 @@ public partial class App : Application
             // finestra parta. Chi tiene d'occhio una macchina in rete non deve piu' sceglierla
             // a ogni avvio e aspettare che si colleghi.
             MetricsClient client = Apri(
-                Preferenze.MacchinaRicordata(elenco.Machines, preferenze.Macchina)
+                Preferences.MacchinaRicordata(elenco.Machines, preferenze.Macchina)
                 ?? elenco.Machines[0]);
 
             MainViewModel? viewModel = null;
@@ -150,7 +150,7 @@ public partial class App : Application
     /// </remarks>
     public void ApplicaTema(string tema)
     {
-        ThemeVariant variante = OpzioneTema.Variante(tema);
+        ThemeVariant variante = ThemeOption.Variante(tema);
 
         RequestedThemeVariant = variante;
 

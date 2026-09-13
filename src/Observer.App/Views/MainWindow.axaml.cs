@@ -18,8 +18,8 @@ namespace Observer.App.Views;
 /// </summary>
 /// <remarks>
 /// Le regole che si possono provare senza una finestra stanno altrove: cosa ricordare alla
-/// chiusura e' <see cref="PosizioneFinestra.AllaChiusura"/>, e se una posizione sta su uno
-/// schermo e' <see cref="PosizioneFinestra.SuUnoDegli"/>. Qui restano solo le letture e le
+/// chiusura e' <see cref="WindowPlacement.AllaChiusura"/>, e se una posizione sta su uno
+/// schermo e' <see cref="WindowPlacement.SuUnoDegli"/>. Qui restano solo le letture e le
 /// scritture delle proprieta' della finestra.
 /// </remarks>
 public partial class MainWindow : Window
@@ -37,10 +37,10 @@ public partial class MainWindow : Window
     private readonly double altezzaMinima;
 
     private INotifyPropertyChanged? osservato;
-    private Preferenze preferenze;
+    private Preferences preferenze;
 
     /// <summary>L'ultima geometria vista in stato normale in questa sessione, se c'e' stata.</summary>
-    private PosizioneFinestra? ultimaNormale;
+    private WindowPlacement? ultimaNormale;
 
     /// <summary>Se l'ultimo stato non ridotto a icona era a tutto schermo.</summary>
     private bool eraMassimizzata;
@@ -58,13 +58,13 @@ public partial class MainWindow : Window
     /// della finestra non compila (AVLN3000).
     /// </remarks>
     public MainWindow()
-        : this(PreferenzeStore.Leggi())
+        : this(PreferencesStore.Leggi())
     {
     }
 
     /// <summary>Costruisce la finestra e la rimette dov'era.</summary>
     /// <param name="preferenze">Le preferenze gia' lette, e gia' applicate per il tema.</param>
-    public MainWindow(Preferenze preferenze)
+    public MainWindow(Preferences preferenze)
     {
         ArgumentNullException.ThrowIfNull(preferenze);
 
@@ -124,7 +124,7 @@ public partial class MainWindow : Window
     /// allora: lo stato e' dello schermo che c'e', non di quello che manca. E lo si imposta
     /// PRIMA che la finestra si mostri, cosi' appare gia' piena invece di saltarci dopo.
     /// </remarks>
-    private void Ricolloca(PosizioneFinestra? salvata)
+    private void Ricolloca(WindowPlacement? salvata)
     {
         if (salvata is null)
         {
@@ -146,9 +146,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private List<PosizioneFinestra.AreaDiLavoro> Aree() => [.. Screens.All.Select(AreaDi)];
+    private List<WindowPlacement.WorkArea> Aree() => [.. Screens.All.Select(AreaDi)];
 
-    private static PosizioneFinestra.AreaDiLavoro AreaDi(Screen schermo) => new(
+    private static WindowPlacement.WorkArea AreaDi(Screen schermo) => new(
         schermo.WorkingArea.X, schermo.WorkingArea.Y, schermo.WorkingArea.Width, schermo.WorkingArea.Height);
 
     /// <summary>Annota la geometria, se la finestra e' normale e sta su uno schermo.</summary>
@@ -191,7 +191,7 @@ public partial class MainWindow : Window
         string temaDaSalvare = modello?.Tema ?? preferenze.Tema;
         string periodoDaSalvare = modello?.Periodo ?? preferenze.Periodo;
 
-        PosizioneFinestra? posizione = PosizioneFinestra.AllaChiusura(
+        WindowPlacement? posizione = WindowPlacement.AllaChiusura(
             ridottaAIcona: WindowState == WindowState.Minimized,
             massimizzata: eraMassimizzata,
             ultimaNormale,
@@ -201,13 +201,13 @@ public partial class MainWindow : Window
         // Niente ?? sul nome: null qui vuol dire "questo computer", non "non lo so". Con un
         // ripiego sul valore vecchio, chi passa da una macchina remota a quella locale si
         // ritroverebbe la remota riaperta per sempre.
-        preferenze = new Preferenze(
+        preferenze = new Preferences(
             posizione,
             scalaDaSalvare,
             temaDaSalvare,
             modello?.MacchinaDaRicordare,
             periodoDaSalvare);
-        PreferenzeStore.Scrivi(preferenze);
+        PreferencesStore.Scrivi(preferenze);
     }
 
     /// <summary>Scrive le preferenze prendendo dal view model TUTTO cio' che sa lui.</summary>
@@ -232,10 +232,10 @@ public partial class MainWindow : Window
             Macchina = modello.MacchinaDaRicordare,
             Periodo = modello.Periodo,
         };
-        PreferenzeStore.Scrivi(preferenze);
+        PreferencesStore.Scrivi(preferenze);
     }
 
-    private PosizioneFinestra Attuale() => new(
+    private WindowPlacement Attuale() => new(
         Position.X, Position.Y, (int)Math.Round(Width), (int)Math.Round(Height), Maximized: false);
 
     private void Osserva()
@@ -314,10 +314,10 @@ public partial class MainWindow : Window
         Dispatcher.UIThread.Post(
             () =>
             {
-                Rect pannello = PannelloProcessi.Bounds;
-                PannelloProcessi.BringIntoView(
+                Rect pannello = ProcessPanel.Bounds;
+                ProcessPanel.BringIntoView(
                     new Rect(0d, 0d, pannello.Width, Math.Min(pannello.Height, AltezzaDaMostrare)));
-                ElencoProcessi.Focus();
+                ProcessListBox.Focus();
             },
             DispatcherPriority.Loaded);
     }
@@ -332,7 +332,7 @@ public partial class MainWindow : Window
     private void ApplicaScala(double nuova)
     {
         scala = nuova;
-        Radice.LayoutTransform = nuova == 1d ? null : new ScaleTransform(nuova, nuova);
+        Root.LayoutTransform = nuova == 1d ? null : new ScaleTransform(nuova, nuova);
         ApplicaMinimi();
     }
 

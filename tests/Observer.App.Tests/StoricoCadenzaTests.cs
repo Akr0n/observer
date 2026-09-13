@@ -16,13 +16,13 @@ namespace Observer.App.Tests;
 public class StoricoCadenzaTests
 {
     /// <summary>I tre periodi del selettore, come chiavi.</summary>
-    public static TheoryData<string> Periodi() => [.. Preferenze.PeriodiAmmessi];
+    public static TheoryData<string> Periodi() => [.. Preferences.PeriodiAmmessi];
 
     [Theory]
     [MemberData(nameof(Periodi))]
     public void UnaLetturaFallitaSiRiprovaPrestoENonAlPassoSuccessivo(string chiave)
     {
-        OpzionePeriodo periodo = new(chiave);
+        HistoryPeriodOption periodo = new(chiave);
 
         TimeSpan riprova = MainViewModel.ProssimaLettura(periodo, riuscita: false);
 
@@ -50,7 +50,7 @@ public class StoricoCadenzaTests
     [MemberData(nameof(Cadenze))]
     public void LaBarraInCorsoHaIlTempoDiCrescere(string chiave, double secondi)
     {
-        OpzionePeriodo periodo = new(chiave);
+        HistoryPeriodOption periodo = new(chiave);
 
         TimeSpan cadenza = MainViewModel.ProssimaLettura(periodo, riuscita: true);
 
@@ -185,7 +185,7 @@ public class StoricoCadenzaTests
 
         // Niente di disegnato, quindi il titolo segue il selettore: non c'e' striscia da
         // contraddire, e all'avvio con "7d" nel file dire "Last hour" sarebbe sbagliato e basta.
-        Assert.Equal(new OpzionePeriodo("7d").Titolo, viewModel.TitoloStorico);
+        Assert.Equal(new HistoryPeriodOption("7d").Titolo, viewModel.TitoloStorico);
         Assert.NotEqual(primaDiTutto, viewModel.TitoloStorico);
 
         using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(15));
@@ -195,7 +195,7 @@ public class StoricoCadenzaTests
 
         // Nessuna lettura e' andata a buon fine, quindi non c'e' niente da rinominare.
         Assert.Empty(viewModel.Quadranti);
-        Assert.Equal(new OpzionePeriodo("7d").Titolo, viewModel.TitoloStorico);
+        Assert.Equal(new HistoryPeriodOption("7d").Titolo, viewModel.TitoloStorico);
 
         await Fine(arresto, ciclo);
     }

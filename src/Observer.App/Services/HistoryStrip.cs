@@ -39,7 +39,7 @@ public sealed record HistoryBar(
 /// True quando il vuoto tocca il bordo piu' vecchio della finestra esaminata, cioe' quando non
 /// si sa se e' un'interruzione o semplicemente la fine di cio' che il servizio conserva.
 /// </param>
-public sealed record Assenza(DateTimeOffset Inizio, DateTimeOffset Fine, bool DalBordo)
+public sealed record HistoryGap(DateTimeOffset Inizio, DateTimeOffset Fine, bool DalBordo)
 {
     /// <summary>Quanto e' durata.</summary>
     public TimeSpan Durata => Fine - Inizio;
@@ -157,7 +157,7 @@ public static class HistoryStrip
     /// vista affatto.
     /// </para>
     /// </remarks>
-    public static IReadOnlyList<Assenza> Assenze(
+    public static IReadOnlyList<HistoryGap> Assenze(
         IReadOnlyList<HistoryPoint> punti,
         TimeSpan finestra,
         TimeSpan passo)
@@ -185,7 +185,7 @@ public static class HistoryStrip
         }
 
         IReadOnlyList<HistoryBar> barre = Costruisci(punti, ultimo, (int)(finestra / passo), passo);
-        List<Assenza> assenze = [];
+        List<HistoryGap> assenze = [];
         int apertura = -1;
 
         for (int i = 0; i < barre.Count; i++)
@@ -202,7 +202,7 @@ public static class HistoryStrip
 
             if (apertura >= 0)
             {
-                assenze.Add(new Assenza(barre[apertura].Inizio, barre[i].Inizio, DalBordo: apertura == 0));
+                assenze.Add(new HistoryGap(barre[apertura].Inizio, barre[i].Inizio, DalBordo: apertura == 0));
                 apertura = -1;
             }
         }
@@ -212,7 +212,7 @@ public static class HistoryStrip
         // cambiasse, questa riga la chiuderebbe lo stesso invece di perderla in silenzio.
         if (apertura >= 0)
         {
-            assenze.Add(new Assenza(barre[apertura].Inizio, barre[^1].Inizio + passo, DalBordo: apertura == 0));
+            assenze.Add(new HistoryGap(barre[apertura].Inizio, barre[^1].Inizio + passo, DalBordo: apertura == 0));
         }
 
         return assenze;
