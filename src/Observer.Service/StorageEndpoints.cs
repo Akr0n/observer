@@ -3,26 +3,26 @@ using Observer.Service.Persistence;
 
 namespace Observer.Service;
 
-/// <summary>Gli endpoint che espongono lo storico.</summary>
+/// <summary>The endpoints that expose the history.</summary>
 /// <remarks>
-/// Vengono mappati DOPO il middleware di autenticazione, come quelli gia' esistenti: lo
-/// storico di una macchina dice quando e' accesa, quanto lavora e quando nessuno la usa, che
-/// e' piu' di quanto dica un singolo campionamento.
+/// They are mapped AFTER the authentication middleware, like the ones that already exist: a
+/// machine's history says when it is on, how hard it works and when nobody uses it, which is
+/// more than a single sample says.
 /// </remarks>
 public static class StorageEndpoints
 {
-    /// <summary>Finestra usata quando la richiesta non dice da quando a quando.</summary>
+    /// <summary>Window used when the request does not say from when to when.</summary>
     private static readonly TimeSpan DefaultWindow = TimeSpan.FromHours(1);
 
-    /// <summary>Mappa /metrics/series, /metrics/history e /metrics/storage.</summary>
-    /// <param name="endpoints">Il costruttore di rotte dell'applicazione.</param>
+    /// <summary>Maps /metrics/series, /metrics/history and /metrics/storage.</summary>
+    /// <param name="endpoints">The application's route builder.</param>
     public static void MapStorageEndpoints(this IEndpointRouteBuilder endpoints)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
 
-        // Quali serie esistono nello storico. E' l'equivalente di /metrics/catalog per il
-        // passato: il catalogo dice cosa il servizio SA misurare, questo dice cosa ha
-        // effettivamente misurato su questa macchina.
+        // Which series exist in the history. It is the equivalent of /metrics/catalog for the
+        // past: the catalog says what the service KNOWS how to measure, this says what it has
+        // actually measured on this machine.
         endpoints.MapGet("/metrics/series", (MetricStore store, StorageOptions options) =>
             options.Enabled
                 ? Results.Ok(store.ListSeries().Select(ToResponse).ToList())
@@ -78,8 +78,8 @@ public static class StorageEndpoints
 
         if (IsAuto(resolution))
         {
-            // Il grezzo piu' vecchio della ritenzione e' gia' stato cancellato: chiederlo
-            // darebbe un grafico vuoto, che si legge come "macchina non monitorata".
+            // Raw data older than the retention has already been deleted: asking for it
+            // would give an empty chart, which reads as "machine not monitored".
             bucketSeconds = HistoryResolution.Choose(
                 lower, upper, options.MaxHistoryPoints, now - options.RawRetention);
         }
@@ -105,8 +105,8 @@ public static class StorageEndpoints
             lower,
             upper,
 
-            // Dichiarare il troncamento e' cio' che distingue "il grafico finisce qui"
-            // da "qui la macchina era spenta".
+            // Declaring the truncation is what distinguishes "the chart ends here"
+            // from "the machine was off here".
             points.Count >= options.MaxHistoryPoints,
             points.Select(point => new HistoryPointResponse(
                 point.Timestamp,
@@ -148,8 +148,8 @@ public static class StorageEndpoints
             series.Key.CollectorId,
             series.Key.MetricId,
 
-            // Sul filo l'istanza assente e' null, come in MetricPoint: la stringa vuota vive
-            // solo dentro il database, dove serve all'indice UNIQUE.
+            // On the wire a missing instance is null, as in MetricPoint: the empty string lives
+            // only inside the database, where the UNIQUE index needs it.
             string.IsNullOrEmpty(series.Key.Instance) ? null : series.Key.Instance,
             (int)series.Kind);
 
@@ -200,27 +200,27 @@ public static class StorageEndpoints
             statusCode: StatusCodes.Status503ServiceUnavailable);
 }
 
-/// <summary>Il motivo per cui una richiesta non ha prodotto dati.</summary>
-/// <param name="Message">Spiegazione leggibile.</param>
+/// <summary>The reason a request produced no data.</summary>
+/// <param name="Message">Human-readable explanation.</param>
 public sealed record ErrorResponse(string Message);
 
-/// <summary>Una serie presente nello storico.</summary>
-/// <param name="CollectorId">Chi la produce.</param>
-/// <param name="MetricId">Quale metrica.</param>
-/// <param name="Instance">Il core, il disco, l'interfaccia; null se la metrica e' unica.</param>
+/// <summary>A series present in the history.</summary>
+/// <param name="CollectorId">Who produces it.</param>
+/// <param name="MetricId">Which metric.</param>
+/// <param name="Instance">The core, the disk, the interface; null if the metric is unique.</param>
 /// <param name="ValueKind">
-/// Il ramo di <see cref="MetricValue"/> da cui proviene, con la stessa codifica numerica di
+/// The branch of <see cref="MetricValue"/> it comes from, with the same numeric encoding as
 /// /metrics/latest.
 /// </param>
 public sealed record StoredSeriesResponse(string CollectorId, string MetricId, string? Instance, int ValueKind);
 
-/// <summary>Un punto di storico.</summary>
-/// <param name="Timestamp">Istante del campione, o inizio del bucket.</param>
-/// <param name="Count">Quanti campioni grezzi ci sono dentro. Sul grezzo vale 1.</param>
-/// <param name="Avg">Media dei campioni.</param>
-/// <param name="Min">Valore minimo.</param>
-/// <param name="Max">Valore massimo.</param>
-/// <param name="Last">Ultimo valore in ordine di tempo.</param>
+/// <summary>A history point.</summary>
+/// <param name="Timestamp">Instant of the sample, or start of the bucket.</param>
+/// <param name="Count">How many raw samples are inside. On raw data it is 1.</param>
+/// <param name="Avg">Average of the samples.</param>
+/// <param name="Min">Minimum value.</param>
+/// <param name="Max">Maximum value.</param>
+/// <param name="Last">Last value in time order.</param>
 public sealed record HistoryPointResponse(
     DateTimeOffset Timestamp,
     int Count,
@@ -229,16 +229,16 @@ public sealed record HistoryPointResponse(
     double Max,
     double Last);
 
-/// <summary>La risposta di /metrics/history.</summary>
-/// <param name="CollectorId">Chi produce la serie.</param>
-/// <param name="MetricId">Quale metrica.</param>
-/// <param name="Instance">L'istanza, oppure null.</param>
-/// <param name="Resolution">La risoluzione effettivamente usata: "raw", "1m" o "5m".</param>
-/// <param name="BucketSeconds">La stessa risoluzione in secondi.</param>
-/// <param name="From">Inizio della finestra, incluso.</param>
-/// <param name="To">Fine della finestra, esclusa.</param>
-/// <param name="Truncated">True se il limite di punti ha tagliato la risposta.</param>
-/// <param name="Points">I punti, in ordine di tempo crescente.</param>
+/// <summary>The response of /metrics/history.</summary>
+/// <param name="CollectorId">Who produces the series.</param>
+/// <param name="MetricId">Which metric.</param>
+/// <param name="Instance">The instance, or null.</param>
+/// <param name="Resolution">The resolution actually used: "raw", "1m" or "5m".</param>
+/// <param name="BucketSeconds">The same resolution in seconds.</param>
+/// <param name="From">Start of the window, included.</param>
+/// <param name="To">End of the window, excluded.</param>
+/// <param name="Truncated">True if the point limit cut the response.</param>
+/// <param name="Points">The points, in increasing time order.</param>
 public sealed record HistoryResponse(
     string CollectorId,
     string MetricId,
@@ -250,27 +250,27 @@ public sealed record HistoryResponse(
     bool Truncated,
     IReadOnlyList<HistoryPointResponse> Points);
 
-/// <summary>Le durate di conservazione configurate.</summary>
-/// <param name="Raw">Per quanto si tiene il campionamento al secondo.</param>
-/// <param name="Minute">Per quanto si tengono i bucket da un minuto.</param>
-/// <param name="FiveMinute">Per quanto si tengono i bucket da cinque minuti.</param>
+/// <summary>The configured retention durations.</summary>
+/// <param name="Raw">How long the one-second sampling is kept.</param>
+/// <param name="Minute">How long the one-minute buckets are kept.</param>
+/// <param name="FiveMinute">How long the five-minute buckets are kept.</param>
 public sealed record RetentionResponse(TimeSpan Raw, TimeSpan Minute, TimeSpan FiveMinute);
 
-/// <summary>La risposta di /metrics/storage.</summary>
-/// <param name="Enabled">Se lo storico e' attivo.</param>
-/// <param name="DatabasePath">Dove si trova il file.</param>
-/// <param name="FileSizeBytes">Quanto occupa, WAL compreso.</param>
-/// <param name="SeriesCount">Quante serie distinte.</param>
-/// <param name="RawSamples">Campioni grezzi ancora presenti.</param>
-/// <param name="MinuteBuckets">Bucket da un minuto presenti.</param>
-/// <param name="FiveMinuteBuckets">Bucket da cinque minuti presenti.</param>
-/// <param name="MinuteConsolidatedThrough">Fin dove il livello a un minuto ha aggregato.</param>
-/// <param name="FiveMinuteConsolidatedThrough">Fin dove il livello a cinque minuti ha aggregato.</param>
+/// <summary>The response of /metrics/storage.</summary>
+/// <param name="Enabled">Whether the history is on.</param>
+/// <param name="DatabasePath">Where the file is.</param>
+/// <param name="FileSizeBytes">How much it takes up, WAL included.</param>
+/// <param name="SeriesCount">How many distinct series.</param>
+/// <param name="RawSamples">Raw samples still present.</param>
+/// <param name="MinuteBuckets">One-minute buckets present.</param>
+/// <param name="FiveMinuteBuckets">Five-minute buckets present.</param>
+/// <param name="MinuteConsolidatedThrough">How far the one-minute level has aggregated.</param>
+/// <param name="FiveMinuteConsolidatedThrough">How far the five-minute level has aggregated.</param>
 /// <param name="DroppedSnapshots">
-/// Quanti campionamenti sono stati scartati perche' il disco non stava al passo. Diverso da
-/// zero significa che lo storico ha buchi.
+/// How many samplings were discarded because the disk was not keeping up. Different from
+/// zero means the history has holes.
 /// </param>
-/// <param name="Retention">Le durate configurate.</param>
+/// <param name="Retention">The configured durations.</param>
 public sealed record StorageResponse(
     bool Enabled,
     string DatabasePath,

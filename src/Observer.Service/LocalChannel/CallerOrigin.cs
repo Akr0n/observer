@@ -1,25 +1,25 @@
 namespace Observer.Service.LocalChannel;
 
-/// <summary>Come il servizio ha classificato chi sta chiamando.</summary>
+/// <summary>How the service classified whoever is calling.</summary>
 /// <remarks>
-/// Il valore ZERO e' <see cref="Unidentified"/>, cioe' il caso che NEGA. Cosi' un campo
-/// dimenticato, una struct non inizializzata o un ramo aggiunto per distrazione rifiutano
-/// invece di concedere.
+/// The ZERO value is <see cref="Unidentified"/>, that is, the case that DENIES. This way a
+/// forgotten field, an uninitialised struct or a branch added by carelessness refuse
+/// instead of granting.
 /// </remarks>
 public enum CallerKind
 {
-    /// <summary>Non si e' potuto stabilire chi sia. Rifiuto.</summary>
+    /// <summary>It was not possible to establish who this is. Refusal.</summary>
     Unidentified = 0,
 
-    /// <summary>Arrivato dalla rete: su Windows anche via SMB, non dalla macchina.</summary>
+    /// <summary>Arrived from the network: on Windows via SMB too, not from the machine.</summary>
     FromNetwork,
 
-    /// <summary>Locale, e con un'identita' leggibile.</summary>
+    /// <summary>Local, and with a readable identity.</summary>
     LocalIdentified,
 }
 
-/// <summary>L'origine del chiamante, con la diagnosi che l'ha prodotta.</summary>
-/// <param name="Kind">La classificazione.</param>
-/// <param name="Sid">Il SID su Windows o l'uid su Linux, quando leggibile.</param>
-/// <param name="Reason">Perche' e' stata decisa cosi'. In inglese: finisce nei log.</param>
+/// <summary>The caller's origin, with the diagnosis that produced it.</summary>
+/// <param name="Kind">The classification.</param>
+/// <param name="Sid">The SID on Windows or the uid on Linux, when readable.</param>
+/// <param name="Reason">Why it was decided this way. In English: it ends up in the logs.</param>
 public sealed record CallerOrigin(CallerKind Kind, string? Sid, string Reason);

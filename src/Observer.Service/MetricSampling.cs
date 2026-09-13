@@ -5,23 +5,23 @@ using Observer.Service.Persistence;
 namespace Observer.Service;
 
 /// <summary>
-/// Conserva l'ultimo campionamento. Gli endpoint HTTP leggono DA QUI e non chiamano mai
-/// direttamente i collector.
+/// Keeps the latest sample. The HTTP endpoints read FROM HERE and never call the collectors
+/// directly.
 /// </summary>
 /// <remarks>
-/// Non e' un dettaglio di prestazioni, e' una difesa dalla concorrenza. Il collector CPU
-/// tiene il campione precedente in un campo: due raccolte simultanee calcolerebbero
-/// percentuali sbagliate in modo intermittente e plausibile, il peggior tipo di bug. Con un
-/// solo campionatore e letture dalla cache, quella situazione non puo' verificarsi.
+/// This is not a performance detail, it is a defence against concurrency. The CPU collector
+/// keeps the previous sample in a field: two simultaneous collections would compute wrong
+/// percentages, intermittently and plausibly, the worst kind of bug. With a single sampler
+/// and reads from the cache, that situation cannot happen.
 /// </remarks>
 public sealed class MetricSnapshotCache
 {
     private MachineSnapshot? latest;
 
-    /// <summary>L'ultimo campionamento, oppure null se non e' ancora avvenuto.</summary>
+    /// <summary>The latest sample, or null if it has not happened yet.</summary>
     public MachineSnapshot? Latest => Volatile.Read(ref latest);
 
-    /// <summary>Pubblica un nuovo campionamento.</summary>
+    /// <summary>Publishes a new sample.</summary>
     public void Publish(MachineSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -30,19 +30,19 @@ public sealed class MetricSnapshotCache
 }
 
 /// <summary>
-/// L'UNICO campionatore del processo. Interroga i collector a intervallo fisso e pubblica
-/// il risultato nella cache.
+/// The process's ONLY sampler. Polls the collectors at a fixed interval and publishes the
+/// result to the cache.
 /// </summary>
 public sealed partial class MetricSamplingService : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(1);
 
     /// <remarks>
-    /// Sotto il periodo di campionamento, cosi' una sorgente lenta non manda in ritardo
-    /// tutte le altre. ATTENZIONE al limite reale: una P/Invoke o una query WMI che si
-    /// pianta NON osserva il token di annullamento. Il thread resta occupato e la scadenza
-    /// vale solo dal punto di vista del campionatore. Per sorgenti note per bloccarsi —
-    /// SMART, WMI — la soluzione vera e' un processo separato, non un CancellationToken.
+    /// Below the sampling period, so that one slow source does not make all the others late.
+    /// MIND the real limit: a P/Invoke or a WMI query that hangs does NOT observe the
+    /// cancellation token. The thread stays busy and the deadline only holds from the
+    /// sampler's point of view. For sources known to hang — SMART, WMI — the real answer is
+    /// a separate process, not a CancellationToken.
     /// </remarks>
     private static readonly TimeSpan CollectorTimeout = TimeSpan.FromMilliseconds(750);
 
@@ -53,16 +53,16 @@ public sealed partial class MetricSamplingService : BackgroundService
     private readonly IMetricSnapshotSink sink;
     private readonly ILogger<MetricSamplingService> logger;
 
-    /// <summary>Crea il campionatore.</summary>
-    /// <param name="collectors">Le sorgenti da interrogare.</param>
-    /// <param name="cache">Dove pubblicare l'ultimo campionamento per gli endpoint.</param>
+    /// <summary>Creates the sampler.</summary>
+    /// <param name="collectors">The sources to poll.</param>
+    /// <param name="cache">Where to publish the latest sample for the endpoints.</param>
     /// <param name="sink">
-    /// Dove depositare lo stesso campionamento perche' finisca nello storico. Deposita e
-    /// basta: se aspettasse il disco, un fsync lento non renderebbe il grafico lento,
-    /// falserebbe la percentuale di CPU della lettura successiva, che si calcola sulla
-    /// DISTANZA fra due campionamenti.
+    /// Where to drop the same sample so that it ends up in the history. It only drops it: if
+    /// it waited for the disk, a slow fsync would not make the chart slow, it would falsify
+    /// the CPU percentage of the next reading, which is computed on the DISTANCE between two
+    /// samples.
     /// </param>
-    /// <param name="logger">Dove segnalare i collector lenti o guasti.</param>
+    /// <param name="logger">Where to report slow or faulted collectors.</param>
     public MetricSamplingService(
         IReadOnlyList<IMetricCollector> collectors,
         MetricSnapshotCache cache,
@@ -79,16 +79,16 @@ public sealed partial class MetricSamplingService : BackgroundService
         this.sink = sink;
         this.logger = logger;
 
-        // Un throttle per sorgente, per index e non per Id: due collector con lo stesso Id
-        // farebbero saltare un dizionario, e qui non c'e' niente da guadagnare a rischiarlo.
+        // One throttle per source, by index and not by Id: two collectors with the same Id
+        // would break a dictionary, and there is nothing to gain here by risking it.
         collectorThrottles = [.. collectors.Select(_ => new LogThrottle())];
     }
 
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Restituisce subito il controllo all'host: cosi' una prima raccolta lenta ritarda
-        // la prima metrica, non l'apertura della porta HTTP.
+        // Hands control back to the host immediately: this way a slow first collection delays
+        // the first metric, not the opening of the HTTP port.
         await Task.Yield();
 
         using PeriodicTimer timer = new(Interval);
@@ -99,17 +99,17 @@ public sealed partial class MetricSamplingService : BackgroundService
 
             MachineSnapshot snapshot = await CollectAllAsync(stoppingToken).ConfigureAwait(false);
 
-            // Un giro piu' lungo del periodo fa cadere un tick, e PeriodicTimer lo lascia
-            // cadere in SILENZIO: il campione non c'e', e a valle si legge come un momento in
-            // cui non si stava misurando - indistinguibile da una macchina spenta. Se succede,
-            // che almeno resti scritto da qualche parte quale sorgente ha allungato il giro.
-            // Scritto UNA volta: una macchina che resta sotto sforzo allunga tutti i giri, e
-            // il messaggio a 1 Hz e' 86 400 righe al giorno nel registro eventi.
+            // A round longer than the period drops a tick, and PeriodicTimer drops it in
+            // SILENCE: the sample is not there, and downstream it reads as a moment in which
+            // nothing was being measured - indistinguishable from a machine that is off. If it
+            // happens, let it at least be written down somewhere which source stretched the
+            // round. Written ONCE: a machine that stays under load stretches every round, and
+            // the message at 1 Hz is 86 400 lines a day in the event log.
             TimeSpan elapsed = Stopwatch.GetElapsedTime(startTimestamp);
 
             if (elapsed > Interval)
             {
-                if (longRoundThrottle.ShouldLog("lungo"))
+                if (longRoundThrottle.ShouldLog("long"))
                 {
                     LogRoundTooLong(logger, elapsed.TotalMilliseconds, Interval.TotalMilliseconds);
                 }
@@ -121,9 +121,9 @@ public sealed partial class MetricSamplingService : BackgroundService
 
             cache.Publish(snapshot);
 
-            // Lo STESSO oggetto va anche allo storico: cosi' il grafico di un istante e la
-            // piastrella del presente non possono mostrare numeri diversi. Enqueue non
-            // aspetta il disco, per costruzione.
+            // The SAME object also goes to the history: this way the chart of an instant and
+            // the tile of the present cannot show different numbers. Enqueue does not wait
+            // for the disk, by construction.
             sink.Enqueue(snapshot);
 
             try
@@ -132,34 +132,34 @@ public sealed partial class MetricSamplingService : BackgroundService
             }
             catch (OperationCanceledException)
             {
-                // Arresto richiesto: uscita normale, non un errore.
+                // Shutdown requested: normal exit, not an error.
                 return;
             }
         }
     }
 
     /// <summary>
-    /// Interroga TUTTE le sorgenti insieme e aspetta che abbiano finito.
+    /// Polls ALL the sources together and waits for them to finish.
     /// </summary>
     /// <remarks>
-    /// <b>Insieme, non una dopo l'altra, e la differenza cresce con ogni sorgente nuova.</b>
-    /// In sequenza il giro dura la SOMMA dei tempi, quindi il caso peggiore e' il numero di
-    /// collector moltiplicato per <see cref="CollectorTimeout"/>: con due gia' supera il
-    /// secondo, con cinque lo quadruplica. E un giro piu' lungo del periodo non fa rumore -
-    /// <see cref="PeriodicTimer"/> lascia cadere i tick in silenzio, i campioni spariscono, e
-    /// la striscia dello storico dichiara "non misurato" un'ora in cui la macchina era accesa
-    /// e sana. Insieme, il caso peggiore e' il collector piu' lento, e resta sotto il periodo
-    /// per costruzione.
+    /// <b>Together, not one after the other, and the difference grows with every new source.</b>
+    /// In sequence the round lasts the SUM of the times, so the worst case is the number of
+    /// collectors multiplied by <see cref="CollectorTimeout"/>: with two it already exceeds
+    /// one second, with five it is four times that. And a round longer than the period makes no
+    /// noise - <see cref="PeriodicTimer"/> drops the ticks in silence, the samples disappear,
+    /// and the history strip declares "not measured" an hour in which the machine was on and
+    /// healthy. Together, the worst case is the slowest collector, and it stays under the
+    /// period by construction.
     /// <para>
-    /// Non introduce la concorrenza che <see cref="MetricSnapshotCache"/> teme: quella nasce
-    /// da due raccolte <i>dello stesso</i> collector che si sovrappongono, e qui ogni sorgente
-    /// viene interrogata una volta sola per giro. E' il ciclo a restare unico, non la fila.
+    /// It does not introduce the concurrency <see cref="MetricSnapshotCache"/> fears: that one
+    /// comes from two collections <i>of the same</i> collector overlapping, and here every
+    /// source is polled exactly once per round. It is the loop that stays single, not the queue.
     /// </para>
     /// </remarks>
     private async Task<MachineSnapshot> CollectAllAsync(CancellationToken cancellationToken)
     {
-        // L'ordine dei risultati resta quello dei collector, perche' WhenAll conserva
-        // l'ordine dei task: i riquadri a schermo non si scambiano di posto a ogni giro.
+        // The order of the results stays that of the collectors, because WhenAll preserves
+        // the order of the tasks: the tiles on screen do not swap places on every round.
         MetricSnapshot[] results = await Task.WhenAll(
             collectors.Select((collector, index) => CollectOneAsync(collector, collectorThrottles[index], cancellationToken)))
             .ConfigureAwait(false);
@@ -167,7 +167,7 @@ public sealed partial class MetricSamplingService : BackgroundService
         return new MachineSnapshot(MachineSnapshot.CurrentSchemaVersion, DateTimeOffset.UtcNow, results);
     }
 
-    /// <summary>Interroga una sorgente, e non lascia mai passare un guasto suo.</summary>
+    /// <summary>Polls one source, and never lets a fault of its own through.</summary>
     private async Task<MetricSnapshot> CollectOneAsync(
         IMetricCollector collector,
         LogThrottle throttle,
@@ -191,14 +191,14 @@ public sealed partial class MetricSamplingService : BackgroundService
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // Arresto del servizio: propaga, non e' un guasto della metrica.
+            // Service shutting down: propagate, it is not a fault of the metric.
             throw;
         }
         catch (OperationCanceledException)
         {
-            // Scaduto il tempo: la sorgente e' lenta, non rotta. Le altre proseguono. E lo
-            // si dice una volta: una sorgente che scade una volta scade a ogni giro.
-            if (throttle.ShouldLog("scaduto"))
+            // Time ran out: the source is slow, not broken. The others carry on. And it is
+            // said once: a source that times out once times out on every round.
+            if (throttle.ShouldLog("timeout"))
             {
                 LogCollectorTimedOut(logger, collector.Id, CollectorTimeout.TotalMilliseconds);
             }
@@ -210,12 +210,12 @@ public sealed partial class MetricSamplingService : BackgroundService
                     $"the source didn't respond within {CollectorTimeout.TotalMilliseconds} ms and was skipped for this round"),
                 []);
         }
-#pragma warning disable CA1031 // Un collector che esplode deve degradare una piastrella, non
-        catch (Exception ex) // abbattere il campionamento di tutte le altre metriche.
+#pragma warning disable CA1031 // A collector that blows up must degrade one tile, not bring
+        catch (Exception ex) // down the sampling of all the other metrics.
 #pragma warning restore CA1031
         {
-            // Il TIPO dell'eccezione come motivo, non il messaggio: un messaggio che porta
-            // dentro un percorso o un contatore cambia a ogni giro e non frenerebbe niente.
+            // The TYPE of the exception as the reason, not the message: a message that carries
+            // a path or a counter inside changes on every round and would throttle nothing.
             if (throttle.ShouldLog(ex.GetType().FullName ?? "?"))
             {
                 LogCollectorFaulted(logger, collector.Id, ex);
@@ -243,10 +243,10 @@ public sealed partial class MetricSamplingService : BackgroundService
         Message = "Collector {CollectorId} exceeded {TimeoutMs} ms: skipped for this round, the other metrics continue.")]
     private static partial void LogCollectorTimedOut(ILogger logger, string collectorId, double timeoutMs);
 
-    // Warning e non Information, e non e' pedanteria: UseWindowsService registra il provider
-    // del registro eventi, che lascia passare da Warning in su. A Information queste righe
-    // non arriverebbero MAI nel registro di Windows, e il registro resterebbe con l'startTimestamp
-    // del guasto e nessuna fine - cioe' esattamente il malinteso che vogliono togliere.
+    // Warning and not Information, and this is not pedantry: UseWindowsService registers the
+    // event log provider, which passes Warning and above. At Information these lines would
+    // NEVER reach the Windows log, and the log would be left with the start of the fault
+    // and no end - that is, exactly the misunderstanding they are there to remove.
     [LoggerMessage(
         EventId = 4,
         Level = LogLevel.Warning,

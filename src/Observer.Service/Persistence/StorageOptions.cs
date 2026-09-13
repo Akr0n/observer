@@ -1,80 +1,81 @@
 namespace Observer.Service.Persistence;
 
 /// <summary>
-/// Configurazione dello storico. Ogni durata qui dentro e' una SCELTA, non una verita': sono
-/// esposte proprio perche' chi installa il servizio possa cambiarle senza toccare il codice.
+/// History configuration. Every duration in here is a CHOICE, not a truth: they are exposed
+/// precisely so whoever installs the service can change them without touching the code.
 /// </summary>
 public sealed class StorageOptions
 {
-    /// <summary>Sezione di configurazione da cui si legge.</summary>
+    /// <summary>Configuration section this is read from.</summary>
     public const string SectionName = "Observer:Storage";
 
-    /// <summary>Se false il servizio funziona esattamente come prima, senza scrivere nulla.</summary>
+    /// <summary>If false the service works exactly as before, writing nothing.</summary>
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// Percorso del file. Se relativo, viene risolto da <see cref="ResolveDatabasePath"/>
-    /// sotto la cartella dati dell'utente, MAI sulla cartella di lavoro del processo.
-    /// I file *.db, *.db-wal e *.db-shm sono gia' esclusi da git.
+    /// Path of the file. If relative, it is resolved by <see cref="ResolveDatabasePath"/>
+    /// under the user's data directory, NEVER against the process working directory.
+    /// The *.db, *.db-wal and *.db-shm files are already excluded from git.
     /// </summary>
     public string DatabasePath { get; set; } = "observer.db";
 
     /// <summary>
-    /// Per quanto si tiene il campionamento al secondo. E' il parametro che decide quanto
-    /// cresce il file: a 1 Hz il grezzo e' circa 3600 righe l'ora PER SERIE.
+    /// How long the one-second sampling is kept. It is the parameter that decides how much the
+    /// file grows: at 1 Hz the raw level is about 3600 rows an hour PER SERIES.
     /// </summary>
     public TimeSpan RawRetention { get; set; } = TimeSpan.FromHours(6);
 
-    /// <summary>Per quanto si tengono i bucket da un minuto.</summary>
+    /// <summary>How long the one-minute buckets are kept.</summary>
     public TimeSpan MinuteRetention { get; set; } = TimeSpan.FromDays(7);
 
-    /// <summary>Per quanto si tengono i bucket da cinque minuti.</summary>
+    /// <summary>How long the five-minute buckets are kept.</summary>
     public TimeSpan FiveMinuteRetention { get; set; } = TimeSpan.FromDays(90);
 
-    /// <summary>Ogni quanto girano consolidamento e cancellazione.</summary>
+    /// <summary>How often consolidation and deletion run.</summary>
     public TimeSpan MaintenanceInterval { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Quanto si aspetta dopo la chiusura di un bucket prima di consolidarlo. Copre il tempo
-    /// che un campione passa nella coda in memoria prima di arrivare su disco.
+    /// How long to wait after a bucket closes before consolidating it. It covers the time a
+    /// sample spends in the in-memory queue before reaching the disk.
     /// </summary>
     /// <remarks>
-    /// Deve coprire il tempo che un campionamento puo' passare in coda prima di arrivare su
-    /// disco, altrimenti un campione in ritardo non entra mai nella media del suo intervallo
-    /// e poco dopo il grezzo viene cancellato: resta un numero credibile calcolato su meta'
-    /// dei campioni. Il predefinito e' allineato a <see cref="QueueCapacity"/>, che a 1 Hz
-    /// vale altrettanti secondi, e la coerenza fra i due e' imposta da <see cref="Validate"/>.
+    /// It must cover the time a sampling can spend in the queue before reaching the disk,
+    /// otherwise a late sample never enters the average of its own interval and shortly
+    /// afterwards the raw level is deleted: what is left is a credible number computed over half
+    /// the samples. The default is aligned with <see cref="QueueCapacity"/>, which at 1 Hz is
+    /// worth that many seconds, and the consistency between the two is enforced by
+    /// <see cref="Validate"/>.
     /// </remarks>
     public TimeSpan ConsolidationGrace { get; set; } = TimeSpan.FromSeconds(240);
 
     /// <summary>
-    /// Quanto tempo di storico si consolida al massimo in un solo giro. Serve dopo un lungo
-    /// fermo: senza questo limite il primo giro proverebbe ad aggregare ore di dati in
-    /// un'unica transazione.
+    /// How much history is consolidated at most in a single pass. It is needed after a long
+    /// stop: without this limit the first pass would try to aggregate hours of data in a single
+    /// transaction.
     /// </summary>
     public TimeSpan MaxSpanPerPass { get; set; } = TimeSpan.FromHours(1);
 
     /// <summary>
-    /// Quanti snapshot possono aspettare in coda prima che i piu' vecchi vengano scartati.
-    /// La coda esiste perche' il campionatore a 1 Hz non deve MAI aspettare il disco.
+    /// How many snapshots can wait in the queue before the oldest ones are dropped.
+    /// The queue exists because the 1 Hz sampler must NEVER wait for the disk.
     /// </summary>
     public int QueueCapacity { get; set; } = 240;
 
-    /// <summary>Quanti punti al massimo puo' restituire una singola interrogazione.</summary>
+    /// <summary>How many points at most a single query can return.</summary>
     public int MaxHistoryPoints { get; set; } = 5000;
 
     /// <summary>
-    /// Il percorso assoluto del database. Un percorso gia' assoluto viene rispettato; uno
-    /// relativo viene risolto sotto la cartella dati dell'utente, MAI sulla cartella di lavoro.
+    /// The absolute path of the database. An already absolute path is honoured; a relative one
+    /// is resolved under the user's data directory, NEVER against the working directory.
     /// </summary>
     /// <remarks>
-    /// Un servizio di sistema non ha una cartella di lavoro prevedibile: su Windows parte da
-    /// system32, sotto systemd da "/" salvo direttive esplicite. Con un percorso relativo il
-    /// database finirebbe in un posto diverso a seconda di come il servizio e' stato avviato —
-    /// e in sviluppo dentro l'albero dei sorgenti — dando l'impressione di aver perso lo
-    /// storico ogni volta che cambia il modo di avvio.
+    /// A system service has no predictable working directory: on Windows it starts from
+    /// system32, under systemd from "/" unless explicitly directed otherwise. With a relative
+    /// path the database would end up in a different place depending on how the service was
+    /// started — and in development inside the source tree — giving the impression that the
+    /// history was lost every time the way it is started changes.
     /// </remarks>
-    /// <returns>Il percorso assoluto del file SQLite.</returns>
+    /// <returns>The absolute path of the SQLite file.</returns>
     public string ResolveDatabasePath()
     {
         if (Path.IsPathRooted(DatabasePath))
@@ -82,10 +83,10 @@ public sealed class StorageOptions
             return DatabasePath;
         }
 
-        // LocalApplicationData e' scrivibile sia da un utente sia da un account di servizio,
-        // su entrambe le piattaforme: %LOCALAPPDATA% su Windows, ~/.local/share su Linux.
-        // /var/lib sarebbe piu' ortodosso per un servizio di sistema Linux, ma richiede
-        // privilegi che qui non vogliamo pretendere.
+        // LocalApplicationData is writable both by a user and by a service account, on both
+        // platforms: %LOCALAPPDATA% on Windows, ~/.local/share on Linux.
+        // /var/lib would be more orthodox for a Linux system service, but it requires
+        // privileges we do not want to demand here.
         string baseDirectory = Environment.GetFolderPath(
             Environment.SpecialFolder.LocalApplicationData,
             Environment.SpecialFolderOption.Create);
@@ -94,10 +95,10 @@ public sealed class StorageOptions
     }
 
     /// <summary>
-    /// Controlla la configurazione all'avvio. Fallisce subito e rumorosamente: una ritenzione
-    /// a zero non romperebbe nulla, cancellerebbe solo tutto lo storico in silenzio.
+    /// Checks the configuration at start-up. It fails immediately and loudly: a retention of
+    /// zero would break nothing, it would only delete the whole history in silence.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Se un valore non e' utilizzabile.</exception>
+    /// <exception cref="InvalidOperationException">If a value is not usable.</exception>
     public void Validate()
     {
         RequirePositive(RawRetention, nameof(RawRetention));
@@ -130,12 +131,12 @@ public sealed class StorageOptions
                 FormattableString.Invariant($"{SectionName}:{nameof(MaxHistoryPoints)} must be at least 1."));
         }
 
-        // La coda puo' trattenere QueueCapacity campionamenti — a 1 Hz, altrettanti secondi —
-        // prima che raggiungano il disco. Se il consolidamento chiude un intervallo prima che
-        // quei campioni siano arrivati, non ci rientrano piu' e poco dopo il grezzo viene
-        // cancellato: resta una media credibile calcolata su una parte dei campioni, senza
-        // eccezioni ne' log. E' un errore che nessuno puo' vedere guardando un grafico, quindi
-        // va impedito qui, all'avvio, dove si nota subito.
+        // The queue can hold QueueCapacity samplings — at 1 Hz, that many seconds — before they
+        // reach the disk. If consolidation closes an interval before those samples have arrived,
+        // they never enter it again and shortly afterwards the raw level is deleted: what is
+        // left is a credible average computed over part of the samples, with no exception and no
+        // log. It is a mistake nobody can see by looking at a chart, so it has to be prevented
+        // here, at start-up, where it is noticed at once.
         TimeSpan worstCaseQueueDelay = TimeSpan.FromSeconds(QueueCapacity);
 
         if (ConsolidationGrace < worstCaseQueueDelay)

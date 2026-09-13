@@ -4,38 +4,38 @@ using Observer.Core.Metrics;
 namespace Observer.Service.Persistence;
 
 /// <summary>
-/// Dove il campionatore deposita uno snapshot perche' qualcun altro lo scriva su disco.
+/// Where the sampler drops a snapshot for somebody else to write to disk.
 /// </summary>
 /// <remarks>
-/// Esiste solo per una ragione: il campionatore gira a 1 Hz e il calcolo della percentuale
-/// di CPU dipende dalla DISTANZA fra due letture. Se il campionatore aspettasse il disco,
-/// un fsync lento non rallenterebbe la scrittura, falserebbe la misura successiva.
+/// It exists for one reason only: the sampler runs at 1 Hz and the CPU percentage is
+/// computed from the DISTANCE between two readings. If the sampler waited for the disk, a
+/// slow fsync would not slow the write down, it would falsify the next measurement.
 /// </remarks>
 public interface IMetricSnapshotSink
 {
-    /// <summary>Deposita uno snapshot. Non deve MAI bloccare ne' lanciare.</summary>
-    /// <param name="snapshot">Lo snapshot appena campionato.</param>
+    /// <summary>Drops a snapshot. Must NEVER block or throw.</summary>
+    /// <param name="snapshot">The snapshot just sampled.</param>
     void Enqueue(MachineSnapshot snapshot);
 }
 
 /// <summary>
-/// Il deposito che butta via tutto. Si usa quando la persistenza e' spenta: cosi' il
-/// campionatore non deve sapere se lo storico esiste, e non c'e' un ramo "se non c'e'
-/// nessuno in ascolto" da sbagliare.
+/// The sink that throws everything away. It is used when persistence is off: this way the
+/// sampler does not have to know whether the history exists, and there is no "if nobody is
+/// listening" branch to get wrong.
 /// </summary>
 public sealed class NullMetricSnapshotSink : IMetricSnapshotSink
 {
     /// <inheritdoc />
     public void Enqueue(MachineSnapshot snapshot)
     {
-        // Di proposito: la persistenza e' disattivata.
+        // Deliberate: persistence is disabled.
     }
 }
 
 /// <summary>
-/// La coda in memoria fra il campionatore e lo scrittore su disco. Quando e' piena scarta i
-/// piu' vecchi: in un monitor di macchina il dato appena letto vale piu' di quello di trenta
-/// secondi fa, e l'alternativa — far aspettare il campionatore — e' peggio del buco.
+/// The in-memory queue between the sampler and the writer to disk. When it is full it drops
+/// the oldest: in a machine monitor the reading just taken is worth more than the one from
+/// thirty seconds ago, and the alternative — making the sampler wait — is worse than the gap.
 /// </summary>
 public sealed class SnapshotBuffer : IMetricSnapshotSink
 {
@@ -43,9 +43,9 @@ public sealed class SnapshotBuffer : IMetricSnapshotSink
 
     private long dropped;
 
-    /// <summary>Crea la coda.</summary>
-    /// <param name="capacity">Quanti snapshot possono aspettare prima di scartare.</param>
-    /// <exception cref="ArgumentOutOfRangeException">Se la capacita' non e' positiva.</exception>
+    /// <summary>Creates the queue.</summary>
+    /// <param name="capacity">How many snapshots may wait before dropping starts.</param>
+    /// <exception cref="ArgumentOutOfRangeException">If the capacity is not positive.</exception>
     public SnapshotBuffer(int capacity)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
@@ -53,20 +53,20 @@ public sealed class SnapshotBuffer : IMetricSnapshotSink
         channel = Channel.CreateBounded<MachineSnapshot>(
             new BoundedChannelOptions(capacity)
             {
-                // DropOldest e' cio' che rende Enqueue non bloccante SENZA perdere il dato
-                // piu' fresco. Wait bloccherebbe il campionatore; DropWrite butterebbe via
-                // proprio il campione appena letto, cioe' l'unico che qualcuno sta
-                // guardando mentre la macchina e' sotto carico.
+                // DropOldest is what makes Enqueue non-blocking WITHOUT losing the
+                // freshest reading. Wait would block the sampler; DropWrite would throw
+                // away precisely the sample just taken, that is, the only one anybody
+                // is looking at while the machine is under load.
                 FullMode = BoundedChannelFullMode.DropOldest,
                 SingleReader = true,
             },
             _ => Interlocked.Increment(ref dropped));
     }
 
-    /// <summary>Quanti snapshot sono stati scartati perche' la coda era piena.</summary>
+    /// <summary>How many snapshots were dropped because the queue was full.</summary>
     /// <remarks>
-    /// Esposto in /metrics/storage di proposito: uno storico con buchi deve essere
-    /// misurabile, altrimenti sembra semplicemente uno storico.
+    /// Exposed in /metrics/storage deliberately: a history with gaps must be
+    /// measurable, otherwise it simply looks like a history.
     /// </remarks>
     public long DroppedCount => Interlocked.Read(ref dropped);
 
@@ -75,13 +75,13 @@ public sealed class SnapshotBuffer : IMetricSnapshotSink
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
-        // TryWrite su un canale limitato con DropOldest non aspetta e non lancia mai:
-        // restituisce false solo a canale chiuso, cioe' durante l'arresto.
+        // TryWrite on a bounded channel with DropOldest never waits and never throws:
+        // it returns false only on a closed channel, that is, during shutdown.
         channel.Writer.TryWrite(snapshot);
     }
 
-    /// <summary>Preleva tutto cio' che c'e' adesso, senza aspettare.</summary>
-    /// <returns>Gli snapshot in coda, dal piu' vecchio al piu' recente.</returns>
+    /// <summary>Takes everything that is there now, without waiting.</summary>
+    /// <returns>The queued snapshots, from the oldest to the most recent.</returns>
     public IReadOnlyList<MachineSnapshot> DrainAll()
     {
         List<MachineSnapshot> drained = [];

@@ -233,7 +233,7 @@ public static class Comandi
 
         try
         {
-            CredentialStore.Scrivi(percorso, ruotate);
+            CredentialStore.Write(percorso, ruotate);
         }
         catch (Exception errore) when (errore is IOException or UnauthorizedAccessException)
         {
@@ -289,7 +289,7 @@ public static class Comandi
     {
         try
         {
-            if (CredentialStore.Leggi(percorso) is { } credenziali)
+            if (CredentialStore.Read(percorso) is { } credenziali)
             {
                 return credenziali;
             }

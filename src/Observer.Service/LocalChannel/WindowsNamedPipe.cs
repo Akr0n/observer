@@ -7,58 +7,58 @@ using Microsoft.AspNetCore.Server.Kestrel.Transport.NamedPipes;
 namespace Observer.Service.LocalChannel;
 
 /// <summary>
-/// L'ascolto su named pipe e la lista di chi puo' aprirla.
+/// Listening on the named pipe and the list of who may open it.
 /// </summary>
 /// <remarks>
-/// Classe a parte e annotata perche' CA1416, con TreatWarningsAsErrors, fa fallire la build su
-/// ENTRAMBI i runner: e' analisi statica e non dipende dall'OS che compila. L'attributo su una
-/// local function non viene onorato e non copre il corpo di una lambda, quindi questo codice
-/// non puo' stare nei top-level statements di Program.cs.
+/// A separate, annotated class because CA1416, with TreatWarningsAsErrors, fails the build on
+/// BOTH runners: it is static analysis and does not depend on the OS that compiles. The
+/// attribute on a local function is not honoured and does not cover the body of a lambda, so
+/// this code cannot live in the top-level statements of Program.cs.
 /// </remarks>
 [SupportedOSPlatform("windows")]
 public static class WindowsNamedPipe
 {
-    /// <summary>Apre l'ascolto sulla pipe e ne configura il trasporto.</summary>
-    /// <param name="builder">Il builder dell'applicazione.</param>
-    /// <param name="pipeName">Il nome della pipe, senza prefisso.</param>
+    /// <summary>Opens the listener on the pipe and configures its transport.</summary>
+    /// <param name="builder">The application builder.</param>
+    /// <param name="pipeName">The name of the pipe, without prefix.</param>
     public static void Listen(WebApplicationBuilder builder, string pipeName)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrWhiteSpace(pipeName);
 
-        // UseNamedPipes NON serve per aprire la pipe: su Windows il trasporto e' gia'
-        // registrato e ListenNamedPipe basta da solo. Serve unicamente per queste due options.
+        // UseNamedPipes is NOT needed to open the pipe: on Windows the transport is already
+        // registered and ListenNamedPipe is enough on its own. It serves only these two options.
         builder.WebHost.UseNamedPipes(ConfigureTransport);
         builder.WebHost.ConfigureKestrel(kestrel => kestrel.ListenNamedPipe(pipeName));
     }
 
-    /// <summary>Imposta le due options del trasporto. Insieme, mai una sola.</summary>
-    /// <param name="options">Le options del trasporto named pipe.</param>
+    /// <summary>Sets the transport's two options. Together, never just one.</summary>
+    /// <param name="options">The named pipe transport options.</param>
     public static void ConfigureTransport(NamedPipeTransportOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        // Le due righe seguenti vanno tenute ADIACENTI e non separate mai.
-        // Impostare solo PipeSecurity fa lanciare all'avvio ArgumentException ("'pipeSecurity'
-        // must be null when 'options' contains 'PipeOptions.CurrentUserOnly'"), ed e' il caso
-        // innocuo perche' rumoroso. Impostare solo CurrentUserOnly = false e' quello
-        // pericoloso: l'host parte normalmente e produce una pipe con DACL
-        // (A;;FR;;;WD)(A;;FR;;;AN), cioe' leggibile da Everyone e da ANONYMOUS LOGON. Nessun
-        // errore, nessun warning, nessun sintomo.
+        // The two lines that follow must be kept ADJACENT and never separated.
+        // Setting only PipeSecurity throws ArgumentException at start-up ("'pipeSecurity'
+        // must be null when 'options' contains 'PipeOptions.CurrentUserOnly'"), and that is the
+        // harmless case because it is noisy. Setting only CurrentUserOnly = false is the
+        // dangerous one: the host starts normally and produces a pipe with DACL
+        // (A;;FR;;;WD)(A;;FR;;;AN), that is readable by Everyone and by ANONYMOUS LOGON. No
+        // error, no warning, no symptom.
         options.CurrentUserOnly = false;
         options.PipeSecurity = SecurityDescriptor();
     }
 
-    /// <summary>La DACL della pipe: chi puo' aprirla.</summary>
-    /// <returns>Il descrittore da applicare al trasporto.</returns>
+    /// <summary>The pipe's DACL: who may open it.</summary>
+    /// <returns>The descriptor to apply to the transport.</returns>
     public static PipeSecurity SecurityDescriptor()
     {
         PipeSecurity security = new();
 
-        // FullControl e non il solo CreateNewInstance: la prima istanza si crea sempre, ed e'
-        // dalla SECONDA che serve FILE_CREATE_PIPE_INSTANCE (0x4). Kestrel ne apre piu' d'una,
-        // e senza quel bit il bind fallisce con UnauthorizedAccessException, che Kestrel
-        // traduce nel fuorviante "address already in use".
+        // FullControl and not CreateNewInstance alone: the first instance is always created, and
+        // it is from the SECOND that FILE_CREATE_PIPE_INSTANCE (0x4) is needed. Kestrel opens
+        // more than one, and without that bit the bind fails with UnauthorizedAccessException,
+        // which Kestrel translates into the misleading "address already in use".
         security.AddAccessRule(new PipeAccessRule(
             new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
             PipeAccessRights.FullControl,
@@ -68,28 +68,28 @@ public static class WindowsNamedPipe
 
         if (current.User is { } account)
         {
-            // Quando il servizio gira come LocalSystem questa ACE coincide con la precedente;
-            // quando gira lanciato a mano da un terminale, e' l'unica che gli permette di
-            // aprire la propria pipe.
+            // When the service runs as LocalSystem this ACE coincides with the previous one;
+            // when it runs launched by hand from a terminal, it is the only one that lets it
+            // open its own pipe.
             security.AddAccessRule(new PipeAccessRule(
                 account,
                 PipeAccessRights.FullControl,
                 AccessControlType.Allow));
         }
 
-        // INTERACTIVE e NON Authenticated Users: il secondo comprende ogni principal
-        // autenticato capace di raggiungere la macchina, anche via SMB sulla porta 445, e una
-        // named pipe e' esposta proprio li'.
+        // INTERACTIVE and NOT Authenticated Users: the latter includes every authenticated
+        // principal able to reach the machine, even over SMB on port 445, and a named pipe is
+        // exposed exactly there.
         security.AddAccessRule(new PipeAccessRule(
             new SecurityIdentifier(WellKnownSidType.InteractiveSid, null),
             PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance,
             AccessControlType.Allow));
 
-        // Non serve ordinare le ACE a mano: PipeSecurity canonicalizza, e una DENY aggiunta per
-        // ultima finisce comunque in testa (verificato confrontando le due SDDL, identiche
-        // carattere per carattere). La garanzia e' pero' del tipo CommonAcl e NON della nostra
-        // chiamata: importando un descrittore da SDDL o da forma binaria la DENY resterebbe
-        // dove sta e diventerebbe inerte. Costruire sempre con AddAccessRule, mai importare.
+        // There is no need to order the ACEs by hand: PipeSecurity canonicalises, and a DENY
+        // added last ends up at the head anyway (verified by comparing the two SDDLs, identical
+        // character by character). The guarantee is however CommonAcl's and NOT our own
+        // call's: importing a descriptor from SDDL or from binary form would leave the DENY
+        // where it is and it would become inert. Always build with AddAccessRule, never import.
         return security;
     }
 }

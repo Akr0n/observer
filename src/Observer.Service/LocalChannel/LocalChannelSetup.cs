@@ -2,18 +2,18 @@ using System.Runtime.Versioning;
 
 namespace Observer.Service.LocalChannel;
 
-/// <summary>Apre il canale locale sulla piattaforma corrente.</summary>
+/// <summary>Opens the local channel on the current platform.</summary>
 /// <remarks>
-/// Punto d'ingresso cross-platform: il codice specifico di ogni sistema sta nelle classi
-/// annotate, e qui ci sono solo le guardie. Non puo' vivere nei top-level statements di
-/// Program.cs perche' [SupportedOSPlatform] non li copre.
+/// Cross-platform entry point: the code specific to each system lives in the annotated
+/// classes, and only the guards are here. It cannot live in Program.cs's top-level
+/// statements because [SupportedOSPlatform] does not cover them.
 /// </remarks>
 public static class LocalChannelSetup
 {
-    /// <summary>Configura l'ascolto locale.</summary>
-    /// <param name="builder">Il builder dell'applicazione.</param>
-    /// <param name="options">Nome della pipe e path del socket, gia' convalidati.</param>
-    /// <returns>Il path del socket effettivamente usato su Linux, altrimenti null.</returns>
+    /// <summary>Configures local listening.</summary>
+    /// <param name="builder">The application builder.</param>
+    /// <param name="options">Pipe name and socket path, already validated.</param>
+    /// <returns>The socket path actually used on Linux, null otherwise.</returns>
     public static async Task<string?> ConfigureAsync(WebApplicationBuilder builder, LocalChannelOptions options)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -42,13 +42,13 @@ public static class LocalChannelSetup
         return null;
     }
 
-    /// <summary>Il primo path che questo processo riesce davvero a preparare.</summary>
+    /// <summary>The first path this process can actually prepare.</summary>
     /// <remarks>
-    /// /run/observer non e' creabile da un utente normale, e "dotnet run" durante lo sviluppo
-    /// gira come utente normale su meta' della CI. Senza un ripiego il servizio non sarebbe
-    /// avviabile fuori da systemd. Chi lo esegue deve pero' sapere DOVE e' finito il socket:
-    /// per questo il path scelto viene restituito e stampato dal chiamante, invece di
-    /// restare un dettaglio interno.
+    /// /run/observer cannot be created by a normal user, and "dotnet run" during development
+    /// runs as a normal user on half of the CI. Without a fallback the service would not be
+    /// startable outside systemd. Whoever runs it must however know WHERE the socket ended up:
+    /// that is why the chosen path is returned and printed by the caller, instead of staying
+    /// an internal detail.
     /// </remarks>
     [SupportedOSPlatform("linux")]
     private static async Task<string> PrepareUsablePathAsync(string preferred)

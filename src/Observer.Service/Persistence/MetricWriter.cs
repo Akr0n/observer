@@ -3,18 +3,18 @@ using Observer.Core.Metrics;
 namespace Observer.Service.Persistence;
 
 /// <summary>
-/// Il pezzo che sta fra la coda e il file: svuota, appiattisce, scrive. Separato dal
-/// <see cref="MetricPersistenceService"/> perche' il ciclo di un BackgroundService non si
-/// puo' provare senza un host, mentre questo si.
+/// The piece that sits between the queue and the file: drains, flattens, writes. Kept apart
+/// from <see cref="MetricPersistenceService"/> because a BackgroundService's loop cannot be
+/// tested without a host, while this one can.
 /// </summary>
 public sealed class MetricWriter
 {
     private readonly SnapshotBuffer buffer;
     private readonly MetricStore store;
 
-    /// <summary>Crea lo scrittore.</summary>
-    /// <param name="buffer">La coda da cui prelevare.</param>
-    /// <param name="store">Il magazzino su cui scrivere.</param>
+    /// <summary>Creates the writer.</summary>
+    /// <param name="buffer">The queue to take from.</param>
+    /// <param name="store">The store to write to.</param>
     public MetricWriter(SnapshotBuffer buffer, MetricStore store)
     {
         ArgumentNullException.ThrowIfNull(buffer);
@@ -24,8 +24,8 @@ public sealed class MetricWriter
         this.store = store;
     }
 
-    /// <summary>Svuota la coda e scrive tutto in un'unica transazione.</summary>
-    /// <returns>Quante righe grezze sono state scritte.</returns>
+    /// <summary>Drains the queue and writes everything in a single transaction.</summary>
+    /// <returns>How many raw rows were written.</returns>
     public int FlushPending()
     {
         IReadOnlyList<MachineSnapshot> pending = buffer.DrainAll();
@@ -42,8 +42,8 @@ public sealed class MetricWriter
             samples.AddRange(SnapshotFlattener.Flatten(snapshot));
         }
 
-        // Una transazione per giro, non una per campione: con una transazione al secondo per
-        // ogni metrica il disco diventerebbe il collo di bottiglia del campionamento.
+        // One transaction per pass, not one per sample: with a transaction a second for each
+        // metric the disk would become the bottleneck of the sampling.
         return store.WriteSamples(samples);
     }
 }

@@ -13,75 +13,75 @@ using Observer.Service.Persistence;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-// CreateBuilder carica appsettings.json e appsettings.{Environment}.json, e "Local" non e'
-// un nome di ambiente: senza questa riga appsettings.Local.json non viene MAI letto, e chi
-// segue il messaggio d'errore qui sotto si ritrova la stessa frase che gli dice di fare
-// quello che ha appena fatto.
+// CreateBuilder loads appsettings.json and appsettings.{Environment}.json, and "Local" is not
+// an environment name: without this line appsettings.Local.json is NEVER read, and whoever
+// follows the error message below gets back the very sentence that tells them to do
+// what they have just done.
 if (LocalConfigurationFile.ShouldLoad(
     Path.Combine(builder.Environment.ContentRootPath, LocalConfigurationFile.FileName)))
 {
-    // Il controllo esiste perche' optional:true tollera un file ASSENTE e non un file
-    // VUOTO: zero byte fanno fallire l'avvio con uno stack trace su "The input does not
-    // contain any JSON tokens". E svuotare quel file e' esattamente cio' che si fa per
-    // togliere il token che contiene, adesso che il servizio se lo genera da solo.
+    // The check exists because optional:true tolerates a MISSING file and not an EMPTY
+    // one: zero bytes fail the start-up with a stack trace on "The input does not
+    // contain any JSON tokens". And emptying that file is exactly what one does to
+    // remove the token it holds, now that the service generates its own.
     builder.Configuration.AddJsonFile(LocalConfigurationFile.FileName, optional: true, reloadOnChange: true);
 }
 
-// Le due righe seguenti non sono ridondanti: riaggiungono ambiente e riga di comando DOPO
-// il file, per rimetterli in cima alla precedenza. Senza, il file appena aggiunto vincerebbe
-// su Observer__ApiToken, e un token vecchio dimenticato nel file sovrascriverebbe in
-// silenzio quello nuovo passato dall'ambiente.
+// The two lines below are not redundant: they re-add the environment and the command line AFTER
+// the file, to put them back on top of the precedence. Without them the file just added would
+// win over Observer__ApiToken, and an old token forgotten in the file would silently
+// overwrite the new one passed through the environment.
 builder.Configuration.AddEnvironmentVariables();
 builder.Configuration.AddCommandLine(args);
 
-// Permette allo stesso eseguibile di girare come servizio di sistema: registrato nel Service
-// Control Manager su Windows, come unit systemd su Linux. Entrambe le chiamate non fanno nulla
-// quando il processo e' avviato normalmente da terminale, quindi non esistono due modalita' da
-// mantenere separate. E' cio' che rende reale il vincolo Session 0 da cui nasce l'architettura
-// a due processi: il servizio raccoglie senza che nessuno tenga aperta una finestra.
+// Lets the same executable run as a system service: registered in the Service Control Manager
+// on Windows, as a systemd unit on Linux. Neither call does anything when the process is
+// started normally from a terminal, so there are no two modes to keep separate. It is what
+// makes the Session 0 constraint real, the constraint the two-process architecture comes from:
+// the service collects without anyone keeping a window open.
 builder.Host.UseWindowsService();
 builder.Host.UseSystemd();
 
 builder.Services.AddObserverMetrics();
 builder.Services.AddSingleton<MetricSnapshotCache>();
 
-// La compressione delle risposte, con UNA sola opzione, e quella riga e' una decisione di
-// sicurezza presa, non un dettaglio di configurazione.
+// Response compression, with ONE single option, and that line is a security decision taken,
+// not a configuration detail.
 //
-// PERCHE' ACCENDERLA SU HTTPS. Il predefinito di ASP.NET Core e' EnableForHttps = false, e
-// serve a tenere lontano BREACH. BREACH pero' vuole TRE cose insieme: un segreto nella
-// risposta, input dell'attaccante riflesso nella stessa risposta, e la possibilita' di
-// osservarne molte. Qui ne regge UNA sola. La riflessione c'e' ed e' totale - /metrics/history
-// rimanda collector, metrica e istanza verbatim - ma nei corpi non c'e' nessun segreto: il
-// token non compare in nessuna risposta, e l'impronta del certificate non e' un segreto, e'
-// proprio cio' che il client si aspetta di vedere. Soprattutto: NESSUNO puo' far produrre al
-// servizio un corpo comprimibile senza avere gia' il token - senza, la risposta e' 401 con
-// Content-Length 0, misurato su ogni rotta. L'attaccante di BREACH qui e' qualcuno che ha gia'
-// la credenziale, e con quella legge tutto in chiaro e puo' anche terminare processi. Non c'e'
-// browser, non ci sono cookie, non c'e' autorita' ambientale da rubare.
-// Cio' che si apre davvero, e si accetta per iscritto: le lunghezze dei record TLS diventano
-// funzione del contenuto invece che quasi costanti, quindi chi sta in mezzo puo' dedurre
-// qualcosa sulla forma del traffico. E' un canale di lato modesto, contro un guadagno misurato.
+// WHY TURN IT ON OVER HTTPS. The ASP.NET Core default is EnableForHttps = false, and it is
+// there to keep BREACH away. BREACH, however, wants THREE things together: a secret in the
+// response, attacker input reflected in the same response, and the chance to observe many
+// of them. Here only ONE holds. The reflection is there and it is total - /metrics/history
+// sends collector, metric and instance back verbatim - but there is no secret in the bodies:
+// the token appears in no response, and the certificate fingerprint is not a secret, it is
+// exactly what the client expects to see. Above all: NOBODY can make the service produce a
+// compressible body without already holding the token - without it the response is a 401 with
+// Content-Length 0, measured on every route. The BREACH attacker here is someone who already
+// has the credential, and with that reads everything in the clear and can even kill processes.
+// There is no browser, there are no cookies, there is no ambient authority to steal.
+// What really does open up, and is accepted in writing: TLS record lengths become a
+// function of the content instead of nearly constant, so whoever sits in the middle can infer
+// something about the shape of the traffic. It is a modest side channel, against a measured gain.
 //
-// E lasciare il predefinito non sarebbe "piu' prudente", sarebbe il verso SBAGLIATO: senza
-// questa riga si comprimerebbe solo il canale locale - named pipe e unix socket sono HTTP, non
-// HTTPS - cioe' si spenderebbe la CPU della macchina misurata per zero byte di network, lasciando
-// scoperto l'unico percorso dove i byte costano davvero.
+// And leaving the default would not be "more cautious", it would be the WRONG way round: without
+// this line only the local channel would be compressed - named pipe and unix socket are HTTP, not
+// HTTPS - that is, the measured machine's CPU would be spent for zero bytes of network, leaving
+// uncovered the one path where bytes really cost.
 //
-// GZIP PRIMA DI BROTLI, ed e' misurato sul filo, non su un buffer. A parita' di preferenza il
-// servizio sceglie il PRIMO provider registrato, e il predefinito mette Brotli davanti.
-// Comprimendo un corpo tutto in una volta Brotli vince, ed e' il confronto che viene d'istinto;
-// ma questo servizio SERIALIZZA - Results.Ok fa uscire lo JSON dal writer a pezzi, con un flush
-// per segmento - e i flush puniscono Brotli molto piu' di Gzip. Misurato dal banco su TLS vero,
-// sullo stesso corpo: gzip 2 720 byte, brotli 3 223. Diciotto per cento in piu', e proprio sulle
-// risposte che pesano. Registrarli esplicitamente inverte solo la precedenza a parita' di
-// preferenza: Brotli resta disponibile per un client che accetti soltanto quello.
+// GZIP BEFORE BROTLI, and it is measured on the wire, not on a buffer. At equal preference the
+// service picks the FIRST registered provider, and the default puts Brotli in front.
+// Compressing a body all at once Brotli wins, and that is the comparison that comes by instinct;
+// but this service SERIALISES - Results.Ok pushes the JSON out of the writer in pieces, with one
+// flush per segment - and flushes punish Brotli far more than Gzip. Measured from the bench on
+// real TLS, on the same body: gzip 2 720 bytes, brotli 3 223. Eighteen per cent more, and exactly
+// on the responses that weigh. Registering them explicitly only inverts the precedence at equal
+// preference: Brotli stays available for a client that accepts only that one.
 //
-// Il livello resta Fastest, che e' il predefinito di entrambi: Optimal costa da 4 a 30 volte per
-// una manciata di byte, ed e' l'unica scelta capace di farsi vedere nel numero che questo
-// servizio pubblica su se' stesso. Il grosso non e' /metrics/latest (3,2 kB) ma
-// /metrics/history: la coda grezza pesa 76 kB a un'ora e 114 kB a ventiquattro, ed e' chiesta
-// una volta per quadrante.
+// The level stays Fastest, which is the default of both: Optimal costs 4 to 30 times as much for
+// a handful of bytes, and it is the one choice capable of showing up in the number this
+// service publishes about itself. The bulk is not /metrics/latest (3.2 kB) but
+// /metrics/history: the raw tail weighs 76 kB at one hour and 114 kB at twenty-four, and it is
+// asked for once per gauge.
 builder.Services.AddResponseCompression(options =>
 {
     options.EnableForHttps = true;
@@ -89,26 +89,26 @@ builder.Services.AddResponseCompression(options =>
     options.Providers.Add<BrotliCompressionProvider>();
 });
 
-// Singleton e non transient, per la stessa ragione dei collector: la classifica dei processi
-// conserva il campione precedente per PID, e ricrearla a ogni richiesta lascerebbe la CPU di
-// ogni processo eternamente sconosciuta.
+// Singleton and not transient, for the same reason as the collectors: the process ranking
+// keeps the previous sample per PID, and rebuilding it at every request would leave the CPU of
+// every process forever unknown.
 builder.Services.AddSingleton<IProcessLister>(sp => new SystemProcessLister(
     ProcessIoReaders.For(HostPlatformDetector.Current, sp.GetRequiredService<IFileTextReader>())));
 builder.Services.AddSingleton<ProcessRanking>();
 builder.Services.AddHostedService<MetricSamplingService>();
 
-// Lo storico. Le options si convalidano QUI, prima di aprire la listenOptions: una ritenzione a zero
-// non farebbe fallire niente, cancellerebbe solo tutto in silenzio, e il guasto si
-// scoprirebbe il giorno in cui a qualcuno serve un grafico di ieri.
+// History. The options are validated HERE, before opening the port: a retention of zero
+// would make nothing fail, it would just delete everything silently, and the fault would be
+// discovered the day someone needs a chart of yesterday.
 StorageOptions storage =
     builder.Configuration.GetSection(StorageOptions.SectionName).Get<StorageOptions>() ?? new StorageOptions();
 
 storage.Validate();
 
-// Gli URL degli endpoint si convalidano QUI, per lo stesso motivo per cui si convalida la
-// ritenzione: non tutti i modi di sbagliare falliscono. Un percorso di socket scritto in stile
-// Windows dentro "http://unix:" non fa lanciare niente e fa ascoltare Kestrel sulla listenOptions 80 di
-// OGNI interfaccia, con la telemetria della macchina dietro. Meglio non partire.
+// The endpoint URLs are validated HERE, for the same reason retention is validated:
+// not every way of getting it wrong fails. A socket path written Windows-style
+// inside "http://unix:" throws nothing and makes Kestrel listen on port 80 of
+// EVERY interface, with the machine's telemetry behind it. Better not to start.
 foreach (IConfigurationSection endpoint in builder.Configuration.GetSection("Kestrel:Endpoints").GetChildren())
 {
     if (endpoint["Url"] is { } url && EndpointUrl.Problem(url) is { } problem)
@@ -118,10 +118,10 @@ foreach (IConfigurationSection endpoint in builder.Configuration.GetSection("Kes
     }
 }
 
-// Il canale locale: named pipe su Windows, socket unix su Linux. Il nome e il percorso sono
-// configurabili perche' un endpoint che non si binda abbatte l'INTERO host, endpoint TCP
-// compreso: con valori fissi, lanciare questo servizio a mano su una macchina dove quello
-// installato gira non fallirebbe piu' "solo sulla listenOptions", non partirebbe affatto.
+// The local channel: named pipe on Windows, unix socket on Linux. The name and the path are
+// configurable because an endpoint that fails to bind brings down the WHOLE host, TCP endpoint
+// included: with fixed values, launching this service by hand on a machine where the installed
+// one is running would no longer fail "only on the port", it would not start at all.
 LocalChannelOptions localChannelOptions =
     builder.Configuration.GetSection(LocalChannelOptions.SectionName).Get<LocalChannelOptions>()
         ?? new LocalChannelOptions();
@@ -132,11 +132,11 @@ string? socketPath = await LocalChannelSetup.ConfigureAsync(builder, localChanne
 
 builder.Services.AddSingleton(storage);
 
-// Magazzino e coda si registrano SEMPRE, anche a storico spento: costruirli non tocca il
-// disco, e cosi' gli endpoint possono rispondere "disattivato" invece di non esistere.
-// Percorso RISOLTO, mai quello grezzo: un servizio non ha una cartella di lavoro prevedibile,
-// e un percorso relativo farebbe comparire il database in posti diversi a seconda di come e'
-// stato avviato, dando l'impressione di aver perso lo storico.
+// Store and queue are ALWAYS registered, even with history off: building them does not touch
+// the disk, and this way the endpoints can answer "disabled" instead of not existing.
+// RESOLVED path, never the raw one: a service has no predictable working directory,
+// and a relative path would make the database appear in different places depending on how it
+// was started, giving the impression that the history had been lost.
 builder.Services.AddSingleton(new MetricStore(storage.ResolveDatabasePath()));
 builder.Services.AddSingleton(new SnapshotBuffer(storage.QueueCapacity));
 
@@ -152,28 +152,28 @@ else
     builder.Services.AddSingleton<IMetricSnapshotSink, NullMetricSnapshotSink>();
 }
 
-// Il servizio ascolta anche fuori da localhost (vedi appsettings.json) ed espone telemetria
-// della macchina: sul percorso di RETE il token resta obbligatorio, e non averlo significa
-// non poter essere interrogati da un altro computer.
-// Ma NON viene piu' preteso in configurazione: il servizio se lo genera e se lo custodisce.
-// E' cio' che rende possibile un installer - finche' il token andava configurato, chi
-// installava doveva generarlo, cioe' conoscerlo, registrarlo nel proprio log e lasciarselo
-// dietro se falliva a meta'.
+// The service also listens outside localhost (see appsettings.json) and exposes the machine's
+// telemetry: on the NETWORK path the token stays mandatory, and not having one means
+// not being able to be queried from another computer.
+// But it is NOT demanded in configuration any more: the service generates it and keeps it itself.
+// That is what makes an installer possible - as long as the token had to be configured, whoever
+// installed had to generate it, that is to know it, record it in their own log and leave it
+// behind if they failed halfway.
 bool runningAsService = WindowsServiceHelpers.IsWindowsService() || SystemdHelpers.IsSystemdService();
 
 string credentialStorePath =
     builder.Configuration["Observer:CredentialStorePath"] ?? CredentialDirectory.DefaultPath();
 
-ProvisionedCredentials credentials = CredentialProvisioning.Provvedi(
+ProvisionedCredentials credentials = CredentialProvisioning.Provision(
     builder.Configuration["Observer:ApiToken"],
     credentialStorePath,
     runningAsService);
 
-if (credentials.Origin == CredentialOrigin.Effimero)
+if (credentials.Origin == CredentialOrigin.Ephemeral)
 {
-    // Console e non il logger: questa riga serve a chi ha appena lanciato il servizio da un
-    // terminale, e va vista subito. Come servizio di sistema questo ramo non si raggiunge
-    // nemmeno, perche' li' il rifiuto di partire e' l'unica risposta accettabile.
+    // Console and not the logger: this line is for whoever has just launched the service from a
+    // terminal, and it has to be seen at once. As a system service this branch is not even
+    // reached, because there refusing to start is the only acceptable answer.
     Console.WriteLine(
         "Observer could not secure a credential store, so this run uses a throwaway machine " +
         "token that is never written to disk. To let another computer query this one during " +
@@ -181,11 +181,11 @@ if (credentials.Origin == CredentialOrigin.Effimero)
     Console.WriteLine("    Observer__ApiToken=" + credentials.Credentials.Current);
 }
 
-// HTTPS verso le ALTRE macchine. Il certificate se lo genera e se lo custodisce il
-// servizio, nello stesso perimetro del token e per la stessa ragione: cosi' l'installer
-// non conosce niente. La fiducia non viene da un'autorita' ne' da una catena - il
-// certificate e' autofirmato - ma dall'impronta, che si prende a mano da questa macchina
-// con "observer share" e si fissa nel client.
+// HTTPS towards the OTHER machines. The certificate is generated and kept by the
+// service itself, in the same perimeter as the token and for the same reason: this way the
+// installer knows nothing. Trust comes neither from an authority nor from a chain - the
+// certificate is self-signed - but from the fingerprint, taken by hand from this machine
+// with "observer share" and pinned in the client.
 NetworkOptions network =
     builder.Configuration.GetSection(NetworkOptions.SectionName).Get<NetworkOptions>() ?? new NetworkOptions();
 
@@ -193,24 +193,24 @@ network.Validate();
 
 if (network.Https)
 {
-    ProvisionedCertificate certificate = CertificateProvisioning.Provvedi(
+    ProvisionedCertificate certificate = CertificateProvisioning.Provision(
         credentialStorePath,
         Environment.MachineName,
         DateTimeOffset.UtcNow,
         runningAsService);
 
-    if (certificate.Origin == CertificateOrigin.Effimero)
+    if (certificate.Origin == CertificateOrigin.Ephemeral)
     {
-        // Come per il token effimero: Console e non il logger, perche' questa riga serve a
-        // chi ha appena lanciato il servizio da un terminale e va vista subito.
+        // As with the throwaway token: Console and not the logger, because this line is for
+        // whoever has just launched the service from a terminal and has to be seen at once.
         Console.WriteLine(
             "Observer could not secure a machine certificate, so this run uses a throwaway one. " +
             "Its fingerprint changes at every start, so no dashboard that pinned the previous " +
             "one will connect.");
     }
 
-    // ListenAnyIP e non ListenLocalhost: il senso di questa listenOptions e' che la usino le altre
-    // macchine. Chi guarda quella su cui e' seduto passa dal canale locale e non di qui.
+    // ListenAnyIP and not ListenLocalhost: the point of this port is that the other machines
+    // use it. Whoever watches the one they are sitting at goes through the local channel, not here.
     builder.WebHost.ConfigureKestrel(kestrel =>
         kestrel.ListenAnyIP(network.HttpsPort, listenOptions => listenOptions.UseHttps(certificate.Certificate)));
 }
@@ -219,42 +219,42 @@ WebApplication app = builder.Build();
 
 if (OperatingSystem.IsLinux() && socketPath is { } localSocketPath)
 {
-    // Il modo del file va imposto DOPO l'avvio: prima quel file non esiste, e un chmod
-    // accanto alla creazione della directory fallirebbe.
-    // Quale percorso sia stato scelto non serve stamparlo qui: /run/observer non e' creabile
-    // da un utente normale e il ripiego cambia il percorso, ma Kestrel lo dice gia' da se'
-    // nella sua riga "Now listening on: http://unix:/...".
+    // The file mode has to be imposed AFTER the start: before that the file does not exist, and
+    // a chmod next to the directory creation would fail.
+    // Which path was chosen need not be printed here: /run/observer is not creatable
+    // by a normal user and the fallback changes the path, but Kestrel already says so itself
+    // in its "Now listening on: http://unix:/..." line.
     LinuxUnixSocket.RestrictAfterStart(app.Lifetime, localSocketPath);
 }
 
 app.UseObserverAccessControl(credentials.Credentials);
 
-// DOPO il controllo d'accesso, e l'ordine e' misurato. Cosi' le risposte che il middleware
-// corto-circuita - 401 e 404 - non passano dal compressore: non ha senso spendere CPU per un
-// chiamante che non ha la credenziale, ed e' anche gratis da rispettare, perche' quei corpi
-// sono di zero byte. Cio' che si comprime resta tutto: il middleware degli endpoint viene
-// accodato in fondo da app.Run(), quindi qualunque cosa registrata qui gira prima di loro.
+// AFTER the access control, and the order is measured. This way the responses the middleware
+// short-circuits - 401 and 404 - do not go through the compressor: there is no point spending CPU
+// on a caller without the credential, and it is also free to honour, because those bodies
+// are zero bytes. What gets compressed stays all of it: the endpoint middleware is
+// appended at the end by app.Run(), so anything registered here runs before it.
 app.UseResponseCompression();
 
-// Il catalogo descrive le metriche esistenti, comprese quelle non misurabili qui: e' cio'
-// che permette al client di disegnare una metrica che non conosceva a tempo di compilazione.
+// The catalog describes the metrics that exist, including the ones not measurable here: it is
+// what lets the client draw a metric it did not know at compile time.
 app.MapGet("/metrics/catalog", (IReadOnlyList<IMetricCollector> collectors) =>
     collectors.Select(c => new { collectorId = c.Id, descriptors = c.Descriptors }));
 
-// Legge SOLO dalla cache: gli endpoint non campionano mai, altrimenti due richieste
-// simultanee falserebbero il calcolo della percentuale CPU.
+// Reads ONLY from the cache: the endpoints never sample, otherwise two simultaneous
+// requests would skew the CPU percentage computation.
 app.MapGet("/metrics/latest", (MetricSnapshotCache cache) =>
     cache.Latest is { } snapshot
         ? Results.Ok(snapshot)
         : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
 
-// Mappati DOPO il middleware qui sopra, come gli altri due: lo storico dice quando la
-// macchina e' accesa e quanto lavora, cioe' piu' di quanto dica un singolo campionamento.
+// Mapped AFTER the middleware above, like the other two: history says when the
+// machine is on and how hard it works, that is more than a single sample says.
 app.MapStorageEndpoints();
 
-// Chi sta consumando la macchina, e come fermarlo. E' l'unico gruppo di endpoint che non si
-// limita a leggere: /processes/{pid}/kill distrugge stato, e per questo registra ogni
-// tentativo con provenienza del chiamante.
+// Who is consuming the machine, and how to stop them. It is the only endpoint group that does
+// not just read: /processes/{pid}/kill destroys state, and for that reason it logs every
+// attempt with the caller's origin.
 app.MapProcessEndpoints();
 
 app.Run();

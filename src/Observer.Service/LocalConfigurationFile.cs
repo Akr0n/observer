@@ -1,25 +1,25 @@
 namespace Observer.Service;
 
-/// <summary>Il file di configurazione locale, che puo' esserci vuoto.</summary>
+/// <summary>The local configuration file, which may be there and empty.</summary>
 /// <remarks>
-/// <c>AddJsonFile(optional: true)</c> tollera un file ASSENTE, non un file VUOTO: zero byte
-/// fanno fallire l'avvio con <c>The input does not contain any JSON tokens</c> e uno stack
-/// trace. E svuotare il file e' esattamente cio' che si fa quando si vuole togliere il token
-/// che contiene, adesso che il servizio se lo genera da solo.
+/// <c>AddJsonFile(optional: true)</c> tolerates an ABSENT file, not an EMPTY one: zero bytes
+/// make start-up fail with <c>The input does not contain any JSON tokens</c> and a stack
+/// trace. And emptying the file is exactly what one does to take out the token it holds,
+/// now that the service generates it by itself.
 /// </remarks>
 public static class LocalConfigurationFile
 {
-    /// <summary>Il nome del file, uguale su ogni sistema.</summary>
+    /// <summary>The file name, the same on every system.</summary>
     public const string FileName = "appsettings.Local.json";
 
-    /// <summary>Se il file ha qualcosa da leggere.</summary>
-    /// <param name="path">Il path completo del file.</param>
-    /// <returns>Falso se e' assente o non contiene altro che spazi.</returns>
+    /// <summary>Whether the file has anything to read.</summary>
+    /// <param name="path">The full path of the file.</param>
+    /// <returns>False if it is absent or contains nothing but whitespace.</returns>
     /// <remarks>
-    /// Un file con dentro un JSON SBAGLIATO va caricato lo stesso, e deve fallire: quello e' un
-    /// errore vero, e nasconderlo lascerebbe l'utente a chiedersi perche' il suo token non viene
-    /// letto. La tolleranza vale solo per "non c'e' niente da leggere", che e' indistinguibile
-    /// dall'assenza del file.
+    /// A file with WRONG JSON inside is to be loaded all the same, and must fail: that is a
+    /// real error, and hiding it would leave the user wondering why their token is not being
+    /// read. The tolerance holds only for "there is nothing to read", which is indistinguishable
+    /// from the file being absent.
     /// </remarks>
     public static bool ShouldLoad(string path)
     {
@@ -39,8 +39,8 @@ public static class LocalConfigurationFile
         }
         catch (IOException)
         {
-            // Illeggibile per un altro motivo: lo si lascia caricare, cosi' il guasto vero
-            // emerge dal caricatore di configurazione invece di essere ingoiato qui.
+            // Unreadable for some other reason: it is left to load, so the real fault
+            // surfaces from the configuration loader instead of being swallowed here.
             return true;
         }
         catch (UnauthorizedAccessException)

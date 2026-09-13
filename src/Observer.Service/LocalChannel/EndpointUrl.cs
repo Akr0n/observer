@@ -4,35 +4,35 @@ using System.Text;
 namespace Observer.Service.LocalChannel;
 
 /// <summary>
-/// Dice se un URL di endpoint di Kestrel e' utilizzabile, prima che Kestrel ci provi.
+/// Says whether a Kestrel endpoint URL is usable, before Kestrel tries it.
 /// </summary>
 /// <remarks>
-/// Funzione PURA: nessuna I/O, nessun ambiente, quindi verificabile con una tabella su
-/// entrambi i runner invece che avviando un host.
+/// PURE function: no I/O, no environment, so it can be verified with a table on both
+/// runners instead of by starting a host.
 /// <para>
-/// Esiste perche' i modi di sbagliare non sono equivalenti. Un path di socket relativo fa
-/// fallire l'avvio, ed e' il caso buono. Un path in stile Windows dentro "http://unix:"
-/// non fallisce affatto: Kestrel lega [::]:80 su TUTTE le interfacce, senza eccezione e senza
-/// warning, e ci mette dietro la telemetria della macchina.
+/// It exists because the ways of getting it wrong are not equivalent. A relative socket path
+/// makes start-up fail, and that is the good case. A Windows-style path inside "http://unix:"
+/// does not fail at all: Kestrel binds [::]:80 on EVERY interface, with no exception and no
+/// warning, and puts the machine's telemetry behind it.
 /// </para>
 /// </remarks>
 public static class EndpointUrl
 {
-    /// <summary>Byte utili nel path di un socket unix. <b>107, non 108.</b></summary>
+    /// <summary>Usable bytes in a unix socket path. <b>107, not 108.</b></summary>
     /// <remarks>
-    /// La struct sockaddr_un ha 108 byte di sun_path, ma uno serve al terminatore. Il
-    /// messaggio di .NET dice "must be between 1 and 108 characters, inclusive" ed e' falso su
-    /// due punti: il limite vero e' 107, e il conteggio e' in BYTE UTF-8, non in caratteri.
-    /// Verificato per bisezione: 107 accettato, 108 rifiutato.
+    /// The sockaddr_un struct has 108 bytes of sun_path, but one is needed for the terminator.
+    /// .NET's message says "must be between 1 and 108 characters, inclusive" and it is false on
+    /// two counts: the real limit is 107, and the count is in UTF-8 BYTES, not in characters.
+    /// Verified by bisection: 107 accepted, 108 refused.
     /// </remarks>
     public const int MaxUnixSocketPathBytes = 107;
 
     private const string UnixPrefix = "unix:";
     private const string PipePrefix = "pipe:";
 
-    /// <summary>Il problema dell'URL, in inglese, oppure null se non ce ne sono.</summary>
-    /// <param name="url">L'URL cosi' come sta in configurazione.</param>
-    /// <returns>La frase da mostrare, oppure null se l'URL e' utilizzabile.</returns>
+    /// <summary>The URL's problem, in English, or null if there are none.</summary>
+    /// <param name="url">The URL exactly as it stands in configuration.</param>
+    /// <returns>The sentence to show, or null if the URL is usable.</returns>
     public static string? Problem(string url)
     {
         if (string.IsNullOrWhiteSpace(url))
@@ -68,8 +68,8 @@ public static class EndpointUrl
     {
         if (!path.StartsWith('/'))
         {
-            // Il caso pericoloso: qui finisce anche un path in stile Windows. Senza questo
-            // controllo Kestrel non protesta e apre la porta 80 su tutte le interfacce.
+            // The dangerous case: a Windows-style path lands here too. Without this check
+            // Kestrel does not complain and opens port 80 on every interface.
             return UnusableUrl(
                 url,
                 "the unix socket path must be absolute and start with '/'. A Windows-style " +

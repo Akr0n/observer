@@ -129,13 +129,13 @@ public class TrasportoHttpsTests
 
         try
         {
-            ProvisionedCertificate provvisto = CertificateProvisioning.Provvedi(
-                Path.Combine(cartella, CredentialDirectory.NomeFile),
+            ProvisionedCertificate provvisto = CertificateProvisioning.Provision(
+                Path.Combine(cartella, CredentialDirectory.FileName),
                 "primo-avvio",
                 DateTimeOffset.UtcNow,
-                giraComeServizio: false);
+                runningAsService: false);
 
-            Assert.Equal(CertificateOrigin.GeneratoEDepositato, provvisto.Origin);
+            Assert.Equal(CertificateOrigin.CreatedAndStored, provvisto.Origin);
 
             try
             {

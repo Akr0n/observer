@@ -8,41 +8,41 @@ using System.Security.Principal;
 namespace Observer.Service.LocalChannel;
 
 /// <summary>
-/// Stabilisce se il caller di una named pipe e' davvero locale, e chi e'.
+/// Establishes whether the caller of a named pipe is genuinely local, and who it is.
 /// </summary>
 /// <remarks>
-/// La domanda "sono locale?" NON si risponde guardando il trasporto: una named pipe e'
-/// raggiungibile da remoto via SMB sulla porta 445. E non si risponde nemmeno guardando il
-/// token: verso la macchina stessa Windows restituisce il token interattivo ORIGINALE, con gli
-/// stessi SID di gruppo della via locale, e il SID NETWORK assente in entrambi i casi.
+/// The question "am I local?" is NOT answered by looking at the transport: a named pipe is
+/// reachable remotely over SMB on port 445. And it is not answered by looking at the token
+/// either: towards the machine itself Windows returns the ORIGINAL interactive token, with the
+/// same group SIDs as the local route, and the NETWORK SID absent in both cases.
 /// <para>
-/// Si risponde con GetNamedPipeClientComputerName, che fallisce con ERROR_PIPE_LOCAL quando la
-/// connessione e' locale e riesce quando e' passata da SMB. Misurato su tre vie: "." locale,
-/// indirizzo di rete remoto, "localhost" REMOTO. E funziona anche quando il token non e'
-/// leggibile, cioe' proprio nel caso di attacco.
+/// It is answered with GetNamedPipeClientComputerName, which fails with ERROR_PIPE_LOCAL when
+/// the connection is local and succeeds when it came through SMB. Measured on three routes:
+/// local ".", remote network address, REMOTE "localhost". And it works even when the token is
+/// not readable, that is to say precisely in the attack case.
 /// </para>
 /// </remarks>
 [SupportedOSPlatform("windows")]
 public static partial class WindowsCallerIdentity
 {
-    /// <summary>ERROR_PIPE_LOCAL: la connessione arriva dalla stessa macchina, non da SMB.</summary>
+    /// <summary>ERROR_PIPE_LOCAL: the connection comes from the same machine, not from SMB.</summary>
     private const int ErrorPipeLocal = 229;
 
     [LibraryImport("kernel32.dll", EntryPoint = "GetNamedPipeClientComputerNameW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool GetNamedPipeClientComputerName(nint pipe, ref byte name, uint sizeInBytes);
 
-    /// <summary>Classify il caller della pipe.</summary>
-    /// <param name="pipe">Il flusso della connessione in corso.</param>
-    /// <returns>L'origine del caller.</returns>
+    /// <summary>Classifies the caller of the pipe.</summary>
+    /// <param name="pipe">The stream of the connection in progress.</param>
+    /// <returns>The caller's origin.</returns>
     public static CallerOrigin Classify(NamedPipeServerStream pipe)
     {
         ArgumentNullException.ThrowIfNull(pipe);
 
-        // Buffer di BYTE e non di char: char non e' blittabile e il generatore di
-        // [LibraryImport] pretenderebbe DisableRuntimeMarshalling sull'intero assembly. Qui il
-        // contenuto non serve, serve solo sapere se la chiamata riesce: 512 byte sono 256
-        // caratteri UTF-16, abbondanti per un name di macchina.
+        // A BYTE buffer and not a char one: char is not blittable and the [LibraryImport]
+        // generator would demand DisableRuntimeMarshalling on the whole assembly. Here the
+        // content is not needed, only knowing whether the call succeeds: 512 bytes are 256
+        // UTF-16 characters, plenty for a machine name.
         Span<byte> buffer = stackalloc byte[512];
 
         bool succeeded = GetNamedPipeClientComputerName(
@@ -54,9 +54,9 @@ public static partial class WindowsCallerIdentity
 
         if (succeeded || win32Error != ErrorPipeLocal)
         {
-            // Riuscito: la connessione e' passata da SMB, e il buffer contiene il name del
-            // caller. Fallito per un motivo diverso da ERROR_PIPE_LOCAL: non sappiamo dire
-            // che sia locale, e nel dubbio non lo e'.
+            // Succeeded: the connection came through SMB, and the buffer holds the caller's
+            // name. Failed for a reason other than ERROR_PIPE_LOCAL: we cannot tell that it
+            // is local, and when in doubt it is not.
             return new CallerOrigin(
                 CallerKind.FromNetwork,
                 null,
@@ -78,9 +78,9 @@ public static partial class WindowsCallerIdentity
         }
         catch (SecurityException ex)
         {
-            // Il caso di ATTACCO: il client ha scelto TokenImpersonationLevel.Anonymous e si e'
-            // reso unilateralmente non identificabile. HRESULT 0x80070543,
-            // ERROR_BAD_IMPERSONATION_LEVEL. Senza questo catch il servizio risponde 500.
+            // The ATTACK case: the client chose TokenImpersonationLevel.Anonymous and made
+            // itself unilaterally unidentifiable. HRESULT 0x80070543,
+            // ERROR_BAD_IMPERSONATION_LEVEL. Without this catch the service answers 500.
             return UnidentifiedOrigin(ex);
         }
         catch (UnauthorizedAccessException ex)
@@ -103,11 +103,11 @@ public static partial class WindowsCallerIdentity
             null,
             string.Create(CultureInfo.InvariantCulture, $"{ex.GetType().Name} 0x{ex.HResult:X8}"));
 
-    /// <summary>Il corpo eseguito sotto impersonation.</summary>
+    /// <summary>The body executed under impersonation.</summary>
     /// <remarks>
-    /// Un metodo di istanza di una classe annotata, e NON una lambda: [SupportedOSPlatform] non
-    /// copre il corpo di una lambda e CA1416 farebbe fallire la build. Passato a RunAsClient
-    /// come gruppo di metodi.
+    /// An instance method of an annotated class, and NOT a lambda: [SupportedOSPlatform] does
+    /// not cover the body of a lambda and CA1416 would fail the build. Passed to RunAsClient
+    /// as a method group.
     /// </remarks>
     [SupportedOSPlatform("windows")]
     private sealed class SidCapture

@@ -1,29 +1,27 @@
 namespace Observer.Service.Persistence;
 
 /// <summary>
-/// L'UNICO scrittore del database. Svuota la coda a intervallo fisso e, ogni tanto, consolida
-/// e cancella.
+/// The ONLY writer of the database. Drains the queue at a fixed interval and, every so often,
+/// consolidates and deletes.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Un solo scrittore non e' una scelta di prestazioni: SQLite serializza comunque le
-/// scritture, e con due scrittori l'unica differenza sarebbe una coppia di transazioni che
-/// si aspettano a vicenda, piu' un errore SQLITE_BUSY da gestire in un punto in cui non
-/// serve.
+/// A single writer is not a performance choice: SQLite serialises the writes anyway, and with
+/// two writers the only difference would be a pair of transactions waiting for each other,
+/// plus a SQLITE_BUSY error to handle in a place where it is not needed.
 /// </para>
 /// <para>
-/// Consolidamento e cancellazione girano su questo stesso ciclo, quindi non possono
-/// sovrapporsi a una scrittura. Se un giro di manutenzione e' lento, la coda accumula — e se
-/// arriva a riempirsi scarta i piu' vecchi. Il campionatore, in nessuno di questi casi,
-/// aspetta.
+/// Consolidation and deletion run on this same loop, so they cannot overlap a write. If a
+/// maintenance round is slow, the queue builds up — and if it gets full it drops the oldest
+/// entries. The sampler, in none of these cases, waits.
 /// </para>
 /// </remarks>
 public sealed partial class MetricPersistenceService : BackgroundService
 {
     /// <summary>
-    /// Ogni quanto la coda finisce su disco. Un secondo: piu' spesso sarebbe una transazione
-    /// per campione, piu' di rado allungherebbe solo la finestra di dati che un arresto
-    /// brutale porta via.
+    /// How often the queue ends up on disk. One second: more often would be one transaction
+    /// per sample, less often would only widen the window of data that an abrupt shutdown
+    /// takes away.
     /// </summary>
     private static readonly TimeSpan FlushInterval = TimeSpan.FromSeconds(1);
 
@@ -38,12 +36,12 @@ public sealed partial class MetricPersistenceService : BackgroundService
 
     private long lastReportedDrops;
 
-    /// <summary>Crea il servizio di persistenza.</summary>
-    /// <param name="writer">Chi svuota la coda sul database.</param>
-    /// <param name="store">Il magazzino, per la manutenzione.</param>
-    /// <param name="buffer">La coda, per sapere quanto si sta scartando.</param>
-    /// <param name="options">La configurazione dello storico.</param>
-    /// <param name="logger">Dove segnalare guasti e scarti.</param>
+    /// <summary>Creates the persistence service.</summary>
+    /// <param name="writer">Who drains the queue onto the database.</param>
+    /// <param name="store">The store, for maintenance.</param>
+    /// <param name="buffer">The queue, to know how much is being dropped.</param>
+    /// <param name="options">The history configuration.</param>
+    /// <param name="logger">Where to report faults and drops.</param>
     public MetricPersistenceService(
         MetricWriter writer,
         MetricStore store,
@@ -67,9 +65,9 @@ public sealed partial class MetricPersistenceService : BackgroundService
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // PRIMA di qualunque await, quindi ancora dentro StartAsync: se il file non si puo'
-        // creare, il servizio non parte e lo si vede subito. Un servizio che parte e non
-        // conserva niente e' molto peggio di uno che non parte.
+        // BEFORE any await, so still inside StartAsync: if the file cannot be created, the
+        // service does not start and you see it at once. A service that starts and keeps
+        // nothing is much worse than one that does not start.
         store.Initialize();
 
         await Task.Yield();
@@ -100,8 +98,8 @@ public sealed partial class MetricPersistenceService : BackgroundService
             }
         }
 
-        // Un ultimo giro: cio' che e' rimasto in coda vale quanto il resto, e qui non c'e'
-        // piu' nessun campionatore da non far aspettare.
+        // One last round: what is left in the queue is worth as much as the rest, and here
+        // there is no sampler left to keep from waiting.
         FlushSafely();
     }
 
@@ -116,12 +114,12 @@ public sealed partial class MetricPersistenceService : BackgroundService
                 LogFlushRecovered(logger, silenced);
             }
         }
-#pragma warning disable CA1031 // Un disco pieno o un file agganciato devono far perdere un
-        catch (Exception ex) // giro di storico, non fermare il monitoraggio dal vivo.
+#pragma warning disable CA1031 // A full disk or a locked file must cost one round of
+        catch (Exception ex) // history, not stop live monitoring.
 #pragma warning restore CA1031
         {
-            // Un disco pieno non si libera da solo: senza freno questa riga esce ogni
-            // secondo, e il registro che segnala il disco pieno consuma disco.
+            // A full disk does not free itself: with no throttle this line comes out every
+            // second, and the log that reports the full disk consumes disk.
             if (writeLogThrottle.ShouldLog(ex.GetType().FullName ?? "?"))
             {
                 LogFlushFailed(logger, ex);
@@ -146,13 +144,13 @@ public sealed partial class MetricPersistenceService : BackgroundService
                 report.FiveMinuteBucketsWritten,
                 report.RawRowsPurged);
         }
-#pragma warning disable CA1031 // Idem: la manutenzione saltata si recupera al giro dopo,
-        catch (Exception ex) // perche' il segnaposto non avanza se la transazione fallisce.
+#pragma warning disable CA1031 // Same here: skipped maintenance is recovered on the next round,
+        catch (Exception ex) // because the marker does not advance if the transaction fails.
 #pragma warning restore CA1031
         {
-            // Ogni trenta secondi, cioe' 2 880 righe al giorno: meno del diluvio della
-            // scrittura, ma con la stessa fine e per lo stesso motivo, che non si ripara da
-            // solo.
+            // Every thirty seconds, that is 2 880 lines a day: less than the deluge of the
+            // write path, but with the same end and for the same reason, that it does not
+            // repair itself.
             if (maintenanceLogThrottle.ShouldLog(ex.GetType().FullName ?? "?"))
             {
                 LogMaintenanceFailed(logger, ex);
@@ -169,8 +167,8 @@ public sealed partial class MetricPersistenceService : BackgroundService
             return;
         }
 
-        // Uno storico con buchi va DETTO: altrimenti e' indistinguibile da uno storico in
-        // cui non e' successo niente.
+        // A history with gaps must be REPORTED: otherwise it is indistinguishable from a history
+        // in which nothing happened.
         LogDropped(logger, dropped - lastReportedDrops, dropped);
         lastReportedDrops = dropped;
     }
@@ -199,9 +197,9 @@ public sealed partial class MetricPersistenceService : BackgroundService
         Message = "History dropped {NewDrops} samples (total {TotalDrops}): the disk writer isn't keeping up with the sampler.")]
     private static partial void LogDropped(ILogger logger, long newDrops, long totalDrops);
 
-    // Warning e non Information: il provider del registro eventi di Windows, che
-    // UseWindowsService registra, lascia passare da Warning in su. A Information il registro
-    // vedrebbe l'inizio del guasto e mai la sua fine.
+    // Warning and not Information: the Windows event log provider, which UseWindowsService
+    // registers, passes Warning and above. At Information the log would see the start of the
+    // fault and never its end.
     [LoggerMessage(
         EventId = 14,
         Level = LogLevel.Warning,

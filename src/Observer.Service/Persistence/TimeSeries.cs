@@ -3,55 +3,55 @@ using Observer.Core.Metrics;
 namespace Observer.Service.Persistence;
 
 /// <summary>
-/// Identita' di una serie temporale: la terna che distingue un numero da un altro.
+/// The identity of a time series: the triple that tells one number from another.
 /// </summary>
-/// <param name="CollectorId">Chi ha prodotto il valore, per esempio "cpu".</param>
-/// <param name="MetricId">Quale metrica, per esempio "cpu.usage.total".</param>
+/// <param name="CollectorId">Who produced the value, for example "cpu".</param>
+/// <param name="MetricId">Which metric, for example "cpu.usage.total".</param>
 /// <param name="Instance">
-/// Il core, il disco, l'interfaccia. STRINGA VUOTA, non null, quando la metrica e' unica per
-/// macchina: in SQLite due NULL non sono considerati uguali in un indice UNIQUE, quindi con
-/// null la stessa serie verrebbe reinserita a ogni campionamento e lo storico si
-/// spezzerebbe in migliaia di serie da un punto ciascuna.
+/// The core, the disk, the interface. EMPTY STRING, not null, when the metric is unique per
+/// machine: in SQLite two NULLs are not considered equal in a UNIQUE index, so with null the
+/// same series would be inserted again at every sampling and the history would break into
+/// thousands of series with one point each.
 /// </param>
 public readonly record struct SeriesKey(string CollectorId, string MetricId, string Instance);
 
-/// <summary>Un valore numerico appiattito da uno snapshot, pronto per essere scritto.</summary>
-/// <param name="Key">La serie a cui appartiene.</param>
-/// <param name="Kind">Il ramo di <see cref="MetricValue"/> da cui proviene.</param>
-/// <param name="TimestampMs">Istante del campionamento, in millisecondi da Unix epoch (UTC).</param>
-/// <param name="Value">Il valore numerico.</param>
+/// <summary>A numeric value flattened out of a snapshot, ready to be written.</summary>
+/// <param name="Key">The series it belongs to.</param>
+/// <param name="Kind">The <see cref="MetricValue"/> branch it comes from.</param>
+/// <param name="TimestampMs">Sampling instant, in milliseconds since the Unix epoch (UTC).</param>
+/// <param name="Value">The numeric value.</param>
 public readonly record struct SeriesSample(SeriesKey Key, MetricValueKind Kind, long TimestampMs, double Value);
 
-/// <summary>Un campione grezzo di UNA serie, gia' privo dell'identita' della serie.</summary>
-/// <param name="TimestampMs">Istante del campionamento, in millisecondi da Unix epoch (UTC).</param>
-/// <param name="Value">Il valore misurato.</param>
+/// <summary>A raw sample of ONE series, already stripped of the series identity.</summary>
+/// <param name="TimestampMs">Sampling instant, in milliseconds since the Unix epoch (UTC).</param>
+/// <param name="Value">The measured value.</param>
 public readonly record struct RawSample(long TimestampMs, double Value);
 
 /// <summary>
-/// Un intervallo di tempo aggregato di UNA serie.
+/// An aggregated time interval of ONE series.
 /// </summary>
 /// <remarks>
-/// Conserva SOMMA e CONTEGGIO invece della media gia' calcolata, ed e' la decisione centrale
-/// di tutto il rollup. Ricombinando cinque bucket da un minuto in uno da cinque, la media
-/// delle medie e' sbagliata ogni volta che i bucket non hanno lo stesso numero di campioni —
-/// e non hanno lo stesso numero ogni volta che il servizio riparte, che un collector va in
-/// timeout o che una metrica compare a meta' minuto. Il risultato sarebbe un numero
-/// plausibile e falso. Con somma e conteggio la media a cinque minuti coincide, cifra per
-/// cifra, con la media dei campioni grezzi.
+/// It keeps the SUM and the COUNT instead of the already computed average, and that is the
+/// central decision of the whole rollup. Recombining five one-minute buckets into a
+/// five-minute one, the average of the averages is wrong every time the buckets do not hold
+/// the same number of samples — and they do not hold the same number every time the service
+/// restarts, a collector times out, or a metric appears halfway through a minute. The result
+/// would be a plausible and false number. With sum and count the five-minute average matches,
+/// digit for digit, the average of the raw samples.
 /// </remarks>
 public sealed record RollupBucket
 {
-    /// <summary>Crea un bucket aggregato.</summary>
-    /// <param name="bucketStartMs">Inizio dell'intervallo, allineato alla sua ampiezza.</param>
-    /// <param name="count">Numero di campioni grezzi confluiti qui dentro.</param>
-    /// <param name="sum">Somma dei valori.</param>
-    /// <param name="min">Valore minimo.</param>
-    /// <param name="max">Valore massimo.</param>
-    /// <param name="last">Ultimo valore in ordine di tempo.</param>
+    /// <summary>Creates an aggregated bucket.</summary>
+    /// <param name="bucketStartMs">Start of the interval, aligned to its width.</param>
+    /// <param name="count">Number of raw samples that flowed in here.</param>
+    /// <param name="sum">Sum of the values.</param>
+    /// <param name="min">Minimum value.</param>
+    /// <param name="max">Maximum value.</param>
+    /// <param name="last">Last value in time order.</param>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// Se il conteggio non e' positivo, oppure se un valore non e' finito. Entrambi i casi
-    /// producono JSON non serializzabile: un bucket vuoto ha media 0/0 = NaN, e un NaN nella
-    /// risposta non perde una metrica, perde l'INTERA risposta HTTP.
+    /// If the count is not positive, or if a value is not finite. Both cases produce JSON that
+    /// cannot be serialised: an empty bucket has an average of 0/0 = NaN, and a NaN in the
+    /// response does not lose one metric, it loses the WHOLE HTTP response.
     /// </exception>
     public RollupBucket(long bucketStartMs, int count, double sum, double min, double max, double last)
     {
@@ -69,35 +69,35 @@ public sealed record RollupBucket
         Last = last;
     }
 
-    /// <summary>Inizio dell'intervallo, in millisecondi da Unix epoch (UTC).</summary>
+    /// <summary>Start of the interval, in milliseconds since the Unix epoch (UTC).</summary>
     public long BucketStartMs { get; }
 
-    /// <summary>Numero di campioni grezzi aggregati. Sempre almeno 1.</summary>
+    /// <summary>Number of raw samples aggregated. Always at least 1.</summary>
     public int Count { get; }
 
-    /// <summary>Somma dei valori aggregati.</summary>
+    /// <summary>Sum of the aggregated values.</summary>
     public double Sum { get; }
 
-    /// <summary>Valore minimo nell'intervallo.</summary>
+    /// <summary>Minimum value in the interval.</summary>
     public double Min { get; }
 
-    /// <summary>Valore massimo nell'intervallo.</summary>
+    /// <summary>Maximum value in the interval.</summary>
     public double Max { get; }
 
-    /// <summary>Ultimo valore dell'intervallo, in ordine di tempo.</summary>
+    /// <summary>Last value of the interval, in time order.</summary>
     public double Last { get; }
 
-    /// <summary>Media dei campioni aggregati.</summary>
+    /// <summary>Average of the aggregated samples.</summary>
     public double Average => Sum / Count;
 
     /// <summary>
-    /// Il bucket degenere che rappresenta un singolo campione grezzo. Serve a far passare
-    /// grezzi e aggregati per la STESSA ricombinazione, invece di scriverne due versioni che
-    /// possono divergere.
+    /// The degenerate bucket that stands for a single raw sample. It is what makes raw samples
+    /// and aggregates go through the SAME recombination, instead of writing two versions of it
+    /// that can diverge.
     /// </summary>
-    /// <param name="timestampMs">Istante del campione, in millisecondi da Unix epoch (UTC).</param>
-    /// <param name="value">Il valore misurato.</param>
-    /// <returns>Un bucket con conteggio 1.</returns>
+    /// <param name="timestampMs">Sample instant, in milliseconds since the Unix epoch (UTC).</param>
+    /// <param name="value">The measured value.</param>
+    /// <returns>A bucket with a count of 1.</returns>
     public static RollupBucket FromSample(long timestampMs, double value) =>
         new(timestampMs, 1, value, value, value, value);
 
@@ -108,7 +108,7 @@ public sealed record RollupBucket
             throw new ArgumentOutOfRangeException(
                 paramName,
                 value,
-                "Un valore non finito non e' rappresentabile in JSON e farebbe fallire l'intera risposta.");
+                "A non-finite value cannot be represented in JSON and would fail the whole response.");
         }
     }
 }

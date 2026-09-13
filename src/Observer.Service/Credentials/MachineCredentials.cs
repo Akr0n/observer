@@ -4,17 +4,17 @@ using System.Text;
 namespace Observer.Service.Credentials;
 
 /// <summary>
-/// Il token di macchina, con la chiave previous ancora valida per una finestra.
+/// The machine token, with the previous key still valid for a window.
 /// </summary>
-/// <param name="Current">La chiave corrente.</param>
-/// <param name="Previous">La chiave sostituita dall'ultima rotazione, se c'e'.</param>
-/// <param name="PreviousExpiresAt">Quando <paramref name="Previous"/> smette di valere.</param>
+/// <param name="Current">The current key.</param>
+/// <param name="Previous">The key replaced by the last rotation, if there is one.</param>
+/// <param name="PreviousExpiresAt">When <paramref name="Previous"/> stops being valid.</param>
 /// <remarks>
-/// Questo token vale DALLA RETE e non scade da solo: e' la ragione per cui il deposito che lo
-/// contiene va protetto come un segreto e non come una preferenza.
+/// This token is good FROM THE NETWORK and does not expire on its own: that is the reason why the
+/// store that holds it must be protected like a secret and not like a preference.
 /// <para>
-/// Il ToString() e' sovrascritto perche' i record ne generano uno con TUTTE le proprieta'
-/// dentro: senza, basterebbe una riga di log distratta per stampare la chiave.
+/// ToString() is overridden because records generate one with ALL the properties in it: without
+/// it, one careless log line would be enough to print the key.
 /// </para>
 /// </remarks>
 public sealed record MachineCredentials(
@@ -22,27 +22,27 @@ public sealed record MachineCredentials(
     string? Previous,
     DateTimeOffset? PreviousExpiresAt)
 {
-    /// <summary>Per quanto la chiave previous resta valida dopo una rotazione.</summary>
+    /// <summary>How long the previous key stays valid after a rotation.</summary>
     /// <remarks>
-    /// Senza questa finestra, ruotare taglierebbe fuori ogni client remoto all'ISTANTE, e la
-    /// rotazione diventerebbe un'operazione che nessuno osa fare — cioe' una chiave che non
-    /// viene mai cambiata.
+    /// Without this window, rotating would cut off every remote client INSTANTLY, and the
+    /// rotation would become an operation nobody dares to perform — that is, a key that never
+    /// gets changed.
     /// </remarks>
     public static readonly TimeSpan GracePeriod = TimeSpan.FromHours(24);
 
-    /// <summary>Credenziali nuove di zecca, senza chiave previous.</summary>
-    /// <returns>Le credenziali.</returns>
+    /// <summary>Brand new credentials, with no previous key.</summary>
+    /// <returns>The credentials.</returns>
     public static MachineCredentials Create() => new(TokenGenerator.Generate(), null, null);
 
-    /// <summary>Se il token presented e' accettabile in questo istante.</summary>
-    /// <param name="presented">Il token arrivato nell'header.</param>
-    /// <param name="now">L'istante corrente.</param>
-    /// <returns>Vero se corrisponde alla corrente, o alla previous non ancora scaduta.</returns>
+    /// <summary>Whether the presented token is acceptable at this instant.</summary>
+    /// <param name="presented">The token that arrived in the header.</param>
+    /// <param name="now">The current instant.</param>
+    /// <returns>True if it matches the current key, or the previous one not yet expired.</returns>
     public bool Accepts(string presented, DateTimeOffset now)
     {
         if (string.IsNullOrEmpty(presented))
         {
-            // Il ramo che un confronto scritto male trasforma in un passaggio libero.
+            // The branch that a badly written comparison turns into a free pass.
             return false;
         }
 
@@ -57,28 +57,28 @@ public sealed record MachineCredentials(
             && ConstantTimeEquals(presented, previous);
     }
 
-    /// <summary>Genera una chiave nuova conservando quella attuale come previous.</summary>
-    /// <param name="now">L'istante della rotazione.</param>
-    /// <param name="grace">Per quanto la chiave attuale continuera' a valere.</param>
-    /// <returns>Le credenziali ruotate.</returns>
+    /// <summary>Generates a new key, keeping the current one as previous.</summary>
+    /// <param name="now">The instant of the rotation.</param>
+    /// <param name="grace">How long the current key will go on being valid.</param>
+    /// <returns>The rotated credentials.</returns>
     /// <remarks>
-    /// Si conserva UNA sola chiave previous. Tenerne una catena significherebbe che una
-    /// chiave compromessa resta valida finche' qualcuno non ruota abbastanza volte, cioe' che
-    /// la revoca non e' mai immediata.
+    /// ONE previous key only is kept. Keeping a chain of them would mean that a compromised
+    /// key stays valid until someone rotates enough times, that is, that revocation is never
+    /// immediate.
     /// </remarks>
     public MachineCredentials Rotate(DateTimeOffset now, TimeSpan grace) =>
         new(TokenGenerator.Generate(), Current, now + grace);
 
-    /// <summary>Nasconde le chiavi. Vedi le note del tipo.</summary>
-    /// <returns>Una descrizione senza segreti dentro.</returns>
+    /// <summary>Hides the keys. See the type's notes.</summary>
+    /// <returns>A description with no secrets in it.</returns>
     public override string ToString() =>
         PreviousExpiresAt is { } expiry
-            ? FormattableString.Invariant($"MachineCredentials {{ una chiave corrente, una previous valida fino a {expiry:O} }}")
-            : "MachineCredentials { una chiave corrente, nessuna previous }";
+            ? FormattableString.Invariant($"MachineCredentials {{ one current key, one previous key valid until {expiry:O} }}")
+            : "MachineCredentials { one current key, no previous key }";
 
     /// <summary>
-    /// Confronto a tempo costante: un confronto normale esce al primo byte diverso, e quella
-    /// differenza di tempo permette di indovinare il token un carattere alla volta.
+    /// Constant-time comparison: a normal comparison exits at the first differing byte, and that
+    /// difference in time makes it possible to guess the token one character at a time.
     /// </summary>
     private static bool ConstantTimeEquals(string presented, string expected) =>
         CryptographicOperations.FixedTimeEquals(

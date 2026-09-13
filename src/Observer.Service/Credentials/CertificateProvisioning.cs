@@ -3,161 +3,163 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace Observer.Service.Credentials;
 
-/// <summary>Da dove arriva il certificato in uso.</summary>
+/// <summary>Where the certificate in use comes from.</summary>
 public enum CertificateOrigin
 {
-    /// <summary>Generato in memoria e mai depositato: l'impronta cambia a ogni avvio.</summary>
-    Effimero = 0,
+    /// <summary>Generated in memory and never stored: the fingerprint changes at every start.</summary>
+    Ephemeral = 0,
 
-    /// <summary>Riletto dal deposito.</summary>
-    Deposito,
+    /// <summary>Read back from the store.</summary>
+    Stored,
 
-    /// <summary>Generato adesso e depositato.</summary>
-    GeneratoEDepositato,
+    /// <summary>Generated now and stored.</summary>
+    CreatedAndStored,
 }
 
-/// <summary>Il certificato in uso, con la sua provenienza.</summary>
-/// <param name="Certificate">Il certificato, con chiave privata.</param>
-/// <param name="Fingerprint">L'impronta da consegnare ai client.</param>
-/// <param name="Origin">Da dove arriva.</param>
-/// <param name="Percorso">Il file usato, oppure null se non e' stato depositato.</param>
+/// <summary>The certificate in use, with where it came from.</summary>
+/// <param name="Certificate">The certificate, with its private key.</param>
+/// <param name="Fingerprint">The fingerprint to hand to the clients.</param>
+/// <param name="Origin">Where it comes from.</param>
+/// <param name="Path">The file used, or null if it was not stored.</param>
 public sealed record ProvisionedCertificate(
     X509Certificate2 Certificate,
     string Fingerprint,
     CertificateOrigin Origin,
-    string? Percorso);
+    string? Path);
 
 /// <summary>
-/// Procura al servizio il certificato con cui si presenta alle altre macchine.
+/// Provides the service with the certificate it presents to the other machines.
 /// </summary>
 /// <remarks>
-/// Stessa forma di <see cref="CredentialProvisioning"/>, e per la stessa ragione: e' l'installer
-/// a non dover conoscere niente. Un certificato generato dall'installer sarebbe un certificato
-/// che l'installer ha visto, con la chiave privata passata da qualche parte.
+/// Same shape as <see cref="CredentialProvisioning"/>, and for the same reason: it is the installer
+/// that must know nothing. A certificate created by the installer would be a certificate the
+/// installer has seen, with the private key handed around somewhere.
 /// <para>
-/// Anche il perimetro e' lo stesso, e non per comodita': la chiave privata vale quanto il
-/// token — chi ce l'ha puo' impersonare questa macchina davanti a ogni dashboard che ne ha
-/// fissato l'impronta.
+/// The perimeter is the same too, and not out of convenience: the private key is worth as much
+/// as the token — whoever holds it can impersonate this machine in front of every dashboard that
+/// pinned its fingerprint.
 /// </para>
 /// </remarks>
 public static class CertificateProvisioning
 {
-    /// <summary>Procura il certificato.</summary>
-    /// <param name="percorsoDeposito">Il percorso di <c>credentials.json</c>.</param>
-    /// <param name="nomeMacchina">Il nome da mettere nel certificato.</param>
-    /// <param name="adesso">L'istante da cui contare la validita'.</param>
-    /// <param name="giraComeServizio">Se il processo e' registrato come servizio di sistema.</param>
-    /// <returns>Il certificato e la sua provenienza.</returns>
+    /// <summary>Provides the certificate.</summary>
+    /// <param name="storePath">The path of <c>credentials.json</c>.</param>
+    /// <param name="machineName">The name to put in the certificate.</param>
+    /// <param name="now">The instant from which validity is counted.</param>
+    /// <param name="runningAsService">Whether the process is registered as a system service.</param>
+    /// <returns>The certificate and where it came from.</returns>
     /// <exception cref="InvalidOperationException">
-    /// Quando gira come servizio e il certificato non puo' essere depositato al sicuro.
+    /// When it runs as a service and the certificate cannot be stored safely.
     /// </exception>
-    public static ProvisionedCertificate Provvedi(
-        string percorsoDeposito,
-        string nomeMacchina,
-        DateTimeOffset adesso,
-        bool giraComeServizio)
+    public static ProvisionedCertificate Provision(
+        string storePath,
+        string machineName,
+        DateTimeOffset now,
+        bool runningAsService)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(percorsoDeposito);
+        ArgumentException.ThrowIfNullOrWhiteSpace(storePath);
 
-        string percorso = MachineCertificate.PathNextTo(percorsoDeposito);
+        string path = MachineCertificate.PathNextTo(storePath);
 
         try
         {
-            CredentialDirectory.Prepara(percorsoDeposito);
+            CredentialDirectory.Prepare(storePath);
 
-            if (Rileggi(percorso) is { } depositato)
+            if (ReadStored(path) is { } stored)
             {
                 return new ProvisionedCertificate(
-                    depositato,
-                    MachineCertificate.Fingerprint(depositato),
-                    CertificateOrigin.Deposito,
-                    percorso);
+                    stored,
+                    MachineCertificate.Fingerprint(stored),
+                    CertificateOrigin.Stored,
+                    path);
             }
 
-            using X509Certificate2 generato = MachineCertificate.Create(nomeMacchina, adesso);
+            using X509Certificate2 created = MachineCertificate.Create(machineName, now);
 
-            byte[] dati = MachineCertificate.Export(generato);
+            byte[] pkcs12 = MachineCertificate.Export(created);
 
-            Deposita(percorso, dati);
+            Store(path, pkcs12);
 
-            // Cio' che va a Kestrel e' il certificato RILETTO, mai quello appena generato, e la
-            // differenza e' misurata: l'oggetto che esce da CreateSelfSigned porta la chiave
-            // privata solo in memoria, e su Windows SChannel non la sa servire - l'handshake
-            // muore con "Received an unexpected EOF or 0 bytes from the transport stream".
+            // What goes to Kestrel is the certificate READ BACK, never the one just created, and
+            // the difference is measured: the object that comes out of CreateSelfSigned carries
+            // the private key in memory only, and on Windows SChannel cannot serve it - the
+            // handshake dies with "Received an unexpected EOF or 0 bytes from the transport stream".
             //
-            // Il primo avvio sarebbe stato l'unico rotto, e il sintomo peggiore del guasto:
-            // lato client quell'errore arriva come IOException e non come AuthenticationException,
-            // quindi la dashboard avrebbe detto "controlla che la macchina sia accesa"; e dal
-            // secondo avvio in poi si passa da Rileggi, quindi al primo riavvio del servizio
-            // sarebbe sparito tutto. Un guasto che sembra un problema di rete e si ripara da solo.
+            // The first start would have been the only broken one, and that is the worst symptom
+            // a fault can have: on the client side that error arrives as IOException and not as
+            // AuthenticationException, so the dashboard would have said "check that the machine is
+            // switched on"; and from the second start on it goes through ReadStored, so at the
+            // first service restart it would all have vanished. A fault that looks like a network
+            // problem and repairs itself.
             return new ProvisionedCertificate(
-                Servibile(dati),
-                MachineCertificate.Fingerprint(generato),
-                CertificateOrigin.GeneratoEDepositato,
-                percorso);
+                LoadForServing(pkcs12),
+                MachineCertificate.Fingerprint(created),
+                CertificateOrigin.CreatedAndStored,
+                path);
         }
-        catch (Exception errore) when (errore is IOException or UnauthorizedAccessException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            if (giraComeServizio)
+            if (runningAsService)
             {
-                throw new InvalidOperationException(TestoRifiuto(percorso), errore);
+                throw new InvalidOperationException(RefusalMessage(path), error);
             }
 
-            return Effimero(nomeMacchina, adesso);
+            return CreateEphemeral(machineName, now);
         }
-        catch (InvalidOperationException errore)
-            when (!giraComeServizio && errore.InnerException is not CryptographicException)
+        catch (InvalidOperationException error)
+            when (!runningAsService && error.InnerException is not CryptographicException)
         {
-            // Il ripiego effimero vale per un deposito che non si riesce a METTERE IN SICUREZZA,
-            // non per un certificato che c'e' ed e' illeggibile. Quel caso va detto anche a chi
-            // lancia il servizio a mano: ripiegare in silenzio gli farebbe vedere un servizio
-            // che parte, un'impronta nuova a ogni avvio, e nessun indizio sul file rotto che ha
-            // sul disco.
-            return Effimero(nomeMacchina, adesso);
+            // The ephemeral fallback is for a store that cannot be MADE SAFE, not for a
+            // certificate that is there and unreadable. That case must be told to whoever launches
+            // the service by hand too: falling back silently would show them a service that
+            // starts, a new fingerprint at every start, and no clue about the broken file sitting
+            // on their disk.
+            return CreateEphemeral(machineName, now);
         }
     }
 
-    /// <summary>Un certificato che vale per questa esecuzione e basta.</summary>
+    /// <summary>A certificate good for this run and nothing more.</summary>
     /// <remarks>
-    /// Come per il token: mai un ripiego su disco fuori dal perimetro. Qui il prezzo e'
-    /// visibile — l'impronta cambia a ogni avvio, quindi le dashboard remote non si
-    /// collegheranno — ed e' giusto che si veda, invece di lasciar credere che sia tutto a
-    /// posto mentre la chiave privata sta dove nessuno la protegge.
+    /// As for the token: never a fallback on disk outside the perimeter. Here the price is
+    /// visible — the fingerprint changes at every start, so the remote dashboards will not
+    /// connect — and it is right that it shows, instead of letting one believe everything is
+    /// fine while the private key sits where nobody protects it.
     /// </remarks>
-    private static ProvisionedCertificate Effimero(string nomeMacchina, DateTimeOffset adesso)
+    private static ProvisionedCertificate CreateEphemeral(string machineName, DateTimeOffset now)
     {
-        using X509Certificate2 generato = MachineCertificate.Create(nomeMacchina, adesso);
+        using X509Certificate2 created = MachineCertificate.Create(machineName, now);
 
-        // Stesso giro anche qui, anche se non tocca il disco: senza, il certificato effimero
-        // non reggerebbe alcun handshake su Windows, e il messaggio d'avvio prometterebbe
-        // un'impronta che cambia a ogni riavvio su una porta che non funziona mai.
+        // Same round trip here too, even though it never touches the disk: without it the
+        // ephemeral certificate would hold no handshake at all on Windows, and the start-up
+        // message would promise a fingerprint that changes at every restart on a port that
+        // never works.
         return new ProvisionedCertificate(
-            Servibile(MachineCertificate.Export(generato)),
-            MachineCertificate.Fingerprint(generato),
-            CertificateOrigin.Effimero,
+            LoadForServing(MachineCertificate.Export(created)),
+            MachineCertificate.Fingerprint(created),
+            CertificateOrigin.Ephemeral,
             null);
     }
 
-    /// <summary>Il certificato in una forma che un server TLS sa davvero servire.</summary>
-    /// <param name="pkcs12">Il certificato impacchettato con la sua chiave.</param>
-    /// <returns>Il certificato ricaricato.</returns>
-    private static X509Certificate2 Servibile(byte[] pkcs12) =>
+    /// <summary>The certificate in a form a TLS server can really serve.</summary>
+    /// <param name="pkcs12">The certificate packaged together with its key.</param>
+    /// <returns>The reloaded certificate.</returns>
+    private static X509Certificate2 LoadForServing(byte[] pkcs12) =>
         MachineCertificate.Load(pkcs12);
 
-    /// <summary>Rilegge il deposito, distinguendo "non c'e'" da "non riesco a leggerlo".</summary>
+    /// <summary>Reads the store back, telling "it is not there" from "I cannot read it".</summary>
     /// <remarks>
-    /// La distinzione e' la stessa di <see cref="CredentialStore.Leggi"/>, e qui il motivo e'
-    /// ancora piu' forte: rigenerare il certificato perche' non lo si e' saputo leggere ne
-    /// cambierebbe l'impronta, cioe' taglierebbe fuori ogni dashboard remota in un colpo solo.
-    /// Meglio non partire.
+    /// The distinction is the same one <see cref="CredentialStore.Read"/> makes, and here the
+    /// reason is even stronger: regenerating the certificate because it could not be read would
+    /// change its fingerprint, that is, it would cut off every remote dashboard in one go.
+    /// Better not to start.
     /// </remarks>
-    private static X509Certificate2? Rileggi(string percorso)
+    private static X509Certificate2? ReadStored(string path)
     {
-        byte[] contenuto;
+        byte[] content;
 
         try
         {
-            contenuto = File.ReadAllBytes(percorso);
+            content = File.ReadAllBytes(path);
         }
         catch (FileNotFoundException)
         {
@@ -170,55 +172,55 @@ public static class CertificateProvisioning
 
         try
         {
-            return MachineCertificate.Load(contenuto);
+            return MachineCertificate.Load(content);
         }
-        catch (CryptographicException errore)
+        catch (CryptographicException error)
         {
             throw new InvalidOperationException(
-                $"The machine certificate '{percorso}' exists but can't be read ({errore.Message}). " +
+                $"The machine certificate '{path}' exists but can't be read ({error.Message}). " +
                 "Observer will not replace it on its own: a new certificate has a new fingerprint, " +
                 "and every dashboard that pinned the old one would stop connecting at once. " +
                 "Delete the file deliberately if you mean to issue a new one.",
-                errore);
+                error);
         }
     }
 
-    /// <summary>Deposita il certificato con la stessa ricetta del token.</summary>
+    /// <summary>Stores the certificate with the same recipe as the token.</summary>
     /// <remarks>
-    /// Temporaneo nella stessa cartella, creato GIA' protetto, sostituzione atomica,
-    /// cancellazione in un <c>finally</c>. Le ragioni di ogni passo stanno in
-    /// <see cref="CredentialStore"/> e valgono identiche qui, perche' qui invece di un token
-    /// c'e' una chiave privata.
+    /// Temporary file in the same folder, created ALREADY protected, atomic replacement,
+    /// deletion in a <c>finally</c>. The reasons for each step are in
+    /// <see cref="CredentialStore"/> and hold identically here, because here instead of a token
+    /// there is a private key.
     /// </remarks>
-    private static void Deposita(string percorso, byte[] dati)
+    private static void Store(string path, byte[] pkcs12)
     {
-        string temporaneo = percorso + ".nuovo";
+        string tempPath = path + ".new";
 
         try
         {
-            if (File.Exists(temporaneo))
+            if (File.Exists(tempPath))
             {
-                File.Delete(temporaneo);
+                File.Delete(tempPath);
             }
 
-            using (Stream flusso = CredentialFile.CreaProtetto(temporaneo))
+            using (Stream stream = CredentialFile.CreateProtected(tempPath))
             {
-                flusso.Write(dati, 0, dati.Length);
+                stream.Write(pkcs12, 0, pkcs12.Length);
             }
 
-            File.Move(temporaneo, percorso, overwrite: true);
+            File.Move(tempPath, path, overwrite: true);
         }
         finally
         {
-            if (File.Exists(temporaneo))
+            if (File.Exists(tempPath))
             {
-                File.Delete(temporaneo);
+                File.Delete(tempPath);
             }
         }
     }
 
-    private static string TestoRifiuto(string percorso) =>
-        $"Observer runs as a system service and can't secure its machine certificate at '{percorso}'. " +
+    private static string RefusalMessage(string path) =>
+        $"Observer runs as a system service and can't secure its machine certificate at '{path}'. " +
         "It will not start: the private key of that certificate is what proves this machine's " +
         "identity to every dashboard that pinned its fingerprint, so leaving it where other " +
         "accounts can read it would be worse than not starting at all.";

@@ -3,47 +3,48 @@ using System.Text.Json;
 namespace Observer.Service.Credentials;
 
 /// <summary>
-/// Legge e scrive il deposito del token di macchina.
+/// Reads and writes the machine token store.
 /// </summary>
 /// <remarks>
-/// La ricetta di scrittura non e' quella ovvia, e ognuno dei suoi passi corregge un guasto
-/// misurato:
+/// The write recipe is not the obvious one, and every one of its steps fixes a measured
+/// failure:
 /// <list type="bullet">
-/// <item>il temporaneo sta nella STESSA cartella, altrimenti la sostituzione non e' atomica;</item>
-/// <item>viene creato GIA' protetto, perche' su Windows la sostituzione fa vincere la DACL del
-/// TEMPORANEO: un temporaneo con permessi ereditati declassa il deposito a leggibile da
-/// chiunque, in silenzio;</item>
-/// <item>viene creato con CreateNew e mai con Create, perche' Create su un file esistente
-/// IGNORA il descrittore passato e lascia in piedi quello che c'era;</item>
-/// <item>viene cancellato in un finally, perche' una sostituzione fallita lo lascerebbe sul
-/// disco col segreto in chiaro.</item>
+/// <item>the temporary file sits in the SAME directory, otherwise the replacement is not
+/// atomic;</item>
+/// <item>it is created ALREADY protected, because on Windows the replacement makes the
+/// TEMPORARY file's DACL win: a temporary file with inherited permissions downgrades the store
+/// to readable by anyone, silently;</item>
+/// <item>it is created with CreateNew and never with Create, because Create on an existing file
+/// IGNORES the descriptor it is handed and leaves standing the one that was there;</item>
+/// <item>it is deleted in a finally, because a failed replacement would leave it on the disk
+/// with the secret in the clear.</item>
 /// </list>
 /// </remarks>
 public static class CredentialStore
 {
-    private static readonly JsonSerializerOptions Formato = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
     };
 
-    /// <summary>Legge il deposito.</summary>
-    /// <param name="percorso">Il percorso del file.</param>
-    /// <returns>Le credenziali, oppure null se il deposito non esiste ancora.</returns>
-    /// <exception cref="InvalidOperationException">Se esiste ma non e' utilizzabile.</exception>
+    /// <summary>Reads the store.</summary>
+    /// <param name="path">The path of the file.</param>
+    /// <returns>The credentials, or null if the store does not exist yet.</returns>
+    /// <exception cref="InvalidOperationException">If it exists but is not usable.</exception>
     /// <remarks>
-    /// Non usa File.Exists: su un file protetto davvero, File.Exists restituisce false anche
-    /// quando il file c'e'. Ramificare su quello farebbe rigenerare la chiave a ogni avvio,
-    /// tagliando fuori tutti i client remoti senza che nessuno capisca perche'.
+    /// It does not use File.Exists: on a file that is genuinely protected, File.Exists returns
+    /// false even when the file is there. Branching on that would regenerate the key at every
+    /// start, cutting off every remote client without anyone understanding why.
     /// </remarks>
-    public static MachineCredentials? Leggi(string percorso)
+    public static MachineCredentials? Read(string path)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(percorso);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        string contenuto;
+        string content;
 
         try
         {
-            contenuto = File.ReadAllText(percorso);
+            content = File.ReadAllText(path);
         }
         catch (FileNotFoundException)
         {
@@ -53,64 +54,64 @@ public static class CredentialStore
         {
             return null;
         }
-        catch (UnauthorizedAccessException errore)
+        catch (UnauthorizedAccessException error)
         {
-            // "Non riesco a leggerlo" NON e' "non c'e'": confonderli rigenererebbe la chiave.
+            // "I can't read it" is NOT "it isn't there": confusing the two would regenerate the key.
             throw new InvalidOperationException(
-                $"The credential store '{percorso}' exists but can't be read by this process. " +
+                $"The credential store '{path}' exists but can't be read by this process. " +
                 "The machine token will not be regenerated, because that would lock out every " +
                 "remote client. Run the service as LocalSystem, or repair the file permissions.",
-                errore);
+                error);
         }
 
         try
         {
-            return JsonSerializer.Deserialize<MachineCredentials>(contenuto, Formato)
+            return JsonSerializer.Deserialize<MachineCredentials>(content, JsonOptions)
                 ?? throw new InvalidOperationException(
-                    $"The credential store '{percorso}' is empty.");
+                    $"The credential store '{path}' is empty.");
         }
-        catch (JsonException errore)
+        catch (JsonException error)
         {
             throw new InvalidOperationException(
-                $"The credential store '{percorso}' isn't valid JSON ({errore.Message}). " +
+                $"The credential store '{path}' isn't valid JSON ({error.Message}). " +
                 "Observer will not overwrite it: if the file was hand-edited, fix it; if it is " +
                 "damaged, delete it and the service will create a new machine token.",
-                errore);
+                error);
         }
     }
 
-    /// <summary>Scrive il deposito, in modo atomico e senza perdere i permessi.</summary>
-    /// <param name="percorso">Il percorso del file.</param>
-    /// <param name="credenziali">Le credenziali da depositare.</param>
-    public static void Scrivi(string percorso, MachineCredentials credenziali)
+    /// <summary>Writes the store, atomically and without losing the permissions.</summary>
+    /// <param name="path">The path of the file.</param>
+    /// <param name="credentials">The credentials to store.</param>
+    public static void Write(string path, MachineCredentials credentials)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(percorso);
-        ArgumentNullException.ThrowIfNull(credenziali);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(credentials);
 
-        // Nella stessa cartella del deposito: una Move fra volumi diversi non e' atomica.
-        string temporaneo = percorso + ".nuovo";
+        // In the store's own directory: a Move across different volumes is not atomic.
+        string tempPath = path + ".new";
 
         try
         {
-            if (File.Exists(temporaneo))
+            if (File.Exists(tempPath))
             {
-                File.Delete(temporaneo);
+                File.Delete(tempPath);
             }
 
-            using (Stream flusso = CredentialFile.CreaProtetto(temporaneo))
+            using (Stream stream = CredentialFile.CreateProtected(tempPath))
             {
-                JsonSerializer.Serialize(flusso, credenziali, Formato);
+                JsonSerializer.Serialize(stream, credentials, JsonOptions);
             }
 
-            File.Move(temporaneo, percorso, overwrite: true);
+            File.Move(tempPath, path, overwrite: true);
         }
         finally
         {
-            // Una sostituzione fallita lascerebbe qui il segreto in chiaro, e con i permessi
-            // ereditati della cartella invece di quelli del deposito.
-            if (File.Exists(temporaneo))
+            // A failed replacement would leave the secret here in the clear, and with the
+            // directory's inherited permissions instead of the store's own.
+            if (File.Exists(tempPath))
             {
-                File.Delete(temporaneo);
+                File.Delete(tempPath);
             }
         }
     }
