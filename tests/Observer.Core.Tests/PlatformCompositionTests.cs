@@ -51,9 +51,9 @@ public class PlatformCompositionTests
         // silenzio, e ogni tasso resterebbe ignoto senza che nessuno lo dica.
         FakeFileTextReader lettore = new();
 
-        Assert.IsType<WindowsProcessIoReader>(ProcessIoReaders.Per(HostPlatform.Windows, lettore));
-        Assert.IsType<LinuxProcessIoReader>(ProcessIoReaders.Per(HostPlatform.Linux, lettore));
-        Assert.Null(ProcessIoReaders.Per(HostPlatform.Unknown, lettore));
+        Assert.IsType<WindowsProcessIoReader>(ProcessIoReaders.For(HostPlatform.Windows, lettore));
+        Assert.IsType<LinuxProcessIoReader>(ProcessIoReaders.For(HostPlatform.Linux, lettore));
+        Assert.Null(ProcessIoReaders.For(HostPlatform.Unknown, lettore));
     }
 
     [Fact]

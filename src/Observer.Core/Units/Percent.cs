@@ -1,27 +1,26 @@
 namespace Observer.Core.Units;
 
 /// <summary>
-/// Una percentuale in punti, garantita finita e non negativa. Esiste per separare in modo
-/// visibile il rapporto 0..1 dai punti percentuali 0..100, che e' la confusione piu'
-/// frequente, e per impedire che un NaN arrivi al serializzatore JSON.
+/// A percentage in points, guaranteed finite and non-negative. It exists to keep the 0..1
+/// ratio visibly apart from the 0..100 percentage points, which is the most frequent
+/// confusion, and to stop a NaN from reaching the JSON serializer.
 /// </summary>
 /// <remarks>
-/// Il limite INFERIORE e' imposto, quello superiore no, ed e' una scelta deliberata: una
-/// percentuale d'uso negativa non significa nulla e a grafico passa per rumore, mentre un
-/// valore sopra il 100 e' legittimo — un collector per-processo su una macchina multi-core
-/// deve poter dire 350%.
+/// The LOWER bound is enforced, the upper one is not, and that is deliberate: a negative
+/// usage percentage means nothing and passes for noise on a chart, while a value above 100
+/// is legitimate — a per-process collector on a multi-core machine must be able to say 350%.
 /// </remarks>
 public readonly record struct Percent
 {
     private Percent(double points) => Points = points;
 
-    /// <summary>Valore in punti percentuali, da 0 a 100.</summary>
+    /// <summary>Value in percentage points, from 0 to 100.</summary>
     public double Points { get; }
 
     /// <summary>
-    /// Converte un rapporto 0..1 in punti percentuali. Restituisce false se il valore non
-    /// e' finito — un NaN serializzato farebbe lanciare Utf8JsonWriter, azzerando l'intera
-    /// risposta HTTP per colpa di una sola metrica — oppure se e' negativo.
+    /// Converts a 0..1 ratio into percentage points. Returns false if the value is not
+    /// finite — a serialized NaN would make Utf8JsonWriter throw, wiping out the entire
+    /// HTTP response because of a single metric — or if it is negative.
     /// </summary>
     public static bool TryFromRatio(double ratio, out Percent result)
     {

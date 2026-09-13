@@ -70,7 +70,7 @@ public static class Diagnosi
             using X509Certificate2 certificato =
                 MachineCertificate.SoloPerLeggere(File.ReadAllBytes(percorso));
 
-            return CertificateFingerprint.PerLUomo(MachineCertificate.Impronta(certificato));
+            return CertificateFingerprint.ForHumans(MachineCertificate.Impronta(certificato));
         }
         catch (Exception errore) when (errore is FileNotFoundException or DirectoryNotFoundException)
         {

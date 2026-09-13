@@ -16,7 +16,7 @@ public class CertificateFingerprintTests
 {
     private static readonly byte[] Certificato = [1, 2, 3, 4, 5];
 
-    private static string Attesa() => CertificateFingerprint.Da(Certificato);
+    private static string Attesa() => CertificateFingerprint.From(Certificato);
 
     [Fact]
     public void LImprontaEQuellaDiSHA256()
@@ -24,15 +24,15 @@ public class CertificateFingerprintTests
         // Non un formato inventato: dev'essere confrontabile con cio' che stampa openssl.
         string atteso = "sha256:" + Convert.ToHexString(SHA256.HashData(Certificato));
 
-        Assert.Equal(atteso, CertificateFingerprint.Da(Certificato));
+        Assert.Equal(atteso, CertificateFingerprint.From(Certificato));
     }
 
     [Fact]
     public void CertificatiDiversiDannoImpronteDiverse()
     {
         Assert.NotEqual(
-            CertificateFingerprint.Da([1, 2, 3]),
-            CertificateFingerprint.Da([1, 2, 4]));
+            CertificateFingerprint.From([1, 2, 3]),
+            CertificateFingerprint.From([1, 2, 4]));
     }
 
     [Theory]
@@ -43,7 +43,7 @@ public class CertificateFingerprintTests
     {
         string cifre = Convert.ToHexString(SHA256.HashData(Certificato));
 
-        Assert.True(CertificateFingerprint.Uguali(prefisso + cifre, Attesa()));
+        Assert.True(CertificateFingerprint.Match(prefisso + cifre, Attesa()));
     }
 
     [Fact]
@@ -51,12 +51,12 @@ public class CertificateFingerprintTests
     {
         // Questo valore lo copia una PERSONA da un terminale a un file di testo, e gli
         // strumenti che stampano impronte non concordano su come separarle.
-        string leggibile = CertificateFingerprint.PerLUomo(Attesa());
+        string leggibile = CertificateFingerprint.ForHumans(Attesa());
 
         Assert.Contains(":", leggibile, StringComparison.Ordinal);
-        Assert.True(CertificateFingerprint.Uguali(leggibile, Attesa()));
-        Assert.True(CertificateFingerprint.Uguali(leggibile.ToLowerInvariant(), Attesa()));
-        Assert.True(CertificateFingerprint.Uguali(leggibile.Replace(':', ' '), Attesa()));
+        Assert.True(CertificateFingerprint.Match(leggibile, Attesa()));
+        Assert.True(CertificateFingerprint.Match(leggibile.ToLowerInvariant(), Attesa()));
+        Assert.True(CertificateFingerprint.Match(leggibile.Replace(':', ' '), Attesa()));
     }
 
     [Theory]
@@ -67,7 +67,7 @@ public class CertificateFingerprintTests
     [InlineData("non-e-un-impronta")]
     public void CioCheNonEUnImprontaNonSiNormalizza(string? testo)
     {
-        Assert.Null(CertificateFingerprint.Normalizza(testo));
+        Assert.Null(CertificateFingerprint.Normalize(testo));
     }
 
     [Fact]
@@ -75,8 +75,8 @@ public class CertificateFingerprintTests
     {
         string cifre = Convert.ToHexString(SHA256.HashData(Certificato));
 
-        Assert.Null(CertificateFingerprint.Normalizza(cifre[..62]));
-        Assert.Null(CertificateFingerprint.Normalizza(cifre + "AB"));
+        Assert.Null(CertificateFingerprint.Normalize(cifre[..62]));
+        Assert.Null(CertificateFingerprint.Normalize(cifre + "AB"));
     }
 
     [Fact]
@@ -86,8 +86,8 @@ public class CertificateFingerprintTests
         // accetterebbe un'impronta con dentro un errore di battitura.
         string cifre = Convert.ToHexString(SHA256.HashData(Certificato));
 
-        Assert.Null(CertificateFingerprint.Normalizza("Z" + cifre[1..]));
-        Assert.Null(CertificateFingerprint.Normalizza(cifre[..63] + "Z"));
+        Assert.Null(CertificateFingerprint.Normalize("Z" + cifre[1..]));
+        Assert.Null(CertificateFingerprint.Normalize(cifre[..63] + "Z"));
     }
 
     [Theory]
@@ -100,7 +100,7 @@ public class CertificateFingerprintTests
     {
         // Il caso piu' pericoloso di tutti: se due impronte illeggibili risultassero uguali,
         // un errore di battitura in ENTRAMBI i posti spegnerebbe il controllo senza dirlo.
-        Assert.False(CertificateFingerprint.Uguali(a, b));
+        Assert.False(CertificateFingerprint.Match(a, b));
     }
 
     [Fact]
@@ -109,12 +109,12 @@ public class CertificateFingerprintTests
         string cifre = Convert.ToHexString(SHA256.HashData(Certificato));
         char primo = cifre[0] == 'A' ? 'B' : 'A';
 
-        Assert.False(CertificateFingerprint.Uguali(primo + cifre[1..], Attesa()));
+        Assert.False(CertificateFingerprint.Match(primo + cifre[1..], Attesa()));
     }
 
     [Fact]
     public void LaFormaLeggibileNonRovinaCioCheNonSaLeggere()
     {
-        Assert.Equal("non lo so", CertificateFingerprint.PerLUomo("non lo so"));
+        Assert.Equal("non lo so", CertificateFingerprint.ForHumans("non lo so"));
     }
 }

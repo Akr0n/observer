@@ -21,7 +21,7 @@ namespace Observer.App.Tests;
 public class MachineDirectoryTests
 {
     private static readonly string Impronta =
-        CertificateFingerprint.Da(SHA256.HashData("una macchina"u8.ToArray()));
+        CertificateFingerprint.From(SHA256.HashData("una macchina"u8.ToArray()));
 
     private static ClientConfigurationResult NienteAltro() =>
         new(ObserverEndpoint.CanaleLocale(), null);
@@ -273,7 +273,7 @@ public class MachineDirectoryTests
 
         private DepositoFinto(string? protesta) => this.protesta = protesta;
 
-        public string Descrizione => "the pretend store";
+        public string Description => "the pretend store";
 
         public static DepositoFinto Vuoto() => new(protesta: null);
 

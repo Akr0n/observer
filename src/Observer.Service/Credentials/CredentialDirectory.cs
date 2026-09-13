@@ -13,7 +13,7 @@ public static class CredentialDirectory
 
     /// <summary>Il percorso predefinito del deposito su questo sistema.</summary>
     /// <returns>Il percorso completo del file.</returns>
-    public static string PercorsoPredefinito() =>
+    public static string DefaultPath() =>
         OperatingSystem.IsWindows()
             ? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),

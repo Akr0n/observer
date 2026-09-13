@@ -8,14 +8,14 @@ using Observer.Core.Units;
 namespace Observer.Core.Platform.Windows;
 
 /// <summary>
-/// Adattatore Windows dei contatori CPU, via GetSystemTimes di kernel32.
-/// Nessun package NuGet, nessun permesso di amministratore.
+/// Windows adapter for the CPU counters, through kernel32's GetSystemTimes.
+/// No NuGet package, no administrator permission.
 /// </summary>
 /// <remarks>
-/// PerformanceCounter non e' utilizzabile qui: Observer.Core ha TFM net10.0 (non
-/// net10.0-windows) e con TreatWarningsAsErrors la sola presenza di quel tipo rompe la
-/// build con CA1416. Costerebbe inoltre secondi nel costruttore, inaccettabili all'avvio
-/// di un servizio.
+/// PerformanceCounter is not usable here: Observer.Core has TFM net10.0 (not
+/// net10.0-windows) and with TreatWarningsAsErrors the mere presence of that type breaks the
+/// build with CA1416. It would also cost seconds in the constructor, unacceptable at the
+/// start-up of a service.
 /// </remarks>
 public sealed partial class WindowsCpuTimesProvider : ICpuTimesProvider
 {
@@ -31,8 +31,8 @@ public sealed partial class WindowsCpuTimesProvider : ICpuTimesProvider
     {
         times = default;
 
-        // Il guard non e' disciplina: senza, CA1416 rompe la compilazione. E' il compilatore
-        // a impedire di dimenticarlo.
+        // The guard is not discipline: without it, CA1416 breaks the compilation. It is the
+        // compiler that stops you from forgetting it.
         if (!OperatingSystem.IsWindows())
         {
             return false;
@@ -43,10 +43,10 @@ public sealed partial class WindowsCpuTimesProvider : ICpuTimesProvider
             return false;
         }
 
-        // ATTENZIONE: KernelTime INCLUDE GIA' IdleTime. Il bug classico e' scrivere
-        // busy = kernel + user, che conta l'inattivita' come lavoro e produce percentuali
-        // costantemente vicine al 100%. Con Total = kernel + user e Idle = idle, la
-        // sottrazione Total - Idle fatta a valle da' il valore corretto.
+        // WARNING: KernelTime ALREADY INCLUDES IdleTime. The classic bug is to write
+        // busy = kernel + user, which counts idleness as work and produces percentages
+        // constantly close to 100%. With Total = kernel + user and Idle = idle, the
+        // Total - Idle subtraction done downstream gives the correct value.
         times = new CpuTimes(idle, kernel + user);
         return true;
     }
@@ -60,7 +60,7 @@ public sealed partial class WindowsCpuTimesProvider : ICpuTimesProvider
         out long lpUserTime);
 }
 
-/// <summary>Adattatore Windows dei valori di memoria, via GlobalMemoryStatusEx di kernel32.</summary>
+/// <summary>Windows adapter for the memory values, through kernel32's GlobalMemoryStatusEx.</summary>
 public sealed partial class WindowsMemoryReadingProvider : IMemoryReadingProvider
 {
     /// <inheritdoc />
@@ -82,7 +82,7 @@ public sealed partial class WindowsMemoryReadingProvider : IMemoryReadingProvide
 
         MemoryStatusEx status = default;
 
-        // dwLength e' un contratto di versioning della struct: senza, l'API fallisce.
+        // dwLength is a versioning contract for the struct: without it, the API fails.
         status.Length = (uint)Marshal.SizeOf<MemoryStatusEx>();
 
         if (!GlobalMemoryStatusEx(ref status))
@@ -90,11 +90,11 @@ public sealed partial class WindowsMemoryReadingProvider : IMemoryReadingProvide
             return false;
         }
 
-        // Lo swap NON viene pubblicato su Windows, di proposito. ullTotalPageFile e' il
-        // COMMIT LIMIT (RAM + pagefile), non la dimensione del file di swap: esporlo come
-        // "swap" darebbe un numero plausibile e sbagliato. Il valore esatto richiede WMI,
-        // che costa ~272 ms a chiamata ed e' incompatibile con un campionamento a 1 Hz.
-        // Swap a zero fa omettere i punti, cioe' dichiara "non applicabile" invece di mentire.
+        // Swap is NOT published on Windows, deliberately. ullTotalPageFile is the
+        // COMMIT LIMIT (RAM + pagefile), not the size of the swap file: exposing it as
+        // "swap" would give a plausible and wrong number. The exact value needs WMI,
+        // which costs ~272 ms per call and is incompatible with sampling at 1 Hz.
+        // Swap at zero makes the points be omitted, that is, it says "not applicable" instead of lying.
         value = new MemoryReading(
             ByteSize.FromBytes((long)status.TotalPhys),
             ByteSize.FromBytes((long)status.AvailPhys),
@@ -126,12 +126,12 @@ public sealed partial class WindowsMemoryReadingProvider : IMemoryReadingProvide
 }
 
 
-/// <summary>Adattatore Windows dello spazio sui volumi, via DriveInfo.</summary>
+/// <summary>Windows adapter for the space on the volumes, through DriveInfo.</summary>
 /// <remarks>
-/// <c>DriveInfo</c> e non WMI, e non i contatori prestazioni: entrambi rispondono, ma e' stato
-/// misurato che costano troppo per un campionamento al secondo — WMI da 306 a 2041 ms, e la
-/// prima registrazione di un contatore prestazioni 2377 ms. <c>DriveInfo</c> costa 0,41 ms per
-/// tre volumi, e per lo spazio dice tutto quello che serve.
+/// <c>DriveInfo</c> and not WMI, and not the performance counters: both answer, but it was
+/// measured that they cost too much for sampling once a second — WMI from 306 to 2041 ms, and the
+/// first registration of a performance counter 2377 ms. <c>DriveInfo</c> costs 0.41 ms for
+/// three volumes, and for space it says everything that is needed.
 /// </remarks>
 public sealed class WindowsDiskReadingProvider : IDiskReadingProvider
 {
@@ -152,13 +152,13 @@ public sealed class WindowsDiskReadingProvider : IDiskReadingProvider
             return false;
         }
 
-        List<DiskReading> trovati = [];
+        List<DiskReading> found = [];
 
-        DriveInfo[] unita;
+        DriveInfo[] drives;
 
         try
         {
-            unita = DriveInfo.GetDrives();
+            drives = DriveInfo.GetDrives();
         }
         catch (IOException)
         {
@@ -169,11 +169,11 @@ public sealed class WindowsDiskReadingProvider : IDiskReadingProvider
             return false;
         }
 
-        foreach (DriveInfo volume in unita)
+        foreach (DriveInfo volume in drives)
         {
-            // Un volume alla volta dentro il try: un lettore ottico vuoto, una unita' di rete
-            // caduta o una chiavetta estratta mentre la si legge lanciano, e devono togliere
-            // di mezzo se stesse, non l'intero elenco.
+            // One volume at a time inside the try: an empty optical drive, a network drive that
+            // has gone down or a USB stick pulled out while it is being read all throw, and they
+            // must take themselves out of the way, not the whole list.
             try
             {
                 if (!volume.IsReady || volume.DriveType == DriveType.Ram)
@@ -181,22 +181,22 @@ public sealed class WindowsDiskReadingProvider : IDiskReadingProvider
                     continue;
                 }
 
-                trovati.Add(new DiskReading(
+                found.Add(new DiskReading(
                     volume.Name.TrimEnd(Path.DirectorySeparatorChar),
                     ByteSize.FromBytes(volume.TotalSize),
                     ByteSize.FromBytes(volume.AvailableFreeSpace)));
             }
             catch (IOException)
             {
-                // Il volume e' sparito fra IsReady e la lettura: succede davvero.
+                // The volume vanished between IsReady and the read: it really happens.
             }
             catch (UnauthorizedAccessException)
             {
-                // Il servizio gira come LocalSystem e questo volume non lo riguarda.
+                // The service runs as LocalSystem and this volume is none of its business.
             }
         }
 
-        readings = trovati;
+        readings = found;
 
         return true;
     }

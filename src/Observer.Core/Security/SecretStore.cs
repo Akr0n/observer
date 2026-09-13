@@ -3,158 +3,158 @@ using Observer.Core.Platform;
 namespace Observer.Core.Security;
 
 /// <summary>
-/// Dove il CLIENT tiene i token delle macchine remote.
+/// Where the CLIENT keeps the tokens of the remote machines.
 /// </summary>
 /// <remarks>
-/// Nasce da un difetto vero: i token stavano in chiaro dentro <c>machines.json</c>, un file
-/// scritto a mano e fatto per essere guardato. Finche' quel token serviva solo a leggere la
-/// CPU altrui il costo di perderlo era contenuto; da quando autorizza anche a terminare
-/// processi, lo stesso file vale molto di piu'.
+/// It comes from a real defect: the tokens sat in cleartext inside <c>machines.json</c>, a file
+/// written by hand and meant to be looked at. As long as that token only allowed reading someone
+/// else's CPU the cost of losing it was contained; since it also authorizes killing processes,
+/// the same file is worth far more.
 /// <para>
-/// Da non confondere con il deposito del SERVIZIO, sotto
-/// <c>Observer.Service/Credentials/</c>: quello custodisce il token che una macchina
-/// pretende, e' unico per macchina e sta in una cartella di sistema. Questo custodisce i
-/// token che un utente presenta ad ALTRE macchine, e' per utente, e non prova a difendersi
-/// dagli amministratori della propria macchina, che possono comunque leggere tutto.
+/// Not to be confused with the SERVICE's store, under
+/// <c>Observer.Service/Credentials/</c>: that one keeps the token a machine demands, is one per
+/// machine and lives in a system directory. This one keeps the tokens a user presents to OTHER
+/// machines, is per user, and does not try to defend itself from the administrators of its own
+/// machine, who can read everything anyway.
 /// </para>
 /// </remarks>
 public interface ISecretStore
 {
-    /// <summary>Dove i segreti sono custoditi, in una frase da mostrare a chi guarda.</summary>
-    string Descrizione { get; }
+    /// <summary>Where the secrets are kept, in one sentence to show to whoever is looking.</summary>
+    string Description { get; }
 
-    /// <summary>Legge un segreto. False se non c'e'.</summary>
-    /// <param name="nome">Il nome sotto cui e' stato depositato.</param>
-    /// <param name="segreto">Il segreto letto.</param>
-    /// <returns>True se c'era.</returns>
-    /// <exception cref="SecretStoreException">Se c'e' ma non e' sicuro leggerlo.</exception>
-    bool TryRead(string nome, out string segreto);
+    /// <summary>Reads a secret. False if it is not there.</summary>
+    /// <param name="name">The name it was stored under.</param>
+    /// <param name="secret">The secret that was read.</param>
+    /// <returns>True if it was there.</returns>
+    /// <exception cref="SecretStoreException">If it is there but reading it is not safe.</exception>
+    bool TryRead(string name, out string secret);
 
-    /// <summary>Deposita un segreto, sostituendo quello che c'era.</summary>
-    /// <param name="nome">Il nome sotto cui depositarlo.</param>
-    /// <param name="segreto">Il segreto.</param>
-    void Write(string nome, string segreto);
+    /// <summary>Stores a secret, replacing the one that was there.</summary>
+    /// <param name="name">The name to store it under.</param>
+    /// <param name="secret">The secret.</param>
+    void Write(string name, string secret);
 
-    /// <summary>Cancella un segreto. False se non c'era.</summary>
-    /// <param name="nome">Il nome del segreto.</param>
-    /// <returns>True se c'era ed e' stato tolto.</returns>
-    bool Delete(string nome);
+    /// <summary>Deletes a secret. False if it was not there.</summary>
+    /// <param name="name">The name of the secret.</param>
+    /// <returns>True if it was there and has been removed.</returns>
+    bool Delete(string name);
 }
 
 /// <summary>
-/// Il deposito c'e' ma non ci si puo' fidare, oppure non ha voluto rispondere.
+/// The store is there but cannot be trusted, or it refused to answer.
 /// </summary>
 /// <remarks>
-/// Eccezione e non un <c>false</c>: "il segreto non c'e'" e "il segreto c'e' ma il file e'
-/// leggibile da chiunque" sono due cose diverse, e la seconda non deve poter essere scambiata
-/// per la prima e finire in un ramo che invita a depositarlo di nuovo.
+/// An exception and not a <c>false</c>: "the secret is not there" and "the secret is there but
+/// the file is readable by anyone" are two different things, and the second must not be
+/// mistakable for the first and end up in a branch that invites storing it again.
 /// </remarks>
 public sealed class SecretStoreException : Exception
 {
-    /// <summary>Crea l'eccezione con il motivo da mostrare.</summary>
-    /// <param name="message">Il motivo, gia' scritto per chi legge.</param>
+    /// <summary>Creates the exception with the reason to show.</summary>
+    /// <param name="message">The reason, already written for whoever reads it.</param>
     public SecretStoreException(string message)
         : base(message)
     {
     }
 
-    /// <summary>Crea l'eccezione con il motivo e la causa.</summary>
-    /// <param name="message">Il motivo.</param>
-    /// <param name="innerException">La causa.</param>
+    /// <summary>Creates the exception with the reason and the cause.</summary>
+    /// <param name="message">The reason.</param>
+    /// <param name="innerException">The cause.</param>
     public SecretStoreException(string message, Exception innerException)
         : base(message, innerException)
     {
     }
 
-    /// <summary>Crea l'eccezione senza motivo. Esiste solo per l'analizzatore.</summary>
+    /// <summary>Creates the exception with no reason. It exists only for the analyzer.</summary>
     public SecretStoreException()
     {
     }
 }
 
-/// <summary>Come si chiama un segreto, e cosa non puo' chiamarsi.</summary>
+/// <summary>What a secret is called, and what it cannot be called.</summary>
 /// <remarks>
-/// Sta qui e non dentro il deposito Unix perche' il nome arriva da <c>machines.json</c>, che
-/// lo scrive una persona, e finisce a comporre un percorso di file: se non fosse controllato,
-/// una voce chiamata <c>../../id_rsa</c> farebbe leggere e sovrascrivere un file fuori dalla
-/// cartella dei segreti. Neutro rispetto alla piattaforma anche perche' la regola vada
-/// provata da entrambi i runner, e non solo dove il deposito a file esiste davvero.
+/// It lives here and not inside the Unix store because the name comes from <c>machines.json</c>,
+/// which a person writes, and ends up composing a file path: if it were not checked, an entry
+/// called <c>../../id_rsa</c> would read and overwrite a file outside the secrets directory.
+/// Platform-neutral also so that the rule is tested by both runners, and not only where the file
+/// store really exists.
 /// </remarks>
 public static class SecretName
 {
-    /// <summary>Il nome ripulito, oppure un'eccezione se non e' utilizzabile.</summary>
-    /// <param name="nome">Il nome come arriva dalla configurazione.</param>
-    /// <returns>Il nome senza spazi ai bordi.</returns>
-    /// <exception cref="SecretStoreException">Se il nome non e' utilizzabile.</exception>
-    public static string Valida(string nome)
+    /// <summary>The cleaned-up name, or an exception if it cannot be used.</summary>
+    /// <param name="name">The name as it arrives from configuration.</param>
+    /// <returns>The name without spaces at its edges.</returns>
+    /// <exception cref="SecretStoreException">If the name cannot be used.</exception>
+    public static string Validate(string name)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(nome);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        foreach (char lettera in nome)
+        foreach (char letter in name)
         {
-            if (!char.IsAsciiLetterOrDigit(lettera) && lettera is not ('-' or '_' or '.' or ' '))
+            if (!char.IsAsciiLetterOrDigit(letter) && letter is not ('-' or '_' or '.' or ' '))
             {
                 throw new SecretStoreException(
-                    $"\"{nome}\" cannot be used as a machine name here: only letters, digits, " +
+                    $"\"{name}\" cannot be used as a machine name here: only letters, digits, " +
                     "spaces, dots, dashes and underscores are allowed.");
             }
         }
 
-        string pulito = nome.Trim();
+        string cleaned = name.Trim();
 
-        if (pulito.Length == 0 || pulito is "." or "..")
+        if (cleaned.Length == 0 || cleaned is "." or "..")
         {
-            throw new SecretStoreException($"\"{nome}\" cannot be used as a machine name here.");
+            throw new SecretStoreException($"\"{name}\" cannot be used as a machine name here.");
         }
 
-        return pulito;
+        return cleaned;
     }
 }
 
-/// <summary>Sceglie il deposito giusto per una piattaforma.</summary>
+/// <summary>Picks the right store for a platform.</summary>
 /// <remarks>
-/// La piattaforma e' un PARAMETRO, come per i collector: e' cio' che permette di provare la
-/// scelta dal runner Windows come da quello Linux, invece di avere un ramo che nessuno dei due
-/// esegue mai.
+/// The platform is a PARAMETER, as it is for the collectors: that is what makes the choice
+/// testable from the Windows runner as well as from the Linux one, instead of having a branch
+/// that neither of them ever runs.
 /// </remarks>
 public static class SecretStores
 {
-    /// <summary>Il deposito per la piattaforma indicata.</summary>
-    /// <param name="piattaforma">Quale sistema operativo.</param>
-    /// <returns>Il deposito.</returns>
-    public static ISecretStore Per(HostPlatform piattaforma) => piattaforma switch
+    /// <summary>The store for the given platform.</summary>
+    /// <param name="platform">Which operating system.</param>
+    /// <returns>The store.</returns>
+    public static ISecretStore For(HostPlatform platform) => platform switch
     {
         HostPlatform.Windows when OperatingSystem.IsWindows() => new WindowsSecretStore(),
         HostPlatform.Linux when OperatingSystem.IsLinux() => new UnixSecretStore(),
         _ => new UnsupportedSecretStore(),
     };
 
-    /// <summary>Il deposito di questa macchina.</summary>
-    /// <returns>Il deposito.</returns>
-    public static ISecretStore PerQuestaMacchina() => Per(HostPlatformDetector.Current);
+    /// <summary>The store of this machine.</summary>
+    /// <returns>The store.</returns>
+    public static ISecretStore ForThisMachine() => For(HostPlatformDetector.Current);
 }
 
-/// <summary>Deposito per una piattaforma su cui non si sa custodire niente.</summary>
+/// <summary>Store for a platform where nothing is known to be kept safely.</summary>
 /// <remarks>
-/// Esiste per la stessa ragione degli altri provider "Unsupported": una piattaforma
-/// sconosciuta deve DIRE che non sa custodire un segreto, non fingere un deposito vuoto e far
-/// concludere a chi guarda di essersi dimenticato di depositarlo.
+/// It exists for the same reason as the other "Unsupported" providers: an unknown platform must
+/// SAY that it cannot keep a secret, not fake an empty store and make whoever is looking
+/// conclude that they forgot to store it.
 /// </remarks>
 public sealed class UnsupportedSecretStore : ISecretStore
 {
-    private const string Motivo =
+    private const string Reason =
         "This platform has no supported place to keep machine tokens. Observer knows the " +
         "Windows Credential Manager and, on Linux, a file readable only by its owner.";
 
     /// <inheritdoc />
-    public string Descrizione => "no secret store is available on this platform";
+    public string Description => "no secret store is available on this platform";
 
     /// <inheritdoc />
-    public bool TryRead(string nome, out string segreto) => throw new SecretStoreException(Motivo);
+    public bool TryRead(string name, out string secret) => throw new SecretStoreException(Reason);
 
     /// <inheritdoc />
-    public void Write(string nome, string segreto) => throw new SecretStoreException(Motivo);
+    public void Write(string name, string secret) => throw new SecretStoreException(Reason);
 
     /// <inheritdoc />
-    public bool Delete(string nome) => throw new SecretStoreException(Motivo);
+    public bool Delete(string name) => throw new SecretStoreException(Reason);
 }

@@ -6,19 +6,19 @@ using Observer.Core.Processes;
 namespace Observer.Core.Platform.Windows;
 
 /// <summary>
-/// Adattatore Windows del contatore di I/O per processo, via <c>GetProcessIoCounters</c>.
+/// Windows adapter of the per-process I/O counter, via <c>GetProcessIoCounters</c>.
 /// </summary>
 /// <remarks>
-/// Il processo si apre con <c>PROCESS_QUERY_LIMITED_INFORMATION</c>, che e' il diritto minimo
-/// per questa chiamata e quello che anche i processi degli altri utenti concedono; quelli
-/// protetti dal sistema rifiutano perfino questo, anche a LocalSystem, e per loro la colonna
-/// resta sconosciuta invece di far saltare la riga.
+/// The process is opened with <c>PROCESS_QUERY_LIMITED_INFORMATION</c>, which is the minimum
+/// right for this call and the one that other users' processes grant too; the ones protected
+/// by the system refuse even this, even to LocalSystem, and for them the column stays unknown
+/// instead of failing the row.
 /// <para>
-/// Si sommano i byte delle letture e delle scritture, non le operazioni "altre": quelle sono
-/// ioctl e simili, e i loro byte non sono dati trasferiti. Il contatore conta le CHIAMATE del
-/// processo — cache compresa, rete compresa — perche' Windows non ha un contatore per processo
-/// dei soli byte arrivati al disco; e' la ragione per cui su Linux si leggono <c>rchar</c> e
-/// <c>wchar</c> e non <c>read_bytes</c>, cosi' i due sistemi dicono la stessa cosa.
+/// Read and write bytes are summed, not the "other" operations: those are ioctls and the like,
+/// and their bytes are not transferred data. The counter counts the process's CALLS — cache
+/// included, network included — because Windows has no per-process counter of the bytes that
+/// reached the disk alone; that is the reason why on Linux <c>rchar</c> and <c>wchar</c> are
+/// read and not <c>read_bytes</c>, so the two systems say the same thing.
 /// </para>
 /// </remarks>
 public sealed partial class WindowsProcessIoReader : IProcessIoReader
@@ -30,11 +30,11 @@ public sealed partial class WindowsProcessIoReader : IProcessIoReader
     {
         bytes = 0;
 
-        return OperatingSystem.IsWindows() && Leggi(pid, out bytes);
+        return OperatingSystem.IsWindows() && Read(pid, out bytes);
     }
 
     [SupportedOSPlatform("windows")]
-    private static bool Leggi(int pid, out ulong bytes)
+    private static bool Read(int pid, out ulong bytes)
     {
         bytes = 0;
 
@@ -43,23 +43,23 @@ public sealed partial class WindowsProcessIoReader : IProcessIoReader
             return false;
         }
 
-        using SafeProcessHandle processo = OpenProcess(
+        using SafeProcessHandle process = OpenProcess(
             ProcessQueryLimitedInformation, bInheritHandle: false, (uint)pid);
 
-        if (processo.IsInvalid || !GetProcessIoCounters(processo, out IoCounters contatori))
+        if (process.IsInvalid || !GetProcessIoCounters(process, out IoCounters counters))
         {
             return false;
         }
 
-        ulong somma = contatori.ReadTransferCount + contatori.WriteTransferCount;
+        ulong sum = counters.ReadTransferCount + counters.WriteTransferCount;
 
-        // Stessa guardia del lettore Linux: un giro dei 64 bit non e' un totale.
-        if (somma < contatori.ReadTransferCount)
+        // Same guard as the Linux reader: a wrap of the 64 bits is not a total.
+        if (sum < counters.ReadTransferCount)
         {
             return false;
         }
 
-        bytes = somma;
+        bytes = sum;
 
         return true;
     }
@@ -76,7 +76,7 @@ public sealed partial class WindowsProcessIoReader : IProcessIoReader
     [SupportedOSPlatform("windows")]
     private static partial bool GetProcessIoCounters(SafeProcessHandle hProcess, out IoCounters lpIoCounters);
 
-    /// <summary><c>IO_COUNTERS</c>: sei <c>ULONGLONG</c>, 48 byte.</summary>
+    /// <summary><c>IO_COUNTERS</c>: six <c>ULONGLONG</c>, 48 bytes.</summary>
     [StructLayout(LayoutKind.Sequential)]
     private struct IoCounters
     {

@@ -93,7 +93,7 @@ builder.Services.AddResponseCompression(opzioni =>
 // conserva il campione precedente per PID, e ricrearla a ogni richiesta lascerebbe la CPU di
 // ogni processo eternamente sconosciuta.
 builder.Services.AddSingleton<IProcessLister>(sp => new SystemProcessLister(
-    ProcessIoReaders.Per(HostPlatformDetector.Current, sp.GetRequiredService<IFileTextReader>())));
+    ProcessIoReaders.For(HostPlatformDetector.Current, sp.GetRequiredService<IFileTextReader>())));
 builder.Services.AddSingleton<ProcessRanking>();
 builder.Services.AddHostedService<MetricSamplingService>();
 
@@ -162,7 +162,7 @@ else
 bool giraComeServizio = WindowsServiceHelpers.IsWindowsService() || SystemdHelpers.IsSystemdService();
 
 string percorsoDeposito =
-    builder.Configuration["Observer:CredentialStorePath"] ?? CredentialDirectory.PercorsoPredefinito();
+    builder.Configuration["Observer:CredentialStorePath"] ?? CredentialDirectory.DefaultPath();
 
 ProvisionedCredentials credenziali = CredentialProvisioning.Provvedi(
     builder.Configuration["Observer:ApiToken"],

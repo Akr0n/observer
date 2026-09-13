@@ -4,80 +4,81 @@ using Observer.Core.Units;
 
 namespace Observer.Core.Processes;
 
-/// <summary>I contatori grezzi di UN processo, come li da' il sistema operativo.</summary>
-/// <param name="Pid">Identificatore del processo.</param>
-/// <param name="Name">Nome dell'eseguibile, senza percorso.</param>
-/// <param name="Cpu">Tempo di processore consumato da quando il processo e' partito.</param>
-/// <param name="WorkingSet">Memoria fisica occupata adesso.</param>
+/// <summary>The raw counters of ONE process, as the operating system gives them.</summary>
+/// <param name="Pid">Process identifier.</param>
+/// <param name="Name">Name of the executable, without the path.</param>
+/// <param name="Cpu">Processor time consumed since the process started.</param>
+/// <param name="WorkingSet">Physical memory occupied right now.</param>
 /// <param name="IoBytes">
-/// Byte letti e scritti dal processo da quando e' partito, attraverso le chiamate di I/O: file,
-/// pipe e socket insieme, letture servite dalla cache comprese. Null quando il sistema non li ha
-/// voluti dire — su Linux e' la norma per i processi di un altro utente.
+/// Bytes read and written by the process since it started, through the I/O calls: files, pipes
+/// and sockets together, reads served from the cache included. Null when the system would not
+/// tell them — on Linux that is the norm for another user's processes.
 /// </param>
 public readonly record struct ProcessTimes(
     int Pid, string Name, TimeSpan Cpu, ByteSize WorkingSet, ulong? IoBytes = null);
 
-/// <summary>Quanto sta consumando un processo, pronto da mostrare.</summary>
-/// <param name="Pid">Identificatore del processo.</param>
-/// <param name="Name">Nome dell'eseguibile.</param>
+/// <summary>How much a process is consuming, ready to show.</summary>
+/// <param name="Pid">Process identifier.</param>
+/// <param name="Name">Name of the executable.</param>
 /// <param name="CpuPercent">
-/// Percentuale di CPU sull'INTERA macchina, non su un core: 100 vuol dire tutti i core
-/// occupati. Null quando non si sa ancora — al primo giro, o per un processo appena nato —
-/// che e' diverso da zero e non va confuso con "sta fermo".
+/// CPU percentage over the WHOLE machine, not over one core: 100 means every core busy. Null
+/// when it is not known yet — on the first round, or for a just-born process — which is
+/// different from zero and must not be confused with "it is idle".
 /// </param>
-/// <param name="WorkingSet">Memoria fisica occupata.</param>
+/// <param name="WorkingSet">Physical memory occupied.</param>
 /// <param name="IoBytesPerSecond">
-/// Byte al secondo letti e scritti dal processo, sull'ultimo intervallo. Null per le stesse
-/// ragioni della CPU — primo giro, processo appena nato — e in piu' quando il sistema non
-/// fornisce il contatore.
+/// Bytes per second read and written by the process, over the last interval. Null for the same
+/// reasons as the CPU — first round, just-born process — and on top of that when the system
+/// does not provide the counter.
 /// </param>
 public readonly record struct ProcessUsage(
     int Pid, string Name, double? CpuPercent, ByteSize WorkingSet, double? IoBytesPerSecond = null);
 
-/// <summary>Porta di lettura dell'elenco dei processi.</summary>
+/// <summary>Read port for the process list.</summary>
 public interface IProcessLister
 {
-    /// <summary>Legge i processi. False quando l'elenco non si riesce a ottenere affatto.</summary>
-    /// <param name="processes">I processi letti.</param>
-    /// <returns>True se la lettura e' riuscita.</returns>
+    /// <summary>Reads the processes. False when the list cannot be obtained at all.</summary>
+    /// <param name="processes">The processes read.</param>
+    /// <returns>True if the read succeeded.</returns>
     bool TryList(out IReadOnlyList<ProcessTimes> processes);
 }
 
-/// <summary>Porta di lettura del contatore di I/O di UN processo.</summary>
+/// <summary>Read port for the I/O counter of ONE process.</summary>
 /// <remarks>
-/// Separata dall'elenco perche' e' l'unica parte che non e' portabile: nome, memoria e tempo di
-/// processore li da' la libreria standard su entrambi i sistemi, i byte trasferiti no.
+/// Separate from the list because it is the only part that is not portable: name, memory and
+/// processor time are given by the standard library on both systems, the transferred bytes are
+/// not.
 /// </remarks>
 public interface IProcessIoReader
 {
-    /// <summary>Legge i byte letti e scritti dal processo da quando e' partito.</summary>
-    /// <param name="pid">Identificatore del processo.</param>
-    /// <param name="bytes">Il totale, letture piu' scritture.</param>
-    /// <returns>False quando il sistema non lo dice, per quel processo.</returns>
+    /// <summary>Reads the bytes read and written by the process since it started.</summary>
+    /// <param name="pid">Process identifier.</param>
+    /// <param name="bytes">The total, reads plus writes.</param>
+    /// <returns>False when the system does not tell it, for that process.</returns>
     bool TryRead(int pid, out ulong bytes);
 }
 
 /// <summary>
-/// Adattatore reale, sopra <see cref="Process"/>.
+/// The real adapter, on top of <see cref="Process"/>.
 /// </summary>
 /// <remarks>
-/// Uno solo per tutte e due le piattaforme, e non e' pigrizia: nome, memoria occupata e tempo
-/// di processore sono gia' portabili nella libreria standard. L'I/O per processo invece non lo
-/// e', e arriva da un <see cref="IProcessIoReader"/> per sistema operativo, facoltativo: senza,
-/// quella colonna resta sconosciuta e il resto dell'elenco non ne risente.
+/// One single adapter for both platforms, and that is not laziness: name, memory occupied and
+/// processor time are already portable in the standard library. Per-process I/O is not, and it
+/// comes from an <see cref="IProcessIoReader"/> per operating system, optional: without one,
+/// that column stays unknown and the rest of the list does not suffer for it.
 /// <para>
-/// Un processo che sparisce fra l'elenco e la lettura dei suoi contatori NON fa fallire gli
-/// altri: sparisce e basta. E' la norma, non l'eccezione — su una macchina viva qualcosa
-/// muore in continuazione, e un elenco che si rifiuta di rispondere per quello sarebbe
-/// inutilizzabile proprio quando serve.
+/// A process that vanishes between the listing and the reading of its counters does NOT make
+/// the others fail: it just disappears. That is the norm, not the exception — on a live machine
+/// something dies all the time, and a list that refused to answer because of that would be
+/// unusable exactly when it is needed.
 /// </para>
 /// </remarks>
 public sealed class SystemProcessLister : IProcessLister
 {
     private readonly IProcessIoReader? io;
 
-    /// <summary>Crea l'adattatore, con o senza il lettore dell'I/O.</summary>
-    /// <param name="ioReader">Da dove leggere i byte trasferiti, o null per non leggerli.</param>
+    /// <summary>Creates the adapter, with or without the I/O reader.</summary>
+    /// <param name="ioReader">Where to read the transferred bytes from, or null not to read them.</param>
     public SystemProcessLister(IProcessIoReader? ioReader = null)
     {
         io = ioReader;
@@ -86,57 +87,57 @@ public sealed class SystemProcessLister : IProcessLister
     /// <inheritdoc />
     public bool TryList(out IReadOnlyList<ProcessTimes> processes)
     {
-        List<ProcessTimes> trovati = [];
+        List<ProcessTimes> found = [];
 
-        foreach (Process processo in Process.GetProcesses())
+        foreach (Process process in Process.GetProcesses())
         {
-            using (processo)
+            using (process)
             {
-                if (TryLeggi(processo, io, out ProcessTimes lettura))
+                if (TryReadProcess(process, io, out ProcessTimes reading))
                 {
-                    trovati.Add(lettura);
+                    found.Add(reading);
                 }
             }
         }
 
-        processes = trovati;
+        processes = found;
 
         return true;
     }
 
-    private static bool TryLeggi(Process processo, IProcessIoReader? io, out ProcessTimes lettura)
+    private static bool TryReadProcess(Process process, IProcessIoReader? io, out ProcessTimes reading)
     {
-        lettura = default;
+        reading = default;
 
         try
         {
-            int pid = processo.Id;
-            string nome = processo.ProcessName;
-            TimeSpan cpu = processo.TotalProcessorTime;
-            ByteSize memoria = ByteSize.FromBytes(processo.WorkingSet64);
+            int pid = process.Id;
+            string name = process.ProcessName;
+            TimeSpan cpu = process.TotalProcessorTime;
+            ByteSize memory = ByteSize.FromBytes(process.WorkingSet64);
 
-            // L'I/O si legge per ultimo - DOPO nome e contatori, in variabili locali, non come
-            // argomento del costruttore, dove verrebbe valutato per primo - e non fa fallire la
-            // riga: un processo di cui si sa la CPU ma non i byte trasferiti e' ancora un
-            // processo da mostrare.
-            ulong? trasferiti = io is not null && io.TryRead(pid, out ulong byteIo)
-                ? byteIo
+            // I/O is read last - AFTER the name and the counters, into local variables, not as a
+            // constructor argument, where it would be evaluated first - and it does not make the
+            // row fail: a process whose CPU is known but whose transferred bytes are not is
+            // still a process to show.
+            ulong? transferred = io is not null && io.TryRead(pid, out ulong ioBytes)
+                ? ioBytes
                 : null;
 
-            lettura = new ProcessTimes(pid, nome, cpu, memoria, trasferiti);
+            reading = new ProcessTimes(pid, name, cpu, memory, transferred);
 
             return true;
         }
         catch (InvalidOperationException)
         {
-            // Finito fra l'enumerazione e la lettura dei suoi contatori.
+            // Ended between the enumeration and the reading of its counters.
             return false;
         }
         catch (Win32Exception)
         {
-            // Su Windows i processi protetti rifiutano il tempo di processore anche a
-            // LocalSystem; su Linux capita per quelli di altri utenti. Fuori dall'elenco:
-            // meglio una riga in meno che un elenco che non arriva.
+            // On Windows protected processes refuse the processor time even to LocalSystem; on
+            // Linux it happens for other users' processes. Out of the list: better one row less
+            // than a list that does not arrive.
             return false;
         }
         catch (NotSupportedException)

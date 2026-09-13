@@ -5,14 +5,14 @@ using Observer.Core.Processes;
 
 namespace Observer.Core.Composition;
 
-/// <summary>Quale lettore dell'I/O per processo su quale sistema.</summary>
+/// <summary>Which per-process I/O reader on which system.</summary>
 public static class ProcessIoReaders
 {
-    /// <summary>Il lettore per la piattaforma indicata, o null dove non ce n'e' uno.</summary>
-    /// <param name="platform">La piattaforma, come parametro e non come lettura dell'ambiente.</param>
-    /// <param name="fileReader">Da dove leggere i file di sistema, su Linux.</param>
-    /// <returns>Il lettore, oppure null: l'elenco dei processi funziona lo stesso, senza I/O.</returns>
-    public static IProcessIoReader? Per(HostPlatform platform, IFileTextReader fileReader) => platform switch
+    /// <summary>The reader for the given platform, or null where there is none.</summary>
+    /// <param name="platform">The platform, as a parameter and not as a read of the environment.</param>
+    /// <param name="fileReader">Where to read the system files from, on Linux.</param>
+    /// <returns>The reader, or null: the process list works all the same, without I/O.</returns>
+    public static IProcessIoReader? For(HostPlatform platform, IFileTextReader fileReader) => platform switch
     {
         HostPlatform.Windows => new WindowsProcessIoReader(),
         HostPlatform.Linux => new LinuxProcessIoReader(fileReader),

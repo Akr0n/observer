@@ -44,7 +44,7 @@ public sealed class FissaggioSuTrasportoVeroTests : IDisposable
         using X509Certificate2 certificato = Genera("questa-macchina");
         Ascoltatore server = Avvia(certificato);
 
-        CertificatePinning fissaggio = new(CertificateFingerprint.Da(certificato.RawDataMemory.Span));
+        CertificatePinning fissaggio = new(CertificateFingerprint.From(certificato.RawDataMemory.Span));
 
         using HttpClient client = new(fissaggio.Handler());
 
@@ -65,7 +65,7 @@ public sealed class FissaggioSuTrasportoVeroTests : IDisposable
         using X509Certificate2 certificato = Genera("un-altro-nome");
         Ascoltatore server = Avvia(certificato);
 
-        CertificatePinning fissaggio = new(CertificateFingerprint.Da(certificato.RawDataMemory.Span));
+        CertificatePinning fissaggio = new(CertificateFingerprint.From(certificato.RawDataMemory.Span));
 
         using HttpClient client = new(fissaggio.Handler());
 
@@ -85,7 +85,7 @@ public sealed class FissaggioSuTrasportoVeroTests : IDisposable
 
         Ascoltatore server = Avvia(presentato);
 
-        CertificatePinning fissaggio = new(CertificateFingerprint.Da(atteso.RawDataMemory.Span));
+        CertificatePinning fissaggio = new(CertificateFingerprint.From(atteso.RawDataMemory.Span));
 
         using HttpClient client = new(fissaggio.Handler());
         using HttpRequestMessage richiesta = new(HttpMethod.Get, server.Indirizzo);
@@ -101,7 +101,7 @@ public sealed class FissaggioSuTrasportoVeroTests : IDisposable
         // E l'impronta arrivata viene conservata: senza, dopo una reinstallazione legittima
         // l'utente non avrebbe da nessuna parte il valore nuovo da ricopiare.
         Assert.Equal(
-            CertificateFingerprint.Da(presentato.RawDataMemory.Span),
+            CertificateFingerprint.From(presentato.RawDataMemory.Span),
             fissaggio.UltimaVista);
     }
 

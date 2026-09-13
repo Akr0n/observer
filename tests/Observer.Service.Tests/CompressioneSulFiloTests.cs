@@ -245,7 +245,7 @@ public class CompressioneSulFiloTests
 
             handler.SslOptions.RemoteCertificateValidationCallback = (_, presentato, _, _) =>
                 presentato is X509Certificate2 certificato
-                && CertificateFingerprint.Uguali(impronta, MachineCertificate.Impronta(certificato));
+                && CertificateFingerprint.Match(impronta, MachineCertificate.Impronta(certificato));
 
             return new HttpClient(handler, disposeHandler: true);
         }

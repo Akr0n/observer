@@ -3,20 +3,20 @@ using Observer.Core.Units;
 namespace Observer.Core.Metrics.Memory;
 
 /// <summary>
-/// Una lettura della memoria, indipendente dalla piattaforma che l'ha prodotta.
+/// A memory reading, independent of the platform that produced it.
 /// </summary>
-/// <param name="Total">Memoria fisica totale.</param>
+/// <param name="Total">Total physical memory.</param>
 /// <param name="Available">
-/// Memoria realmente disponibile per nuove allocazioni. Non e' la memoria "libera": su
-/// Linux la cache riutilizzabile conta come disponibile, ed e' la differenza fra dire
-/// "50% usata" e "99% usata" sulla stessa identica macchina.
+/// Memory that is really available for new allocations. It is not "free" memory: on
+/// Linux the reusable cache counts as available, and that is the difference between saying
+/// "50% used" and "99% used" on the very same machine.
 /// </param>
-/// <param name="SwapTotal">Spazio di swap totale. Zero e' una configurazione legittima.</param>
-/// <param name="SwapFree">Spazio di swap libero.</param>
+/// <param name="SwapTotal">Total swap space. Zero is a legitimate configuration.</param>
+/// <param name="SwapFree">Free swap space.</param>
 /// <param name="AvailableWasEstimated">
-/// True quando <paramref name="Available"/> e' una stima e non una misura, perche' la
-/// piattaforma non la espone direttamente. Va portato fino alla UI: presentare una stima
-/// come misura e' una bugia silenziosa.
+/// True when <paramref name="Available"/> is an estimate and not a measurement, because the
+/// platform does not expose it directly. It must be carried all the way to the UI: presenting
+/// an estimate as a measurement is a silent lie.
 /// </param>
 public readonly record struct MemoryReading(
     ByteSize Total,
@@ -25,6 +25,6 @@ public readonly record struct MemoryReading(
     ByteSize SwapFree,
     bool AvailableWasEstimated)
 {
-    /// <summary>Memoria in uso, saturata a zero se "disponibile" superasse "totale".</summary>
+    /// <summary>Memory in use, saturated to zero if "available" were greater than "total".</summary>
     public ByteSize Used => Total.SaturatingSubtract(Available);
 }

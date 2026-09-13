@@ -71,7 +71,7 @@ public static partial class ProcessEndpoints
 
     private static IResult Elenco(ProcessRanking classifica, string? by, int? top)
     {
-        if (!classifica.TryLeggi(out IReadOnlyList<ProcessUsage> processi))
+        if (!classifica.TryRead(out IReadOnlyList<ProcessUsage> processi))
         {
             return Results.Problem(
                 detail: "the process list could not be read on this machine",
@@ -86,9 +86,9 @@ public static partial class ProcessEndpoints
 
         IReadOnlyList<ProcessUsage> ordinati = criterio switch
         {
-            "memory" => ProcessRanking.PiuAffamatiDiMemoria(processi, quanti),
-            "io" => ProcessRanking.PiuAffamatiDiIo(processi, quanti),
-            _ => ProcessRanking.PiuAffamatiDiCpu(processi, quanti),
+            "memory" => ProcessRanking.TopByMemory(processi, quanti),
+            "io" => ProcessRanking.TopByIo(processi, quanti),
+            _ => ProcessRanking.TopByCpu(processi, quanti),
         };
 
         return Results.Ok(new ProcessListResponse(

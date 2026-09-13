@@ -22,10 +22,10 @@ namespace Observer.Core.Tests;
 public class DiskActivityRatesTests
 {
     private static DiskActivityReading Inattivo(ulong letti, ulong scritti, double secondiInattivo) =>
-        DiskActivityReading.ConTempoInattivo("Disk 0", letti, scritti, TimeSpan.FromSeconds(secondiInattivo));
+        DiskActivityReading.WithIdleTime("Disk 0", letti, scritti, TimeSpan.FromSeconds(secondiInattivo));
 
     private static DiskActivityReading Occupato(ulong letti, ulong scritti, double secondiOccupato) =>
-        DiskActivityReading.ConTempoOccupato("sda", letti, scritti, TimeSpan.FromSeconds(secondiOccupato));
+        DiskActivityReading.WithBusyTime("sda", letti, scritti, TimeSpan.FromSeconds(secondiOccupato));
 
     [Fact]
     public void IlTassoEIlDeltaDivisoIlTempo()
@@ -306,7 +306,7 @@ public class DiskActivityCollectorTests
 
     private static DiskActivityReading Inattivo(
         string istanza, ulong letti, ulong scritti, double secondiInattivo) =>
-        DiskActivityReading.ConTempoInattivo(
+        DiskActivityReading.WithIdleTime(
             istanza, letti, scritti, TimeSpan.FromSeconds(secondiInattivo));
 
     private static (DiskActivityCollector Collector, OrologioFinto Orologio) Crea(
