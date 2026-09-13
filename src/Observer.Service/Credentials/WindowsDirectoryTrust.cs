@@ -5,7 +5,7 @@ using System.Security.Principal;
 namespace Observer.Service.Credentials;
 
 /// <summary>
-/// Raccoglie da Windows i fatti su una cartella, e la mette in sicurezza.
+/// Raccoglie da Windows i fatti su una cartella, e la mette in security.
 /// </summary>
 /// <remarks>
 /// Classe a parte e annotata perche' CA1416, con TreatWarningsAsErrors, fa fallire la build su
@@ -14,7 +14,7 @@ namespace Observer.Service.Credentials;
 [SupportedOSPlatform("windows")]
 public static class WindowsDirectoryTrust
 {
-    private static readonly DirectoryFacts Assente = new(false, false, true, null, false, []);
+    private static readonly DirectoryFacts MissingDirectory = new(false, false, true, null, false, []);
 
     /// <summary>SYSTEM, gli amministratori, e l'account che esegue questo processo.</summary>
     /// <returns>I SID di cui fidarsi come proprietari e dentro la DACL.</returns>
@@ -23,33 +23,33 @@ public static class WindowsDirectoryTrust
     /// e non allarga niente. Lanciato a mano in sviluppo e' cio' che gli permette di
     /// fidarsi della cartella che ha creato lui.
     /// </remarks>
-    public static IReadOnlyList<string> Fidati()
+    public static IReadOnlyList<string> TrustedSids()
     {
-        using WindowsIdentity corrente = WindowsIdentity.GetCurrent();
+        using WindowsIdentity current = WindowsIdentity.GetCurrent();
 
-        return corrente.User is { } account
-            ? [DirectoryTrust.SidSistema, DirectoryTrust.SidAmministratori, account.Value]
-            : DirectoryTrust.FidatiPredefiniti;
+        return current.User is { } account
+            ? [DirectoryTrust.SystemSid, DirectoryTrust.AdministratorsSid, account.Value]
+            : DirectoryTrust.DefaultTrustedSids;
     }
 
-    /// <summary>Il verdetto su questa cartella, coi principal fidati di questo processo.</summary>
-    /// <param name="percorso">Il percorso da esaminare.</param>
-    /// <returns>Il verdetto.</returns>
-    public static DirectoryVerdict Verdetto(string percorso) =>
-        DirectoryTrust.Valuta(Osserva(percorso), Fidati());
+    /// <summary>Il verdict su questa cartella, coi principal fidati di questo processo.</summary>
+    /// <param name="path">Il path da esaminare.</param>
+    /// <returns>Il verdict.</returns>
+    public static DirectoryVerdict VerdictFor(string path) =>
+        DirectoryTrust.Evaluate(Observe(path), TrustedSids());
 
-    /// <summary>Osserva la cartella senza giudicarla.</summary>
-    /// <param name="percorso">Il percorso da esaminare.</param>
-    /// <returns>I fatti, da passare a <see cref="DirectoryTrust.Valuta"/>.</returns>
-    public static DirectoryFacts Osserva(string percorso)
+    /// <summary>Observe la cartella senza giudicarla.</summary>
+    /// <param name="path">Il path da esaminare.</param>
+    /// <returns>I fatti, da passare a <see cref="DirectoryTrust.Evaluate"/>.</returns>
+    public static DirectoryFacts Observe(string path)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(percorso);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        DirectoryInfo info = new(percorso);
+        DirectoryInfo info = new(path);
 
         if (!info.Exists)
         {
-            return Assente;
+            return MissingDirectory;
         }
 
         if (info.Attributes.HasFlag(FileAttributes.ReparsePoint))
@@ -62,58 +62,58 @@ public static class WindowsDirectoryTrust
 
         try
         {
-            DirectorySecurity sicurezza =
+            DirectorySecurity security =
                 info.GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
 
-            string? proprietario =
-                (sicurezza.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier)?.Value;
+            string? owner =
+                (security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier)?.Value;
 
-            List<string> sid = sicurezza
+            List<string> sids = security
                 .GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
                 .Cast<FileSystemAccessRule>()
-                .Select(regola => ((SecurityIdentifier)regola.IdentityReference).Value)
+                .Select(rule => ((SecurityIdentifier)rule.IdentityReference).Value)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            return new DirectoryFacts(true, false, true, proprietario, sicurezza.AreAccessRulesProtected, sid);
+            return new DirectoryFacts(true, false, true, owner, security.AreAccessRulesProtected, sids);
         }
         catch (UnauthorizedAccessException)
         {
             // Comprende PrivilegeNotHeldException, che ne deriva.
-            return Illeggibile();
+            return Unreadable();
         }
         catch (IOException)
         {
-            return Illeggibile();
+            return Unreadable();
         }
     }
 
-    /// <summary>La sicurezza da applicare: protetta, solo SYSTEM e amministratori.</summary>
+    /// <summary>La security da applicare: protetta, solo SYSTEM e amministratori.</summary>
     /// <returns>Il descrittore.</returns>
-    public static DirectorySecurity Sicurezza()
+    public static DirectorySecurity SecurityDescriptor()
     {
-        DirectorySecurity sicurezza = new();
+        DirectorySecurity security = new();
 
         // Taglia l'ereditarieta'. Senza, la cartella eredita da C:\ProgramData l'ACE che
         // concede a BUILTIN\Users la lettura, e il segreto e' leggibile da ogni utente della
         // macchina senza che ci sia alcun attaccante.
-        sicurezza.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
 
-        foreach (WellKnownSidType tipo in new[] { WellKnownSidType.LocalSystemSid, WellKnownSidType.BuiltinAdministratorsSid })
+        foreach (WellKnownSidType sidType in new[] { WellKnownSidType.LocalSystemSid, WellKnownSidType.BuiltinAdministratorsSid })
         {
-            sicurezza.AddAccessRule(new FileSystemAccessRule(
-                new SecurityIdentifier(tipo, null),
+            security.AddAccessRule(new FileSystemAccessRule(
+                new SecurityIdentifier(sidType, null),
                 FileSystemRights.FullControl,
                 InheritanceFlags.ObjectInherit | InheritanceFlags.ContainerInherit,
                 PropagationFlags.None,
                 AccessControlType.Allow));
         }
 
-        using WindowsIdentity corrente = WindowsIdentity.GetCurrent();
+        using WindowsIdentity current = WindowsIdentity.GetCurrent();
 
-        if (corrente.User is { } account && !account.IsWellKnown(WellKnownSidType.LocalSystemSid))
+        if (current.User is { } account && !account.IsWellKnown(WellKnownSidType.LocalSystemSid))
         {
-            sicurezza.AddAccessRule(new FileSystemAccessRule(
+            security.AddAccessRule(new FileSystemAccessRule(
                 account,
                 FileSystemRights.FullControl,
                 InheritanceFlags.ObjectInherit | InheritanceFlags.ContainerInherit,
@@ -121,97 +121,97 @@ public static class WindowsDirectoryTrust
                 AccessControlType.Allow));
         }
 
-        return sicurezza;
+        return security;
     }
 
     /// <summary>Porta la cartella in uno stato in cui puo' ospitare un segreto.</summary>
-    /// <param name="percorso">Il percorso da preparare.</param>
+    /// <param name="path">Il path da preparare.</param>
     /// <exception cref="InvalidOperationException">Se non e' possibile, con il motivo dentro.</exception>
     /// <remarks>
-    /// Una giunzione NON viene riparata: e' un incidente di sicurezza e non un intoppo, e
+    /// Una giunzione NON viene riparata: e' un incidente di security e non un intoppo, e
     /// "sistemarla" significherebbe applicare le correzioni alla cartella di chi l'ha piazzata.
     /// </remarks>
-    public static void Prepara(string percorso)
+    public static void Prepare(string path)
     {
-        DirectoryVerdict verdetto = Verdetto(percorso);
+        DirectoryVerdict verdict = VerdictFor(path);
 
-        if (verdetto.PuoOspitareUnSegreto())
+        if (verdict.CanHoldSecret())
         {
             return;
         }
 
-        if (verdetto == DirectoryVerdict.Assente)
+        if (verdict == DirectoryVerdict.Missing)
         {
             // Creata GIA' protetta, in un colpo solo: creare e poi applicare lascerebbe una
             // finestra in cui la cartella eredita. L'estensione sul descrittore e' l'unica
-            // forma che lo fa; Directory.CreateDirectory(percorso, modo) e' il gemello Unix e
+            // forma che lo fa; Directory.CreateDirectory(path, modo) e' il gemello Unix e
             // non c'entra.
-            Sicurezza().CreateDirectory(percorso);
-            Conferma(percorso);
+            SecurityDescriptor().CreateDirectory(path);
+            ConfirmSafe(path);
             return;
         }
 
-        if (verdetto == DirectoryVerdict.PuntoDiReparse)
+        if (verdict == DirectoryVerdict.ReparsePoint)
         {
             throw new InvalidOperationException(
-                $"The credential directory '{percorso}' is a junction or symbolic link. " +
+                $"The credential directory '{path}' is a junction or symbolic link. " +
                 "Observer will not follow it: a standard user can create one without any " +
                 "privilege, which would place the machine token wherever they choose. " +
                 "Remove it and restart the service.");
         }
 
-        Ripara(percorso, verdetto);
-        Conferma(percorso);
+        Repair(path, verdict);
+        ConfirmSafe(path);
     }
 
     /// <summary>Riguarda la cartella dopo averla toccata, e si rifiuta se non e' sicura.</summary>
-    /// <param name="percorso">Il percorso appena creato o riparato.</param>
+    /// <param name="path">Il path appena creato o riparato.</param>
     /// <remarks>
     /// Chiude una condizione di gara reale. Fra l'osservazione e la creazione un utente
     /// standard puo' infilarsi e creare lui la cartella; a quel punto la creazione con
     /// descrittore NON fallisce, e' un no-op silenzioso, e senza questa riverifica si
     /// proseguirebbe depositando il token in una cartella ostile credendola appena creata.
     /// </remarks>
-    private static void Conferma(string percorso)
+    private static void ConfirmSafe(string path)
     {
-        DirectoryVerdict verdetto = Verdetto(percorso);
+        DirectoryVerdict verdict = VerdictFor(path);
 
-        if (!verdetto.PuoOspitareUnSegreto())
+        if (!verdict.CanHoldSecret())
         {
             throw new InvalidOperationException(
-                $"The credential directory '{percorso}' is still not safe after being prepared " +
-                $"({verdetto}). Another process may have created it first. The machine token " +
+                $"The credential directory '{path}' is still not safe after being prepared " +
+                $"({verdict}). Another process may have created it first. The machine token " +
                 "will not be written.");
         }
     }
 
-    private static void Ripara(string percorso, DirectoryVerdict verdetto)
+    private static void Repair(string path, DirectoryVerdict verdict)
     {
-        DirectoryInfo info = new(percorso);
+        DirectoryInfo info = new(path);
 
         try
         {
-            if (verdetto == DirectoryVerdict.ProprietarioNonFidato)
+            if (verdict == DirectoryVerdict.UntrustedOwner)
             {
-                // La PROPRIETA' per prima. Correggere la DACL lasciando il proprietario
+                // La PROPRIETA' per prima. Correggere la DACL lasciando il owner
                 // com'e' non serve a niente: ha WRITE_DAC implicito e la disfa subito.
-                DirectorySecurity proprieta = new();
-                proprieta.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
-                info.SetAccessControl(proprieta);
+                DirectorySecurity ownership = new();
+                ownership.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
+                info.SetAccessControl(ownership);
             }
 
-            info.SetAccessControl(Sicurezza());
+            info.SetAccessControl(SecurityDescriptor());
         }
-        catch (Exception errore) when (errore is UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception error) when (error is UnauthorizedAccessException or InvalidOperationException)
         {
             throw new InvalidOperationException(
-                $"The credential directory '{percorso}' can't hold a secret ({verdetto}), and " +
+                $"The credential directory '{path}' can't hold a secret ({verdict}), and " +
                 "this process lacks the rights to repair it. The machine token would be " +
                 "readable by other accounts on this machine. Run the service as LocalSystem, " +
-                $"or delete '{percorso}' and let the service recreate it.",
-                errore);
+                $"or delete '{path}' and let the service recreate it.",
+                error);
         }
     }
 
-    private static DirectoryFacts Illeggibile() => new(true, false, false, null, false, []);
+    private static DirectoryFacts Unreadable() => new(true, false, false, null, false, []);
 }

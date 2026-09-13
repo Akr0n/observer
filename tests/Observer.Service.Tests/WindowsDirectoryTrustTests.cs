@@ -22,7 +22,7 @@ public class WindowsDirectoryTrustTests
     {
         string percorso = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
 
-        Assert.Equal(DirectoryVerdict.Assente, WindowsDirectoryTrust.Verdetto(percorso));
+        Assert.Equal(DirectoryVerdict.Missing, WindowsDirectoryTrust.VerdictFor(percorso));
     }
 
     [SoloSuWindows]
@@ -38,12 +38,12 @@ public class WindowsDirectoryTrustTests
         {
             // Contro i soli SYSTEM e amministratori NON e' fidata: e' il caso
             // dell'attaccante che prepara la cartella prima che il servizio parta.
-            Assert.False(DirectoryTrust.Valuta(WindowsDirectoryTrust.Osserva(percorso)).PuoOspitareUnSegreto());
+            Assert.False(DirectoryTrust.Evaluate(WindowsDirectoryTrust.Observe(percorso)).CanHoldSecret());
 
             // Ma il processo che l'ha creata puo' fidarsene, ed e' il caso dello
             // sviluppatore che lancia il servizio a mano.
-            WindowsDirectoryTrust.Prepara(percorso);
-            Assert.True(WindowsDirectoryTrust.Verdetto(percorso).PuoOspitareUnSegreto());
+            WindowsDirectoryTrust.Prepare(percorso);
+            Assert.True(WindowsDirectoryTrust.VerdictFor(percorso).CanHoldSecret());
         }
         finally
         {
@@ -79,14 +79,14 @@ public class WindowsDirectoryTrustTests
         {
             Assert.Equal(0, mklink.ExitCode);
 
-            DirectoryFacts fatti = WindowsDirectoryTrust.Osserva(giunzione);
+            DirectoryFacts fatti = WindowsDirectoryTrust.Observe(giunzione);
 
-            Assert.True(fatti.PuntoDiReparse);
-            Assert.Equal(DirectoryVerdict.PuntoDiReparse, DirectoryTrust.Valuta(fatti));
+            Assert.True(fatti.IsReparsePoint);
+            Assert.Equal(DirectoryVerdict.ReparsePoint, DirectoryTrust.Evaluate(fatti));
 
             // E il servizio si rifiuta, invece di "ripararla".
             InvalidOperationException errore =
-                Assert.Throws<InvalidOperationException>(() => WindowsDirectoryTrust.Prepara(giunzione));
+                Assert.Throws<InvalidOperationException>(() => WindowsDirectoryTrust.Prepare(giunzione));
 
             Assert.Contains("junction", errore.Message, StringComparison.OrdinalIgnoreCase);
         }
@@ -105,7 +105,7 @@ public class WindowsDirectoryTrustTests
     [SoloSuWindows]
     public void LaSicurezzaPropostaNonNominaNessunoOltreSystemEAmministratori()
     {
-        string sddl = WindowsDirectoryTrust.Sicurezza()
+        string sddl = WindowsDirectoryTrust.SecurityDescriptor()
             .GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.Access);
 
         // "P" = protetta, cioe' non eredita. Senza, erediterebbe da ProgramData l'ACE che

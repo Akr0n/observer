@@ -34,7 +34,7 @@ public class TrasportoHttpsTests
         using Certificato certificato = Certificato.Depositato();
 
         Assert.True(certificato.Riletto.HasPrivateKey, "senza chiave privata Kestrel non puo' servirlo");
-        Assert.Equal(certificato.Impronta, MachineCertificate.Impronta(certificato.Generato));
+        Assert.Equal(certificato.Impronta, MachineCertificate.Fingerprint(certificato.Generato));
 
         await using Servizio servizio = await Servizio.AvviaAsync(certificato.Riletto);
 
@@ -50,11 +50,11 @@ public class TrasportoHttpsTests
         // Il caso che conta: cifrato non basta. Senza questo controllo chi si mette in mezzo
         // presenta il PROPRIO certificato, il collegamento riesce, e il token gli arriva.
         using Certificato certificato = Certificato.Depositato();
-        using X509Certificate2 estraneo = MachineCertificate.Genera("un-altra-macchina", DateTimeOffset.UtcNow);
+        using X509Certificate2 estraneo = MachineCertificate.Create("un-altra-macchina", DateTimeOffset.UtcNow);
 
         await using Servizio servizio = await Servizio.AvviaAsync(certificato.Riletto);
 
-        using HttpClient client = ClientCheFissa(MachineCertificate.Impronta(estraneo));
+        using HttpClient client = ClientCheFissa(MachineCertificate.Fingerprint(estraneo));
 
         await Assert.ThrowsAsync<HttpRequestException>(
             () => client.GetStringAsync(new Uri(servizio.Indirizzo, "prova")));
@@ -91,7 +91,7 @@ public class TrasportoHttpsTests
         string? vistaDalClient = null;
 
         using SocketsHttpHandler handler = new();
-#pragma warning disable CA5359 // Accetta di proposito QUALUNQUE certificato: questo test serve
+#pragma warning disable CA5359 // Accepts di proposito QUALUNQUE certificato: questo test serve
         handler.SslOptions.RemoteCertificateValidationCallback = (_, presentato, _, _) =>
         {                      // a osservare cosa arriva sul filo, non a decidere se fidarsi.
             vistaDalClient = presentato is X509Certificate2 arrivato
@@ -176,7 +176,7 @@ public class TrasportoHttpsTests
         {
             Generato = generato;
             Riletto = riletto;
-            Impronta = MachineCertificate.Impronta(riletto);
+            Impronta = MachineCertificate.Fingerprint(riletto);
         }
 
         public X509Certificate2 Generato { get; }
@@ -187,9 +187,9 @@ public class TrasportoHttpsTests
 
         public static Certificato Depositato()
         {
-            X509Certificate2 generato = MachineCertificate.Genera("questa-macchina", DateTimeOffset.UtcNow);
+            X509Certificate2 generato = MachineCertificate.Create("questa-macchina", DateTimeOffset.UtcNow);
 
-            return new Certificato(generato, MachineCertificate.Carica(MachineCertificate.Esporta(generato)));
+            return new Certificato(generato, MachineCertificate.Load(MachineCertificate.Export(generato)));
         }
 
         public void Dispose()

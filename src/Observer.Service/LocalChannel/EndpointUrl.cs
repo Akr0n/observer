@@ -10,15 +10,15 @@ namespace Observer.Service.LocalChannel;
 /// Funzione PURA: nessuna I/O, nessun ambiente, quindi verificabile con una tabella su
 /// entrambi i runner invece che avviando un host.
 /// <para>
-/// Esiste perche' i modi di sbagliare non sono equivalenti. Un percorso di socket relativo fa
-/// fallire l'avvio, ed e' il caso buono. Un percorso in stile Windows dentro "http://unix:"
+/// Esiste perche' i modi di sbagliare non sono equivalenti. Un path di socket relativo fa
+/// fallire l'avvio, ed e' il caso buono. Un path in stile Windows dentro "http://unix:"
 /// non fallisce affatto: Kestrel lega [::]:80 su TUTTE le interfacce, senza eccezione e senza
 /// warning, e ci mette dietro la telemetria della macchina.
 /// </para>
 /// </remarks>
 public static class EndpointUrl
 {
-    /// <summary>Byte utili nel percorso di un socket unix. <b>107, non 108.</b></summary>
+    /// <summary>Byte utili nel path di un socket unix. <b>107, non 108.</b></summary>
     /// <remarks>
     /// La struct sockaddr_un ha 108 byte di sun_path, ma uno serve al terminatore. Il
     /// messaggio di .NET dice "must be between 1 and 108 characters, inclusive" ed e' falso su
@@ -27,79 +27,79 @@ public static class EndpointUrl
     /// </remarks>
     public const int MaxUnixSocketPathBytes = 107;
 
-    private const string PrefissoUnix = "unix:";
-    private const string PrefissoPipe = "pipe:";
+    private const string UnixPrefix = "unix:";
+    private const string PipePrefix = "pipe:";
 
     /// <summary>Il problema dell'URL, in inglese, oppure null se non ce ne sono.</summary>
     /// <param name="url">L'URL cosi' come sta in configurazione.</param>
     /// <returns>La frase da mostrare, oppure null se l'URL e' utilizzabile.</returns>
-    public static string? Problema(string url)
+    public static string? Problem(string url)
     {
         if (string.IsNullOrWhiteSpace(url))
         {
             return "An empty endpoint URL was configured. Remove the entry or give it a value.";
         }
 
-        int separatore = url.IndexOf("://", StringComparison.Ordinal);
+        int separatorIndex = url.IndexOf("://", StringComparison.Ordinal);
 
-        if (separatore <= 0)
+        if (separatorIndex <= 0)
         {
-            return Rotto(url, "it has no scheme, so it isn't a URL at all");
+            return UnusableUrl(url, "it has no scheme, so it isn't a URL at all");
         }
 
-        string resto = url[(separatore + 3)..];
+        string rest = url[(separatorIndex + 3)..];
 
-        if (resto.StartsWith(PrefissoUnix, StringComparison.OrdinalIgnoreCase))
+        if (rest.StartsWith(UnixPrefix, StringComparison.OrdinalIgnoreCase))
         {
-            return ProblemaUnix(url, resto[PrefissoUnix.Length..]);
+            return UnixProblem(url, rest[UnixPrefix.Length..]);
         }
 
-        if (resto.StartsWith(PrefissoPipe, StringComparison.OrdinalIgnoreCase))
+        if (rest.StartsWith(PipePrefix, StringComparison.OrdinalIgnoreCase))
         {
-            return ProblemaPipe(url, resto[PrefissoPipe.Length..]);
+            return PipeProblem(url, rest[PipePrefix.Length..]);
         }
 
         return Uri.TryCreate(url, UriKind.Absolute, out _)
             ? null
-            : Rotto(url, "it isn't a well-formed absolute URL");
+            : UnusableUrl(url, "it isn't a well-formed absolute URL");
     }
 
-    private static string? ProblemaUnix(string url, string percorso)
+    private static string? UnixProblem(string url, string path)
     {
-        if (!percorso.StartsWith('/'))
+        if (!path.StartsWith('/'))
         {
-            // Il caso pericoloso: qui finisce anche un percorso in stile Windows. Senza questo
+            // Il caso pericoloso: qui finisce anche un path in stile Windows. Senza questo
             // controllo Kestrel non protesta e apre la porta 80 su tutte le interfacce.
-            return Rotto(
+            return UnusableUrl(
                 url,
                 "the unix socket path must be absolute and start with '/'. A Windows-style " +
                 "path here does NOT fail: Kestrel silently listens on port 80 on every " +
                 "network interface instead");
         }
 
-        int byteDelPercorso = Encoding.UTF8.GetByteCount(percorso);
+        int pathBytes = Encoding.UTF8.GetByteCount(path);
 
-        return byteDelPercorso > MaxUnixSocketPathBytes
-            ? Rotto(
+        return pathBytes > MaxUnixSocketPathBytes
+            ? UnusableUrl(
                 url,
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"the unix socket path is {byteDelPercorso} bytes long and the limit is {MaxUnixSocketPathBytes}. The limit counts UTF-8 bytes, not characters"))
+                    $"the unix socket path is {pathBytes} bytes long and the limit is {MaxUnixSocketPathBytes}. The limit counts UTF-8 bytes, not characters"))
             : null;
     }
 
-    private static string? ProblemaPipe(string url, string nome)
+    private static string? PipeProblem(string url, string name)
     {
-        if (!nome.StartsWith('/'))
+        if (!name.StartsWith('/'))
         {
-            return Rotto(url, "a named pipe endpoint must be written as http://pipe:/<name>");
+            return UnusableUrl(url, "a named pipe endpoint must be written as http://pipe:/<name>");
         }
 
-        return nome.Length > 1
+        return name.Length > 1
             ? null
-            : Rotto(url, "the pipe name is missing after http://pipe:/");
+            : UnusableUrl(url, "the pipe name is missing after http://pipe:/");
     }
 
-    private static string Rotto(string url, string motivo) =>
-        string.Create(CultureInfo.InvariantCulture, $"The endpoint URL \"{url}\" can't be used: {motivo}.");
+    private static string UnusableUrl(string url, string reason) =>
+        string.Create(CultureInfo.InvariantCulture, $"The endpoint URL \"{url}\" can't be used: {reason}.");
 }

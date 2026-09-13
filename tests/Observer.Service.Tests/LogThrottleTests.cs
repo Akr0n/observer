@@ -19,19 +19,19 @@ public class FrenoDiRipetizioneTests
     [Fact]
     public void IlPrimoSegnalePassa()
     {
-        FrenoDiRipetizione freno = Nuovo(out _);
+        LogThrottle freno = Nuovo(out _);
 
-        Assert.True(freno.Segnala("disco-pieno"));
+        Assert.True(freno.ShouldLog("disco-pieno"));
     }
 
     [Fact]
     public void LoStessoMotivoNonPassaPiu()
     {
-        FrenoDiRipetizione freno = Nuovo(out _);
+        LogThrottle freno = Nuovo(out _);
 
-        Assert.True(freno.Segnala("disco-pieno"));
-        Assert.False(freno.Segnala("disco-pieno"));
-        Assert.False(freno.Segnala("disco-pieno"));
+        Assert.True(freno.ShouldLog("disco-pieno"));
+        Assert.False(freno.ShouldLog("disco-pieno"));
+        Assert.False(freno.ShouldLog("disco-pieno"));
     }
 
     [Fact]
@@ -40,11 +40,11 @@ public class FrenoDiRipetizioneTests
         // Il caso che rende il freno pericoloso se sbagliato: il disco si libera e comincia
         // un guasto d'altra natura. Tacerlo perche' "stiamo gia' segnalando qualcosa"
         // lascerebbe il registro a raccontare il guasto sbagliato.
-        FrenoDiRipetizione freno = Nuovo(out _);
+        LogThrottle freno = Nuovo(out _);
 
-        Assert.True(freno.Segnala("disco-pieno"));
-        Assert.False(freno.Segnala("disco-pieno"));
-        Assert.True(freno.Segnala("file-agganciato"));
+        Assert.True(freno.ShouldLog("disco-pieno"));
+        Assert.False(freno.ShouldLog("disco-pieno"));
+        Assert.True(freno.ShouldLog("file-agganciato"));
     }
 
     [Fact]
@@ -53,13 +53,13 @@ public class FrenoDiRipetizioneTests
         // Senza questo, un guasto permanente lascia UNA riga e poi silenzio: chi legge il
         // registro un'ora dopo non sa se sta ancora durando. E i numeri dentro il messaggio
         // resterebbero quelli del primo giro.
-        FrenoDiRipetizione freno = Nuovo(out OrologioFinto orologio);
+        LogThrottle freno = Nuovo(out OrologioFinto orologio);
 
-        Assert.True(freno.Segnala("disco-pieno"));
+        Assert.True(freno.ShouldLog("disco-pieno"));
         orologio.Avanza(Finestra - TimeSpan.FromSeconds(1));
-        Assert.False(freno.Segnala("disco-pieno"));
+        Assert.False(freno.ShouldLog("disco-pieno"));
         orologio.Avanza(TimeSpan.FromSeconds(1));
-        Assert.True(freno.Segnala("disco-pieno"));
+        Assert.True(freno.ShouldLog("disco-pieno"));
     }
 
     [Fact]
@@ -68,15 +68,15 @@ public class FrenoDiRipetizioneTests
         // E' la ragione per cui questa classe non si accontenta di confrontare il motivo.
         // Un collector che ondeggia intorno alla sua scadenza alterna guasto e successo a
         // ogni giro: se ogni ritorno fosse "un motivo nuovo", resterebbe meta' del diluvio.
-        FrenoDiRipetizione freno = Nuovo(out _);
+        LogThrottle freno = Nuovo(out _);
 
-        Assert.True(freno.Segnala("scaduto"));
-        Assert.True(freno.Cessato(out _));
+        Assert.True(freno.ShouldLog("scaduto"));
+        Assert.True(freno.ShouldLogRecovery(out _));
 
         for (int giro = 0; giro < 100; giro++)
         {
-            Assert.False(freno.Segnala("scaduto"));
-            Assert.False(freno.Cessato(out _));
+            Assert.False(freno.ShouldLog("scaduto"));
+            Assert.False(freno.ShouldLogRecovery(out _));
         }
     }
 
@@ -85,24 +85,24 @@ public class FrenoDiRipetizioneTests
     {
         // E' il caso piu' comune, ed e' proprio quello in cui una riga sola lascerebbe
         // credere a un guasto ancora aperto.
-        FrenoDiRipetizione freno = Nuovo(out _);
+        LogThrottle freno = Nuovo(out _);
 
-        Assert.True(freno.Segnala("disco-pieno"));
+        Assert.True(freno.ShouldLog("disco-pieno"));
 
-        Assert.True(freno.Cessato(out int taciute));
+        Assert.True(freno.ShouldLogRecovery(out int taciute));
         Assert.Equal(0, taciute);
     }
 
     [Fact]
     public void IlRientroDiceQuanteNeSonoStateTaciute()
     {
-        FrenoDiRipetizione freno = Nuovo(out _);
+        LogThrottle freno = Nuovo(out _);
 
-        freno.Segnala("disco-pieno");
-        freno.Segnala("disco-pieno");
-        freno.Segnala("disco-pieno");
+        freno.ShouldLog("disco-pieno");
+        freno.ShouldLog("disco-pieno");
+        freno.ShouldLog("disco-pieno");
 
-        Assert.True(freno.Cessato(out int taciute));
+        Assert.True(freno.ShouldLogRecovery(out int taciute));
         Assert.Equal(2, taciute);
     }
 
@@ -111,9 +111,9 @@ public class FrenoDiRipetizioneTests
     {
         // Altrimenti ogni giro sano scriverebbe "e' tornato tutto a posto", che e' lo stesso
         // diluvio di prima con parole piu' liete.
-        FrenoDiRipetizione freno = Nuovo(out _);
+        LogThrottle freno = Nuovo(out _);
 
-        Assert.False(freno.Cessato(out int taciute));
+        Assert.False(freno.ShouldLogRecovery(out int taciute));
         Assert.Equal(0, taciute);
     }
 
@@ -122,13 +122,13 @@ public class FrenoDiRipetizioneTests
     {
         // La fine di una storia che il registro non ha mai cominciato non si racconta: e'
         // l'altra meta' di cio' che tiene silenzioso un guasto che lampeggia.
-        FrenoDiRipetizione freno = Nuovo(out _);
+        LogThrottle freno = Nuovo(out _);
 
-        freno.Segnala("scaduto");
-        freno.Cessato(out _);
+        freno.ShouldLog("scaduto");
+        freno.ShouldLogRecovery(out _);
 
-        Assert.False(freno.Segnala("scaduto"));
-        Assert.False(freno.Cessato(out _));
+        Assert.False(freno.ShouldLog("scaduto"));
+        Assert.False(freno.ShouldLogRecovery(out _));
     }
 
     [Fact]
@@ -136,23 +136,23 @@ public class FrenoDiRipetizioneTests
     {
         // Il silenzio dell'intermittenza non e' per sempre: passata la finestra, il guasto
         // che ancora va e viene torna a comparire una volta.
-        FrenoDiRipetizione freno = Nuovo(out OrologioFinto orologio);
+        LogThrottle freno = Nuovo(out OrologioFinto orologio);
 
-        freno.Segnala("scaduto");
-        freno.Cessato(out _);
-        Assert.False(freno.Segnala("scaduto"));
+        freno.ShouldLog("scaduto");
+        freno.ShouldLogRecovery(out _);
+        Assert.False(freno.ShouldLog("scaduto"));
 
         orologio.Avanza(Finestra);
 
-        Assert.True(freno.Segnala("scaduto"));
+        Assert.True(freno.ShouldLog("scaduto"));
     }
 
     [Fact]
     public void UnMotivoNulloNonEUnMotivo()
     {
-        FrenoDiRipetizione freno = Nuovo(out _);
+        LogThrottle freno = Nuovo(out _);
 
-        Assert.Throws<ArgumentNullException>(() => freno.Segnala(null!));
+        Assert.Throws<ArgumentNullException>(() => freno.ShouldLog(null!));
     }
 
     [Fact]
@@ -160,14 +160,14 @@ public class FrenoDiRipetizioneTests
     {
         // Zero renderebbe il freno un pezzo di codice che non frena, e nessuno degli altri
         // test se ne accorgerebbe: li' l'orologio non avanza mai da solo.
-        Assert.True(FrenoDiRipetizione.Riepilogo >= TimeSpan.FromMinutes(1));
+        Assert.True(LogThrottle.RepeatInterval >= TimeSpan.FromMinutes(1));
     }
 
-    private static FrenoDiRipetizione Nuovo(out OrologioFinto orologio)
+    private static LogThrottle Nuovo(out OrologioFinto orologio)
     {
         orologio = new OrologioFinto();
 
-        return new FrenoDiRipetizione(orologio, Finestra);
+        return new LogThrottle(orologio, Finestra);
     }
 
     private sealed class OrologioFinto : TimeProvider

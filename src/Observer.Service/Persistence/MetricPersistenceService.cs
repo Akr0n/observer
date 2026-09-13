@@ -33,8 +33,8 @@ public sealed partial class MetricPersistenceService : BackgroundService
     private readonly StorageOptions options;
     private readonly ILogger<MetricPersistenceService> logger;
 
-    private readonly FrenoDiRipetizione frenoScrittura = new();
-    private readonly FrenoDiRipetizione frenoManutenzione = new();
+    private readonly LogThrottle writeLogThrottle = new();
+    private readonly LogThrottle maintenanceLogThrottle = new();
 
     private long lastReportedDrops;
 
@@ -111,9 +111,9 @@ public sealed partial class MetricPersistenceService : BackgroundService
         {
             writer.FlushPending();
 
-            if (frenoScrittura.Cessato(out int taciute))
+            if (writeLogThrottle.ShouldLogRecovery(out int silenced))
             {
-                LogFlushRipreso(logger, taciute);
+                LogFlushRecovered(logger, silenced);
             }
         }
 #pragma warning disable CA1031 // Un disco pieno o un file agganciato devono far perdere un
@@ -122,7 +122,7 @@ public sealed partial class MetricPersistenceService : BackgroundService
         {
             // Un disco pieno non si libera da solo: senza freno questa riga esce ogni
             // secondo, e il registro che segnala il disco pieno consuma disco.
-            if (frenoScrittura.Segnala(ex.GetType().FullName ?? "?"))
+            if (writeLogThrottle.ShouldLog(ex.GetType().FullName ?? "?"))
             {
                 LogFlushFailed(logger, ex);
             }
@@ -135,9 +135,9 @@ public sealed partial class MetricPersistenceService : BackgroundService
         {
             MaintenanceReport report = store.RunMaintenance(now, options);
 
-            if (frenoManutenzione.Cessato(out int taciute))
+            if (maintenanceLogThrottle.ShouldLogRecovery(out int silenced))
             {
-                LogManutenzioneRipresa(logger, taciute);
+                LogMaintenanceRecovered(logger, silenced);
             }
 
             LogMaintenance(
@@ -153,7 +153,7 @@ public sealed partial class MetricPersistenceService : BackgroundService
             // Ogni trenta secondi, cioe' 2 880 righe al giorno: meno del diluvio della
             // scrittura, ma con la stessa fine e per lo stesso motivo, che non si ripara da
             // solo.
-            if (frenoManutenzione.Segnala(ex.GetType().FullName ?? "?"))
+            if (maintenanceLogThrottle.ShouldLog(ex.GetType().FullName ?? "?"))
             {
                 LogMaintenanceFailed(logger, ex);
             }
@@ -206,11 +206,11 @@ public sealed partial class MetricPersistenceService : BackgroundService
         EventId = 14,
         Level = LogLevel.Warning,
         Message = "History writing works again ({Silenced} failures were not logged).")]
-    private static partial void LogFlushRipreso(ILogger logger, int silenced);
+    private static partial void LogFlushRecovered(ILogger logger, int silenced);
 
     [LoggerMessage(
         EventId = 15,
         Level = LogLevel.Warning,
         Message = "History maintenance works again ({Silenced} failures were not logged).")]
-    private static partial void LogManutenzioneRipresa(ILogger logger, int silenced);
+    private static partial void LogMaintenanceRecovered(ILogger logger, int silenced);
 }

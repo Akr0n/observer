@@ -42,9 +42,9 @@ public sealed class LocalChannelOptions
                 $"{SectionName}:PipeName is empty. Give the pipe a name, or set Enabled to false.");
         }
 
-        if (EndpointUrl.Problema("http://unix:" + SocketPath) is { } problema)
+        if (EndpointUrl.Problem("http://unix:" + SocketPath) is { } problem)
         {
-            throw new InvalidOperationException($"{SectionName}:SocketPath can't be used. {problema}");
+            throw new InvalidOperationException($"{SectionName}:SocketPath can't be used. {problem}");
         }
     }
 }

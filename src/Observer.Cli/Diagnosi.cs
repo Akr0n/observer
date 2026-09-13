@@ -29,9 +29,9 @@ public static class Diagnosi
                 : "ABSENT - the service has not created it yet.";
         }
 
-        DirectoryVerdict verdetto = WindowsDirectoryTrust.Verdetto(cartella);
+        DirectoryVerdict verdetto = WindowsDirectoryTrust.VerdictFor(cartella);
 
-        if (verdetto == DirectoryVerdict.Sconosciuto && Directory.Exists(cartella))
+        if (verdetto == DirectoryVerdict.Unknown && Directory.Exists(cartella))
         {
             // E' cio' che un deposito PROTETTO BENE mostra a un account qualsiasi, ed e' il
             // caso piu' comune di tutti: leggere i permessi di una cartella richiede un
@@ -60,7 +60,7 @@ public static class Diagnosi
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(percorsoDelFile);
 
-        string percorso = MachineCertificate.PercorsoAccantoA(percorsoDelFile);
+        string percorso = MachineCertificate.PathNextTo(percorsoDelFile);
 
         try
         {
@@ -68,9 +68,9 @@ public static class Diagnosi
             // e Carica lascerebbe la chiave privata nel portachiavi di chi ha lanciato il
             // comando.
             using X509Certificate2 certificato =
-                MachineCertificate.SoloPerLeggere(File.ReadAllBytes(percorso));
+                MachineCertificate.LoadForInspection(File.ReadAllBytes(percorso));
 
-            return CertificateFingerprint.ForHumans(MachineCertificate.Impronta(certificato));
+            return CertificateFingerprint.ForHumans(MachineCertificate.Fingerprint(certificato));
         }
         catch (Exception errore) when (errore is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -127,18 +127,18 @@ public static class Diagnosi
     /// <returns>La frase, in inglese.</returns>
     public static string Frase(DirectoryVerdict verdetto) => verdetto switch
     {
-        DirectoryVerdict.Sicura =>
+        DirectoryVerdict.Safe =>
             "PROTECTED - owned by SYSTEM or Administrators, and nobody else is granted access.",
-        DirectoryVerdict.Assente =>
+        DirectoryVerdict.Missing =>
             "ABSENT - the service has not created it yet. Start it once.",
-        DirectoryVerdict.DaclAperta =>
+        DirectoryVerdict.OpenDacl =>
             "NOT PROTECTED - other accounts on this machine can read it. Anyone who reads it " +
             "gets permanent access to this machine FROM THE NETWORK.",
-        DirectoryVerdict.ProprietarioNonFidato =>
+        DirectoryVerdict.UntrustedOwner =>
             "FAKE PROTECTED - the permissions name only SYSTEM and Administrators, but the " +
             "OWNER is an ordinary account, and an owner can grant itself access again whenever " +
             "it likes. This looks safe and is not.",
-        DirectoryVerdict.PuntoDiReparse =>
+        DirectoryVerdict.ReparsePoint =>
             "HIJACKED - the path is a junction or symbolic link, so the token would be written " +
             "wherever it points. A standard user can create one without any privilege. Remove it.",
         _ => "UNKNOWN - the directory can't be examined from here. Try an elevated terminal.",

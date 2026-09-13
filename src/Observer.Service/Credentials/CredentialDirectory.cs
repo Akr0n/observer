@@ -37,7 +37,7 @@ public static class CredentialDirectory
 
         if (OperatingSystem.IsWindows())
         {
-            WindowsDirectoryTrust.Prepara(cartella);
+            WindowsDirectoryTrust.Prepare(cartella);
             return;
         }
 

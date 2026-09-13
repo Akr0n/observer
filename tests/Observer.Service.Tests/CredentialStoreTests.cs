@@ -26,8 +26,8 @@ public class CredentialStoreTests : IDisposable
     [Fact]
     public void CioCheSiScriveSiRilegge()
     {
-        MachineCredentials scritte = MachineCredentials.Nuove()
-            .Ruota(DateTimeOffset.UtcNow, TimeSpan.FromHours(24));
+        MachineCredentials scritte = MachineCredentials.Create()
+            .Rotate(DateTimeOffset.UtcNow, TimeSpan.FromHours(24));
 
         CredentialStore.Scrivi(Percorso, scritte);
 
@@ -49,7 +49,7 @@ public class CredentialStoreTests : IDisposable
         // sostituzione fallisce.
         for (int i = 0; i < 3; i++)
         {
-            CredentialStore.Scrivi(Percorso, MachineCredentials.Nuove());
+            CredentialStore.Scrivi(Percorso, MachineCredentials.Create());
         }
 
         string[] rimasti = Directory.GetFiles(cartella);
@@ -61,10 +61,10 @@ public class CredentialStoreTests : IDisposable
     [Fact]
     public void LaRiscritturaSostituisceDavvero()
     {
-        MachineCredentials prime = MachineCredentials.Nuove();
+        MachineCredentials prime = MachineCredentials.Create();
         CredentialStore.Scrivi(Percorso, prime);
 
-        MachineCredentials seconde = MachineCredentials.Nuove();
+        MachineCredentials seconde = MachineCredentials.Create();
         CredentialStore.Scrivi(Percorso, seconde);
 
         MachineCredentials? rilette = CredentialStore.Leggi(Percorso);
@@ -90,7 +90,7 @@ public class CredentialStoreTests : IDisposable
     {
         // Il file finisce sotto gli occhi di un amministratore che indaga: deve essere ovvio
         // cosa contiene, e non deve contenere niente di piu'.
-        CredentialStore.Scrivi(Percorso, MachineCredentials.Nuove().Ruota(DateTimeOffset.UtcNow, TimeSpan.FromHours(1)));
+        CredentialStore.Scrivi(Percorso, MachineCredentials.Create().Rotate(DateTimeOffset.UtcNow, TimeSpan.FromHours(1)));
 
         string contenuto = File.ReadAllText(Percorso);
 

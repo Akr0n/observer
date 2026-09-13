@@ -7,13 +7,13 @@ namespace Observer.Service;
 /// trace. E svuotare il file e' esattamente cio' che si fa quando si vuole togliere il token
 /// che contiene, adesso che il servizio se lo genera da solo.
 /// </remarks>
-public static class ConfigurazioneLocale
+public static class LocalConfigurationFile
 {
     /// <summary>Il nome del file, uguale su ogni sistema.</summary>
-    public const string NomeFile = "appsettings.Local.json";
+    public const string FileName = "appsettings.Local.json";
 
     /// <summary>Se il file ha qualcosa da leggere.</summary>
-    /// <param name="percorso">Il percorso completo del file.</param>
+    /// <param name="path">Il path completo del file.</param>
     /// <returns>Falso se e' assente o non contiene altro che spazi.</returns>
     /// <remarks>
     /// Un file con dentro un JSON SBAGLIATO va caricato lo stesso, e deve fallire: quello e' un
@@ -21,13 +21,13 @@ public static class ConfigurazioneLocale
     /// letto. La tolleranza vale solo per "non c'e' niente da leggere", che e' indistinguibile
     /// dall'assenza del file.
     /// </remarks>
-    public static bool VaCaricato(string percorso)
+    public static bool ShouldLoad(string path)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(percorso);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
         try
         {
-            return !string.IsNullOrWhiteSpace(File.ReadAllText(percorso));
+            return !string.IsNullOrWhiteSpace(File.ReadAllText(path));
         }
         catch (FileNotFoundException)
         {

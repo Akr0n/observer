@@ -69,7 +69,7 @@ public static class CredentialProvisioning
                 return new ProvisionedCredentials(depositate, CredentialOrigin.Deposito, percorsoDeposito);
             }
 
-            MachineCredentials nuove = MachineCredentials.Nuove();
+            MachineCredentials nuove = MachineCredentials.Create();
             CredentialStore.Scrivi(percorsoDeposito, nuove);
 
             return new ProvisionedCredentials(nuove, CredentialOrigin.GeneratoEDepositato, percorsoDeposito);
@@ -84,11 +84,11 @@ public static class CredentialProvisioning
             // Lanciato a mano. Token EFFIMERO, in memoria, mai scritto: mai un ripiego
             // per-utente su disco, che sposterebbe il segreto in un posto meno protetto
             // facendo credere di averlo messo al sicuro.
-            return new ProvisionedCredentials(MachineCredentials.Nuove(), CredentialOrigin.Effimero, null);
+            return new ProvisionedCredentials(MachineCredentials.Create(), CredentialOrigin.Effimero, null);
         }
         catch (InvalidOperationException) when (!giraComeServizio && !DepositoDanneggiato(percorsoDeposito))
         {
-            return new ProvisionedCredentials(MachineCredentials.Nuove(), CredentialOrigin.Effimero, null);
+            return new ProvisionedCredentials(MachineCredentials.Create(), CredentialOrigin.Effimero, null);
         }
     }
 

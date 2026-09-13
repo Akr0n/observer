@@ -113,7 +113,7 @@ public class CertificateProvisioningTests : IDisposable
     {
         // Sostituirlo sarebbe la cosa comoda, e sarebbe sbagliata: un certificato nuovo ha
         // un'impronta nuova. Meglio fermarsi e farlo decidere a una persona.
-        File.WriteAllText(MachineCertificate.PercorsoAccantoA(deposito), "non sono un PKCS#12");
+        File.WriteAllText(MachineCertificate.PathNextTo(deposito), "non sono un PKCS#12");
 
         InvalidOperationException errore = Assert.Throws<InvalidOperationException>(
             () => CertificateProvisioning.Provvedi(
@@ -123,7 +123,7 @@ public class CertificateProvisioningTests : IDisposable
                 giraComeServizio: true));
 
         Assert.Contains("fingerprint", errore.Message, StringComparison.Ordinal);
-        Assert.Equal("non sono un PKCS#12", File.ReadAllText(MachineCertificate.PercorsoAccantoA(deposito)));
+        Assert.Equal("non sono un PKCS#12", File.ReadAllText(MachineCertificate.PathNextTo(deposito)));
     }
 
     [Fact]
@@ -168,7 +168,7 @@ public class CertificateProvisioningTests : IDisposable
         // non per un certificato che c'e' ed e' illeggibile. Ripiegare in silenzio mostrerebbe
         // un servizio che parte, un'impronta nuova a ogni avvio, e nessun indizio sul file
         // rotto che sta sul disco.
-        File.WriteAllText(MachineCertificate.PercorsoAccantoA(deposito), "non sono un PKCS#12");
+        File.WriteAllText(MachineCertificate.PathNextTo(deposito), "non sono un PKCS#12");
 
         Assert.Throws<InvalidOperationException>(
             () => CertificateProvisioning.Provvedi(

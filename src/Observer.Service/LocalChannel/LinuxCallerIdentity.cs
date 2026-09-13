@@ -17,35 +17,35 @@ public static class LinuxCallerIdentity
     private const int SoPeerCred = 17;
 
     /// <summary>struct ucred = { int32 pid; uint32 uid; uint32 gid; }, 12 byte.</summary>
-    private const int ByteDiUcred = 12;
+    private const int UcredBytes = 12;
 
-    /// <summary>Classifica il chiamante del socket.</summary>
-    /// <param name="presa">Il socket accettato.</param>
+    /// <summary>Classify il chiamante del socket.</summary>
+    /// <param name="socket">Il socket accettato.</param>
     /// <returns>L'origine del chiamante.</returns>
-    public static CallerOrigin Classifica(Socket presa)
+    public static CallerOrigin Classify(Socket socket)
     {
-        ArgumentNullException.ThrowIfNull(presa);
+        ArgumentNullException.ThrowIfNull(socket);
 
-        Span<byte> buffer = stackalloc byte[ByteDiUcred];
+        Span<byte> buffer = stackalloc byte[UcredBytes];
 
         try
         {
-            int scritti = presa.GetRawSocketOption(SolSocket, SoPeerCred, buffer);
+            int bytesWritten = socket.GetRawSocketOption(SolSocket, SoPeerCred, buffer);
 
-            if (scritti != ByteDiUcred)
+            if (bytesWritten != UcredBytes)
             {
                 return new CallerOrigin(
-                    CallerKind.NonIdentificabile,
+                    CallerKind.Unidentified,
                     null,
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"SO_PEERCRED returned {scritti} bytes instead of {ByteDiUcred}"));
+                        $"SO_PEERCRED returned {bytesWritten} bytes instead of {UcredBytes}"));
             }
         }
         catch (SocketException ex)
         {
             return new CallerOrigin(
-                CallerKind.NonIdentificabile,
+                CallerKind.Unidentified,
                 null,
                 string.Create(CultureInfo.InvariantCulture, $"SO_PEERCRED failed: {ex.SocketErrorCode}"));
         }
@@ -55,7 +55,7 @@ public static class LinuxCallerIdentity
         uint uid = MemoryMarshal.Read<uint>(buffer[4..]);
 
         return new CallerOrigin(
-            CallerKind.LocaleIdentificato,
+            CallerKind.LocalIdentified,
             uid.ToString(CultureInfo.InvariantCulture),
             "local caller identified by SO_PEERCRED");
     }

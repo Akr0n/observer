@@ -59,7 +59,7 @@ public static class CertificateProvisioning
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(percorsoDeposito);
 
-        string percorso = MachineCertificate.PercorsoAccantoA(percorsoDeposito);
+        string percorso = MachineCertificate.PathNextTo(percorsoDeposito);
 
         try
         {
@@ -69,14 +69,14 @@ public static class CertificateProvisioning
             {
                 return new ProvisionedCertificate(
                     depositato,
-                    MachineCertificate.Impronta(depositato),
+                    MachineCertificate.Fingerprint(depositato),
                     CertificateOrigin.Deposito,
                     percorso);
             }
 
-            using X509Certificate2 generato = MachineCertificate.Genera(nomeMacchina, adesso);
+            using X509Certificate2 generato = MachineCertificate.Create(nomeMacchina, adesso);
 
-            byte[] dati = MachineCertificate.Esporta(generato);
+            byte[] dati = MachineCertificate.Export(generato);
 
             Deposita(percorso, dati);
 
@@ -92,7 +92,7 @@ public static class CertificateProvisioning
             // sarebbe sparito tutto. Un guasto che sembra un problema di rete e si ripara da solo.
             return new ProvisionedCertificate(
                 Servibile(dati),
-                MachineCertificate.Impronta(generato),
+                MachineCertificate.Fingerprint(generato),
                 CertificateOrigin.GeneratoEDepositato,
                 percorso);
         }
@@ -126,14 +126,14 @@ public static class CertificateProvisioning
     /// </remarks>
     private static ProvisionedCertificate Effimero(string nomeMacchina, DateTimeOffset adesso)
     {
-        using X509Certificate2 generato = MachineCertificate.Genera(nomeMacchina, adesso);
+        using X509Certificate2 generato = MachineCertificate.Create(nomeMacchina, adesso);
 
         // Stesso giro anche qui, anche se non tocca il disco: senza, il certificato effimero
         // non reggerebbe alcun handshake su Windows, e il messaggio d'avvio prometterebbe
         // un'impronta che cambia a ogni riavvio su una porta che non funziona mai.
         return new ProvisionedCertificate(
-            Servibile(MachineCertificate.Esporta(generato)),
-            MachineCertificate.Impronta(generato),
+            Servibile(MachineCertificate.Export(generato)),
+            MachineCertificate.Fingerprint(generato),
             CertificateOrigin.Effimero,
             null);
     }
@@ -142,7 +142,7 @@ public static class CertificateProvisioning
     /// <param name="pkcs12">Il certificato impacchettato con la sua chiave.</param>
     /// <returns>Il certificato ricaricato.</returns>
     private static X509Certificate2 Servibile(byte[] pkcs12) =>
-        MachineCertificate.Carica(pkcs12);
+        MachineCertificate.Load(pkcs12);
 
     /// <summary>Rilegge il deposito, distinguendo "non c'e'" da "non riesco a leggerlo".</summary>
     /// <remarks>
@@ -170,7 +170,7 @@ public static class CertificateProvisioning
 
         try
         {
-            return MachineCertificate.Carica(contenuto);
+            return MachineCertificate.Load(contenuto);
         }
         catch (CryptographicException errore)
         {

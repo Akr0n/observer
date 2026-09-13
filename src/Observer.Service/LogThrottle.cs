@@ -1,8 +1,8 @@
 namespace Observer.Service;
 
 /// <summary>
-/// Lascia passare un messaggio quando il motivo CAMBIA, e poi non piu' di uno ogni
-/// <see cref="Riepilogo"/>, contando quelli taciuti.
+/// Lascia passare un messaggio quando il reason CAMBIA, e poi non piu' di uno ogni
+/// <see cref="RepeatInterval"/>, contando quelli taciuti.
 /// </summary>
 /// <remarks>
 /// Un messaggio dentro un ciclo che gira una volta al secondo non e' un messaggio: sono
@@ -12,18 +12,18 @@ namespace Observer.Service;
 /// quella che servirebbe a capire cos'e' successo. E se il guasto e' "disco pieno", il
 /// registro che lo segnala consuma disco.
 /// <para>
-/// <b>Il solo confronto col motivo non basta</b>, ed e' la trappola che ha fatto riscrivere
+/// <b>Il solo confronto col reason non basta</b>, ed e' la trappola che ha fatto riscrivere
 /// questa classe: un guasto che LAMPEGGIA — un collector che ondeggia intorno alla sua
 /// scadenza, un file agganciato a intermittenza da un antivirus — alterna guasto e successo
 /// a ogni giro, e con la sola regola "scrivi quando cambia" ogni ritorno del guasto e' un
-/// motivo nuovo. Restava meta' del diluvio, e l'alternanza e' la forma piu' probabile dei
-/// guasti che si frenano qui. Per questo cio' che conta e' l'ultimo motivo <i>scritto</i>,
+/// reason nuovo. Restava meta' del diluvio, e l'alternanza e' la forma piu' probabile dei
+/// guasti che si frenano qui. Per questo cio' che conta e' l'ultimo reason <i>scritto</i>,
 /// che sopravvive alla cessazione, piu' una finestra di tempo oltre la quale un guasto che
 /// dura si fa risentire — con i numeri aggiornati, che altrimenti resterebbero quelli del
 /// primo giro.
 /// </para>
 /// <para>
-/// Il motivo dev'essere una chiave STABILE — il tipo dell'eccezione, non il suo messaggio;
+/// Il reason dev'essere una chiave STABILE — il tipo dell'eccezione, non il suo messaggio;
 /// "lungo", non i millisecondi del giro — altrimenti cambia a ogni ripetizione e non frena
 /// niente.
 /// </para>
@@ -38,7 +38,7 @@ namespace Observer.Service;
 /// corsa.
 /// </para>
 /// </remarks>
-public sealed class FrenoDiRipetizione
+public sealed class LogThrottle
 {
     /// <summary>Ogni quanto un guasto che dura torna a farsi scrivere.</summary>
     /// <remarks>
@@ -46,55 +46,55 @@ public sealed class FrenoDiRipetizione
     /// peggiore, contro 86 400), abbastanza frequente da far vedere in un registro che il
     /// guasto sta ancora durando, e da aggiornare i numeri che il messaggio porta con se'.
     /// </remarks>
-    public static readonly TimeSpan Riepilogo = TimeSpan.FromMinutes(5);
+    public static readonly TimeSpan RepeatInterval = TimeSpan.FromMinutes(5);
 
-    private readonly TimeProvider orologio;
-    private readonly TimeSpan riepilogo;
+    private readonly TimeProvider clock;
+    private readonly TimeSpan repeatInterval;
 
-    private string? inCorso;
-    private string? ultimoScritto;
-    private long quandoScritto;
-    private bool scrittoPerQuesto;
-    private int taciute;
+    private string? ongoingReason;
+    private string? lastLoggedReason;
+    private long lastLoggedTimestamp;
+    private bool ongoingWasLogged;
+    private int silenced;
 
     /// <summary>Crea un freno.</summary>
-    /// <param name="timeProvider">L'orologio, o null per quello di sistema.</param>
-    /// <param name="riepilogo">Ogni quanto ripetersi, o null per <see cref="Riepilogo"/>.</param>
-    public FrenoDiRipetizione(TimeProvider? timeProvider = null, TimeSpan? riepilogo = null)
+    /// <param name="timeProvider">L'clock, o null per quello di sistema.</param>
+    /// <param name="repeatInterval">Ogni quanto ripetersi, o null per <see cref="RepeatInterval"/>.</param>
+    public LogThrottle(TimeProvider? timeProvider = null, TimeSpan? repeatInterval = null)
     {
-        orologio = timeProvider ?? TimeProvider.System;
-        this.riepilogo = riepilogo ?? Riepilogo;
+        clock = timeProvider ?? TimeProvider.System;
+        this.repeatInterval = repeatInterval ?? RepeatInterval;
     }
 
     /// <summary>La condizione c'e' adesso.</summary>
-    /// <param name="motivo">Una chiave stabile: cambia solo se cambia la natura del guasto.</param>
+    /// <param name="reason">Una chiave stabile: cambia solo se cambia la natura del guasto.</param>
     /// <returns><c>true</c> se il messaggio va scritto adesso.</returns>
-    public bool Segnala(string motivo)
+    public bool ShouldLog(string reason)
     {
-        ArgumentNullException.ThrowIfNull(motivo);
+        ArgumentNullException.ThrowIfNull(reason);
 
-        inCorso = motivo;
+        ongoingReason = reason;
 
-        bool altroMotivo = !string.Equals(ultimoScritto, motivo, StringComparison.Ordinal);
-        bool scaduta = ultimoScritto is not null && orologio.GetElapsedTime(quandoScritto) >= riepilogo;
+        bool reasonChanged = !string.Equals(lastLoggedReason, reason, StringComparison.Ordinal);
+        bool dueAgain = lastLoggedReason is not null && clock.GetElapsedTime(lastLoggedTimestamp) >= repeatInterval;
 
-        if (!altroMotivo && !scaduta)
+        if (!reasonChanged && !dueAgain)
         {
-            taciute++;
+            silenced++;
 
             return false;
         }
 
-        ultimoScritto = motivo;
-        quandoScritto = orologio.GetTimestamp();
-        scrittoPerQuesto = true;
-        taciute = 0;
+        lastLoggedReason = reason;
+        lastLoggedTimestamp = clock.GetTimestamp();
+        ongoingWasLogged = true;
+        silenced = 0;
 
         return true;
     }
 
     /// <summary>La condizione non c'e' piu'.</summary>
-    /// <param name="taciute">Quante volte si e' ripetuta senza che nessuno la scrivesse.</param>
+    /// <param name="silenced">Quante volte si e' ripetuta senza che nessuno la scrivesse.</param>
     /// <returns><c>true</c> se il rientro va annunciato.</returns>
     /// <remarks>
     /// Il rientro va detto: un guasto che smette e' un'informazione quanto un guasto che
@@ -106,15 +106,15 @@ public sealed class FrenoDiRipetizione
     /// che il registro non ha mai cominciato, ed e' cio' che tiene silenzioso un guasto che
     /// lampeggia.
     /// </remarks>
-    public bool Cessato(out int taciute)
+    public bool ShouldLogRecovery(out int silenced)
     {
-        taciute = this.taciute;
+        silenced = this.silenced;
 
-        bool daAnnunciare = inCorso is not null && scrittoPerQuesto;
+        bool shouldAnnounce = ongoingReason is not null && ongoingWasLogged;
 
-        inCorso = null;
-        scrittoPerQuesto = false;
+        ongoingReason = null;
+        ongoingWasLogged = false;
 
-        return daAnnunciare;
+        return shouldAnnounce;
     }
 }

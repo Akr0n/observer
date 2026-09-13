@@ -17,14 +17,14 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 // un nome di ambiente: senza questa riga appsettings.Local.json non viene MAI letto, e chi
 // segue il messaggio d'errore qui sotto si ritrova la stessa frase che gli dice di fare
 // quello che ha appena fatto.
-if (ConfigurazioneLocale.VaCaricato(
-    Path.Combine(builder.Environment.ContentRootPath, ConfigurazioneLocale.NomeFile)))
+if (LocalConfigurationFile.ShouldLoad(
+    Path.Combine(builder.Environment.ContentRootPath, LocalConfigurationFile.FileName)))
 {
     // Il controllo esiste perche' optional:true tollera un file ASSENTE e non un file
     // VUOTO: zero byte fanno fallire l'avvio con uno stack trace su "The input does not
     // contain any JSON tokens". E svuotare quel file e' esattamente cio' che si fa per
     // togliere il token che contiene, adesso che il servizio se lo genera da solo.
-    builder.Configuration.AddJsonFile(ConfigurazioneLocale.NomeFile, optional: true, reloadOnChange: true);
+    builder.Configuration.AddJsonFile(LocalConfigurationFile.FileName, optional: true, reloadOnChange: true);
 }
 
 // Le due righe seguenti non sono ridondanti: riaggiungono ambiente e riga di comando DOPO
@@ -53,7 +53,7 @@ builder.Services.AddSingleton<MetricSnapshotCache>();
 // risposta, input dell'attaccante riflesso nella stessa risposta, e la possibilita' di
 // osservarne molte. Qui ne regge UNA sola. La riflessione c'e' ed e' totale - /metrics/history
 // rimanda collector, metrica e istanza verbatim - ma nei corpi non c'e' nessun segreto: il
-// token non compare in nessuna risposta, e l'impronta del certificato non e' un segreto, e'
+// token non compare in nessuna risposta, e l'impronta del certificate non e' un segreto, e'
 // proprio cio' che il client si aspetta di vedere. Soprattutto: NESSUNO puo' far produrre al
 // servizio un corpo comprimibile senza avere gia' il token - senza, la risposta e' 401 con
 // Content-Length 0, misurato su ogni rotta. L'attaccante di BREACH qui e' qualcuno che ha gia'
@@ -65,7 +65,7 @@ builder.Services.AddSingleton<MetricSnapshotCache>();
 //
 // E lasciare il predefinito non sarebbe "piu' prudente", sarebbe il verso SBAGLIATO: senza
 // questa riga si comprimerebbe solo il canale locale - named pipe e unix socket sono HTTP, non
-// HTTPS - cioe' si spenderebbe la CPU della macchina misurata per zero byte di rete, lasciando
+// HTTPS - cioe' si spenderebbe la CPU della macchina misurata per zero byte di network, lasciando
 // scoperto l'unico percorso dove i byte costano davvero.
 //
 // GZIP PRIMA DI BROTLI, ed e' misurato sul filo, non su un buffer. A parita' di preferenza il
@@ -82,11 +82,11 @@ builder.Services.AddSingleton<MetricSnapshotCache>();
 // servizio pubblica su se' stesso. Il grosso non e' /metrics/latest (3,2 kB) ma
 // /metrics/history: la coda grezza pesa 76 kB a un'ora e 114 kB a ventiquattro, ed e' chiesta
 // una volta per quadrante.
-builder.Services.AddResponseCompression(opzioni =>
+builder.Services.AddResponseCompression(options =>
 {
-    opzioni.EnableForHttps = true;
-    opzioni.Providers.Add<GzipCompressionProvider>();
-    opzioni.Providers.Add<BrotliCompressionProvider>();
+    options.EnableForHttps = true;
+    options.Providers.Add<GzipCompressionProvider>();
+    options.Providers.Add<BrotliCompressionProvider>();
 });
 
 // Singleton e non transient, per la stessa ragione dei collector: la classifica dei processi
@@ -97,7 +97,7 @@ builder.Services.AddSingleton<IProcessLister>(sp => new SystemProcessLister(
 builder.Services.AddSingleton<ProcessRanking>();
 builder.Services.AddHostedService<MetricSamplingService>();
 
-// Lo storico. Le opzioni si convalidano QUI, prima di aprire la porta: una ritenzione a zero
+// Lo storico. Le options si convalidano QUI, prima di aprire la listenOptions: una ritenzione a zero
 // non farebbe fallire niente, cancellerebbe solo tutto in silenzio, e il guasto si
 // scoprirebbe il giorno in cui a qualcuno serve un grafico di ieri.
 StorageOptions storage =
@@ -107,28 +107,28 @@ storage.Validate();
 
 // Gli URL degli endpoint si convalidano QUI, per lo stesso motivo per cui si convalida la
 // ritenzione: non tutti i modi di sbagliare falliscono. Un percorso di socket scritto in stile
-// Windows dentro "http://unix:" non fa lanciare niente e fa ascoltare Kestrel sulla porta 80 di
+// Windows dentro "http://unix:" non fa lanciare niente e fa ascoltare Kestrel sulla listenOptions 80 di
 // OGNI interfaccia, con la telemetria della macchina dietro. Meglio non partire.
 foreach (IConfigurationSection endpoint in builder.Configuration.GetSection("Kestrel:Endpoints").GetChildren())
 {
-    if (endpoint["Url"] is { } url && EndpointUrl.Problema(url) is { } problema)
+    if (endpoint["Url"] is { } url && EndpointUrl.Problem(url) is { } problem)
     {
         throw new InvalidOperationException(
-            $"Kestrel endpoint '{endpoint.Key}' is misconfigured. {problema}");
+            $"Kestrel endpoint '{endpoint.Key}' is misconfigured. {problem}");
     }
 }
 
 // Il canale locale: named pipe su Windows, socket unix su Linux. Il nome e il percorso sono
 // configurabili perche' un endpoint che non si binda abbatte l'INTERO host, endpoint TCP
 // compreso: con valori fissi, lanciare questo servizio a mano su una macchina dove quello
-// installato gira non fallirebbe piu' "solo sulla porta", non partirebbe affatto.
-LocalChannelOptions canaleLocale =
+// installato gira non fallirebbe piu' "solo sulla listenOptions", non partirebbe affatto.
+LocalChannelOptions localChannelOptions =
     builder.Configuration.GetSection(LocalChannelOptions.SectionName).Get<LocalChannelOptions>()
         ?? new LocalChannelOptions();
 
-canaleLocale.Validate();
+localChannelOptions.Validate();
 
-string? percorsoDelSocket = await LocalChannelSetup.ConfiguraAsync(builder, canaleLocale);
+string? socketPath = await LocalChannelSetup.ConfigureAsync(builder, localChannelOptions);
 
 builder.Services.AddSingleton(storage);
 
@@ -159,17 +159,17 @@ else
 // E' cio' che rende possibile un installer - finche' il token andava configurato, chi
 // installava doveva generarlo, cioe' conoscerlo, registrarlo nel proprio log e lasciarselo
 // dietro se falliva a meta'.
-bool giraComeServizio = WindowsServiceHelpers.IsWindowsService() || SystemdHelpers.IsSystemdService();
+bool runningAsService = WindowsServiceHelpers.IsWindowsService() || SystemdHelpers.IsSystemdService();
 
-string percorsoDeposito =
+string credentialStorePath =
     builder.Configuration["Observer:CredentialStorePath"] ?? CredentialDirectory.DefaultPath();
 
-ProvisionedCredentials credenziali = CredentialProvisioning.Provvedi(
+ProvisionedCredentials credentials = CredentialProvisioning.Provvedi(
     builder.Configuration["Observer:ApiToken"],
-    percorsoDeposito,
-    giraComeServizio);
+    credentialStorePath,
+    runningAsService);
 
-if (credenziali.Origin == CredentialOrigin.Effimero)
+if (credentials.Origin == CredentialOrigin.Effimero)
 {
     // Console e non il logger: questa riga serve a chi ha appena lanciato il servizio da un
     // terminale, e va vista subito. Come servizio di sistema questo ramo non si raggiunge
@@ -178,28 +178,28 @@ if (credenziali.Origin == CredentialOrigin.Effimero)
         "Observer could not secure a credential store, so this run uses a throwaway machine " +
         "token that is never written to disk. To let another computer query this one during " +
         "this run, export it:");
-    Console.WriteLine("    Observer__ApiToken=" + credenziali.Credentials.Current);
+    Console.WriteLine("    Observer__ApiToken=" + credentials.Credentials.Current);
 }
 
-// HTTPS verso le ALTRE macchine. Il certificato se lo genera e se lo custodisce il
+// HTTPS verso le ALTRE macchine. Il certificate se lo genera e se lo custodisce il
 // servizio, nello stesso perimetro del token e per la stessa ragione: cosi' l'installer
 // non conosce niente. La fiducia non viene da un'autorita' ne' da una catena - il
-// certificato e' autofirmato - ma dall'impronta, che si prende a mano da questa macchina
+// certificate e' autofirmato - ma dall'impronta, che si prende a mano da questa macchina
 // con "observer share" e si fissa nel client.
-NetworkOptions rete =
+NetworkOptions network =
     builder.Configuration.GetSection(NetworkOptions.SectionName).Get<NetworkOptions>() ?? new NetworkOptions();
 
-rete.Validate();
+network.Validate();
 
-if (rete.Https)
+if (network.Https)
 {
-    ProvisionedCertificate certificato = CertificateProvisioning.Provvedi(
-        percorsoDeposito,
+    ProvisionedCertificate certificate = CertificateProvisioning.Provvedi(
+        credentialStorePath,
         Environment.MachineName,
         DateTimeOffset.UtcNow,
-        giraComeServizio);
+        runningAsService);
 
-    if (certificato.Origin == CertificateOrigin.Effimero)
+    if (certificate.Origin == CertificateOrigin.Effimero)
     {
         // Come per il token effimero: Console e non il logger, perche' questa riga serve a
         // chi ha appena lanciato il servizio da un terminale e va vista subito.
@@ -209,25 +209,25 @@ if (rete.Https)
             "one will connect.");
     }
 
-    // ListenAnyIP e non ListenLocalhost: il senso di questa porta e' che la usino le altre
+    // ListenAnyIP e non ListenLocalhost: il senso di questa listenOptions e' che la usino le altre
     // macchine. Chi guarda quella su cui e' seduto passa dal canale locale e non di qui.
     builder.WebHost.ConfigureKestrel(kestrel =>
-        kestrel.ListenAnyIP(rete.HttpsPort, porta => porta.UseHttps(certificato.Certificate)));
+        kestrel.ListenAnyIP(network.HttpsPort, listenOptions => listenOptions.UseHttps(certificate.Certificate)));
 }
 
 WebApplication app = builder.Build();
 
-if (OperatingSystem.IsLinux() && percorsoDelSocket is { } socketLocale)
+if (OperatingSystem.IsLinux() && socketPath is { } localSocketPath)
 {
     // Il modo del file va imposto DOPO l'avvio: prima quel file non esiste, e un chmod
     // accanto alla creazione della directory fallirebbe.
     // Quale percorso sia stato scelto non serve stamparlo qui: /run/observer non e' creabile
     // da un utente normale e il ripiego cambia il percorso, ma Kestrel lo dice gia' da se'
     // nella sua riga "Now listening on: http://unix:/...".
-    LinuxUnixSocket.RestringiDopoAvvio(app.Lifetime, socketLocale);
+    LinuxUnixSocket.RestrictAfterStart(app.Lifetime, localSocketPath);
 }
 
-app.UseObserverAccessControl(credenziali.Credentials);
+app.UseObserverAccessControl(credentials.Credentials);
 
 // DOPO il controllo d'accesso, e l'ordine e' misurato. Cosi' le risposte che il middleware
 // corto-circuita - 401 e 404 - non passano dal compressore: non ha senso spendere CPU per un

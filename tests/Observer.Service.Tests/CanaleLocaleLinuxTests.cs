@@ -57,7 +57,7 @@ public class CanaleLocaleLinuxTests
         await using BancoKestrelReale vivo = await BancoKestrelReale.AvviaAsync(
             opzioni => opzioni.ListenUnixSocket(percorso));
 
-        bool bonificato = await LinuxUnixSocket.BonificaSocketOrfanoAsync(
+        bool bonificato = await LinuxUnixSocket.RemoveStaleSocketAsync(
             percorso, TimeSpan.FromMilliseconds(500));
 
         Assert.False(bonificato);
@@ -78,7 +78,7 @@ public class CanaleLocaleLinuxTests
         // Simula la morte violenta: il file resta a terra senza nessuno in ascolto.
         await File.WriteAllTextAsync(percorso, string.Empty, CancellationToken.None);
 
-        Assert.True(await LinuxUnixSocket.BonificaSocketOrfanoAsync(percorso, TimeSpan.FromSeconds(2)));
+        Assert.True(await LinuxUnixSocket.RemoveStaleSocketAsync(percorso, TimeSpan.FromSeconds(2)));
         Assert.False(File.Exists(percorso));
     }
 
@@ -98,7 +98,7 @@ public class CanaleLocaleLinuxTests
 
         try
         {
-            LinuxUnixSocket.PreparaPercorso(Path.Combine(cartella, "o.sock"));
+            LinuxUnixSocket.PreparePath(Path.Combine(cartella, "o.sock"));
 
             UnixFileMode modo = File.GetUnixFileMode(cartella);
 
@@ -121,7 +121,7 @@ public class CanaleLocaleLinuxTests
             opzioni => opzioni.ListenUnixSocket(percorso),
             app => app.MapGet("/chi", (HttpContext contesto) =>
             {
-                CallerOrigin origine = LocalCaller.Classifica(contesto);
+                CallerOrigin origine = LocalCaller.Classify(contesto);
                 return origine.Kind + "|" + (origine.Sid ?? "(nessuno)");
             }));
 
@@ -132,7 +132,7 @@ public class CanaleLocaleLinuxTests
         // che c'e' su Windows. L'unica domanda e' se l'uid sia leggibile.
         string[] parti = esito.Split('|');
 
-        Assert.Equal(nameof(CallerKind.LocaleIdentificato), parti[0]);
+        Assert.Equal(nameof(CallerKind.LocalIdentified), parti[0]);
         Assert.True(uint.TryParse(parti[1], out _), "uid non numerico: " + parti[1]);
     }
 
@@ -172,7 +172,7 @@ public class CanaleLocaleLinuxTests
                 opzioni.Listen(System.Net.IPAddress.Loopback, 0);
                 opzioni.ListenUnixSocket(percorso);
             },
-            app => app.MapGet("/riservato", () => "segreto").SoloDaLocale(),
+            app => app.MapGet("/riservato", () => "segreto").LocalOnly(),
             middleware: app => app.UseObserverAccessControl(CanaleLocaleWindowsTests.Token));
 
         string tcp = banco.Indirizzi.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
@@ -196,7 +196,7 @@ public class CanaleLocaleLinuxTests
             Path.GetTempPath(),
             "o-" + Guid.NewGuid().ToString("N")[..8] + ".sock");
 
-        Assert.Null(EndpointUrl.Problema("http://unix:" + percorso));
+        Assert.Null(EndpointUrl.Problem("http://unix:" + percorso));
 
         return percorso;
     }

@@ -12,61 +12,61 @@ public static class LocalChannelSetup
 {
     /// <summary>Configura l'ascolto locale.</summary>
     /// <param name="builder">Il builder dell'applicazione.</param>
-    /// <param name="opzioni">Nome della pipe e percorso del socket, gia' convalidati.</param>
-    /// <returns>Il percorso del socket effettivamente usato su Linux, altrimenti null.</returns>
-    public static async Task<string?> ConfiguraAsync(WebApplicationBuilder builder, LocalChannelOptions opzioni)
+    /// <param name="options">Nome della pipe e path del socket, gia' convalidati.</param>
+    /// <returns>Il path del socket effettivamente usato su Linux, altrimenti null.</returns>
+    public static async Task<string?> ConfigureAsync(WebApplicationBuilder builder, LocalChannelOptions options)
     {
         ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(opzioni);
+        ArgumentNullException.ThrowIfNull(options);
 
-        if (!opzioni.Enabled)
+        if (!options.Enabled)
         {
             return null;
         }
 
         if (OperatingSystem.IsWindows())
         {
-            WindowsNamedPipe.Ascolta(builder, opzioni.PipeName);
+            WindowsNamedPipe.Listen(builder, options.PipeName);
             return null;
         }
 
         if (OperatingSystem.IsLinux())
         {
-            string percorso = await PercorsoUtilizzabileAsync(opzioni.SocketPath).ConfigureAwait(false);
+            string path = await PrepareUsablePathAsync(options.SocketPath).ConfigureAwait(false);
 
-            builder.WebHost.ConfigureKestrel(kestrel => kestrel.ListenUnixSocket(percorso));
+            builder.WebHost.ConfigureKestrel(kestrel => kestrel.ListenUnixSocket(path));
 
-            return percorso;
+            return path;
         }
 
         return null;
     }
 
-    /// <summary>Il primo percorso che questo processo riesce davvero a preparare.</summary>
+    /// <summary>Il primo path che questo processo riesce davvero a preparare.</summary>
     /// <remarks>
     /// /run/observer non e' creabile da un utente normale, e "dotnet run" durante lo sviluppo
     /// gira come utente normale su meta' della CI. Senza un ripiego il servizio non sarebbe
     /// avviabile fuori da systemd. Chi lo esegue deve pero' sapere DOVE e' finito il socket:
-    /// per questo il percorso scelto viene restituito e stampato dal chiamante, invece di
+    /// per questo il path scelto viene restituito e stampato dal chiamante, invece di
     /// restare un dettaglio interno.
     /// </remarks>
     [SupportedOSPlatform("linux")]
-    private static async Task<string> PercorsoUtilizzabileAsync(string preferito)
+    private static async Task<string> PrepareUsablePathAsync(string preferred)
     {
-        List<string> tentati = [];
+        List<string> attemptedPaths = [];
 
-        foreach (string candidato in Candidati(preferito))
+        foreach (string candidate in CandidatePaths(preferred))
         {
-            tentati.Add(candidato);
+            attemptedPaths.Add(candidate);
 
-            if (EndpointUrl.Problema("http://unix:" + candidato) is not null)
+            if (EndpointUrl.Problem("http://unix:" + candidate) is not null)
             {
                 continue;
             }
 
             try
             {
-                LinuxUnixSocket.PreparaPercorso(candidato);
+                LinuxUnixSocket.PreparePath(candidate);
             }
             catch (UnauthorizedAccessException)
             {
@@ -77,21 +77,21 @@ public static class LocalChannelSetup
                 continue;
             }
 
-            await LinuxUnixSocket.BonificaSocketOrfanoAsync(candidato, TimeSpan.FromSeconds(2))
+            await LinuxUnixSocket.RemoveStaleSocketAsync(candidate, TimeSpan.FromSeconds(2))
                 .ConfigureAwait(false);
 
-            return candidato;
+            return candidate;
         }
 
         throw new InvalidOperationException(
-            "None of these unix socket paths could be prepared: " + string.Join(", ", tentati) +
+            "None of these unix socket paths could be prepared: " + string.Join(", ", attemptedPaths) +
             ". Set " + LocalChannelOptions.SectionName + ":SocketPath to a directory this " +
             "process can write to, or set Enabled to false.");
     }
 
-    private static IEnumerable<string> Candidati(string preferito)
+    private static IEnumerable<string> CandidatePaths(string preferred)
     {
-        yield return preferito;
+        yield return preferred;
 
         if (Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") is { Length: > 0 } xdg)
         {

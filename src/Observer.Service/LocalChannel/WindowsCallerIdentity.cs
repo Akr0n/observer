@@ -8,7 +8,7 @@ using System.Security.Principal;
 namespace Observer.Service.LocalChannel;
 
 /// <summary>
-/// Stabilisce se il chiamante di una named pipe e' davvero locale, e chi e'.
+/// Stabilisce se il caller di una named pipe e' davvero locale, e chi e'.
 /// </summary>
 /// <remarks>
 /// La domanda "sono locale?" NON si risponde guardando il trasporto: una named pipe e'
@@ -30,76 +30,76 @@ public static partial class WindowsCallerIdentity
 
     [LibraryImport("kernel32.dll", EntryPoint = "GetNamedPipeClientComputerNameW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool GetNamedPipeClientComputerName(nint pipe, ref byte nome, uint lunghezzaInByte);
+    private static partial bool GetNamedPipeClientComputerName(nint pipe, ref byte name, uint sizeInBytes);
 
-    /// <summary>Classifica il chiamante della pipe.</summary>
+    /// <summary>Classify il caller della pipe.</summary>
     /// <param name="pipe">Il flusso della connessione in corso.</param>
-    /// <returns>L'origine del chiamante.</returns>
-    public static CallerOrigin Classifica(NamedPipeServerStream pipe)
+    /// <returns>L'origine del caller.</returns>
+    public static CallerOrigin Classify(NamedPipeServerStream pipe)
     {
         ArgumentNullException.ThrowIfNull(pipe);
 
         // Buffer di BYTE e non di char: char non e' blittabile e il generatore di
         // [LibraryImport] pretenderebbe DisableRuntimeMarshalling sull'intero assembly. Qui il
         // contenuto non serve, serve solo sapere se la chiamata riesce: 512 byte sono 256
-        // caratteri UTF-16, abbondanti per un nome di macchina.
+        // caratteri UTF-16, abbondanti per un name di macchina.
         Span<byte> buffer = stackalloc byte[512];
 
-        bool riuscito = GetNamedPipeClientComputerName(
+        bool succeeded = GetNamedPipeClientComputerName(
             pipe.SafePipeHandle.DangerousGetHandle(),
             ref MemoryMarshal.GetReference(buffer),
             (uint)buffer.Length);
 
-        int errore = Marshal.GetLastWin32Error();
+        int win32Error = Marshal.GetLastWin32Error();
 
-        if (riuscito || errore != ErrorPipeLocal)
+        if (succeeded || win32Error != ErrorPipeLocal)
         {
-            // Riuscito: la connessione e' passata da SMB, e il buffer contiene il nome del
-            // chiamante. Fallito per un motivo diverso da ERROR_PIPE_LOCAL: non sappiamo dire
+            // Riuscito: la connessione e' passata da SMB, e il buffer contiene il name del
+            // caller. Fallito per un motivo diverso da ERROR_PIPE_LOCAL: non sappiamo dire
             // che sia locale, e nel dubbio non lo e'.
             return new CallerOrigin(
-                CallerKind.ArrivatoDallaRete,
+                CallerKind.FromNetwork,
                 null,
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"GetNamedPipeClientComputerName ok={riuscito} win32={errore}"));
+                    $"GetNamedPipeClientComputerName ok={succeeded} win32={win32Error}"));
         }
 
-        return LeggiIdentita(pipe);
+        return ReadIdentity(pipe);
     }
 
-    private static CallerOrigin LeggiIdentita(NamedPipeServerStream pipe)
+    private static CallerOrigin ReadIdentity(NamedPipeServerStream pipe)
     {
-        Cattura cattura = new();
+        SidCapture capture = new();
 
         try
         {
-            pipe.RunAsClient(cattura.Esegui);
+            pipe.RunAsClient(capture.Run);
         }
         catch (SecurityException ex)
         {
             // Il caso di ATTACCO: il client ha scelto TokenImpersonationLevel.Anonymous e si e'
             // reso unilateralmente non identificabile. HRESULT 0x80070543,
             // ERROR_BAD_IMPERSONATION_LEVEL. Senza questo catch il servizio risponde 500.
-            return NonIdentificabile(ex);
+            return UnidentifiedOrigin(ex);
         }
         catch (UnauthorizedAccessException ex)
         {
-            return NonIdentificabile(ex);
+            return UnidentifiedOrigin(ex);
         }
         catch (IOException ex)
         {
-            return NonIdentificabile(ex);
+            return UnidentifiedOrigin(ex);
         }
 
-        return cattura.Sid is { } sid
-            ? new CallerOrigin(CallerKind.LocaleIdentificato, sid, "local caller identified")
-            : new CallerOrigin(CallerKind.NonIdentificabile, null, "the caller token carried no user SID");
+        return capture.Sid is { } sid
+            ? new CallerOrigin(CallerKind.LocalIdentified, sid, "local caller identified")
+            : new CallerOrigin(CallerKind.Unidentified, null, "the caller token carried no user SID");
     }
 
-    private static CallerOrigin NonIdentificabile(Exception ex) =>
+    private static CallerOrigin UnidentifiedOrigin(Exception ex) =>
         new(
-            CallerKind.NonIdentificabile,
+            CallerKind.Unidentified,
             null,
             string.Create(CultureInfo.InvariantCulture, $"{ex.GetType().Name} 0x{ex.HResult:X8}"));
 
@@ -110,14 +110,14 @@ public static partial class WindowsCallerIdentity
     /// come gruppo di metodi.
     /// </remarks>
     [SupportedOSPlatform("windows")]
-    private sealed class Cattura
+    private sealed class SidCapture
     {
         public string? Sid { get; private set; }
 
-        public void Esegui()
+        public void Run()
         {
-            using WindowsIdentity? chiamante = WindowsIdentity.GetCurrent(ifImpersonating: true);
-            Sid = chiamante?.User?.Value;
+            using WindowsIdentity? caller = WindowsIdentity.GetCurrent(ifImpersonating: true);
+            Sid = caller?.User?.Value;
         }
     }
 }

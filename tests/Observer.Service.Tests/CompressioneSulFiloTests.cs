@@ -62,16 +62,16 @@ public class CompressioneSulFiloTests
     /// </remarks>
     private static X509Certificate2 Depositato()
     {
-        using X509Certificate2 generato = MachineCertificate.Genera("banco", DateTimeOffset.UtcNow);
+        using X509Certificate2 generato = MachineCertificate.Create("banco", DateTimeOffset.UtcNow);
 
-        return MachineCertificate.Carica(MachineCertificate.Esporta(generato));
+        return MachineCertificate.Load(MachineCertificate.Export(generato));
     }
 
     [Fact]
     public async Task SuTlsLaRispostaViaggiaCompressaEArrivaIdentica()
     {
         using X509Certificate2 certificato = Depositato();
-        string impronta = MachineCertificate.Impronta(certificato);
+        string impronta = MachineCertificate.Fingerprint(certificato);
 
         await using Banco banco = await Banco.AvviaAsync(certificato);
 
@@ -110,7 +110,7 @@ public class CompressioneSulFiloTests
         // Brotli molto piu' di Gzip. Misurato QUI, sul filo vero, non su un buffer compresso in
         // un colpo solo - che e' esattamente l'errore che aveva fatto preferire Brotli.
         using X509Certificate2 certificato = Depositato();
-        string impronta = MachineCertificate.Impronta(certificato);
+        string impronta = MachineCertificate.Fingerprint(certificato);
 
         await using Banco banco = await Banco.AvviaAsync(certificato);
 
@@ -172,7 +172,7 @@ public class CompressioneSulFiloTests
         // Se un giorno un rifiuto imparasse a spiegarsi con un corpo, questa prova diventa rossa
         // e la decisione va riaperta.
         using X509Certificate2 certificato = Depositato();
-        string impronta = MachineCertificate.Impronta(certificato);
+        string impronta = MachineCertificate.Fingerprint(certificato);
 
         await using Banco banco = await Banco.AvviaAsync(certificato, conGuardia: true);
 
@@ -228,7 +228,7 @@ public class CompressioneSulFiloTests
                 // qui renderebbe la prova circolare - misurerebbe lo stub, e un 401 che un
                 // giorno imparasse a portare un corpo resterebbe verde. Le credenziali sono
                 // nuove e il test non manda alcun header: cade nel ramo di rifiuto vero.
-                applicazione.UseObserverAccessControl(MachineCredentials.Nuove());
+                applicazione.UseObserverAccessControl(MachineCredentials.Create());
             }
 
             applicazione.UseResponseCompression();
@@ -245,7 +245,7 @@ public class CompressioneSulFiloTests
 
             handler.SslOptions.RemoteCertificateValidationCallback = (_, presentato, _, _) =>
                 presentato is X509Certificate2 certificato
-                && CertificateFingerprint.Match(impronta, MachineCertificate.Impronta(certificato));
+                && CertificateFingerprint.Match(impronta, MachineCertificate.Fingerprint(certificato));
 
             return new HttpClient(handler, disposeHandler: true);
         }

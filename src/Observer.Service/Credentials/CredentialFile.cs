@@ -17,7 +17,7 @@ public static class CredentialFile
 
         if (OperatingSystem.IsWindows())
         {
-            return WindowsCredentialFile.CreaProtetto(percorso);
+            return WindowsCredentialFile.CreateProtected(percorso);
         }
 
         // Su Unix il modo si passa alla creazione, quindi non esiste finestra. 0600: solo il

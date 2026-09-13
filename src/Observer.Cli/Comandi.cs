@@ -229,7 +229,7 @@ public static class Comandi
             return 1;
         }
 
-        MachineCredentials ruotate = credenziali.Ruota(DateTimeOffset.UtcNow, MachineCredentials.FinestraDiGrazia);
+        MachineCredentials ruotate = credenziali.Rotate(DateTimeOffset.UtcNow, MachineCredentials.GracePeriod);
 
         try
         {
@@ -245,7 +245,7 @@ public static class Comandi
         Console.WriteLine();
         Console.WriteLine(string.Create(
             CultureInfo.InvariantCulture,
-            $"The previous one keeps working until {DateTimeOffset.UtcNow + MachineCredentials.FinestraDiGrazia:u}, so remote"));
+            $"The previous one keeps working until {DateTimeOffset.UtcNow + MachineCredentials.GracePeriod:u}, so remote"));
         Console.WriteLine("clients are not cut off at once. Update them before then.");
         Console.WriteLine();
 

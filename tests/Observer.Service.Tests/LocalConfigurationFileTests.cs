@@ -24,7 +24,7 @@ public class ConfigurazioneLocaleTests : IDisposable
     [Fact]
     public void UnFileASSENTENonVaCaricato()
     {
-        Assert.False(ConfigurazioneLocale.VaCaricato(Path.Combine(cartella, "non-c-e.json")));
+        Assert.False(LocalConfigurationFile.ShouldLoad(Path.Combine(cartella, "non-c-e.json")));
     }
 
     [Fact]
@@ -33,7 +33,7 @@ public class ConfigurazioneLocaleTests : IDisposable
         string percorso = Path.Combine(cartella, "vuoto.json");
         File.WriteAllText(percorso, string.Empty);
 
-        Assert.False(ConfigurazioneLocale.VaCaricato(percorso));
+        Assert.False(LocalConfigurationFile.ShouldLoad(percorso));
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public class ConfigurazioneLocaleTests : IDisposable
         string percorso = Path.Combine(cartella, "spazi.json");
         File.WriteAllText(percorso, "\r\n   \r\n");
 
-        Assert.False(ConfigurazioneLocale.VaCaricato(percorso));
+        Assert.False(LocalConfigurationFile.ShouldLoad(percorso));
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public class ConfigurazioneLocaleTests : IDisposable
         string percorso = Path.Combine(cartella, "pieno.json");
         File.WriteAllText(percorso, "{ \"Observer\": { \"ApiToken\": \"x\" } }");
 
-        Assert.True(ConfigurazioneLocale.VaCaricato(percorso));
+        Assert.True(LocalConfigurationFile.ShouldLoad(percorso));
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public class ConfigurazioneLocaleTests : IDisposable
         string percorso = Path.Combine(cartella, "rotto.json");
         File.WriteAllText(percorso, "{{{ non e' json");
 
-        Assert.True(ConfigurazioneLocale.VaCaricato(percorso));
+        Assert.True(LocalConfigurationFile.ShouldLoad(percorso));
     }
 
     public void Dispose()

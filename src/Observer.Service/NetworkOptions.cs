@@ -15,7 +15,7 @@ public sealed class NetworkOptions
     public const string SectionName = "Observer:Network";
 
     /// <summary>La porta HTTPS predefinita.</summary>
-    public const int PortaPredefinita = 5058;
+    public const int DefaultPort = 5058;
 
     /// <summary>
     /// Se esporre HTTPS alle altre macchine. Acceso di prestazione.
@@ -27,7 +27,7 @@ public sealed class NetworkOptions
     public bool Https { get; set; } = true;
 
     /// <summary>La porta su cui ascoltare in HTTPS.</summary>
-    public int HttpsPort { get; set; } = PortaPredefinita;
+    public int HttpsPort { get; set; } = DefaultPort;
 
     /// <summary>Controlla le opzioni prima che aprano una porta.</summary>
     /// <exception cref="InvalidOperationException">Se la porta non e' utilizzabile.</exception>
@@ -39,7 +39,7 @@ public sealed class NetworkOptions
                 "Observer:Network:HttpsPort is " +
                 HttpsPort.ToString(CultureInfo.InvariantCulture) +
                 ", which is not a usable TCP port. Remove it to use the default (" +
-                PortaPredefinita.ToString(CultureInfo.InvariantCulture) + ").");
+                DefaultPort.ToString(CultureInfo.InvariantCulture) + ").");
         }
     }
 }
