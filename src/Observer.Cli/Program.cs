@@ -1,3 +1,3 @@
 using Observer.Cli;
 
-return Comandi.Esegui(args);
+return Commands.Run(args);

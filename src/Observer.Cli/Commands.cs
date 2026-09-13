@@ -5,39 +5,39 @@ using Observer.Service.Credentials;
 
 namespace Observer.Cli;
 
-/// <summary>I verbi della riga di comando.</summary>
+/// <summary>The command-line verbs.</summary>
 /// <remarks>
-/// Tre verbi e nessun parser: <c>System.CommandLine</c> e' in beta, e un pacchetto in beta sotto
-/// TreatWarningsAsErrors e' un rischio che tre verbi non giustificano.
+/// Three verbs and no parser: <c>System.CommandLine</c> is in beta, and a beta package under
+/// TreatWarningsAsErrors is a risk that three verbs do not justify.
 /// <para>
-/// Nessuno dei tre prende un segreto come ARGOMENTO. Non e' un caso: la cronologia di PowerShell
-/// registra la riga digitata, non l'output, quindi un verbo del tipo <c>set-key &lt;segreto&gt;</c>
-/// lascerebbe la chiave in un file di cronologia. Non aggiungerne uno.
+/// None of the three takes a secret as an ARGUMENT. That is not an accident: PowerShell's history
+/// records the typed line, not the output, so a verb like <c>set-key &lt;secret&gt;</c> would
+/// leave the key in a history file. Do not add one.
 /// </para>
 /// </remarks>
-public static class Comandi
+public static class Commands
 {
-    /// <summary>Esegue il verbo richiesto.</summary>
-    /// <param name="args">Gli argomenti della riga di comando.</param>
-    /// <returns>Il codice di uscita.</returns>
-    public static int Esegui(string[] args)
+    /// <summary>Runs the requested verb.</summary>
+    /// <param name="args">The command-line arguments.</param>
+    /// <returns>The exit code.</returns>
+    public static int Run(string[] args)
     {
         ArgumentNullException.ThrowIfNull(args);
 
-        string verbo = args.Length > 0 ? args[0] : "help";
+        string verb = args.Length > 0 ? args[0] : "help";
 
-        return verbo switch
+        return verb switch
         {
             "share" => Share(args.Contains("--stdout", StringComparer.Ordinal)),
             "rotate-key" => RotateKey(),
             "token" => Token(args),
             "doctor" => Doctor(),
-            "help" or "--help" or "-h" => Aiuto(0),
-            _ => Aiuto(2),
+            "help" or "--help" or "-h" => PrintHelp(0),
+            _ => PrintHelp(2),
         };
     }
 
-    private static int Aiuto(int codice)
+    private static int PrintHelp(int exitCode)
     {
         Console.WriteLine("""
             observer — manage this machine's Observer service.
@@ -65,81 +65,81 @@ public static class Comandi
             local channel. The token exists only so another computer can query this one.
             """);
 
-        return codice;
+        return exitCode;
     }
 
-    /// <summary>Custodisce, o dimentica, il token di un'ALTRA macchina.</summary>
+    /// <summary>Keeps, or forgets, ANOTHER machine's token.</summary>
     /// <remarks>
-    /// Esiste perche' senza un comando il token si deposita a mano dentro un file, che e'
-    /// esattamente cio' che si sta togliendo. Il segreto arriva da standard input e non
-    /// dagli argomenti, per la stessa ragione scritta in cima a questa classe: la riga
-    /// digitata finisce nella cronologia della shell, e su Unix anche in "ps".
+    /// It exists because without a command the token has to be written into a file by hand,
+    /// which is exactly the thing being removed. The token comes from standard input and not
+    /// from the arguments, for the same reason given at the top of this class: the typed line
+    /// ends up in the shell's history, and on Unix in "ps" too.
     /// </remarks>
     private static int Token(string[] args)
     {
         if (args.Length < 3)
         {
-            return Aiuto(2);
+            return PrintHelp(2);
         }
 
-        ISecretStore deposito = SecretStores.ForThisMachine();
+        ISecretStore store = SecretStores.ForThisMachine();
 
         try
         {
             return args[1] switch
             {
-                "set" => Deposita(deposito, args[2]),
-                "forget" => Dimentica(deposito, args[2]),
-                _ => Aiuto(2),
+                "set" => StoreToken(store, args[2]),
+                "forget" => ForgetToken(store, args[2]),
+                _ => PrintHelp(2),
             };
         }
-        catch (SecretStoreException errore)
+        catch (SecretStoreException error)
         {
-            Console.Error.WriteLine(errore.Message);
+            Console.Error.WriteLine(error.Message);
 
             return 1;
         }
     }
 
-    private static int Deposita(ISecretStore deposito, string macchina)
+    private static int StoreToken(ISecretStore store, string machineName)
     {
-        string segreto = LeggiSegreto();
+        string token = ReadTokenFromConsole();
 
-        if (segreto.Length == 0)
+        if (token.Length == 0)
         {
             Console.Error.WriteLine("No token was given, so nothing was stored.");
 
             return 1;
         }
 
-        deposito.Write(macchina, segreto);
+        store.Write(machineName, token);
 
-        Console.WriteLine($"The token for {macchina} is now kept in {deposito.Description}.");
+        Console.WriteLine($"The token for {machineName} is now kept in {store.Description}.");
         Console.WriteLine(
-            $"If machines.json still has an \"apiToken\" line for {macchina}, delete it: " +
+            $"If machines.json still has an \"apiToken\" line for {machineName}, delete it: " +
             "Observer refuses to use a token from that file.");
 
         return 0;
     }
 
-    private static int Dimentica(ISecretStore deposito, string macchina)
+    private static int ForgetToken(ISecretStore store, string machineName)
     {
-        Console.WriteLine(deposito.Delete(macchina)
-            ? $"The token for {macchina} is gone from this computer."
-            : $"There was no token for {macchina} here.");
+        Console.WriteLine(store.Delete(machineName)
+            ? $"The token for {machineName} is gone from this computer."
+            : $"There was no token for {machineName} here.");
 
         return 0;
     }
 
-    /// <summary>Legge il segreto senza mostrarlo, quando c'e' qualcuno che lo digita.</summary>
-    /// <returns>Il segreto, senza spazi ai bordi.</returns>
+    /// <summary>Reads the token without showing it, when there is someone typing it.</summary>
+    /// <returns>The token, trimmed of leading and trailing whitespace.</returns>
     /// <remarks>
-    /// Senza eco non e' teatro: il terminale conserva cio' che ha stampato, quindi un token
-    /// mostrato mentre lo si incolla resta nella cronologia della finestra e in ogni copia di
-    /// quello che c'era a schermo. Con l'input rediretto non c'e' nessuno da proteggere e si
-    /// legge la riga e basta.
+    /// Hiding the echo is not for show: a terminal keeps what it printed, so a token shown while
+    /// it is pasted stays in the window's scrollback and in every copy of what was on screen.
+    /// With the input redirected there is nobody to protect and the line is just read, nothing
+    /// more.
     /// </remarks>
-    private static string LeggiSegreto()
+    private static string ReadTokenFromConsole()
     {
         if (Console.IsInputRedirected)
         {
@@ -148,64 +148,64 @@ public static class Comandi
 
         Console.Write("Paste that machine's token (it will not be shown): ");
 
-        StringBuilder costruito = new();
+        StringBuilder typedToken = new();
 
         while (true)
         {
-            ConsoleKeyInfo tasto = Console.ReadKey(intercept: true);
+            ConsoleKeyInfo key = Console.ReadKey(intercept: true);
 
-            if (tasto.Key == ConsoleKey.Enter)
+            if (key.Key == ConsoleKey.Enter)
             {
                 break;
             }
 
-            if (tasto.Key == ConsoleKey.Backspace)
+            if (key.Key == ConsoleKey.Backspace)
             {
-                if (costruito.Length > 0)
+                if (typedToken.Length > 0)
                 {
-                    costruito.Length--;
+                    typedToken.Length--;
                 }
 
                 continue;
             }
 
-            if (!char.IsControl(tasto.KeyChar))
+            if (!char.IsControl(key.KeyChar))
             {
-                costruito.Append(tasto.KeyChar);
+                typedToken.Append(key.KeyChar);
             }
         }
 
         Console.WriteLine();
 
-        return costruito.ToString().Trim();
+        return typedToken.ToString().Trim();
     }
 
-    private static int Share(bool soloIlValore)
+    private static int Share(bool tokenOnly)
     {
-        string percorso = CredentialDirectory.DefaultPath();
+        string storePath = CredentialDirectory.DefaultPath();
 
-        if (Leggi(percorso) is not { } credenziali)
+        if (ReadCredentials(storePath) is not { } credentials)
         {
             return 1;
         }
 
-        if (soloIlValore)
+        if (tokenOnly)
         {
-            // Write e non WriteLine, di proposito: catturando l'uscita in una variabile di
-            // shell, un ritorno a capo finale entrerebbe nel valore, e il confronto a tempo
-            // costante lo rifiuterebbe byte a byte.
-            Console.Out.Write(credenziali.Current);
+            // Write and not WriteLine, on purpose: if the output is captured into a shell
+            // variable, a trailing newline would become part of the value, and the constant-time
+            // comparison would reject it byte by byte.
+            Console.Out.Write(credentials.Current);
             return 0;
         }
 
         Console.WriteLine("Machine token for this computer:");
         Console.WriteLine();
-        Console.WriteLine("    " + credenziali.Current);
+        Console.WriteLine("    " + credentials.Current);
         Console.WriteLine();
         Console.WriteLine();
         Console.WriteLine("Certificate fingerprint of this computer:");
         Console.WriteLine();
-        Console.WriteLine("    " + Diagnosi.Certificato(percorso));
+        Console.WriteLine("    " + Diagnosis.DescribeCertificate(storePath));
         Console.WriteLine();
         Console.WriteLine("Both values are needed, and they do different jobs: the token says the");
         Console.WriteLine("caller is allowed in, the fingerprint says this machine is the one it");
@@ -222,22 +222,22 @@ public static class Comandi
 
     private static int RotateKey()
     {
-        string percorso = CredentialDirectory.DefaultPath();
+        string storePath = CredentialDirectory.DefaultPath();
 
-        if (Leggi(percorso) is not { } credenziali)
+        if (ReadCredentials(storePath) is not { } credentials)
         {
             return 1;
         }
 
-        MachineCredentials ruotate = credenziali.Rotate(DateTimeOffset.UtcNow, MachineCredentials.GracePeriod);
+        MachineCredentials rotated = credentials.Rotate(DateTimeOffset.UtcNow, MachineCredentials.GracePeriod);
 
         try
         {
-            CredentialStore.Write(percorso, ruotate);
+            CredentialStore.Write(storePath, rotated);
         }
-        catch (Exception errore) when (errore is IOException or UnauthorizedAccessException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            Console.Error.WriteLine("Could not write the credential store: " + errore.Message);
+            Console.Error.WriteLine("Could not write the credential store: " + error.Message);
             return 1;
         }
 
@@ -249,18 +249,18 @@ public static class Comandi
         Console.WriteLine("clients are not cut off at once. Update them before then.");
         Console.WriteLine();
 
-        // Va detto, perche' altrimenti si prova la chiave nuova, non funziona, e si conclude
-        // che la rotazione e' rotta. E il comando dipende dal sistema: stamparne uno che qui
-        // non esiste manderebbe l'utente a cercare perche' non funziona.
+        // The restart has to be spelled out, because otherwise you try the new key, it does not work, and you
+        // conclude that rotation is broken. And the command depends on the system: printing one
+        // that does not exist here would send the user looking for why it does not work.
         Console.WriteLine("The service keeps using the OLD key until it is restarted:");
         Console.WriteLine(OperatingSystem.IsWindows()
             ? "    Restart-Service Observer"
             : "    sudo systemctl restart observer");
 
-        // Questo verbo NON stampa il token, e non e' una dimenticanza: cosi' resta innocuo da
-        // eseguire dove l'output finisce in un registro. Ma senza le righe qui sotto chi lo
-        // esegue resta con una chiave nuova e nessun modo di sapere dove leggerla, ed e'
-        // successo davvero - a chi il comando lo aveva scritto.
+        // This verb does NOT print the token, and that is not an oversight: that way it stays
+        // harmless to run where the output ends up in a log. But without the lines below whoever
+        // runs it is left with a new key and no way to know where to read it, and that really
+        // happened - to the person who had written the command.
         Console.WriteLine();
         Console.WriteLine("Then read the new token with \"observer share\", and hand it to the");
         Console.WriteLine("machines that watch this one with \"observer token set NAME\".");
@@ -270,14 +270,14 @@ public static class Comandi
 
     private static int Doctor()
     {
-        string percorso = CredentialDirectory.DefaultPath();
+        string storePath = CredentialDirectory.DefaultPath();
 
-        Console.WriteLine("Credential store: " + percorso);
-        Console.WriteLine("Protection      : " + Diagnosi.Protezione(percorso));
-        Console.WriteLine("Local channel   : " + CanaleLocale.Prova(CanaleLocale.NomePredefinito, TimeSpan.FromSeconds(3)));
-        Console.WriteLine("Certificate     : " + Diagnosi.Certificato(percorso));
-        Console.WriteLine("Running as      : " + Diagnosi.ChiSono());
-        Console.WriteLine("Elevated        : " + Diagnosi.Elevato());
+        Console.WriteLine("Credential store: " + storePath);
+        Console.WriteLine("Protection      : " + Diagnosis.DescribeProtection(storePath));
+        Console.WriteLine("Local channel   : " + LocalChannelProbe.Probe(LocalChannelProbe.DefaultPipeName, TimeSpan.FromSeconds(3)));
+        Console.WriteLine("Certificate     : " + Diagnosis.DescribeCertificate(storePath));
+        Console.WriteLine("Running as      : " + Diagnosis.CurrentAccountName());
+        Console.WriteLine("Elevated        : " + Diagnosis.ElevatedAsText());
         Console.WriteLine();
         Console.WriteLine("To watch THIS machine you need no token: the dashboard comes in through");
         Console.WriteLine("the local channel. The token exists only so another computer can query this one.");
@@ -285,33 +285,33 @@ public static class Comandi
         return 0;
     }
 
-    private static MachineCredentials? Leggi(string percorso)
+    private static MachineCredentials? ReadCredentials(string storePath)
     {
         try
         {
-            if (CredentialStore.Read(percorso) is { } credenziali)
+            if (CredentialStore.Read(storePath) is { } credentials)
             {
-                return credenziali;
+                return credentials;
             }
 
-            Console.Error.WriteLine("There is no credential store at " + percorso + ".");
+            Console.Error.WriteLine("There is no credential store at " + storePath + ".");
             Console.Error.WriteLine("Start the Observer service once: it creates one on first run.");
 
             return null;
         }
-        catch (Exception errore) when (errore is InvalidOperationException or UnauthorizedAccessException)
+        catch (Exception error) when (error is InvalidOperationException or UnauthorizedAccessException)
         {
             Console.Error.WriteLine("Can't read the machine token: an elevated terminal is required.");
-            Console.Error.WriteLine("Store : " + percorso);
+            Console.Error.WriteLine("Store : " + storePath);
             Console.Error.WriteLine("Why   : the file grants access only to SYSTEM and to local");
             Console.Error.WriteLine("        administrators. That is deliberate — this token is");
             Console.Error.WriteLine("        valid FROM THE NETWORK and does not expire.");
-            Console.Error.WriteLine("You   : " + Diagnosi.ChiSono() + ", elevated: " + Diagnosi.Elevato());
+            Console.Error.WriteLine("You   : " + Diagnosis.CurrentAccountName() + ", elevated: " + Diagnosis.ElevatedAsText());
             Console.Error.WriteLine("Fix   : reopen the terminal with 'Run as administrator'.");
             Console.Error.WriteLine();
             Console.Error.WriteLine("Note  : to watch THIS machine you need no token at all.");
             Console.Error.WriteLine("        The dashboard comes in through the local channel.");
-            Console.Error.WriteLine("Detail: " + errore.Message);
+            Console.Error.WriteLine("Detail: " + error.Message);
 
             return null;
         }
