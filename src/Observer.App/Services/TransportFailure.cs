@@ -23,48 +23,48 @@ public static class TransportFailure
     // dentro una IOException e quella dentro una HttpRequestException, ma e' un dettaglio di
     // implementazione. Si scende finche' si trova, con un fondo per non restare appesi a una
     // catena che si morde la coda.
-    private const int ProfonditaMassima = 8;
+    private const int MaxDepth = 8;
 
     /// <summary>Traduce un guasto di trasporto nell'esito da mostrare.</summary>
-    /// <param name="eccezione">L'eccezione arrivata dal client HTTP.</param>
+    /// <param name="error">L'error arrivata dal client HTTP.</param>
     /// <returns>L'esito corrispondente.</returns>
-    public static ServiceOutcome Classifica(Exception eccezione)
+    public static ServiceOutcome Classify(Exception error)
     {
-        ArgumentNullException.ThrowIfNull(eccezione);
+        ArgumentNullException.ThrowIfNull(error);
 
         // Il timeout del client non passa mai per il socket: e' HttpClient ad annullare la
         // propria richiesta, e cio' che si vede e' un annullamento. Chi cercasse soltanto
         // SocketError.TimedOut non troverebbe mai il caso piu' frequente di tutti.
-        if (eccezione is OperationCanceledException)
+        if (error is OperationCanceledException)
         {
-            return ServiceOutcome.TempoScaduto;
+            return ServiceOutcome.TimedOut;
         }
 
-        return ErroreDiSocket(eccezione) switch
+        return FindSocketError(error) switch
         {
-            SocketError.ConnectionRefused => ServiceOutcome.ConnessioneRifiutata,
-            SocketError.TimedOut => ServiceOutcome.TempoScaduto,
+            SocketError.ConnectionRefused => ServiceOutcome.ConnectionRefused,
+            SocketError.TimedOut => ServiceOutcome.TimedOut,
 
             // Tutto il resto resta generico apposta. Un nome che non si risolve, una rete
             // irraggiungibile e un handshake TLS fallito sono guasti diversi fra loro, e
             // inventare per ciascuno un titolo che non si sa scrivere bene sarebbe peggio di
             // un titolo onestamente generico.
-            _ => ServiceOutcome.NonRaggiungibile,
+            _ => ServiceOutcome.Unreachable,
         };
     }
 
-    private static SocketError? ErroreDiSocket(Exception eccezione)
+    private static SocketError? FindSocketError(Exception error)
     {
-        Exception? corrente = eccezione;
+        Exception? current = error;
 
-        for (int passo = 0; corrente is not null && passo < ProfonditaMassima; passo++)
+        for (int depth = 0; current is not null && depth < MaxDepth; depth++)
         {
-            if (corrente is SocketException socket)
+            if (current is SocketException socket)
             {
                 return socket.SocketErrorCode;
             }
 
-            corrente = corrente.InnerException;
+            current = current.InnerException;
         }
 
         return null;

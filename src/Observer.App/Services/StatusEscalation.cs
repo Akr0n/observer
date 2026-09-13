@@ -16,17 +16,17 @@ public enum StatusTone
     /// <summary>Qualcosa non torna, ma il servizio risponde ancora.</summary>
     Warning = 1,
 
-    /// <summary>Guasto vero: quello che merita il rosso.</summary>
+    /// <summary>DisconnectedSubheading vero: quello che merita il rosso.</summary>
     Error = 2,
 }
 
 /// <summary>
 /// Cosa mostrare quando una lettura non e' andata a buon fine.
 /// </summary>
-/// <param name="Tone">Gravita', cioe' il colore della barra.</param>
+/// <param name="Tone">Severity', cioe' il colore della barra.</param>
 /// <param name="Title">Titolo della barra.</param>
 /// <param name="Text">Testo della barra.</param>
-/// <param name="Subheading">La riga sotto il titolo della finestra.</param>
+/// <param name="Subheading">La riga sotto il title della finestra.</param>
 public sealed record StatusMessage(StatusTone Tone, string Title, string Text, string Subheading);
 
 /// <summary>
@@ -39,7 +39,7 @@ public sealed record StatusMessage(StatusTone Tone, string Title, string Text, s
 /// spariva da solo un attimo dopo. Un allarme che si spegne da solo insegna a ignorare anche
 /// quelli veri.
 /// <para>
-/// L'attesa vale solo dove aspettare puo' cambiare l'esito: un servizio che non risponde
+/// L'attesa vale solo dove aspettare puo' cambiare l'outcome: un servizio che non risponde
 /// ancora, un servizio che non ha ancora campionato. Un token sbagliato o una versione
 /// incompatibile saranno identici fra un minuto, quindi si dicono subito.
 /// </para>
@@ -57,97 +57,97 @@ public static class StatusEscalation
     /// servizi — e dieci secondi lasciano un margine largo senza far sembrare la finestra
     /// bloccata a chi apre la dashboard su una macchina dove il servizio non c'e'.
     /// </remarks>
-    public static readonly TimeSpan Tolleranza = TimeSpan.FromSeconds(10);
+    public static readonly TimeSpan GracePeriod = TimeSpan.FromSeconds(10);
 
     /// <summary>
-    /// Traduce un esito in cio' che va scritto a schermo.
+    /// Traduce un outcome in cio' che va scritto a schermo.
     /// </summary>
-    /// <param name="esito">Come e' andata l'ultima lettura.</param>
-    /// <param name="problema">La frase gia' pronta prodotta dal client.</param>
-    /// <param name="durata">Da quanto tempo le letture falliscono di fila.</param>
-    /// <param name="punto">Il servizio interrogato.</param>
-    /// <param name="valoriGiaMostrati">
+    /// <param name="outcome">Come e' andata l'ultima lettura.</param>
+    /// <param name="problem">La frase gia' pronta prodotta dal client.</param>
+    /// <param name="failingFor">Da quanto tempo le letture falliscono di fila.</param>
+    /// <param name="endpoint">Il servizio interrogato.</param>
+    /// <param name="hasValuesOnScreen">
     /// True se a schermo ci sono gia' dei valori, che restano li' ma sono fermi.
     /// </param>
-    /// <returns>Titolo, testo, gravita' e riga sotto il titolo.</returns>
-    public static StatusMessage Per(
-        ServiceOutcome esito,
-        string problema,
-        TimeSpan durata,
-        ObserverEndpoint punto,
-        bool valoriGiaMostrati)
+    /// <returns>Titolo, testo, gravita' e riga sotto il title.</returns>
+    public static StatusMessage MessageFor(
+        ServiceOutcome outcome,
+        string problem,
+        TimeSpan failingFor,
+        ObserverEndpoint endpoint,
+        bool hasValuesOnScreen)
     {
-        ArgumentNullException.ThrowIfNull(punto);
+        ArgumentNullException.ThrowIfNull(endpoint);
 
-        bool ancoraInTempo = durata < Tolleranza;
+        bool withinGrace = failingFor < GracePeriod;
 
-        return esito switch
+        return outcome switch
         {
             // I tre modi di non ottenere risposta meritano la stessa attesa: appena avviata,
             // una macchina RIFIUTA la connessione perche' la porta non e' ancora aperta, e la
             // accetta poco dopo. Distinguerli serve quando il guasto dura, non durante l'avvio.
-            ServiceOutcome.NonRaggiungibile or ServiceOutcome.ConnessioneRifiutata
-                or ServiceOutcome.TempoScaduto when ancoraInTempo => new StatusMessage(
+            ServiceOutcome.Unreachable or ServiceOutcome.ConnectionRefused
+                or ServiceOutcome.TimedOut when withinGrace => new StatusMessage(
                 StatusTone.Informational,
                 "Connecting",
                 // Di una macchina REMOTA non si sa se stia partendo: sarebbe un'affermazione
                 // che da qui non si puo' fare. Si dice cio' che si sta facendo, e basta.
-                punto.Kind == EndpointKind.Locale
+                endpoint.Kind == EndpointKind.Local
                     ? "Waiting for the Observer service on this machine to answer. It may still be starting up."
-                    : $"Contacting {punto.Description}…",
-                Attesa(valoriGiaMostrati)),
+                    : $"Contacting {endpoint.Description}…",
+                WaitingSubheading(hasValuesOnScreen)),
 
-            ServiceOutcome.NonAncoraPronto when ancoraInTempo => new StatusMessage(
+            ServiceOutcome.NotReadyYet when withinGrace => new StatusMessage(
                 StatusTone.Informational,
                 "Service is starting",
-                problema,
-                Attesa(valoriGiaMostrati)),
+                problem,
+                WaitingSubheading(hasValuesOnScreen)),
 
             // Il servizio risponde: non e' irraggiungibile, ma non sta nemmeno campionando.
             // Restare "Service is starting" per sempre, con un testo che promette che si
             // risolve da solo, sarebbe una bugia che nessuno smentisce mai.
-            ServiceOutcome.NonAncoraPronto => new StatusMessage(
+            ServiceOutcome.NotReadyYet => new StatusMessage(
                 StatusTone.Warning,
                 "No readings yet",
-                $"The service on {punto.Description} is answering, but it still hasn't produced a " +
+                $"The service on {endpoint.Description} is answering, but it still hasn't produced a " +
                 "reading. Sampling is not working there: run \"observer doctor\" on that machine to " +
                 "see what it reports.",
-                Guasto(valoriGiaMostrati)),
+                DisconnectedSubheading(hasValuesOnScreen)),
 
-            // Rifiuto e silenzio non sono sinonimi di "irraggiungibile", ed e' tutto il punto:
+            // Rifiuto e silenzio non sono sinonimi di "irraggiungibile", ed e' tutto il endpoint:
             // al primo si risponde avviando un servizio, al secondo aprendo una porta. Un solo
-            // titolo per entrambi obbligava chi guarda a indovinare quale dei due fosse.
-            ServiceOutcome.ConnessioneRifiutata => Rosso("Service not running", problema, valoriGiaMostrati),
-            ServiceOutcome.TempoScaduto => Rosso("No answer", problema, valoriGiaMostrati),
+            // title per entrambi obbligava chi guarda a indovinare quale dei due fosse.
+            ServiceOutcome.ConnectionRefused => ErrorMessage("Service not running", problem, hasValuesOnScreen),
+            ServiceOutcome.TimedOut => ErrorMessage("No answer", problem, hasValuesOnScreen),
 
-            ServiceOutcome.NonRaggiungibile => Rosso("Service unreachable", problema, valoriGiaMostrati),
-            ServiceOutcome.TokenRifiutato => Rosso("Token rejected", problema, valoriGiaMostrati),
-            ServiceOutcome.VersioneIncompatibile => Rosso("Version mismatch", problema, valoriGiaMostrati),
-            ServiceOutcome.RispostaIncomprensibile => Rosso("Unrecognized response", problema, valoriGiaMostrati),
+            ServiceOutcome.Unreachable => ErrorMessage("Service unreachable", problem, hasValuesOnScreen),
+            ServiceOutcome.TokenRejected => ErrorMessage("Token rejected", problem, hasValuesOnScreen),
+            ServiceOutcome.IncompatibleVersion => ErrorMessage("Version mismatch", problem, hasValuesOnScreen),
+            ServiceOutcome.UnreadableResponse => ErrorMessage("Unrecognized response", problem, hasValuesOnScreen),
 
-            // Questi due finivano sotto il titolo generico, e non per una decisione: erano
+            // Questi due finivano sotto il title generico, e non per una decisione: erano
             // semplicemente scivolati nell'arm di scarto. Un certificato cambiato in
             // particolare merita di dirsi, perche' e' il solo guasto qui dentro a cui NON
             // conviene rispondere riprovando.
-            ServiceOutcome.RispostaInattesa => Rosso("Unexpected reply", problema, valoriGiaMostrati),
-            ServiceOutcome.ImprontaNonCorrisponde => Rosso("Certificate changed", problema, valoriGiaMostrati),
+            ServiceOutcome.UnexpectedResponse => ErrorMessage("Unexpected reply", problem, hasValuesOnScreen),
+            ServiceOutcome.FingerprintMismatch => ErrorMessage("Certificate changed", problem, hasValuesOnScreen),
 
-            _ => Rosso("Reading failed", problema, valoriGiaMostrati),
+            _ => ErrorMessage("Reading failed", problem, hasValuesOnScreen),
         };
     }
 
-    private static StatusMessage Rosso(string titolo, string problema, bool valoriGiaMostrati) =>
-        new(StatusTone.Error, titolo, problema, Guasto(valoriGiaMostrati));
+    private static StatusMessage ErrorMessage(string title, string problem, bool hasValuesOnScreen) =>
+        new(StatusTone.Error, title, problem, DisconnectedSubheading(hasValuesOnScreen));
 
-    private static string Attesa(bool valoriGiaMostrati) =>
-        valoriGiaMostrati
+    private static string WaitingSubheading(bool hasValuesOnScreen) =>
+        hasValuesOnScreen
             ? "Reconnecting: the values shown are the last successful reading."
             : "Connecting…";
 
     // I valori restano a schermo apposta: cancellarli farebbe credere che la macchina abbia
     // smesso di avere una CPU. Questa riga e' cio' che impedisce di leggerli come attuali.
-    private static string Guasto(bool valoriGiaMostrati) =>
-        valoriGiaMostrati
+    private static string DisconnectedSubheading(bool hasValuesOnScreen) =>
+        hasValuesOnScreen
             ? "Not connected: the values shown are the last successful reading."
             : "Not connected.";
 }

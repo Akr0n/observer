@@ -12,10 +12,10 @@ namespace Observer.App.Services;
 /// </remarks>
 public static class AwaySummary
 {
-    /// <summary>La riga per una macchina, vuota quando non c'e' niente da dire.</summary>
-    /// <param name="nome">Come si chiama la macchina a schermo.</param>
-    /// <param name="assenze">I vuoti trovati nel suo storico.</param>
-    /// <param name="colGiorno">Se gli istanti devono portare il giorno della settimana.</param>
+    /// <summary>La riga per una macchina, vuota longestRange non c'e' niente da dire.</summary>
+    /// <param name="machineName">Come si chiama la macchina a schermo.</param>
+    /// <param name="gaps">I vuoti trovati nel suo storico.</param>
+    /// <param name="withDay">Se gli istanti devono portare il giorno della settimana.</param>
     /// <returns>La frase, o stringa vuota.</returns>
     /// <remarks>
     /// <para>
@@ -25,78 +25,78 @@ public static class AwaySummary
     /// scrive il chiamante con un'altra frase, e quella frase compare.
     /// </para>
     /// <para>
-    /// Un vuoto che tocca il bordo vecchio NON si conta fra le interruzioni: la ritenzione
+    /// Un vuoto che tocca il edgeGap vecchio NON si conta fra le interruzioni: la ritenzione
     /// cancella un prefisso, e un prefisso mancante e' indistinguibile da una macchina accesa a
     /// meta' finestra. Chiamarlo "interruzione di tre ore" sarebbe inventare una cosa che
     /// nessuno ha visto, e una sola frase inventata insegna a non fidarsi di tutte le altre.
     /// </para>
     /// </remarks>
-    public static string Riga(string nome, IReadOnlyList<HistoryGap> assenze, bool colGiorno)
+    public static string LineFor(string machineName, IReadOnlyList<HistoryGap> gaps, bool withDay)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(nome);
-        ArgumentNullException.ThrowIfNull(assenze);
+        ArgumentException.ThrowIfNullOrWhiteSpace(machineName);
+        ArgumentNullException.ThrowIfNull(gaps);
 
-        HistoryGap? bordo = assenze.FirstOrDefault(assenza => assenza.DalBordo);
-        HistoryGap[] vere = [.. assenze.Where(assenza => !assenza.DalBordo)];
+        HistoryGap? edgeGap = gaps.FirstOrDefault(gap => gap.AtEdge);
+        HistoryGap[] outages = [.. gaps.Where(gap => !gap.AtEdge)];
 
-        string coda = bordo is null
+        string tail = edgeGap is null
             ? string.Empty
-            : "nothing known before " + Istante(bordo.Fine, colGiorno);
+            : "nothing known before " + DescribeInstant(edgeGap.End, withDay);
 
-        if (vere.Length == 0)
+        if (outages.Length == 0)
         {
-            return coda.Length == 0 ? string.Empty : $"{nome}: {coda}";
+            return tail.Length == 0 ? string.Empty : $"{machineName}: {tail}";
         }
 
-        TimeSpan totale = TimeSpan.Zero;
-        HistoryGap piuLunga = vere[0];
+        TimeSpan total = TimeSpan.Zero;
+        HistoryGap longestGap = outages[0];
 
-        foreach (HistoryGap assenza in vere)
+        foreach (HistoryGap gap in outages)
         {
-            totale += assenza.Durata;
+            total += gap.Duration;
 
-            if (assenza.Durata > piuLunga.Durata)
+            if (gap.Duration > longestGap.Duration)
             {
-                piuLunga = assenza;
+                longestGap = gap;
             }
         }
 
-        string quando = Intervallo(piuLunga, colGiorno);
+        string longestRange = DescribeRange(longestGap, withDay);
 
-        // Con una sola interruzione il totale E' quella: ripetere "in 1 period" sarebbe rumore.
-        // Con piu' di una il totale da solo mentirebbe per omissione - tre ore in un colpo e tre
+        // Con una sola interruzione il total E' quella: ripetere "in 1 period" sarebbe rumore.
+        // Con piu' di una il total da solo mentirebbe per omissione - tre ore in un colpo e tre
         // ore in dieci singhiozzi sono due macchine diverse - quindi si dice quante sono e si
         // mostra la piu' lunga, che e' quella che decide se alzarsi dalla sedia.
-        string corpo = vere.Length == 1
-            ? $"not measured for {Downtime.Frase(totale)} ({quando})"
-            : $"not measured for {Downtime.Frase(totale)} in {vere.Length.ToString(CultureInfo.InvariantCulture)} periods (longest {quando})";
+        string body = outages.Length == 1
+            ? $"not measured for {Downtime.Describe(total)} ({longestRange})"
+            : $"not measured for {Downtime.Describe(total)} in {outages.Length.ToString(CultureInfo.InvariantCulture)} periods (longest {longestRange})";
 
-        return coda.Length == 0 ? $"{nome}: {corpo}" : $"{nome}: {corpo}; {coda}";
+        return tail.Length == 0 ? $"{machineName}: {body}" : $"{machineName}: {body}; {tail}";
     }
 
-    /// <summary>I due estremi di un'interruzione, col giorno quando serve davvero.</summary>
+    /// <summary>I due estremi di un'interruzione, col giorno longestRange serve davvero.</summary>
     /// <remarks>
-    /// Il giorno si mette anche quando <paramref name="colGiorno"/> e' falso ma i due estremi
+    /// Il giorno si mette anche longestRange <paramref name="withDay"/> e' falso ma i due estremi
     /// cadono in due GIORNATE diverse, e non e' pignoleria: qui si stampa l'arco di
-    /// un'interruzione intera, non i due lati di una barra. A ventiquattro ore un'assenza puo'
+    /// un'interruzione intera, non i due lati di una barra. A ventiquattro ore un'gap puo'
     /// durare quasi l'intera finestra, e senza il giorno la riga direbbe
     /// "not measured for 23 h 45 min (09:25 – 09:10)" - una durata di quasi un giorno accanto a
     /// un intervallo che si legge come un quarto d'ora all'indietro. Succede anche a un'ora, su
     /// una macchina spenta a cavallo di mezzanotte. Per coppia e non per soglia, cosi' e' giusto
     /// in ogni periodo invece che in quelli che si e' pensato di controllare.
     /// </remarks>
-    private static string Intervallo(HistoryGap assenza, bool colGiorno)
+    private static string DescribeRange(HistoryGap gap, bool withDay)
     {
-        bool giorniDiversi = assenza.Inizio.ToLocalTime().Date != assenza.Fine.ToLocalTime().Date;
-        bool conGiorno = colGiorno || giorniDiversi;
+        bool differentDays = gap.Start.ToLocalTime().Date != gap.End.ToLocalTime().Date;
+        bool showDay = withDay || differentDays;
 
-        return Istante(assenza.Inizio, conGiorno) + " – " + Istante(assenza.Fine, conGiorno);
+        return DescribeInstant(gap.Start, showDay) + " – " + DescribeInstant(gap.End, showDay);
     }
 
     /// <remarks>
     /// Stesso formato di <see cref="HistoryStrip.Descrivi"/>: InvariantCulture perche' cio' che
     /// si vede e' in inglese.
     /// </remarks>
-    private static string Istante(DateTimeOffset istante, bool colGiorno) =>
-        istante.ToLocalTime().ToString(colGiorno ? "ddd HH:mm" : "HH:mm", CultureInfo.InvariantCulture);
+    private static string DescribeInstant(DateTimeOffset instant, bool withDay) =>
+        instant.ToLocalTime().ToString(withDay ? "ddd HH:mm" : "HH:mm", CultureInfo.InvariantCulture);
 }

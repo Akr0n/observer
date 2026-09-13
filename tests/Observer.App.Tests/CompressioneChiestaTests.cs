@@ -35,7 +35,7 @@ public class CompressioneChiestaTests
         // MISURANDO, cioe' pagare CPU che finisce nel numero mostrato per risparmiare byte che
         // non esistono. E l'esclusione non ha bisogno di alcun ramo nel servizio: il servizio
         // comprime solo cio' che gli viene chiesto, quindi basta non chiedere.
-        using SocketsHttpHandler handler = LocalChannelHandler.Crea();
+        using SocketsHttpHandler handler = LocalChannelHandler.Create();
 
         Assert.Equal(DecompressionMethods.None, handler.AutomaticDecompression);
     }

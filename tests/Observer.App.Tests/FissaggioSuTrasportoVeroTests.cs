@@ -51,7 +51,7 @@ public sealed class FissaggioSuTrasportoVeroTests : IDisposable
         string risposta = await client.GetStringAsync(server.Indirizzo, spegnimento.Token);
 
         Assert.Equal("ok", risposta);
-        Assert.False(fissaggio.HaRifiutato);
+        Assert.False(fissaggio.HasRejected);
     }
 
     [Fact]
@@ -95,14 +95,14 @@ public sealed class FissaggioSuTrasportoVeroTests : IDisposable
         await Assert.ThrowsAnyAsync<HttpRequestException>(
             () => client.SendAsync(richiesta, spegnimento.Token));
 
-        Assert.True(fissaggio.HaRifiutato);
+        Assert.True(fissaggio.HasRejected);
         Assert.Equal(0, server.ByteApplicativiRicevuti);
 
         // E l'impronta arrivata viene conservata: senza, dopo una reinstallazione legittima
         // l'utente non avrebbe da nessuna parte il valore nuovo da ricopiare.
         Assert.Equal(
             CertificateFingerprint.From(presentato.RawDataMemory.Span),
-            fissaggio.UltimaVista);
+            fissaggio.LastSeenFingerprint);
     }
 
     private static X509Certificate2 Genera(string nome)
@@ -197,7 +197,7 @@ public sealed class FissaggioSuTrasportoVeroTests : IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Fine del test.
+            // End del test.
         }
         catch (SocketException)
         {
@@ -220,7 +220,7 @@ public sealed class FissaggioSuTrasportoVeroTests : IDisposable
         /// <summary>Byte arrivati DOPO l'handshake, cioe' quelli della richiesta HTTP.</summary>
         public int ByteApplicativiRicevuti => Volatile.Read(ref ricevuti);
 
-        /// <summary>Registra quanto e' arrivato.</summary>
+        /// <summary>Record quanto e' arrivato.</summary>
         public void Conta(int quanti) => Interlocked.Add(ref ricevuti, quanti);
     }
 }

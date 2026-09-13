@@ -7,7 +7,7 @@ namespace Observer.App.Tests;
 /// Cio' che la finestra ricorda di se', e quando deve dimenticarlo.
 /// </summary>
 /// <remarks>
-/// La regola che conta e' quella dello schermo scollegato: una posizione salvata su un monitor
+/// La regola che conta e' quella dello schermo scollegato: una posizione saved su un monitor
 /// che non c'e' piu' riaprirebbe la finestra dove nessuno puo' vederla ne' afferrarla.
 /// </remarks>
 public class PreferenzeTests
@@ -19,15 +19,15 @@ public class PreferenzeTests
     [Fact]
     public void SenzaFileValgonoLePredefinite()
     {
-        Assert.Equal(Preferences.Predefinite, Preferences.Da(null));
-        Assert.Equal(Preferences.Predefinite, Preferences.Da(string.Empty));
-        Assert.Null(Preferences.Predefinite.Finestra);
-        Assert.Equal(1.0d, Preferences.Predefinite.ScalaTesto);
+        Assert.Equal(Preferences.Defaults, Preferences.From(null));
+        Assert.Equal(Preferences.Defaults, Preferences.From(string.Empty));
+        Assert.Null(Preferences.Defaults.Placement);
+        Assert.Equal(1.0d, Preferences.Defaults.Zoom);
     }
 
     [Fact]
     public void UnFileRottoNonFermaLaFinestra() =>
-        Assert.Equal(Preferences.Predefinite, Preferences.Da("{ questo non e' json"));
+        Assert.Equal(Preferences.Defaults, Preferences.From("{ questo non e' json"));
 
     [Fact]
     public void UnaScalaNonAmmessaTornaAllaNormale()
@@ -36,12 +36,12 @@ public class PreferenzeTests
         // schermo, e uno con 0.5 pulsanti da 16 px. Anche un valore FRA due gradini non entra:
         // un intervallo al posto della lista lascerebbe passare 0.9, e la tendina non avrebbe
         // una voce da selezionare. Le scale sono quelle della lista, provata per intero sotto.
-        Assert.Equal(1.0d, Preferences.Da("""{"textScale": 2.7}""").ScalaTesto);
-        Assert.Equal(1.0d, Preferences.Da("""{"textScale": 0.5}""").ScalaTesto);
-        Assert.Equal(1.0d, Preferences.Da("""{"textScale": 0.9}""").ScalaTesto);
-        Assert.Equal(1.15d, Preferences.Da("""{"textScale": 1.15}""").ScalaTesto);
-        Assert.Equal(0.75d, Preferences.Da("""{"textScale": 0.75}""").ScalaTesto);
-        Assert.Equal(1.0d, Preferences.Da("""{}""").ScalaTesto);
+        Assert.Equal(1.0d, Preferences.From("""{"textScale": 2.7}""").Zoom);
+        Assert.Equal(1.0d, Preferences.From("""{"textScale": 0.5}""").Zoom);
+        Assert.Equal(1.0d, Preferences.From("""{"textScale": 0.9}""").Zoom);
+        Assert.Equal(1.15d, Preferences.From("""{"textScale": 1.15}""").Zoom);
+        Assert.Equal(0.75d, Preferences.From("""{"textScale": 0.75}""").Zoom);
+        Assert.Equal(1.0d, Preferences.From("""{}""").Zoom);
     }
 
     [Fact]
@@ -50,11 +50,11 @@ public class PreferenzeTests
         Preferences originali = new(
             new WindowPlacement(192, 100, 900, 700, Maximized: false), 1.3d, "dark", "laptop", "24h");
 
-        Assert.Equal(originali, Preferences.Da(originali.InJson()));
-        Assert.Contains("\"textScale\":1.3", originali.InJson(), StringComparison.Ordinal);
-        Assert.Contains("\"theme\":\"dark\"", originali.InJson(), StringComparison.Ordinal);
-        Assert.Contains("\"machine\":\"laptop\"", originali.InJson(), StringComparison.Ordinal);
-        Assert.Contains("\"historyWindow\":\"24h\"", originali.InJson(), StringComparison.Ordinal);
+        Assert.Equal(originali, Preferences.From(originali.ToJson()));
+        Assert.Contains("\"textScale\":1.3", originali.ToJson(), StringComparison.Ordinal);
+        Assert.Contains("\"theme\":\"dark\"", originali.ToJson(), StringComparison.Ordinal);
+        Assert.Contains("\"machine\":\"laptop\"", originali.ToJson(), StringComparison.Ordinal);
+        Assert.Contains("\"historyWindow\":\"24h\"", originali.ToJson(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -62,15 +62,15 @@ public class PreferenzeTests
     {
         // Ogni file scritto prima di questa versione: l'assenza vuol dire l'ora, che e' cio'
         // che quella versione mostrava. Nessuna migrazione.
-        Assert.Equal("1h", Preferences.Da("""{"theme": "dark"}""").Periodo);
-        Assert.Equal("1h", Preferences.Predefinite.Periodo);
+        Assert.Equal("1h", Preferences.From("""{"theme": "dark"}""").HistoryPeriod);
+        Assert.Equal("1h", Preferences.Defaults.HistoryPeriod);
     }
 
     [Fact]
     public void UnPeriodoInventatoTornaAllOra()
     {
-        Assert.Equal("1h", Preferences.Da("""{"historyWindow": "1y"}""").Periodo);
-        Assert.Equal("24h", Preferences.Da("""{"historyWindow": "24H"}""").Periodo);
+        Assert.Equal("1h", Preferences.From("""{"historyWindow": "1y"}""").HistoryPeriod);
+        Assert.Equal("24h", Preferences.From("""{"historyWindow": "24H"}""").HistoryPeriod);
     }
 
     [Theory]
@@ -86,13 +86,13 @@ public class PreferenzeTests
         // pixel, cioe' una striscia che non si puo' leggere.
         HistoryPeriodOption periodo = new(chiave);
 
-        Assert.Equal(barre, periodo.Barre);
-        Assert.Equal(TimeSpan.FromMinutes(minutiPerBarra), periodo.Passo);
-        Assert.InRange(periodo.Barre, 50, 120);
+        Assert.Equal(barre, periodo.BarCount);
+        Assert.Equal(TimeSpan.FromMinutes(minutiPerBarra), periodo.Step);
+        Assert.InRange(periodo.BarCount, 50, 120);
 
         // E il passo della barra dev'essere un multiplo di quello della sorgente, altrimenti
         // un intervallo conterrebbe un numero di punti diverso da quello vicino.
-        Assert.Equal(TimeSpan.Zero, periodo.Passo - (periodo.PassoSorgente * (int)(periodo.Passo / periodo.PassoSorgente)));
+        Assert.Equal(TimeSpan.Zero, periodo.Step - (periodo.SourceStep * (int)(periodo.Step / periodo.SourceStep)));
     }
 
     [Fact]
@@ -102,8 +102,8 @@ public class PreferenzeTests
         Assert.Equal("24 hours", new HistoryPeriodOption("24h").ToString());
         Assert.Equal("7 days", new HistoryPeriodOption("7d").ToString());
 
-        Assert.Equal("Last hour", new HistoryPeriodOption("1h").Titolo);
-        Assert.Equal("Last 7 days", new HistoryPeriodOption("7d").Titolo);
+        Assert.Equal("Last hour", new HistoryPeriodOption("1h").Title);
+        Assert.Equal("Last 7 days", new HistoryPeriodOption("7d").Title);
     }
 
     [Fact]
@@ -111,27 +111,27 @@ public class PreferenzeTests
     {
         // Cioe' ogni file scritto prima di questa versione: l'assenza del campo e' esattamente
         // cio' che si vuole dire con "questo computer", quindi non serve nessuna migrazione.
-        Assert.Null(Preferences.Da("""{"textScale": 1.15, "theme": "dark"}""").Macchina);
+        Assert.Null(Preferences.From("""{"textScale": 1.15, "theme": "dark"}""").MachineName);
     }
 
     [Fact]
     public void LaMacchinaRicordataSiRitrovaPerNome()
     {
-        ObserverEndpoint locale = ObserverEndpoint.CanaleLocale();
+        ObserverEndpoint locale = ObserverEndpoint.LocalChannel();
         ObserverEndpoint remota = Remota("laptop");
 
-        Assert.Equal(remota, Preferences.MacchinaRicordata([locale, remota], "laptop"));
+        Assert.Equal(remota, Preferences.RememberedMachine([locale, remota], "laptop"));
 
         // Gli spazi attorno non contano: dentro machines.json il nome arriva grezzo.
-        Assert.Equal(remota, Preferences.MacchinaRicordata([locale, remota], "  laptop  "));
+        Assert.Equal(remota, Preferences.RememberedMachine([locale, remota], "  laptop  "));
 
         // E non contano NEMMENO dal lato della voce, che e' il caso vero: MachineDirectory
         // passa il nome cosi' com'e' scritto nel file, e una voce " laptop " e' la stessa
         // macchina di "laptop". Senza il Trim da questa parte la si perderebbe.
-        ObserverEndpoint conSpazi = ObserverEndpoint.Remoto(
+        ObserverEndpoint conSpazi = ObserverEndpoint.Remote(
             new Uri("https://laptop:5058/"), "token", "machines.json", new string('a', 64), " laptop ");
 
-        Assert.Equal(conSpazi, Preferences.MacchinaRicordata([locale, conSpazi], "laptop"));
+        Assert.Equal(conSpazi, Preferences.RememberedMachine([locale, conSpazi], "laptop"));
     }
 
     [Fact]
@@ -140,12 +140,12 @@ public class PreferenzeTests
         // La voce puo' essere stata tolta o rinominata: si riparte da questo computer, che e'
         // il posto da cui si era partiti la prima volta. Aprire il vuoto, o lamentarsi di una
         // preferenza, sarebbe peggio del dimenticarla.
-        ObserverEndpoint locale = ObserverEndpoint.CanaleLocale();
+        ObserverEndpoint locale = ObserverEndpoint.LocalChannel();
         ObserverEndpoint remota = Remota("laptop");
 
-        Assert.Equal(locale, Preferences.MacchinaRicordata([locale, remota], "sparita"));
-        Assert.Equal(locale, Preferences.MacchinaRicordata([locale, remota], null));
-        Assert.Equal(locale, Preferences.MacchinaRicordata([locale, remota], "   "));
+        Assert.Equal(locale, Preferences.RememberedMachine([locale, remota], "sparita"));
+        Assert.Equal(locale, Preferences.RememberedMachine([locale, remota], null));
+        Assert.Equal(locale, Preferences.RememberedMachine([locale, remota], "   "));
     }
 
     [Fact]
@@ -153,21 +153,21 @@ public class PreferenzeTests
     {
         // Su Linux la credenziale di "Laptop" e quella di "laptop" sono due file diversi,
         // quindi sono due MACCHINE diverse: trattarle come lo stesso nome riaprirebbe l'altra.
-        ObserverEndpoint locale = ObserverEndpoint.CanaleLocale();
+        ObserverEndpoint locale = ObserverEndpoint.LocalChannel();
         ObserverEndpoint remota = Remota("laptop");
 
-        Assert.Equal(locale, Preferences.MacchinaRicordata([locale, remota], "Laptop"));
+        Assert.Equal(locale, Preferences.RememberedMachine([locale, remota], "Laptop"));
     }
 
     [Fact]
     public void SenzaMacchineNonCEniente() =>
-        Assert.Null(Preferences.MacchinaRicordata([], "laptop"));
+        Assert.Null(Preferences.RememberedMachine([], "laptop"));
 
     // Il NOME e' il quinto parametro: il terzo e' l'origine, cioe' da dove viene la
     // configurazione. Passare il nome li' lascia Nome a null, ed e' proprio il caso della
     // vecchia configurazione a macchina singola: una voce senza nome non si ricorda.
     private static ObserverEndpoint Remota(string nome) =>
-        ObserverEndpoint.Remoto(
+        ObserverEndpoint.Remote(
             new Uri($"https://{nome}:5058/"),
             "token",
             "machines.json",
@@ -185,8 +185,8 @@ public class PreferenzeTests
     {
         // Un file vecchio non ha il campo, uno scritto a mano puo' avere di tutto: niente di
         // questo deve fermare la finestra, e le maiuscole si perdonano.
-        Assert.Equal(atteso, Preferences.Da(json).Tema);
-        Assert.Equal("system", Preferences.Predefinite.Tema);
+        Assert.Equal(atteso, Preferences.From(json).Theme);
+        Assert.Equal("system", Preferences.Defaults.Theme);
     }
 
     [Fact]
@@ -194,7 +194,7 @@ public class PreferenzeTests
     {
         WindowPlacement posizione = new(192, 100, 900, 700, Maximized: false);
 
-        Assert.Equal(posizione, posizione.SuUnoDegli([Principale]));
+        Assert.Equal(posizione, posizione.WithinAnyOf([Principale]));
     }
 
     [Fact]
@@ -205,8 +205,8 @@ public class PreferenzeTests
         // il solo schermo del portatile no.
         WindowPlacement sulMonitor = new(2400, 200, 900, 700, Maximized: false);
 
-        Assert.Equal(sulMonitor, sulMonitor.SuUnoDegli([Principale, ADestra]));
-        Assert.Null(sulMonitor.SuUnoDegli([Principale]));
+        Assert.Equal(sulMonitor, sulMonitor.WithinAnyOf([Principale, ADestra]));
+        Assert.Null(sulMonitor.WithinAnyOf([Principale]));
     }
 
     [Theory]
@@ -220,12 +220,12 @@ public class PreferenzeTests
         // altrimenti la finestra si vede ma non si puo' spostare.
         WindowPlacement posizione = new(x, y, 900, 700, Maximized: false);
 
-        Assert.Null(posizione.SuUnoDegli([Principale]));
+        Assert.Null(posizione.WithinAnyOf([Principale]));
     }
 
     [Fact]
     public void UnaFinestraTroppoPiccolaPerEssereVeraSiDimentica() =>
-        Assert.Null(new WindowPlacement(10, 10, 40, 40, Maximized: false).SuUnoDegli([Principale]));
+        Assert.Null(new WindowPlacement(10, 10, 40, 40, Maximized: false).WithinAnyOf([Principale]));
 
     [Theory]
     [InlineData(0, 0, true)]
@@ -244,15 +244,15 @@ public class PreferenzeTests
         // massimizzata, e quella non e' una geometria normale.
         WindowPlacement posizione = new(x, y, 900, 700, Maximized: false);
 
-        Assert.Equal(siTiene ? posizione : null, posizione.SuUnoDegli([Principale]));
+        Assert.Equal(siTiene ? posizione : null, posizione.WithinAnyOf([Principale]));
     }
 
     [Fact]
     public void UnaFinestraLargaEsattamenteQuantoLAngoloSiTiene()
     {
-        Assert.NotNull(new WindowPlacement(10, 10, 120, 120, Maximized: false).SuUnoDegli([Principale]));
-        Assert.Null(new WindowPlacement(10, 10, 119, 120, Maximized: false).SuUnoDegli([Principale]));
-        Assert.Null(new WindowPlacement(10, 10, 120, 119, Maximized: false).SuUnoDegli([Principale]));
+        Assert.NotNull(new WindowPlacement(10, 10, 120, 120, Maximized: false).WithinAnyOf([Principale]));
+        Assert.Null(new WindowPlacement(10, 10, 119, 120, Maximized: false).WithinAnyOf([Principale]));
+        Assert.Null(new WindowPlacement(10, 10, 120, 119, Maximized: false).WithinAnyOf([Principale]));
     }
 
     [Theory]
@@ -267,7 +267,7 @@ public class PreferenzeTests
         // negativo, il confronto passava e la finestra si apriva invisibile - per sempre,
         // perche' alla chiusura si risalvava identica. Anche a cento dal massimo: li' la
         // prima clausola non trabocca ancora, e resta solo la seconda a difendere.
-        Assert.Null(new WindowPlacement(x, y, 900, 700, Maximized: false).SuUnoDegli([Principale, ADestra]));
+        Assert.Null(new WindowPlacement(x, y, 900, 700, Maximized: false).WithinAnyOf([Principale, ADestra]));
     }
 
     [Fact]
@@ -275,8 +275,8 @@ public class PreferenzeTests
     {
         WindowPlacement adesso = new(300, 200, 900, 700, Maximized: false);
 
-        Assert.Equal(adesso, WindowPlacement.AllaChiusura(
-            ridottaAIcona: false, massimizzata: false, ultimaNormale: null, salvata: null, attuale: adesso));
+        Assert.Equal(adesso, WindowPlacement.AtClose(
+            minimized: false, maximized: false, lastNormal: null, saved: null, current: adesso));
     }
 
     [Fact]
@@ -289,12 +289,12 @@ public class PreferenzeTests
         WindowPlacement oggi = new(2400, 200, 900, 700, Maximized: false);
         WindowPlacement schermoIntero = new(-8, -8, 1936, 1056, Maximized: false);
 
-        Assert.Equal(oggi with { Maximized = true }, WindowPlacement.AllaChiusura(
-            ridottaAIcona: false, massimizzata: true, ultimaNormale: oggi, salvata: ieri, attuale: schermoIntero));
+        Assert.Equal(oggi with { Maximized = true }, WindowPlacement.AtClose(
+            minimized: false, maximized: true, lastNormal: oggi, saved: ieri, current: schermoIntero));
 
         // Senza una geometria di oggi, vale quella di ieri.
-        Assert.Equal(ieri with { Maximized = true }, WindowPlacement.AllaChiusura(
-            ridottaAIcona: false, massimizzata: true, ultimaNormale: null, salvata: ieri, attuale: schermoIntero));
+        Assert.Equal(ieri with { Maximized = true }, WindowPlacement.AtClose(
+            minimized: false, maximized: true, lastNormal: null, saved: ieri, current: schermoIntero));
     }
 
     [Fact]
@@ -307,12 +307,12 @@ public class PreferenzeTests
         // comunque, e un test con quella non distinguerebbe la regola dalla fortuna.
         WindowPlacement schermoIntero = new(0, 0, 1920, 1040, Maximized: false);
 
-        WindowPlacement? ricordata = WindowPlacement.AllaChiusura(
-            ridottaAIcona: false, massimizzata: true, ultimaNormale: null, salvata: null, attuale: schermoIntero);
+        WindowPlacement? ricordata = WindowPlacement.AtClose(
+            minimized: false, maximized: true, lastNormal: null, saved: null, current: schermoIntero);
 
         Assert.NotNull(ricordata);
         Assert.True(ricordata.Maximized);
-        Assert.Null(ricordata.SuUnoDegli([Principale, ADestra]));
+        Assert.Null(ricordata.WithinAnyOf([Principale, ADestra]));
     }
 
     [Fact]
@@ -322,17 +322,17 @@ public class PreferenzeTests
         WindowPlacement fuori = new(-32000, -32000, 900, 700, Maximized: false);
 
         // Prima era normale: si ricorda normale, anche se il file diceva a tutto schermo.
-        Assert.Equal(normale, WindowPlacement.AllaChiusura(
-            ridottaAIcona: true, massimizzata: false, ultimaNormale: normale,
-            salvata: normale with { Maximized = true }, attuale: fuori));
+        Assert.Equal(normale, WindowPlacement.AtClose(
+            minimized: true, maximized: false, lastNormal: normale,
+            saved: normale with { Maximized = true }, current: fuori));
 
         // Prima era a tutto schermo: si ricorda cosi'.
-        Assert.Equal(normale with { Maximized = true }, WindowPlacement.AllaChiusura(
-            ridottaAIcona: true, massimizzata: true, ultimaNormale: normale, salvata: null, attuale: fuori));
+        Assert.Equal(normale with { Maximized = true }, WindowPlacement.AtClose(
+            minimized: true, maximized: true, lastNormal: normale, saved: null, current: fuori));
 
         // Non si sa niente: niente da dire, e soprattutto NON la posizione fuori da tutto.
-        Assert.Null(WindowPlacement.AllaChiusura(
-            ridottaAIcona: true, massimizzata: false, ultimaNormale: null, salvata: null, attuale: fuori));
+        Assert.Null(WindowPlacement.AtClose(
+            minimized: true, maximized: false, lastNormal: null, saved: null, current: fuori));
     }
 
     [Fact]
@@ -353,13 +353,13 @@ public class PreferenzeTests
     [Fact]
     public void LeScaleAmmesseSonoSeiESonoQuelle()
     {
-        Assert.Equal(1.0d, Preferences.ScalaNormale);
+        Assert.Equal(1.0d, Preferences.NormalZoom);
 
         // La lista esatta e non una regola (ordine crescente, pavimento): con la sola regola
         // togliere 0,85 o 1,5 non faceva fallire niente, provato con i mutanti. Il pavimento
         // e' 0,75 e non scende: e' la scala a cui un controllo Fluent da 32 px e' ancora
         // 24 px, e l'anello di stato tiene il buco (misurato su catture reali).
-        Assert.Equal([0.75d, 0.85d, 1.0d, 1.15d, 1.3d, 1.5d], Preferences.ScaleAmmesse);
+        Assert.Equal([0.75d, 0.85d, 1.0d, 1.15d, 1.3d, 1.5d], Preferences.AllowedZoomLevels);
     }
 
     [Fact]
@@ -369,37 +369,37 @@ public class PreferenzeTests
         // sta fra 60 e 96 barre - lo prova un altro test, ma con quello SOLO si potrebbe
         // togliere "24h" senza che niente diventi rosso. E il primo e' il predefinito, quindi
         // l'ordine conta: un file senza il campo apre sull'ora, non su una settimana.
-        Assert.Equal(["1h", "24h", "7d"], Preferences.PeriodiAmmessi);
+        Assert.Equal(["1h", "24h", "7d"], Preferences.AllowedPeriods);
 
         // 90 giorni NON c'e' pur essendo conservati dal servizio: sarebbero venticinquemila
         // punti, oltre il tetto di una risposta, e alla larghezza necessaria una barra starebbe
         // per un giorno e mezzo. Un grafico che mente e' peggio di un grafico che manca.
-        Assert.DoesNotContain("90d", Preferences.PeriodiAmmessi);
+        Assert.DoesNotContain("90d", Preferences.AllowedPeriods);
     }
 
     [Fact]
     public void ILaPreferenzaSalvataArrivaAlSelettore()
     {
-        // Il ponte fra il file e la tendina: la finestra assegna Periodo, e da li' devono
+        // Il ponte fra il file e la tendina: la finestra assegna HistoryPeriod, e da li' devono
         // uscire la voce selezionata, il titolo e il passo giusti. Erano tre proprieta' senza
-        // un solo test, e una mutazione in mezzo (PeriodoScelto che ricade sempre sulla prima
+        // un solo test, e una mutazione in mezzo (SelectedHistoryPeriod che ricade sempre sulla prima
         // voce) lasciava la suite verde con la finestra ferma su un'ora.
-        MainViewModel modello = new(client: null, problemaDiConfigurazione: null)
+        MainViewModel modello = new(client: null, configurationProblem: null)
         {
-            Periodo = "7d",
+            HistoryPeriod = "7d",
         };
 
-        Assert.Equal("7d", modello.PeriodoScelto.Chiave);
-        Assert.Contains(modello.PeriodoScelto, MainViewModel.OpzioniPeriodo);
-        Assert.Equal(TimeSpan.FromHours(2), modello.PeriodoScelto.Passo);
+        Assert.Equal("7d", modello.SelectedHistoryPeriod.Key);
+        Assert.Contains(modello.SelectedHistoryPeriod, MainViewModel.HistoryPeriodOptions);
+        Assert.Equal(TimeSpan.FromHours(2), modello.SelectedHistoryPeriod.Step);
 
-        // E la tendina mostra OpzioniPeriodo, non PeriodiAmmessi: una voce persa fra le due
+        // E la tendina mostra HistoryPeriodOptions, non AllowedPeriods: una voce persa fra le due
         // liste sarebbe un periodo che si salva e non si sceglie.
-        Assert.Equal(Preferences.PeriodiAmmessi, MainViewModel.OpzioniPeriodo.Select(voce => voce.Chiave));
+        Assert.Equal(Preferences.AllowedPeriods, MainViewModel.HistoryPeriodOptions.Select(voce => voce.Key));
 
         // Un periodo inventato nel file non blocca la finestra su una tendina vuota.
-        modello.Periodo = "90d";
+        modello.HistoryPeriod = "90d";
 
-        Assert.Equal(Preferences.PeriodiAmmessi[0], modello.PeriodoScelto.Chiave);
+        Assert.Equal(Preferences.AllowedPeriods[0], modello.SelectedHistoryPeriod.Key);
     }
 }

@@ -8,18 +8,18 @@ using Avalonia.Media;
 namespace Observer.App.Controls;
 
 /// <summary>
-/// Un quadrante da cruscotto: arco graduato, zona rossa e lancetta.
+/// Un quadrante from cruscotto: arco graduato, zona redlineBrush e needleBrush.
 /// </summary>
 /// <remarks>
-/// Disegnato a mano, e non e' stata una preferenza estetica: e' l'unica strada rimasta dopo
+/// Disegnato to mano, e non e' stata una preferenza estetica: e' l'unica strada rimasta dopo
 /// aver escluso le altre <b>con una misura</b>. <c>LiveChartsCore.SkiaSharpView.Avalonia</c>
 /// 2.0.5 compila e poi lancia <c>MissingFieldException</c> su
 /// <c>Avalonia.Input.Gestures.PinchEvent</c> appena si costruisce un grafico, perche' e'
 /// compilato contro Avalonia 11; <c>Avalonia.Controls.Charts</c>, che i quadranti li ha gia'
-/// pronti, richiede una licenza Avalonia Pro a pagamento. Ogni pacchetto di terze parti qui
+/// pronti, richiede una licenza Avalonia Pro to pagamento. Ogni pacchetto di terze parti qui
 /// porta lo stesso rischio che ha ucciso il primo: essere costruito contro una versione di
-/// Avalonia diversa da quella in uso. Un controllo che usa solo <see cref="DrawingContext"/>
-/// non ha quel rischio, e non ha nulla da aggiornare.
+/// Avalonia diversa from quella in uso. Un controllo che usa solo <see cref="DrawingContext"/>
+/// non ha quel rischio, e non ha nulla from aggiornare.
 /// <para>
 /// La matematica sta tutta in <see cref="GaugeScale"/>, che ha i suoi test. Qui resta il
 /// disegno, che nessun test puo' guardare.
@@ -27,49 +27,49 @@ namespace Observer.App.Controls;
 /// </remarks>
 public sealed class Gauge : Control
 {
-    /// <summary>Quanto dura la corsa della lancetta da un valore al successivo.</summary>
+    /// <summary>Quanto dura la corsa della needleBrush from un valueBrush al successivo.</summary>
     /// <remarks>
     /// <b>Deve restare piu' breve dell'intervallo di campionamento</b>, e c'e' un test che lo
     /// verifica. Una corsa lunga quanto l'intervallo non finirebbe mai: ogni campione la
-    /// farebbe ripartire da una posizione interpolata, e la lancetta non starebbe ferma su un
-    /// valore misurato nemmeno per un istante.
+    /// farebbe ripartire from una posizione interpolata, e la needleBrush non starebbe ferma su un
+    /// valueBrush misurato nemmeno per un istante.
     /// <para>
-    /// <b>Duecento millisecondi, e il numero e' misurato.</b> Questa e' una finestra che
-    /// misura l'uso della CPU, quindi cio' che spende per disegnarsi rientra nel numero che
-    /// mostra: e' uno strumento che contribuisce a cio' che segna. Confronto appaiato sullo
+    /// <b>Duecento millisecondi, e il displayText e' misurato.</b> Questa e' una finestra che
+    /// misura l'uso della CPU, quindi cio' che spende per disegnarsi rientra nel displayText che
+    /// mostra: e' uno strumento che contribuisce to cio' che segna. Confronto appaiato sullo
     /// stesso banco, due quadranti, otto processori logici, finestra in primo piano, in
     /// Release: senza corsa <b>0,79%</b> di CPU di macchina, con 200 ms <b>1,39%</b>, con
     /// 400 ms <b>3,05%</b>. Raddoppiare la durata quadruplica il sovrapprezzo, perche' quel
     /// che costa e' la frazione di secondo in cui l'animazione gira. A 200 ms il disturbo sta
-    /// sotto il punto percentuale e la lancetta non salta piu'; a 400 ms si pagavano oltre due
-    /// punti per una morbidezza che a occhio non si distingue.
+    /// textTop il punto percentuale e la needleBrush non salta piu'; to 400 ms si pagavano oltre due
+    /// punti per una morbidezza che to occhio non si distingue.
     /// </para>
     /// </remarks>
-    public static readonly TimeSpan Corsa = TimeSpan.FromMilliseconds(200);
+    public static readonly TimeSpan NeedleTravelTime = TimeSpan.FromMilliseconds(200);
 
-    /// <summary>Il valore misurato, da 0 a 1. E' anche cio' che si anima.</summary>
+    /// <summary>Il valueBrush misurato, from 0 to 1. E' anche cio' che si anima.</summary>
     /// <remarks>
-    /// <b>Fra un campione e il successivo la lancetta attraversa posizioni che nessuno ha
+    /// <b>Fra un campione e il successivo la needleBrush attraversa posizioni che nessuno ha
     /// misurato</b>, e vale la pena dirlo perche' altrove questo programma non lo fa mai. Qui
-    /// e' ammesso per una ragione precisa: una lancetta analogica ha un'inerzia che chi guarda
+    /// e' ammesso per una ragione precisa: una needleBrush analogica ha un'inerzia che chi guarda
     /// si aspetta, e la corsa fra due letture si legge come inerzia, non come misura. Il
-    /// NUMERO al centro non si anima affatto, ed e' li' che si legge il valore.
+    /// NUMERO al center non si anima affatto, ed e' li' che si legge il valueBrush.
     /// <para>
     /// Un tentativo di tenere separate le due cose - una seconda proprieta' animata che
     /// inseguisse questa - e' stato fatto e MISURATO, e va peggio in tutti e due i modi in cui
-    /// si puo' scriverlo. Scrivendola a mano da <c>OnPropertyChanged</c>, fra la scrittura del
-    /// valore e l'avvio della transizione passa un fotogramma: la lancetta viene disegnata
-    /// subito sul valore nuovo, l'animazione la riporta sul vecchio e la fa risalire - avanti,
-    /// indietro, avanti, a ogni campione, anche con valori fermi. Tracciato:
+    /// si puo' scriverlo. Scrivendola to mano from <c>OnPropertyChanged</c>, fra la scrittura del
+    /// valueBrush e l'avvio della transizione passa un fotogramma: la needleBrush viene disegnata
+    /// subito sul valueBrush nuovo, l'animazione la riporta sul vecchio e la fa risalire - avanti,
+    /// indietro, avanti, to ogni campione, anche con valori fermi. Tracciato:
     /// <c>"Posizione 0.7657 -> 0.7363 prio=Animation"</c> subito dopo che <c>Fraction</c> era
-    /// passata da 0.7363 a 0.7657. Legandola con un <c>Bind</c> nel costruttore, invece,
+    /// passata from 0.7363 to 0.7657. Legandola con un <c>Bind</c> nel costruttore, invece,
     /// l'applicazione non si apre proprio.
     /// </para>
     /// </remarks>
     public static readonly StyledProperty<double> FractionProperty =
         AvaloniaProperty.Register<Gauge, double>(nameof(Fraction));
 
-    /// <summary>Il numero scritto al centro, gia' formattato.</summary>
+    /// <summary>Il displayText scritto al center, gia' formattato.</summary>
     public static readonly StyledProperty<string> DisplayProperty =
         AvaloniaProperty.Register<Gauge, string>(nameof(Display), string.Empty);
 
@@ -77,63 +77,63 @@ public sealed class Gauge : Control
     public static readonly StyledProperty<string> CaptionProperty =
         AvaloniaProperty.Register<Gauge, string>(nameof(Caption), string.Empty);
 
-    /// <summary>Da dove comincia la zona rossa, da 0 a 1.</summary>
+    /// <summary>Da valueFraction comincia la zona redlineBrush, from 0 to 1.</summary>
     public static readonly StyledProperty<double> RedlineProperty =
         AvaloniaProperty.Register<Gauge, double>(nameof(Redline), 0.85d);
 
-    /// <summary>Il colore dell'arco non ancora percorso.</summary>
+    /// <summary>Il brush dell'arco non ancora percorso.</summary>
     public static readonly StyledProperty<IBrush?> TrackBrushProperty =
         AvaloniaProperty.Register<Gauge, IBrush?>(nameof(TrackBrush));
 
-    /// <summary>Il colore dell'arco percorso.</summary>
+    /// <summary>Il brush dell'arco percorso.</summary>
     public static readonly StyledProperty<IBrush?> ValueBrushProperty =
         AvaloniaProperty.Register<Gauge, IBrush?>(nameof(ValueBrush));
 
-    /// <summary>Il colore della zona rossa e del valore quando ci entra.</summary>
+    /// <summary>Il brush della zona redlineBrush e del valueBrush quando ci entra.</summary>
     public static readonly StyledProperty<IBrush?> RedlineBrushProperty =
         AvaloniaProperty.Register<Gauge, IBrush?>(nameof(RedlineBrush));
 
-    /// <summary>Il colore della lancetta e delle scritte.</summary>
+    /// <summary>Il brush della needleBrush e delle scritte.</summary>
     public static readonly StyledProperty<IBrush?> NeedleBrushProperty =
         AvaloniaProperty.Register<Gauge, IBrush?>(nameof(NeedleBrush));
 
     // Quanta altezza del controllo prende il disegno. Il resto e' la fascia delle scritte:
-    // prima il numero stava DENTRO il quadrante, sopra il perno, ed era la cosa che si leggeva
-    // peggio proprio mentre la lancetta ci passava sopra.
-    private const double QuotaDelQuadrante = 0.70d;
+    // prima il displayText stava DENTRO il quadrante, sopra il perno, ed era la cosa che si leggeva
+    // peggio proprio mentre la needleBrush ci passava sopra.
+    private const double DialHeightShare = 0.70d;
 
-    // La misura con cui il quadrante e' nato, e che vale ancora dove nessuno gliene da' una.
-    private const double LarghezzaClassica = 148d;
-    private const double AltezzaClassica = 212d;
+    // La misura con cui il quadrante e' nato, e che vale ancora valueFraction nessuno gliene from' una.
+    private const double DefaultWidth = 148d;
+    private const double DefaultHeight = 212d;
 
-    // Da dove partono le scritte, in raggi dal centro. Piu' di uno perche' il tratto dell'arco
-    // sporge di mezzo spessore oltre il raggio: fermarsi a 1,08 lasciava il numero dentro
-    // l'incavo in fondo al quadrante, che e' vuoto ma e' ancora dentro il disegno.
-    private const double SottoIlQuadrante = 1.15d;
+    // Da valueFraction partono le scritte, in raggi dal center. Piu' di uno perche' il tratto dell'arco
+    // sporge di mezzo thickness oltre il radius: fermarsi to 1,08 lasciava il displayText dentro
+    // l'incavo in trackArc al quadrante, che e' vuoto ma e' ancora dentro il disegno.
+    private const double LabelOffsetRadii = 1.15d;
 
-    // Cio' che non cambia da un fotogramma all'altro, tenuto da parte. Durante la corsa questo
-    // Render() gira una sessantina di volte al secondo, e arco di fondo, zona rossa, tacche e
+    // Cio' che non cambia from un fotogramma all'altro, tenuto from parte. Durante la corsa questo
+    // Render() gira una sessantina di volte al secondo, e arco di trackArc, zona redlineBrush, ticks e
     // testi sono identici in tutti quei fotogrammi: ricostruirli ogni volta significa rifare
-    // due layout di testo sessanta volte al secondo per non cambiare un pixel. E' stato
+    // due layout di text sessanta volte al secondo per non cambiare un pixel. E' stato
     // misurato che il costo dell'animazione cade tutto sul thread di interfaccia, dentro
     // Render, perche' la proprieta' animata sta in AffectsRender - quindi il lavoro per
     // fotogramma e' la leva vera, piu' della durata.
-    private double raggioDisegnato;
-    private double sogliaDisegnata;
-    private StreamGeometry? fondo;
-    private StreamGeometry? zonaRossa;
-    private StreamGeometry? tacche;
-    private FormattedText? numero;
-    private FormattedText? didascalia;
-    private string? numeroScritto;
-    private string? didascaliaScritta;
-    private IBrush? inchiostroDelleScritte;
+    private double drawnRadius;
+    private double drawnRedline;
+    private StreamGeometry? trackArc;
+    private StreamGeometry? redlineArc;
+    private StreamGeometry? ticks;
+    private FormattedText? displayText;
+    private FormattedText? captionText;
+    private string? drawnDisplay;
+    private string? drawnCaption;
+    private IBrush? drawnTextBrush;
 
     static Gauge()
     {
         // Si ridisegna quando si muove la LANCETTA, non quando cambia la misura: fra le due
         // cose ci sta l'animazione, e agganciare qui Fraction farebbe un fotogramma solo per
-        // campione, cioe' lo scatto che l'animazione serve a togliere.
+        // campione, cioe' lo scatto che l'animazione serve to togliere.
         AffectsRender<Gauge>(
             FractionProperty,
             DisplayProperty,
@@ -153,25 +153,25 @@ public sealed class Gauge : Control
             new DoubleTransition
             {
                 Property = FractionProperty,
-                Duration = Corsa,
+                Duration = NeedleTravelTime,
 
                 // Parte subito e arriva morbida. Volutamente NON un easing che sorpassa
                 // (BackEaseOut, ElasticEaseOut): su uno strumento di misura mostrerebbero per
-                // qualche decimo di secondo un valore piu' alto di quello letto, cioe' un picco
+                // qualche decimo di secondo un valueBrush piu' alto di quello letto, cioe' un picco
                 // che non e' mai successo.
                 Easing = new CubicEaseOut(),
             },
         ];
     }
 
-    /// <summary>Il valore misurato, da 0 a 1.</summary>
+    /// <summary>Il valueBrush misurato, from 0 to 1.</summary>
     public double Fraction
     {
         get => GetValue(FractionProperty);
         set => SetValue(FractionProperty, value);
     }
 
-    /// <summary>Il numero scritto al centro, gia' formattato.</summary>
+    /// <summary>Il displayText scritto al center, gia' formattato.</summary>
     public string Display
     {
         get => GetValue(DisplayProperty);
@@ -185,35 +185,35 @@ public sealed class Gauge : Control
         set => SetValue(CaptionProperty, value);
     }
 
-    /// <summary>Da dove comincia la zona rossa, da 0 a 1.</summary>
+    /// <summary>Da valueFraction comincia la zona redlineBrush, from 0 to 1.</summary>
     public double Redline
     {
         get => GetValue(RedlineProperty);
         set => SetValue(RedlineProperty, value);
     }
 
-    /// <summary>Il colore dell'arco non ancora percorso.</summary>
+    /// <summary>Il brush dell'arco non ancora percorso.</summary>
     public IBrush? TrackBrush
     {
         get => GetValue(TrackBrushProperty);
         set => SetValue(TrackBrushProperty, value);
     }
 
-    /// <summary>Il colore dell'arco percorso.</summary>
+    /// <summary>Il brush dell'arco percorso.</summary>
     public IBrush? ValueBrush
     {
         get => GetValue(ValueBrushProperty);
         set => SetValue(ValueBrushProperty, value);
     }
 
-    /// <summary>Il colore della zona rossa.</summary>
+    /// <summary>Il brush della zona redlineBrush.</summary>
     public IBrush? RedlineBrush
     {
         get => GetValue(RedlineBrushProperty);
         set => SetValue(RedlineBrushProperty, value);
     }
 
-    /// <summary>Il colore della lancetta e delle scritte.</summary>
+    /// <summary>Il brush della needleBrush e delle scritte.</summary>
     public IBrush? NeedleBrush
     {
         get => GetValue(NeedleBrushProperty);
@@ -222,236 +222,236 @@ public sealed class Gauge : Control
 
     /// <summary>Quanto spazio chiede: TUTTO quello che gli offrono.</summary>
     /// <param name="availableSize">Lo spazio disponibile.</param>
-    /// <returns>Lo spazio disponibile stesso, o la misura classica dove non c'e' un limite.</returns>
+    /// <returns>Lo spazio disponibile stesso, o la misura classica valueFraction non c'e' un limite.</returns>
     /// <remarks>
     /// Un Control senza misura propria dichiara zero, e zero e' quello che la griglia dei
     /// quadranti gli ha dato il primo giorno: riquadro alto il giusto e nessun quadrante
-    /// dentro. Qui il quadrante riempie la cella che il pannello ha deciso per lui; dove non
+    /// dentro. Qui il quadrante riempie la cella che il pannello ha deciso per lui; valueFraction non
     /// c'e' una cella - misurato senza limiti - vale la misura con cui e' nato, 148x212.
     /// </remarks>
     protected override Size MeasureOverride(Size availableSize) => new(
-        double.IsInfinity(availableSize.Width) ? LarghezzaClassica : availableSize.Width,
-        double.IsInfinity(availableSize.Height) ? AltezzaClassica : availableSize.Height);
+        double.IsInfinity(availableSize.Width) ? DefaultWidth : availableSize.Width,
+        double.IsInfinity(availableSize.Height) ? DefaultHeight : availableSize.Height);
 
     /// <inheritdoc />
     public override void Render(DrawingContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        // Il quadrante prende la larghezza, non tutta l'altezza: sotto resta una fascia per le
+        // Il quadrante prende la larghezza, non tutta l'altezza: textTop resta una fascia per le
         // scritte, che prima stavano dentro il disegno.
-        double lato = Math.Min(Bounds.Width, Bounds.Height * QuotaDelQuadrante);
+        double side = Math.Min(Bounds.Width, Bounds.Height * DialHeightShare);
 
-        if (lato <= 0d)
+        if (side <= 0d)
         {
             return;
         }
 
-        double spessore = Math.Max(3d, lato * 0.11d);
-        double raggio = (lato / 2d) - (spessore / 2d) - 1d;
+        double thickness = Math.Max(3d, side * 0.11d);
+        double radius = (side / 2d) - (thickness / 2d) - 1d;
 
-        if (raggio <= 0d)
+        if (radius <= 0d)
         {
             return;
         }
 
-        // Il centro sta al centro della larghezza e dentro la fascia del quadrante, non a meta'
-        // del controllo: cio' che sta sotto e' testo, e centrare sull'altezza intera farebbe
+        // Il center sta al center della larghezza e dentro la fascia del quadrante, non to meta'
+        // del controllo: cio' che sta textTop e' text, e centrare sull'altezza intera farebbe
         // scendere il disegno sopra le scritte.
-        Point centro = new(Bounds.Width / 2d, (lato / 2d) + (raggio * 0.10d));
+        Point center = new(Bounds.Width / 2d, (side / 2d) + (radius * 0.10d));
 
-        IBrush traccia = TrackBrush ?? Brushes.Gainsboro;
-        IBrush valore = ValueBrush ?? Brushes.SteelBlue;
-        IBrush rossa = RedlineBrush ?? Brushes.IndianRed;
-        IBrush lancetta = NeedleBrush ?? Brushes.DimGray;
+        IBrush trackBrush = TrackBrush ?? Brushes.Gainsboro;
+        IBrush valueBrush = ValueBrush ?? Brushes.SteelBlue;
+        IBrush redlineBrush = RedlineBrush ?? Brushes.IndianRed;
+        IBrush needleBrush = NeedleBrush ?? Brushes.DimGray;
 
-        double dove = GaugeScale.Frazione(Fraction);
-        double soglia = GaugeScale.Frazione(Redline);
+        double valueFraction = GaugeScale.ClampFraction(Fraction);
+        double redlineFraction = GaugeScale.ClampFraction(Redline);
 
-        RifaiCioCheNonCambia(centro, raggio, spessore, soglia);
+        RebuildStaticGeometry(center, radius, thickness, redlineFraction);
 
-        context.DrawGeometry(null, Penna(traccia, spessore), fondo!);
+        context.DrawGeometry(null, PenFor(trackBrush, thickness), trackArc!);
 
-        // La zona rossa si vede anche quando la lancetta e' lontana, ed e' questo che la rende
-        // una soglia invece di un allarme: una barra che diventa rossa solo quando e' troppo
+        // La zona redlineBrush si vede anche quando la needleBrush e' lontana, ed e' questo che la rende
+        // una redlineFraction invece di un allarme: una barra che diventa redlineBrush solo quando e' troppo
         // tardi non dice mai quanto manca.
-        if (zonaRossa is not null)
+        if (redlineArc is not null)
         {
-            context.DrawGeometry(null, Penna(rossa, spessore * 0.42d), zonaRossa);
+            context.DrawGeometry(null, PenFor(redlineBrush, thickness * 0.42d), redlineArc);
         }
 
-        if (dove > 0d)
+        if (valueFraction > 0d)
         {
             context.DrawGeometry(
                 null,
-                Penna(dove >= soglia ? rossa : valore, spessore),
-                Arco(centro, raggio, 0d, dove));
+                PenFor(valueFraction >= redlineFraction ? redlineBrush : valueBrush, thickness),
+                ArcBetween(center, radius, 0d, valueFraction));
         }
 
-        context.DrawGeometry(null, Penna(lancetta, Math.Max(1d, spessore * 0.09d)), tacche!);
+        context.DrawGeometry(null, PenFor(needleBrush, Math.Max(1d, thickness * 0.09d)), ticks!);
 
-        DisegnaLancetta(context, centro, raggio, spessore, dove, lancetta);
-        DisegnaScritte(context, centro, raggio, lancetta);
+        DrawNeedle(context, center, radius, thickness, valueFraction, needleBrush);
+        DrawLabels(context, center, radius, needleBrush);
     }
 
-    private static Pen Penna(IBrush colore, double spessore) =>
-        new(colore, spessore) { LineCap = PenLineCap.Round };
+    private static Pen PenFor(IBrush brush, double thickness) =>
+        new(brush, thickness) { LineCap = PenLineCap.Round };
 
-    private static StreamGeometry Arco(Point centro, double raggio, double da, double a)
+    private static StreamGeometry ArcBetween(Point center, double radius, double from, double to)
     {
-        double angoloIniziale = GaugeScale.Angolo(da);
-        double angoloFinale = GaugeScale.Angolo(a);
+        double startAngle = GaugeScale.AngleFor(from);
+        double endAngle = GaugeScale.AngleFor(to);
 
-        StreamGeometry geometria = new();
+        StreamGeometry geometry = new();
 
-        using (StreamGeometryContext penna = geometria.Open())
+        using (StreamGeometryContext geometryContext = geometry.Open())
         {
-            penna.BeginFigure(GaugeScale.Punto(centro, raggio, angoloIniziale), isFilled: false);
+            geometryContext.BeginFigure(GaugeScale.PointAt(center, radius, startAngle), isFilled: false);
 
-            penna.ArcTo(
-                GaugeScale.Punto(centro, raggio, angoloFinale),
-                new Size(raggio, raggio),
+            geometryContext.ArcTo(
+                GaugeScale.PointAt(center, radius, endAngle),
+                new Size(radius, radius),
                 rotationAngle: 0d,
-                isLargeArc: angoloFinale - angoloIniziale > 180d,
+                isLargeArc: endAngle - startAngle > 180d,
                 sweepDirection: SweepDirection.Clockwise,
                 isStroked: true);
 
-            penna.EndFigure(isClosed: false);
+            geometryContext.EndFigure(isClosed: false);
         }
 
-        return geometria;
+        return geometry;
     }
 
-    private void RifaiCioCheNonCambia(Point centro, double raggio, double spessore, double soglia)
+    private void RebuildStaticGeometry(Point center, double radius, double thickness, double redlineFraction)
     {
-        if (fondo is not null
-            && Math.Abs(raggioDisegnato - raggio) < 0.01d
-            && Math.Abs(sogliaDisegnata - soglia) < 0.001d)
+        if (trackArc is not null
+            && Math.Abs(drawnRadius - radius) < 0.01d
+            && Math.Abs(drawnRedline - redlineFraction) < 0.001d)
         {
             return;
         }
 
-        raggioDisegnato = raggio;
-        sogliaDisegnata = soglia;
+        drawnRadius = radius;
+        drawnRedline = redlineFraction;
 
-        fondo = Arco(centro, raggio, 0d, 1d);
+        trackArc = ArcBetween(center, radius, 0d, 1d);
 
         // Sotto il millesimo l'arco e' piu' corto del proprio tratto arrotondato: disegnarlo
-        // lascerebbe un pallino sul fondo scala anche dove la zona rossa non comincia.
-        zonaRossa = soglia < 0.999d ? Arco(centro, raggio, soglia, 1d) : null;
+        // lascerebbe un pallino sul trackArc scala anche valueFraction la zona redlineBrush non comincia.
+        redlineArc = redlineFraction < 0.999d ? ArcBetween(center, radius, redlineFraction, 1d) : null;
 
-        tacche = Tacche(centro, raggio, spessore);
+        ticks = TickMarks(center, radius, thickness);
 
-        // I testi sono misurati sul raggio: se il raggio e' cambiato, il loro corpo pure.
-        numeroScritto = null;
-        didascaliaScritta = null;
+        // I testi sono misurati sul radius: se il radius e' cambiato, il loro fontSize pure.
+        drawnDisplay = null;
+        drawnCaption = null;
     }
 
-    private static StreamGeometry Tacche(Point centro, double raggio, double spessore)
+    private static StreamGeometry TickMarks(Point center, double radius, double thickness)
     {
-        const int intervalli = 10;
+        const int intervals = 10;
 
-        double esterno = raggio - (spessore / 2d) - 2d;
-        double interno = Math.Max(1d, esterno - Math.Max(2d, spessore * 0.45d));
+        double outerRadius = radius - (thickness / 2d) - 2d;
+        double innerRadius = Math.Max(1d, outerRadius - Math.Max(2d, thickness * 0.45d));
 
-        StreamGeometry geometria = new();
+        StreamGeometry geometry = new();
 
-        using (StreamGeometryContext penna = geometria.Open())
+        using (StreamGeometryContext geometryContext = geometry.Open())
         {
-            for (int i = 0; i <= intervalli; i++)
+            for (int i = 0; i <= intervals; i++)
             {
-                double angolo = GaugeScale.AngoloDellaTacca(i, intervalli);
+                double angle = GaugeScale.TickAngle(i, intervals);
 
-                penna.BeginFigure(GaugeScale.Punto(centro, interno, angolo), isFilled: false);
-                penna.LineTo(GaugeScale.Punto(centro, esterno, angolo), isStroked: true);
-                penna.EndFigure(isClosed: false);
+                geometryContext.BeginFigure(GaugeScale.PointAt(center, innerRadius, angle), isFilled: false);
+                geometryContext.LineTo(GaugeScale.PointAt(center, outerRadius, angle), isStroked: true);
+                geometryContext.EndFigure(isClosed: false);
             }
         }
 
-        return geometria;
+        return geometry;
     }
 
-    private static void DisegnaLancetta(
+    private static void DrawNeedle(
         DrawingContext context,
-        Point centro,
-        double raggio,
-        double spessore,
-        double dove,
-        IBrush colore)
+        Point center,
+        double radius,
+        double thickness,
+        double valueFraction,
+        IBrush brush)
     {
-        double angolo = GaugeScale.Angolo(dove);
-        double lunghezza = raggio - spessore;
+        double angle = GaugeScale.AngleFor(valueFraction);
+        double length = radius - thickness;
 
-        if (lunghezza <= 0d)
+        if (length <= 0d)
         {
             return;
         }
 
-        // Un pezzetto di lancetta prosegue oltre il perno, come sui quadranti veri: e' cio' che
-        // fa leggere l'oggetto come una lancetta imperniata invece che come un raggio.
+        // Un pezzetto di needleBrush prosegue oltre il perno, come sui quadranti veri: e' cio' che
+        // fa leggere l'oggetto come una needleBrush imperniata invece che come un radius.
         context.DrawLine(
-            Penna(colore, Math.Max(1.5d, spessore * 0.22d)),
-            GaugeScale.Punto(centro, -(spessore * 0.5d), angolo),
-            GaugeScale.Punto(centro, lunghezza, angolo));
+            PenFor(brush, Math.Max(1.5d, thickness * 0.22d)),
+            GaugeScale.PointAt(center, -(thickness * 0.5d), angle),
+            GaugeScale.PointAt(center, length, angle));
 
-        context.DrawEllipse(colore, null, centro, spessore * 0.30d, spessore * 0.30d);
+        context.DrawEllipse(brush, null, center, thickness * 0.30d, thickness * 0.30d);
     }
 
-    private void DisegnaScritte(DrawingContext context, Point centro, double raggio, IBrush colore)
+    private void DrawLabels(DrawingContext context, Point center, double radius, IBrush brush)
     {
-        double corpo = Math.Max(9d, raggio * 0.34d);
+        double fontSize = Math.Max(9d, radius * 0.34d);
 
-        // DrawText posiziona l'ANGOLO IN ALTO A SINISTRA del testo, non la sua linea di base.
-        // La didascalia parte quindi da dove il numero finisce davvero, e non da un multiplo
-        // scelto a occhio del corpo del numero: quel multiplo era giusto per un corpo solo, e
-        // a quadrante piu' piccolo le due scritte si sovrapponevano.
-        double sotto = centro.Y + (raggio * SottoIlQuadrante);
+        // DrawText posiziona l'ANGOLO IN ALTO A SINISTRA del text, non la sua linea di base.
+        // La captionText parte quindi from valueFraction il displayText finisce davvero, e non from un multiplo
+        // scelto to occhio del fontSize del displayText: quel multiplo era giusto per un fontSize solo, e
+        // to quadrante piu' piccolo le due scritte si sovrapponevano.
+        double textTop = center.Y + (radius * LabelOffsetRadii);
 
-        if (!ReferenceEquals(inchiostroDelleScritte, colore))
+        if (!ReferenceEquals(drawnTextBrush, brush))
         {
-            // Il colore e' dentro il testo gia' impaginato: se cambia il tema mentre la
-            // finestra e' aperta, un testo tenuto da parte resterebbe del colore di prima -
-            // scritta chiara su fondo chiaro, cioe' invisibile.
-            inchiostroDelleScritte = colore;
-            numeroScritto = null;
-            didascaliaScritta = null;
+            // Il brush e' dentro il text gia' impaginato: se cambia il tema mentre la
+            // finestra e' aperta, un text tenuto from parte resterebbe del brush di prima -
+            // scritta chiara su trackArc chiaro, cioe' invisibile.
+            drawnTextBrush = brush;
+            drawnDisplay = null;
+            drawnCaption = null;
         }
 
         if (!string.IsNullOrEmpty(Display))
         {
-            if (numero is null || !string.Equals(numeroScritto, Display, StringComparison.Ordinal))
+            if (displayText is null || !string.Equals(drawnDisplay, Display, StringComparison.Ordinal))
             {
-                numero = Testo(Display, corpo, colore);
-                numeroScritto = Display;
+                displayText = FormatText(Display, fontSize, brush);
+                drawnDisplay = Display;
             }
 
-            context.DrawText(numero, new Point(centro.X - (numero.Width / 2d), sotto));
+            context.DrawText(displayText, new Point(center.X - (displayText.Width / 2d), textTop));
 
-            sotto += numero.Height;
+            textTop += displayText.Height;
         }
 
         if (!string.IsNullOrEmpty(Caption))
         {
-            if (didascalia is null
-                || !string.Equals(didascaliaScritta, Caption, StringComparison.Ordinal))
+            if (captionText is null
+                || !string.Equals(drawnCaption, Caption, StringComparison.Ordinal))
             {
-                // Undici e non otto: sotto, a 148 px di quadrante la didascalia scendeva a dieci
+                // Undici e non otto: textTop, to 148 px di quadrante la captionText scendeva to dieci
                 // e diventava la scritta piu' piccola della finestra, proprio quella che dice
-                // COSA misura il numero grande sopra.
-                didascalia = Testo(Caption, Math.Max(11d, corpo * 0.46d), colore);
-                didascaliaScritta = Caption;
+                // COSA misura il displayText grande sopra.
+                captionText = FormatText(Caption, Math.Max(11d, fontSize * 0.46d), brush);
+                drawnCaption = Caption;
             }
 
-            context.DrawText(didascalia, new Point(centro.X - (didascalia.Width / 2d), sotto));
+            context.DrawText(captionText, new Point(center.X - (captionText.Width / 2d), textTop));
         }
     }
 
-    private static FormattedText Testo(string testo, double corpo, IBrush colore) =>
+    private static FormattedText FormatText(string text, double fontSize, IBrush brush) =>
         new(
-            testo,
+            text,
             CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight,
             Typeface.Default,
-            corpo,
-            colore);
+            fontSize,
+            brush);
 }

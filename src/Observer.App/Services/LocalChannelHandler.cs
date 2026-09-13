@@ -18,60 +18,60 @@ public static class LocalChannelHandler
     /// l'intero timeout della richiesta. Con i tre secondi della richiesta, la finestra
     /// passerebbe da un aggiornamento al secondo a uno ogni quattro appena il servizio si ferma.
     /// </remarks>
-    public static readonly TimeSpan TimeoutDiConnessione = TimeSpan.FromMilliseconds(500);
+    public static readonly TimeSpan ConnectTimeout = TimeSpan.FromMilliseconds(500);
 
     /// <summary>Costruisce l'handler per il canale locale di questa macchina.</summary>
     /// <returns>L'handler, da consegnare a un client HTTP.</returns>
-    public static SocketsHttpHandler Crea() =>
+    public static SocketsHttpHandler Create() =>
         new()
         {
-            ConnectCallback = async (_, annulla) =>
+            ConnectCallback = async (_, cancellationToken) =>
             {
-                using CancellationTokenSource scadenza = new(TimeoutDiConnessione);
-                using CancellationTokenSource insieme =
-                    CancellationTokenSource.CreateLinkedTokenSource(annulla, scadenza.Token);
+                using CancellationTokenSource deadline = new(ConnectTimeout);
+                using CancellationTokenSource linkedCancellation =
+                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
 
                 return OperatingSystem.IsWindows()
-                    ? await ApriPipeAsync(insieme.Token).ConfigureAwait(false)
-                    : await ApriSocketAsync(insieme.Token).ConfigureAwait(false);
+                    ? await OpenPipeAsync(linkedCancellation.Token).ConfigureAwait(false)
+                    : await OpenSocketAsync(linkedCancellation.Token).ConfigureAwait(false);
             },
         };
 
-    private static async Task<Stream> ApriPipeAsync(CancellationToken annulla)
+    private static async Task<Stream> OpenPipeAsync(CancellationToken cancellationToken)
     {
         // Il punto, e NON "localhost". Misurato: con "localhost" la connessione passa da SMB e
         // il servizio la classifica come proveniente dalla RETE, quindi pretenderebbe il token
         // che qui non abbiamo. Solo il punto e' la via locale.
-        NamedPipeClientStream flusso = new(
+        NamedPipeClientStream pipe = new(
             ".",
-            ObserverEndpoint.NomeCanaleLocale,
+            ObserverEndpoint.LocalChannelName,
             PipeDirection.InOut,
             PipeOptions.Asynchronous,
             // Identification e non Impersonation: al servizio basta SAPERE chi siamo, non gli
             // serve poter agire per conto nostro. Si concede il minimo che funziona.
             TokenImpersonationLevel.Identification);
 
-        await flusso.ConnectAsync(annulla).ConfigureAwait(false);
+        await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);
 
-        return flusso;
+        return pipe;
     }
 
-    private static async Task<Stream> ApriSocketAsync(CancellationToken annulla)
+    private static async Task<Stream> OpenSocketAsync(CancellationToken cancellationToken)
     {
-        Socket presa = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        Socket socket = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
 
         try
         {
-            await presa.ConnectAsync(
-                new UnixDomainSocketEndPoint(ObserverEndpoint.PercorsoSocketLocale), annulla)
+            await socket.ConnectAsync(
+                new UnixDomainSocketEndPoint(ObserverEndpoint.LocalSocketPath), cancellationToken)
                 .ConfigureAwait(false);
         }
         catch
         {
-            presa.Dispose();
+            socket.Dispose();
             throw;
         }
 
-        return new NetworkStream(presa, ownsSocket: true);
+        return new NetworkStream(socket, ownsSocket: true);
     }
 }

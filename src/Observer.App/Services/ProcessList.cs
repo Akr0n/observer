@@ -2,11 +2,11 @@ using System.Globalization;
 
 namespace Observer.App.Services;
 
-/// <summary>Una riga dell'elenco dei processi, come arriva dal servizio.</summary>
+/// <summary>Una row dell'elenco dei processi, come arriva dal servizio.</summary>
 /// <param name="Pid">Identificatore del processo.</param>
-/// <param name="Name">Nome dell'eseguibile.</param>
+/// <param name="Name">Name dell'eseguibile.</param>
 /// <param name="CpuPercent">Percentuale sull'intera macchina, oppure null se non ancora nota.</param>
-/// <param name="WorkingSetBytes">Memoria fisica occupata.</param>
+/// <param name="WorkingSetBytes">Memory fisica occupata.</param>
 /// <param name="IoBytesPerSecond">
 /// Byte al secondo letti e scritti, oppure null se non noto. Manca del tutto nelle risposte di
 /// un servizio piu' vecchio, e allora vale null lo stesso.
@@ -25,54 +25,54 @@ public sealed record ProcessWire(
 public sealed record ProcessListWire(
     DateTimeOffset CapturedAt, string? By, IReadOnlyList<ProcessWire> Processes);
 
-/// <summary>Una riga pronta per lo schermo.</summary>
+/// <summary>Una row pronta per lo schermo.</summary>
 /// <param name="Pid">Identificatore del processo, che serve per terminarlo.</param>
-/// <param name="Nome">Nome dell'eseguibile.</param>
+/// <param name="Name">Name dell'eseguibile.</param>
 /// <param name="Cpu">La CPU gia' formattata, oppure un trattino se non si sa ancora.</param>
-/// <param name="Memoria">La memoria gia' formattata coi prefissi binari.</param>
+/// <param name="Memory">La memoria gia' formattata coi prefissi binari.</param>
 /// <param name="Io">I byte al secondo gia' formattati, oppure un trattino se non si sa.</param>
-public sealed record ProcessRowState(int Pid, string Nome, string Cpu, string Memoria, string Io = "—")
+public sealed record ProcessRowState(int Pid, string Name, string Cpu, string Memory, string Io = "—")
 {
-    /// <summary>La riga letta per intero, per chi non la vede: nome e le tre colonne col loro titolo.</summary>
+    /// <summary>La row letta per intero, per chi non la vede: nome e le tre colonne col loro titolo.</summary>
     /// <remarks>
     /// Un lettore di schermo che legge quattro TextBlock separati dice "claude, 15.1 %, 228.5
     /// MiB, 1.1 MiB/s" senza dire cosa siano: le intestazioni di colonna, che l'occhio tiene a
     /// mente, per l'orecchio non esistono.
     /// </remarks>
-    public string AccessibleName => $"{Nome}, CPU {Cpu}, memory {Memoria}, I/O {Io}";
+    public string AccessibleName => $"{Name}, CPU {Cpu}, memory {Memory}, I/O {Io}";
 
-    /// <summary>La riga per gli appunti: come <see cref="AccessibleName"/>, ma col PID.</summary>
+    /// <summary>La row per gli appunti: come <see cref="AccessibleName"/>, ma col PID.</summary>
     /// <remarks>
     /// Due frasi quasi identiche, e la differenza e' voluta. Il PID serve a chi incolla la
-    /// riga da qualche parte — in una ricerca, in un messaggio, accanto a un comando — perche'
+    /// row da qualche parte — in una ricerca, in un messaggio, accanto a un comando — perche'
     /// e' l'unica cosa che identifica il processo senza ambiguita': di "chrome" ce ne sono
     /// dodici. In <see cref="AccessibleName"/> invece non ci va, perche' quella la pronuncia un
     /// lettore di schermo a OGNI freccia sull'elenco, e un numero di cinque cifre letto cifra
-    /// per cifra a ogni riga e' rumore fra chi scorre e cio' che sta cercando.
+    /// per cifra a ogni row e' rumore fra chi scorre e cio' che sta cercando.
     /// </remarks>
-    public string PerGliAppunti =>
-        $"{Nome} (pid {Pid.ToString(CultureInfo.InvariantCulture)}), CPU {Cpu}, memory {Memoria}, I/O {Io}";
-    /// <summary>Traduce una riga arrivata dal filo in una riga da mostrare.</summary>
-    /// <param name="riga">La riga arrivata.</param>
-    /// <returns>La riga da mostrare.</returns>
+    public string ForClipboard =>
+        $"{Name} (pid {Pid.ToString(CultureInfo.InvariantCulture)}), CPU {Cpu}, memory {Memory}, I/O {Io}";
+    /// <summary>Traduce una row arrivata dal filo in una row da mostrare.</summary>
+    /// <param name="row">La row arrivata.</param>
+    /// <returns>La row da mostrare.</returns>
     /// <remarks>
     /// Una CPU sconosciuta diventa un TRATTINO e non uno zero. Sono due affermazioni diverse -
     /// "non lo so ancora" contro "questo processo e' fermo" - e la seconda, su un elenco
     /// ordinato per consumo, sposterebbe l'attenzione sul programma sbagliato.
     /// </remarks>
-    public static ProcessRowState Da(ProcessWire riga)
+    public static ProcessRowState From(ProcessWire row)
     {
-        ArgumentNullException.ThrowIfNull(riga);
+        ArgumentNullException.ThrowIfNull(row);
 
         return new ProcessRowState(
-            riga.Pid,
-            riga.Name,
-            riga.CpuPercent is { } quota
-                ? quota.ToString("F1", CultureInfo.InvariantCulture) + " %"
+            row.Pid,
+            row.Name,
+            row.CpuPercent is { } percent
+                ? percent.ToString("F1", CultureInfo.InvariantCulture) + " %"
                 : "—",
-            MetricFormatting.DescribeBytes(riga.WorkingSetBytes),
-            riga.IoBytesPerSecond is { } tasso
-                ? MetricFormatting.DescribeBytes(tasso) + "/s"
+            MetricFormatting.DescribeBytes(row.WorkingSetBytes),
+            row.IoBytesPerSecond is { } rate
+                ? MetricFormatting.DescribeBytes(rate) + "/s"
                 : "—");
     }
 }
@@ -80,11 +80,11 @@ public sealed record ProcessRowState(int Pid, string Nome, string Cpu, string Me
 /// <summary>Esito della lettura dell'elenco dei processi.</summary>
 /// <param name="Outcome">Come e' andata.</param>
 /// <param name="Problem">Frase pronta per lo schermo, vuota quando l'esito e' Ok.</param>
-/// <param name="Processi">Le righe, vuote quando l'esito non e' Ok.</param>
+/// <param name="Processes">Le righe, vuote quando l'esito non e' Ok.</param>
 public sealed record ProcessFetch(
     ServiceOutcome Outcome,
     string Problem,
-    IReadOnlyList<ProcessRowState> Processi);
+    IReadOnlyList<ProcessRowState> Processes);
 
 /// <summary>Esito di un tentativo di terminare un processo.</summary>
 /// <param name="Outcome">Come e' andata.</param>
@@ -100,8 +100,8 @@ public sealed record KillFetch(ServiceOutcome Outcome, string Problem);
 /// <summary>Quale risorsa sta dietro un quadrante.</summary>
 public static class ProcessResource
 {
-    /// <summary>La risorsa da chiedere al servizio per la riga indicata, oppure null.</summary>
-    /// <param name="chiave">La chiave della riga, nella forma <c>collector|metrica|istanza</c>.</param>
+    /// <summary>La risorsa da chiedere al servizio per la row indicata, oppure null.</summary>
+    /// <param name="key">La key della row, nella forma <c>collector|metrica|istanza</c>.</param>
     /// <returns><c>cpu</c>, <c>memory</c>, <c>io</c>, oppure null se per quella risorsa non si sa rispondere.</returns>
     /// <remarks>
     /// Null per lo SPAZIO dei dischi, e non e' una dimenticanza: lo spazio occupato su un
@@ -114,15 +114,15 @@ public static class ProcessResource
     /// dice su quale dispositivo sono finiti i byte. Il titolo del pannello lo dichiara.
     /// </para>
     /// </remarks>
-    public static string? Da(string? chiave)
+    public static string? From(string? key)
     {
-        if (string.IsNullOrEmpty(chiave))
+        if (string.IsNullOrEmpty(key))
         {
             return null;
         }
 
-        int barra = chiave.IndexOf('|', StringComparison.Ordinal);
-        string collector = barra < 0 ? chiave : chiave[..barra];
+        int separatorIndex = key.IndexOf('|', StringComparison.Ordinal);
+        string collector = separatorIndex < 0 ? key : key[..separatorIndex];
 
         return collector switch
         {

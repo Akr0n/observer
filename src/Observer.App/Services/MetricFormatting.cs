@@ -21,12 +21,12 @@ public static class MetricFormatting
     /// devono restare le stesse, e se un giorno cambiano deve cambiarle il compilatore e non
     /// la memoria di chi modifica.
     /// </remarks>
-    public const string Si = "Yes";
+    public const string Yes = "Yes";
 
     /// <summary>Come si scrive un no a schermo.</summary>
     public const string No = "No";
 
-    private static readonly string[] PrefissiBinari = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+    private static readonly string[] BinaryPrefixes = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
 
     /// <summary>
     /// Descrive un valore, usando l'unita' del catalogo quando c'e'.
@@ -44,11 +44,11 @@ public static class MetricFormatting
                 return value.Text ?? string.Empty;
 
             case MetricValueKind.Flag:
-                return value.Flag ? Si : No;
+                return value.Flag ? Yes : No;
 
             default:
                 // Kind sconosciuto significa quasi sempre che la deserializzazione non ha
-                // agganciato il costruttore: il numero sarebbe zero e sembrerebbe una misura
+                // agganciato il costruttore: il formatted sarebbe zero e sembrerebbe una misura
                 // valida. Meglio dirlo che mostrare uno zero inventato.
                 return "unrecognized value type: service and client disagree on the data format";
         }
@@ -75,49 +75,49 @@ public static class MetricFormatting
             return "value isn't a finite number";
         }
 
-        double segno = bytes < 0d ? -1d : 1d;
-        double resto = Math.Abs(bytes);
-        int prefisso = 0;
+        double sign = bytes < 0d ? -1d : 1d;
+        double remainder = Math.Abs(bytes);
+        int prefixIndex = 0;
 
-        while (resto >= 1024d && prefisso < PrefissiBinari.Length - 1)
+        while (remainder >= 1024d && prefixIndex < BinaryPrefixes.Length - 1)
         {
-            resto /= 1024d;
-            prefisso++;
+            remainder /= 1024d;
+            prefixIndex++;
         }
 
-        string numero = prefisso == 0
-            ? (segno * resto).ToString("F0", CultureInfo.InvariantCulture)
-            : (segno * resto).ToString("F1", CultureInfo.InvariantCulture);
+        string formatted = prefixIndex == 0
+            ? (sign * remainder).ToString("F0", CultureInfo.InvariantCulture)
+            : (sign * remainder).ToString("F1", CultureInfo.InvariantCulture);
 
-        return numero + " " + PrefissiBinari[prefisso];
+        return formatted + " " + BinaryPrefixes[prefixIndex];
     }
 
-    private static string DescribeNumber(double numero, MetricUnit? unit)
+    private static string DescribeNumber(double formatted, MetricUnit? unit)
     {
-        string? simbolo = unit?.Symbol;
+        string? symbol = unit?.Symbol;
 
-        if (simbolo == "%")
+        if (symbol == "%")
         {
-            return numero.ToString("F1", CultureInfo.InvariantCulture) + " %";
+            return formatted.ToString("F1", CultureInfo.InvariantCulture) + " %";
         }
 
-        if (simbolo == "B")
+        if (symbol == "B")
         {
-            return DescribeBytes(numero);
+            return DescribeBytes(formatted);
         }
 
         // Una velocita' e' pur sempre una quantita' di byte: senza questo ramo finirebbe nel
         // formato generico e si leggerebbe "449852 B/s", con i prefissi binari gia' scritti
         // due righe piu' su.
-        if (simbolo == "B/s")
+        if (symbol == "B/s")
         {
-            return DescribeBytes(numero) + "/s";
+            return DescribeBytes(formatted) + "/s";
         }
 
-        string testo = numero == Math.Floor(numero) && Math.Abs(numero) < 1e15d
-            ? numero.ToString("F0", CultureInfo.InvariantCulture)
-            : numero.ToString("F2", CultureInfo.InvariantCulture);
+        string text = formatted == Math.Floor(formatted) && Math.Abs(formatted) < 1e15d
+            ? formatted.ToString("F0", CultureInfo.InvariantCulture)
+            : formatted.ToString("F2", CultureInfo.InvariantCulture);
 
-        return string.IsNullOrEmpty(simbolo) ? testo : testo + " " + simbolo;
+        return string.IsNullOrEmpty(symbol) ? text : text + " " + symbol;
     }
 }

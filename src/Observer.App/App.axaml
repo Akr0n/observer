@@ -4,7 +4,7 @@
              xmlns:local="using:Observer.App"
              xmlns:sty="using:FluentAvalonia.Styling"
              RequestedThemeVariant="Default">
-             <!-- Valore iniziale: segue il sistema. Quello vero lo imposta App.ApplicaTema
+             <!-- Valore iniziale: segue il sistema. Quello vero lo imposta App.ApplyTheme
                   dalle preferenze, prima che la finestra esista. -->
 
     <Application.DataTemplates>
@@ -27,7 +27,7 @@
              FluentAvalonia riscriverebbe RequestedThemeVariant con un Light/Dark esplicito,
              cancellando la scelta fatta nel selettore, e System non potrebbe mai valere
              Default; in Alto contrasto passerebbe inoltre al dizionario in cui i tre colori
-             di stato sono tutti rossi. Il tema chiaro/scuro lo governa App.ApplicaTema. -->
+             di stato sono tutti rossi. Il tema chiaro/scuro lo governa App.ApplyTheme. -->
         <sty:FluentAvaloniaTheme PreferUserAccentColor="True" />
     </Application.Styles>
 </Application>

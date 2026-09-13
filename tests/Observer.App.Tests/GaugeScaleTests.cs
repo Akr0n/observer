@@ -18,13 +18,13 @@ public class GaugeScaleTests
     [Fact]
     public void LoZeroStaDoveComincaLaScala()
     {
-        Assert.Equal(GaugeScale.Partenza, GaugeScale.Angolo(0d), 9);
+        Assert.Equal(GaugeScale.StartAngle, GaugeScale.AngleFor(0d), 9);
     }
 
     [Fact]
     public void IlPienoStaAlFondoScala()
     {
-        Assert.Equal(GaugeScale.Arrivo, GaugeScale.Angolo(1d), 9);
+        Assert.Equal(GaugeScale.EndAngle, GaugeScale.AngleFor(1d), 9);
     }
 
     [Fact]
@@ -33,9 +33,9 @@ public class GaugeScaleTests
         // 135 + 135 = 270 gradi, cioe' dritto in alto: e' il punto in cui l'occhio verifica da
         // solo se la lancetta e' dove dovrebbe. Se questa cambia, il tachimetro non e' piu'
         // simmetrico e si legge male senza che nessun altro test se ne accorga.
-        Assert.Equal(270d, GaugeScale.Angolo(0.5d), 9);
+        Assert.Equal(270d, GaugeScale.AngleFor(0.5d), 9);
 
-        Point cima = GaugeScale.Punto(Centro, 50d, GaugeScale.Angolo(0.5d));
+        Point cima = GaugeScale.PointAt(Centro, 50d, GaugeScale.AngleFor(0.5d));
 
         Assert.Equal(Centro.X, cima.X, 6);
         Assert.Equal(Centro.Y - 50d, cima.Y, 6);
@@ -48,9 +48,9 @@ public class GaugeScaleTests
     [InlineData(double.NegativeInfinity)]
     public void FuoriScalaLaLancettaRestaSullArco(double fuori)
     {
-        double angolo = GaugeScale.Angolo(fuori);
+        double angolo = GaugeScale.AngleFor(fuori);
 
-        Assert.InRange(angolo, GaugeScale.Partenza, GaugeScale.Arrivo);
+        Assert.InRange(angolo, GaugeScale.StartAngle, GaugeScale.EndAngle);
     }
 
     [Fact]
@@ -59,12 +59,12 @@ public class GaugeScaleTests
         // Una metrica che non si e' potuta misurare arriva come NaN. Un NaN dentro un seno
         // esce come NaN nelle coordinate, e Avalonia una geometria con dentro un NaN non la
         // disegna affatto: il riquadro resterebbe vuoto, senza dire perche'.
-        double angolo = GaugeScale.Angolo(double.NaN);
+        double angolo = GaugeScale.AngleFor(double.NaN);
 
         Assert.False(double.IsNaN(angolo));
-        Assert.Equal(GaugeScale.Partenza, angolo, 9);
+        Assert.Equal(GaugeScale.StartAngle, angolo, 9);
 
-        Point punto = GaugeScale.Punto(Centro, 50d, angolo);
+        Point punto = GaugeScale.PointAt(Centro, 50d, angolo);
 
         Assert.False(double.IsNaN(punto.X));
         Assert.False(double.IsNaN(punto.Y));
@@ -73,19 +73,19 @@ public class GaugeScaleTests
     [Fact]
     public void LeTaccheCopronoLArcoDaCimaAFondo()
     {
-        const int intervalli = 10;
+        const int intervals = 10;
 
-        Assert.Equal(GaugeScale.Partenza, GaugeScale.AngoloDellaTacca(0, intervalli), 9);
-        Assert.Equal(GaugeScale.Arrivo, GaugeScale.AngoloDellaTacca(intervalli, intervalli), 9);
+        Assert.Equal(GaugeScale.StartAngle, GaugeScale.TickAngle(0, intervals), 9);
+        Assert.Equal(GaugeScale.EndAngle, GaugeScale.TickAngle(intervals, intervals), 9);
 
         // Passo costante: una scala a passo variabile si legge come se i valori centrali
         // fossero piu' vicini fra loro di quanto sono.
-        double passo = GaugeScale.Apertura / intervalli;
+        double passo = GaugeScale.SweepAngle / intervals;
 
-        for (int i = 1; i <= intervalli; i++)
+        for (int i = 1; i <= intervals; i++)
         {
-            double delta = GaugeScale.AngoloDellaTacca(i, intervalli)
-                - GaugeScale.AngoloDellaTacca(i - 1, intervalli);
+            double delta = GaugeScale.TickAngle(i, intervals)
+                - GaugeScale.TickAngle(i - 1, intervals);
 
             Assert.Equal(passo, delta, 9);
         }
@@ -94,7 +94,7 @@ public class GaugeScaleTests
     [Fact]
     public void UnaScalaSenzaIntervalliVieneRifiutata()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => GaugeScale.AngoloDellaTacca(0, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => GaugeScale.TickAngle(0, 0));
     }
 
     [Fact]
@@ -102,12 +102,12 @@ public class GaugeScaleTests
     {
         // Il pezzo di cerchio su cui la lancetta non passa mai deve stare in basso e centrato,
         // altrimenti il tachimetro appare storto. Sono i 90 gradi fra l'arrivo e la partenza.
-        double scoperto = 360d - GaugeScale.Apertura;
+        double scoperto = 360d - GaugeScale.SweepAngle;
 
         Assert.Equal(90d, scoperto, 9);
 
-        Point zero = GaugeScale.Punto(Centro, 50d, GaugeScale.Partenza);
-        Point fondo = GaugeScale.Punto(Centro, 50d, GaugeScale.Arrivo);
+        Point zero = GaugeScale.PointAt(Centro, 50d, GaugeScale.StartAngle);
+        Point fondo = GaugeScale.PointAt(Centro, 50d, GaugeScale.EndAngle);
 
         // Stessa altezza, sotto il centro, e speculari rispetto all'asse verticale.
         Assert.Equal(zero.Y, fondo.Y, 6);

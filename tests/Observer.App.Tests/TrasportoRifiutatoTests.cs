@@ -35,7 +35,7 @@ public class TrasportoRifiutatoTests
 
         SnapshotFetch esito = await client.GetLatestAsync(CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.ConnessioneRifiutata, esito.Outcome);
+        Assert.Equal(ServiceOutcome.ConnectionRefused, esito.Outcome);
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class TrasportoRifiutatoTests
 
         SnapshotFetch esito = await client.GetLatestAsync(CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.ConnessioneRifiutata, esito.Outcome);
+        Assert.Equal(ServiceOutcome.ConnectionRefused, esito.Outcome);
 
         // Il danno vero non era l'etichetta: era il consiglio. Mandare a cercare un firewall
         // mentre il servizio e' spento costa il pomeriggio di chi lo segue.
@@ -56,7 +56,7 @@ public class TrasportoRifiutatoTests
     }
 
     private static ObserverEndpoint Verso(string indirizzo) =>
-        ObserverEndpoint.Remoto(new Uri(indirizzo), "il-token", "dalla prova");
+        ObserverEndpoint.Remote(new Uri(indirizzo), "il-token", "dalla prova");
 
     /// <summary>Una porta su cui si e' sicuri che non ascolti nessuno.</summary>
     /// <remarks>

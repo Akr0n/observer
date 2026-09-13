@@ -22,20 +22,20 @@ public sealed partial class MetricRow : ObservableObject
         ArgumentNullException.ThrowIfNull(stato);
 
         Key = stato.Key;
-        Etichetta = stato.Label;
-        Valore = stato.Display;
-        HaQuadrante = stato.Fraction.HasValue;
+        Label = stato.Label;
+        Display = stato.Display;
+        HasGauge = stato.Fraction.HasValue;
 
         // Quando la frazione manca, l'ultima resta dov'e' invece di azzerarsi. Non e' per
-        // conservarla - il quadrante sparisce comunque, perche' HaQuadrante e' falso - ma
+        // conservarla - il quadrante sparisce comunque, perche' HasGauge e' falso - ma
         // perche' la lancetta si anima: scrivere zero le darebbe un bersaglio, e per qualche
         // decimo di secondo si vedrebbe scendere a fondo scala prima di sparire, come se la
         // macchina si fosse svuotata invece che smettere di rispondere.
         if (stato.Fraction is { } misurata)
         {
-            Frazione = misurata;
+            Fraction = misurata;
         }
-        Gravita = stato.Severity;
+        Severity = stato.Severity;
     }
 
     /// <summary>Identita' stabile della riga.</summary>
@@ -47,15 +47,15 @@ public sealed partial class MetricRow : ObservableObject
     /// nessun invito che un invito che porta a un pannello vuoto. Vero sull'attivita' dei
     /// dischi, che apre l'elenco per I/O. Il perche' sta in <see cref="ProcessResource"/>.
     /// </remarks>
-    public bool PuoMostrareProcessi => ProcessResource.Da(Key) is not null;
+    public bool CanShowProcesses => ProcessResource.From(Key) is not null;
 
     /// <summary>Nome leggibile della metrica.</summary>
     [ObservableProperty]
-    public partial string Etichetta { get; set; }
+    public partial string Label { get; set; }
 
-    /// <summary>Valore formattato, oppure il motivo per cui manca.</summary>
+    /// <summary>Display formattato, oppure il motivo per cui manca.</summary>
     [ObservableProperty]
-    public partial string Valore { get; set; }
+    public partial string Display { get; set; }
 
     /// <summary>Quanto e' pieno il quadrante, da 0 a 1.</summary>
     /// <remarks>
@@ -64,13 +64,13 @@ public sealed partial class MetricRow : ObservableObject
     /// frazione, e la conversione in mezzo era solo un posto in piu' dove sbagliare.
     /// </remarks>
     [ObservableProperty]
-    public partial double Frazione { get; set; }
+    public partial double Fraction { get; set; }
 
     /// <summary>True quando la metrica e' una frazione e il quadrante ha senso.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(MostraStorico))]
-    [NotifyPropertyChangedFor(nameof(MostraNotaStorico))]
-    public partial bool HaQuadrante { get; set; }
+    [NotifyPropertyChangedFor(nameof(ShowHistory))]
+    [NotifyPropertyChangedFor(nameof(ShowHistoryNote))]
+    public partial bool HasGauge { get; set; }
 
     /// <summary>Gli intervalli dello storico, dal piu' vecchio al piu' recente.</summary>
     /// <remarks>
@@ -79,8 +79,8 @@ public sealed partial class MetricRow : ObservableObject
     /// domanda senza risposta.
     /// </remarks>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(MostraStorico))]
-    public partial IReadOnlyList<HistoryBar>? Storico { get; set; }
+    [NotifyPropertyChangedFor(nameof(ShowHistory))]
+    public partial IReadOnlyList<HistoryBar>? History { get; set; }
 
     /// <summary>Perche' lo storico non c'e', quando non c'e'.</summary>
     /// <remarks>
@@ -90,46 +90,46 @@ public sealed partial class MetricRow : ObservableObject
     /// ignorare anche gli allarmi veri.
     /// </remarks>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(MostraNotaStorico))]
-    public partial string NotaStorico { get; set; } = string.Empty;
+    [NotifyPropertyChangedFor(nameof(ShowHistoryNote))]
+    public partial string HistoryNote { get; set; } = string.Empty;
 
     /// <summary>True quando c'e' una striscia da disegnare.</summary>
-    public bool MostraStorico => HaQuadrante && Storico is { Count: > 0 };
+    public bool ShowHistory => HasGauge && History is { Count: > 0 };
 
     /// <summary>True quando c'e' un motivo da scrivere al posto della striscia.</summary>
-    public bool MostraNotaStorico => HaQuadrante && NotaStorico.Length > 0;
+    public bool ShowHistoryNote => HasGauge && HistoryNote.Length > 0;
 
-    /// <summary>Gravita' di cio' che la riga dice.</summary>
+    /// <summary>Severity' di cio' che la riga dice.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Problema))]
-    public partial MetricSeverity Gravita { get; set; }
+    [NotifyPropertyChangedFor(nameof(Problem))]
+    public partial MetricSeverity Severity { get; set; }
 
     /// <summary>
     /// True solo per un guasto vero. Un Warmup all'avvio o una metrica non misurabile su
     /// questa piattaforma NON devono colorarsi di rosso: sono informazioni, e allarmare chi
     /// guarda per una cosa normale gli insegna a ignorare anche gli allarmi veri.
     /// </summary>
-    public bool Problema => Gravita == MetricSeverity.Problema;
+    public bool Problem => Severity == MetricSeverity.Problem;
 
-    /// <summary>Aggiorna la riga sul posto, senza ricrearla: evita lo sfarfallio a ogni secondo.</summary>
-    public void Aggiorna(MetricRowState stato)
+    /// <summary>Update la riga sul posto, senza ricrearla: evita lo sfarfallio a ogni secondo.</summary>
+    public void Update(MetricRowState stato)
     {
         ArgumentNullException.ThrowIfNull(stato);
 
-        Etichetta = stato.Label;
-        Valore = stato.Display;
-        HaQuadrante = stato.Fraction.HasValue;
+        Label = stato.Label;
+        Display = stato.Display;
+        HasGauge = stato.Fraction.HasValue;
 
         // Quando la frazione manca, l'ultima resta dov'e' invece di azzerarsi. Non e' per
-        // conservarla - il quadrante sparisce comunque, perche' HaQuadrante e' falso - ma
+        // conservarla - il quadrante sparisce comunque, perche' HasGauge e' falso - ma
         // perche' la lancetta si anima: scrivere zero le darebbe un bersaglio, e per qualche
         // decimo di secondo si vedrebbe scendere a fondo scala prima di sparire, come se la
         // macchina si fosse svuotata invece che smettere di rispondere.
         if (stato.Fraction is { } misurata)
         {
-            Frazione = misurata;
+            Fraction = misurata;
         }
-        Gravita = stato.Severity;
+        Severity = stato.Severity;
     }
 }
 
@@ -145,44 +145,44 @@ public sealed partial class MetricGroup : ObservableObject
         ArgumentNullException.ThrowIfNull(stato);
 
         CollectorId = stato.CollectorId;
-        Titolo = stato.Title;
-        Nota = stato.Note ?? string.Empty;
-        MostraNota = stato.Note is not null;
-        Gravita = stato.Severity;
+        Title = stato.Title;
+        Note = stato.Note ?? string.Empty;
+        ShowNote = stato.Note is not null;
+        Severity = stato.Severity;
 
         foreach (MetricRowState riga in stato.Rows)
         {
-            Righe.Add(new MetricRow(riga));
+            Rows.Add(new MetricRow(riga));
         }
 
-        ContaLeRigheDaScrivere();
+        RefreshShowRows();
     }
 
     /// <summary>Identificatore del collector.</summary>
     public string CollectorId { get; }
 
-    /// <summary>Titolo leggibile del riquadro.</summary>
+    /// <summary>Title leggibile del riquadro.</summary>
     [ObservableProperty]
-    public partial string Titolo { get; set; }
+    public partial string Title { get; set; }
 
     /// <summary>Motivo per cui la sorgente e' degradata.</summary>
     [ObservableProperty]
-    public partial string Nota { get; set; }
+    public partial string Note { get; set; }
 
     /// <summary>True quando c'e' una nota da mostrare.</summary>
     [ObservableProperty]
-    public partial bool MostraNota { get; set; }
+    public partial bool ShowNote { get; set; }
 
-    /// <summary>Gravita' dello stato della sorgente.</summary>
+    /// <summary>Severity' dello stato della sorgente.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Problema))]
-    public partial MetricSeverity Gravita { get; set; }
+    [NotifyPropertyChangedFor(nameof(Problem))]
+    public partial MetricSeverity Severity { get; set; }
 
-    /// <summary>True solo per un guasto vero: vedi <see cref="MetricRow.Problema"/>.</summary>
-    public bool Problema => Gravita == MetricSeverity.Problema;
+    /// <summary>True solo per un guasto vero: vedi <see cref="MetricRow.Problem"/>.</summary>
+    public bool Problem => Severity == MetricSeverity.Problem;
 
     /// <summary>Le righe misurate.</summary>
-    public ObservableCollection<MetricRow> Righe { get; } = [];
+    public ObservableCollection<MetricRow> Rows { get; } = [];
 
     /// <summary>True quando questo riquadro ha almeno una riga da SCRIVERE.</summary>
     /// <remarks>
@@ -191,55 +191,55 @@ public sealed partial class MetricGroup : ObservableObject
     /// sospeso sopra il vuoto: questa proprieta' e' cio' che lo fa sparire.
     /// </remarks>
     [ObservableProperty]
-    public partial bool MostraRighe { get; set; }
+    public partial bool ShowRows { get; set; }
 
-    /// <summary>Aggiorna il riquadro sul posto.</summary>
-    public void Aggiorna(MetricGroupState stato)
+    /// <summary>Update il riquadro sul posto.</summary>
+    public void Update(MetricGroupState stato)
     {
         ArgumentNullException.ThrowIfNull(stato);
 
-        Titolo = stato.Title;
-        Nota = stato.Note ?? string.Empty;
-        MostraNota = stato.Note is not null;
-        Gravita = stato.Severity;
+        Title = stato.Title;
+        Note = stato.Note ?? string.Empty;
+        ShowNote = stato.Note is not null;
+        Severity = stato.Severity;
 
         // Finche' le chiavi coincidono si aggiorna sul posto; appena l'elenco cambia davvero
         // si ricostruisce. Ricostruire sempre farebbe lampeggiare la finestra ogni secondo.
-        if (!StesseChiavi(stato.Rows))
+        if (!HasSameKeys(stato.Rows))
         {
-            Righe.Clear();
+            Rows.Clear();
 
             foreach (MetricRowState riga in stato.Rows)
             {
-                Righe.Add(new MetricRow(riga));
+                Rows.Add(new MetricRow(riga));
             }
 
-            ContaLeRigheDaScrivere();
+            RefreshShowRows();
 
             return;
         }
 
         for (int i = 0; i < stato.Rows.Count; i++)
         {
-            Righe[i].Aggiorna(stato.Rows[i]);
+            Rows[i].Update(stato.Rows[i]);
         }
 
-        ContaLeRigheDaScrivere();
+        RefreshShowRows();
     }
 
-    private void ContaLeRigheDaScrivere() =>
-        MostraRighe = Righe.Any(riga => !riga.HaQuadrante);
+    private void RefreshShowRows() =>
+        ShowRows = Rows.Any(riga => !riga.HasGauge);
 
-    private bool StesseChiavi(IReadOnlyList<MetricRowState> stati)
+    private bool HasSameKeys(IReadOnlyList<MetricRowState> stati)
     {
-        if (Righe.Count != stati.Count)
+        if (Rows.Count != stati.Count)
         {
             return false;
         }
 
         for (int i = 0; i < stati.Count; i++)
         {
-            if (!string.Equals(Righe[i].Key, stati[i].Key, StringComparison.Ordinal))
+            if (!string.Equals(Rows[i].Key, stati[i].Key, StringComparison.Ordinal))
             {
                 return false;
             }

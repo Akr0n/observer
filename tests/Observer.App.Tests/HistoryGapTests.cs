@@ -25,7 +25,7 @@ public class AssenzeTests
     [Fact]
     public void UnaMacchinaCheHaSempreMisuratoNonHaNienteDaDire()
     {
-        IReadOnlyList<HistoryGap> assenze = HistoryStrip.Assenze(
+        IReadOnlyList<HistoryGap> assenze = HistoryStrip.FindGaps(
             [.. Serie(Mezzogiorno, 30)],
             TimeSpan.FromMinutes(30),
             Minuto);
@@ -40,12 +40,12 @@ public class AssenzeTests
         // riepilogo esiste.
         List<HistoryPoint> punti = [.. Serie(Mezzogiorno, 10), .. Serie(Mezzogiorno + TimeSpan.FromMinutes(30), 10)];
 
-        HistoryGap assenza = Assert.Single(HistoryStrip.Assenze(punti, TimeSpan.FromMinutes(40), Minuto));
+        HistoryGap assenza = Assert.Single(HistoryStrip.FindGaps(punti, TimeSpan.FromMinutes(40), Minuto));
 
-        Assert.Equal(Mezzogiorno + TimeSpan.FromMinutes(10), assenza.Inizio);
-        Assert.Equal(Mezzogiorno + TimeSpan.FromMinutes(30), assenza.Fine);
-        Assert.Equal(TimeSpan.FromMinutes(20), assenza.Durata);
-        Assert.False(assenza.DalBordo);
+        Assert.Equal(Mezzogiorno + TimeSpan.FromMinutes(10), assenza.Start);
+        Assert.Equal(Mezzogiorno + TimeSpan.FromMinutes(30), assenza.End);
+        Assert.Equal(TimeSpan.FromMinutes(20), assenza.Duration);
+        Assert.False(assenza.AtEdge);
     }
 
     [Fact]
@@ -58,14 +58,14 @@ public class AssenzeTests
             .. Serie(Mezzogiorno + TimeSpan.FromMinutes(25), 5),
         ];
 
-        IReadOnlyList<HistoryGap> assenze = HistoryStrip.Assenze(punti, TimeSpan.FromMinutes(30), Minuto);
+        IReadOnlyList<HistoryGap> assenze = HistoryStrip.FindGaps(punti, TimeSpan.FromMinutes(30), Minuto);
 
         Assert.Equal(2, assenze.Count);
-        Assert.Equal(TimeSpan.FromMinutes(5), assenze[0].Durata);
-        Assert.Equal(TimeSpan.FromMinutes(10), assenze[1].Durata);
+        Assert.Equal(TimeSpan.FromMinutes(5), assenze[0].Duration);
+        Assert.Equal(TimeSpan.FromMinutes(10), assenze[1].Duration);
 
         // In ordine, dalla piu' vecchia: e' l'ordine in cui si racconta una giornata.
-        Assert.True(assenze[0].Inizio < assenze[1].Inizio);
+        Assert.True(assenze[0].Start < assenze[1].Start);
     }
 
     [Fact]
@@ -74,12 +74,12 @@ public class AssenzeTests
         // A sinistra non si sa se e' un'interruzione o la fine di cio' che il servizio
         // conserva: la ritenzione cancella un PREFISSO, ed e' indistinguibile da una macchina
         // accesa a meta' finestra. Chiamarla "interruzione di 40 minuti" sarebbe inventare.
-        IReadOnlyList<HistoryGap> assenze = HistoryStrip.Assenze(
+        IReadOnlyList<HistoryGap> assenze = HistoryStrip.FindGaps(
             [.. Serie(Mezzogiorno + TimeSpan.FromMinutes(40), 20)],
             TimeSpan.FromHours(1),
             Minuto);
 
-        Assert.True(Assert.Single(assenze).DalBordo);
+        Assert.True(Assert.Single(assenze).AtEdge);
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public class AssenzeTests
         //
         // Costruita come la manderebbe il servizio: 60 minuti di finestra, margine di dieci
         // minuti davanti (CodaDi a un'ora), e la serie che finisce cinque minuti prima di
-        // adesso. Senza il margine nella richiesta, qui esce un'assenza DalBordo e la riga
+        // adesso. Senza il margine nella richiesta, qui esce un'assenza AtEdge e la riga
         // diventa "nothing known before" su una macchina che ha misurato tutto il tempo.
         TimeSpan finestra = TimeSpan.FromHours(1);
         TimeSpan margine = TimeSpan.FromMinutes(10);
@@ -102,14 +102,14 @@ public class AssenzeTests
         IReadOnlyList<HistoryPoint> risposta =
             [.. Serie(adesso - finestra - margine, (int)((finestra + margine - TimeSpan.FromMinutes(5)) / Minuto))];
 
-        Assert.Empty(HistoryStrip.Assenze(risposta, finestra, Minuto));
+        Assert.Empty(HistoryStrip.FindGaps(risposta, finestra, Minuto));
 
         // E la controprova, che e' cio' che rende questa una prova e non un rito: la stessa
         // serie SENZA il margine - cioe' cio' che il codice faceva prima - un vuoto lo produce.
         IReadOnlyList<HistoryPoint> senzaMargine =
             [.. Serie(adesso - finestra, (int)((finestra - TimeSpan.FromMinutes(5)) / Minuto))];
 
-        Assert.True(Assert.Single(HistoryStrip.Assenze(senzaMargine, finestra, Minuto)).DalBordo);
+        Assert.True(Assert.Single(HistoryStrip.FindGaps(senzaMargine, finestra, Minuto)).AtEdge);
     }
 
     [Fact]
@@ -126,16 +126,16 @@ public class AssenzeTests
             .. Serie(Mezzogiorno + TimeSpan.FromMinutes(45), 10),
         ];
 
-        IReadOnlyList<HistoryGap> a = HistoryStrip.Assenze(qui, TimeSpan.FromMinutes(35), Minuto);
-        IReadOnlyList<HistoryGap> b = HistoryStrip.Assenze(avanti, TimeSpan.FromMinutes(35), Minuto);
+        IReadOnlyList<HistoryGap> a = HistoryStrip.FindGaps(qui, TimeSpan.FromMinutes(35), Minuto);
+        IReadOnlyList<HistoryGap> b = HistoryStrip.FindGaps(avanti, TimeSpan.FromMinutes(35), Minuto);
 
-        Assert.Equal(TimeSpan.FromMinutes(15), Assert.Single(a).Durata);
+        Assert.Equal(TimeSpan.FromMinutes(15), Assert.Single(a).Duration);
         Assert.Equal(a.Count, b.Count);
-        Assert.Equal(a[0].Durata, b[0].Durata);
-        Assert.Equal(a[0].DalBordo, b[0].DalBordo);
+        Assert.Equal(a[0].Duration, b[0].Duration);
+        Assert.Equal(a[0].AtEdge, b[0].AtEdge);
 
         // E gli estremi sono traslati esattamente dello scarto, non di piu' e non di meno.
-        Assert.Equal(a[0].Inizio + TimeSpan.FromMinutes(20), b[0].Inizio);
+        Assert.Equal(a[0].Start + TimeSpan.FromMinutes(20), b[0].Start);
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public class AssenzeTests
         // "Non si sa niente" non e' "e' stata giu' tutto il tempo". La differenza la dice il
         // chiamante con un'altra frase; qui restituire una finestra intera di vuoto sarebbe
         // dichiarare un'interruzione che nessuno ha osservato.
-        Assert.Empty(HistoryStrip.Assenze([], TimeSpan.FromHours(1), Minuto));
+        Assert.Empty(HistoryStrip.FindGaps([], TimeSpan.FromHours(1), Minuto));
     }
 
     [Fact]
@@ -160,15 +160,15 @@ public class AssenzeTests
             .. Serie(Mezzogiorno + TimeSpan.FromMinutes(50), 1, cinque),
         ];
 
-        HistoryGap fine = Assert.Single(HistoryStrip.Assenze(punti, TimeSpan.FromMinutes(55), cinque));
+        HistoryGap fine = Assert.Single(HistoryStrip.FindGaps(punti, TimeSpan.FromMinutes(55), cinque));
 
-        Assert.Equal(TimeSpan.FromMinutes(40), fine.Durata);
-        Assert.False(fine.DalBordo);
+        Assert.Equal(TimeSpan.FromMinutes(40), fine.Duration);
+        Assert.False(fine.AtEdge);
 
         // Lo stesso dato, al passo della barra da due ore: quei quaranta minuti non compaiono
         // piu' da nessuna parte.
         Assert.DoesNotContain(
-            HistoryStrip.Assenze(punti, TimeSpan.FromDays(7), TimeSpan.FromHours(2)),
-            assenza => assenza.Durata == TimeSpan.FromMinutes(40));
+            HistoryStrip.FindGaps(punti, TimeSpan.FromDays(7), TimeSpan.FromHours(2)),
+            assenza => assenza.Duration == TimeSpan.FromMinutes(40));
     }
 }

@@ -5,7 +5,7 @@ using Observer.Core.Metrics;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Il pannello dei processi: quando si apre, cosa ricorda, e cosa serve per terminare.
+/// Il pannello dei processi: quando si apre, cosa ricorda, e cosa serve by terminare.
 /// </summary>
 /// <remarks>
 /// E' l'unico posto dell'applicazione da cui si distrugge qualcosa, e le regole che contano
@@ -23,7 +23,7 @@ public class PannelloProcessiTests
     [InlineData("memory|memory.used.percent|", "memory")]
     [InlineData("disk.activity|disk.busy.percent|Disk 0", "io")]
     public void DaiQuadrantiDiCpuMemoriaEAttivitaDiscoSiApreLElenco(string chiave, string attesa) =>
-        Assert.Equal(attesa, ProcessResource.Da(chiave));
+        Assert.Equal(attesa, ProcessResource.From(chiave));
 
     [Theory]
     [InlineData("disk|disk.used.percent|C:")]
@@ -35,39 +35,39 @@ public class PannelloProcessiTests
         // processo IN ESECUZIONE — chi ha scritto quei file magari non c'e' piu' da mesi. Un
         // pannello che si aprisse con l'elenco della CPU sotto il titolo di un volume direbbe
         // una cosa falsa.
-        Assert.Null(ProcessResource.Da(chiave));
+        Assert.Null(ProcessResource.From(chiave));
     }
 
     [Fact]
     public void SoloLoSpazioDeiDischiNonECliccabile()
     {
-        Assert.False(Riga("disk|disk.used.percent|C:").PuoMostrareProcessi);
-        Assert.True(Riga("disk.activity|disk.busy.percent|Disk 0").PuoMostrareProcessi);
-        Assert.True(Riga("cpu|cpu.usage.total|").PuoMostrareProcessi);
+        Assert.False(Riga("disk|disk.used.percent|C:").CanShowProcesses);
+        Assert.True(Riga("disk.activity|disk.busy.percent|Disk 0").CanShowProcesses);
+        Assert.True(Riga("cpu|cpu.usage.total|").CanShowProcesses);
     }
 
     [Fact]
     public async Task DalQuadranteDellAttivitaDiscoSiChiedeLIoDellInteraMacchina()
     {
-        // Il quadrante e' di UN disco, l'elenco no: i contatori sono per processo, non per
+        // Il quadrante e' di UN disco, l'elenco no: i contatori sono by processo, non by
         // dispositivo. Il titolo deve dirlo, e al servizio si chiede "io", non la CPU.
         ClienteConProcessi cliente = new();
-        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(cliente, configurationProblem: null);
 
-        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("disk.activity|disk.busy.percent|Disk 0"));
+        await viewModel.OpenProcessesCommand.ExecuteAsync(Riga("disk.activity|disk.busy.percent|Disk 0"));
 
         Assert.Equal(["io"], cliente.Chiesti);
-        Assert.Contains("I/O", viewModel.ProcessiTitolo, StringComparison.Ordinal);
-        Assert.Contains("whole machine", viewModel.ProcessiTitolo, StringComparison.Ordinal);
+        Assert.Contains("I/O", viewModel.ProcessesTitle, StringComparison.Ordinal);
+        Assert.Contains("whole machine", viewModel.ProcessesTitle, StringComparison.Ordinal);
     }
 
     [Fact]
     public void UnTassoDiIoSiFormattaInBytePerSecondoEUnoIgnotoEUnTrattino()
     {
         // Un trattino e non "0 B/s": sono due affermazioni diverse, e la seconda su un elenco
-        // ordinato per I/O sposterebbe l'attenzione sul programma sbagliato.
-        Assert.Equal("1.5 MiB/s", ProcessRowState.Da(new ProcessWire(1, "copia", 0d, 10, 1_572_864d)).Io);
-        Assert.Equal("—", ProcessRowState.Da(new ProcessWire(1, "ignoto", 0d, 10, null)).Io);
+        // ordinato by I/O sposterebbe l'attenzione sul programma sbagliato.
+        Assert.Equal("1.5 MiB/s", ProcessRowState.From(new ProcessWire(1, "copia", 0d, 10, 1_572_864d)).Io);
+        Assert.Equal("—", ProcessRowState.From(new ProcessWire(1, "ignoto", 0d, 10, null)).Io);
     }
 
     [Fact]
@@ -76,20 +76,20 @@ public class PannelloProcessiTests
         // L'elenco si riscrive una volta al secondo. Senza tenere la selezione sul PID, la
         // riga puntata si deselezionerebbe da sola mentre ci si prepara a terminarla.
         ClienteConProcessi cliente = new();
-        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(cliente, configurationProblem: null);
 
-        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        await viewModel.OpenProcessesCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
 
-        viewModel.ProcessoSelezionato = viewModel.Processi.Single(riga => riga.Pid == 22);
+        viewModel.SelectedProcess = viewModel.Processes.Single(riga => riga.Pid == 22);
 
-        // Stessi PID, valori nuovi: e' cio' che succede a ogni giro. Si passa per un altro
-        // quadrante e non per lo stesso, perche' lo stesso quadrante una seconda volta CHIUDE
+        // Stessi PID, valori nuovi: e' cio' che succede a ogni giro. Si passa by un altro
+        // quadrante e non by lo stesso, perche' lo stesso quadrante una seconda volta CHIUDE
         // il pannello; un altro lo aggiorna sul posto, ed e' l'aggiornamento che qui conta.
         cliente.Cpu = ["9.0 %", "3.0 %"];
-        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("memory|memory.used.percent|"));
+        await viewModel.OpenProcessesCommand.ExecuteAsync(Riga("memory|memory.used.percent|"));
 
-        Assert.NotNull(viewModel.ProcessoSelezionato);
-        Assert.Equal(22, viewModel.ProcessoSelezionato!.Pid);
+        Assert.NotNull(viewModel.SelectedProcess);
+        Assert.Equal(22, viewModel.SelectedProcess!.Pid);
     }
 
     [Fact]
@@ -99,19 +99,19 @@ public class PannelloProcessiTests
         // cambia idea e ne seleziona un altro, e il clic successivo terminerebbe quello nuovo
         // senza averlo mai confermato.
         ClienteConProcessi cliente = new();
-        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(cliente, configurationProblem: null);
 
-        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        await viewModel.OpenProcessesCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
 
-        viewModel.ProcessoSelezionato = viewModel.Processi.First();
-        await viewModel.TerminaSelezionatoCommand.ExecuteAsync(parameter: null);
+        viewModel.SelectedProcess = viewModel.Processes.First();
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
 
-        Assert.True(viewModel.ConfermaTerminazione);
+        Assert.True(viewModel.IsAwaitingEndConfirmation);
         Assert.Empty(cliente.Terminati);
 
-        viewModel.ProcessoSelezionato = viewModel.Processi.Last();
+        viewModel.SelectedProcess = viewModel.Processes.Last();
 
-        Assert.False(viewModel.ConfermaTerminazione);
+        Assert.False(viewModel.IsAwaitingEndConfirmation);
         Assert.Empty(cliente.Terminati);
     }
 
@@ -119,36 +119,36 @@ public class PannelloProcessiTests
     public async Task ServonoDueClicPerTerminareDavvero()
     {
         ClienteConProcessi cliente = new();
-        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(cliente, configurationProblem: null);
 
-        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
-        viewModel.ProcessoSelezionato = viewModel.Processi.Single(riga => riga.Pid == 11);
+        await viewModel.OpenProcessesCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        viewModel.SelectedProcess = viewModel.Processes.Single(riga => riga.Pid == 11);
 
-        await viewModel.TerminaSelezionatoCommand.ExecuteAsync(parameter: null);
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
         Assert.Empty(cliente.Terminati);
 
-        await viewModel.TerminaSelezionatoCommand.ExecuteAsync(parameter: null);
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
 
         Assert.Equal([11], cliente.Terminati);
-        Assert.False(viewModel.ConfermaTerminazione);
+        Assert.False(viewModel.IsAwaitingEndConfirmation);
     }
 
     [Fact]
     public async Task CliccareDiNuovoLoStessoQuadranteChiudeIlPannello()
     {
-        // Il gesto che chiunque prova per primo per far sparire cio' che ha appena fatto
+        // Il gesto che chiunque prova by primo by far sparire cio' che ha appena fatto
         // comparire. Prima riapriva lo stesso elenco, e l'unico modo di chiuderlo era il
         // pulsante Close in fondo a destra.
         ClienteConProcessi cliente = new();
-        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(cliente, configurationProblem: null);
 
-        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
-        Assert.True(viewModel.ProcessiVisibili);
+        await viewModel.OpenProcessesCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        Assert.True(viewModel.IsProcessPanelOpen);
 
-        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        await viewModel.OpenProcessesCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
 
-        Assert.False(viewModel.ProcessiVisibili);
-        Assert.Empty(viewModel.Processi);
+        Assert.False(viewModel.IsProcessPanelOpen);
+        Assert.Empty(viewModel.Processes);
         Assert.Equal(["cpu"], cliente.Chiesti);
     }
 
@@ -156,13 +156,13 @@ public class PannelloProcessiTests
     public async Task CliccareUnAltroQuadranteCambiaElencoSenzaChiudere()
     {
         ClienteConProcessi cliente = new();
-        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(cliente, configurationProblem: null);
 
-        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
-        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("memory|memory.used.percent|"));
+        await viewModel.OpenProcessesCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        await viewModel.OpenProcessesCommand.ExecuteAsync(Riga("memory|memory.used.percent|"));
 
-        Assert.True(viewModel.ProcessiVisibili);
-        Assert.Contains("memory", viewModel.ProcessiTitolo, StringComparison.Ordinal);
+        Assert.True(viewModel.IsProcessPanelOpen);
+        Assert.Contains("memory", viewModel.ProcessesTitle, StringComparison.Ordinal);
         Assert.Equal(["cpu", "memory"], cliente.Chiesti);
     }
 
@@ -172,20 +172,20 @@ public class PannelloProcessiTests
         // Un pulsante solo, che cambia scritta: cosi' il fuoco della tastiera resta dov'e'.
         // Con due pulsanti alternati, al primo clic quello premuto spariva.
         ClienteConProcessi cliente = new();
-        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(cliente, configurationProblem: null);
 
-        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
-        viewModel.ProcessoSelezionato = viewModel.Processi.First();
+        await viewModel.OpenProcessesCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        viewModel.SelectedProcess = viewModel.Processes.First();
 
-        Assert.Equal("End process", viewModel.TestoTermina);
+        Assert.Equal("End process", viewModel.EndButtonText);
 
-        await viewModel.TerminaSelezionatoCommand.ExecuteAsync(parameter: null);
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
 
-        Assert.Equal("Click again to end it", viewModel.TestoTermina);
+        Assert.Equal("Click again to end it", viewModel.EndButtonText);
 
-        viewModel.ProcessoSelezionato = viewModel.Processi.Last();
+        viewModel.SelectedProcess = viewModel.Processes.Last();
 
-        Assert.Equal("End process", viewModel.TestoTermina);
+        Assert.Equal("End process", viewModel.EndButtonText);
     }
 
     [Fact]
@@ -198,45 +198,45 @@ public class PannelloProcessiTests
     public async Task ChiudereIlPannelloDimenticaTutto()
     {
         ClienteConProcessi cliente = new();
-        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(cliente, configurationProblem: null);
 
-        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
-        viewModel.ProcessoSelezionato = viewModel.Processi.First();
+        await viewModel.OpenProcessesCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        viewModel.SelectedProcess = viewModel.Processes.First();
 
-        viewModel.ChiudiProcessiCommand.Execute(parameter: null);
+        viewModel.CloseProcessPanelCommand.Execute(parameter: null);
 
-        Assert.False(viewModel.ProcessiVisibili);
-        Assert.Empty(viewModel.Processi);
-        Assert.Null(viewModel.ProcessoSelezionato);
-        Assert.False(viewModel.ConfermaTerminazione);
+        Assert.False(viewModel.IsProcessPanelOpen);
+        Assert.Empty(viewModel.Processes);
+        Assert.Null(viewModel.SelectedProcess);
+        Assert.False(viewModel.IsAwaitingEndConfirmation);
     }
 
     [Fact]
     public async Task UnClicMentreLaPrimaLetturaEInVoloNonVieneScartato()
     {
         // Macchina remota lenta: la prima lettura dell'elenco non torna subito. Nel frattempo
-        // chi ha cliccato clicca ancora — per chiudere, o per passare a un altro quadrante —
-        // e quel clic deve contare. Prima veniva scartato: il comando e' UNO per tutti i
+        // chi ha cliccato clicca ancora — by chiudere, o by passare a un altro quadrante —
+        // e quel clic deve contare. Prima veniva scartato: il comando e' UNO by tutti i
         // quadranti, e un comando asincrono in esecuzione rifiuta le esecuzioni concorrenti.
         ClienteConProcessi cliente = new() { Attesa = new TaskCompletionSource<ProcessFetch>() };
-        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(cliente, configurationProblem: null);
 
-        Task prima = viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        Task prima = viewModel.OpenProcessesCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
 
-        Assert.True(viewModel.ProcessiVisibili);
-        Assert.True(viewModel.ApriProcessiCommand.CanExecute(Riga("memory|memory.used.percent|")));
+        Assert.True(viewModel.IsProcessPanelOpen);
+        Assert.True(viewModel.OpenProcessesCommand.CanExecute(Riga("memory|memory.used.percent|")));
 
-        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        await viewModel.OpenProcessesCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
 
-        Assert.False(viewModel.ProcessiVisibili);
+        Assert.False(viewModel.IsProcessPanelOpen);
 
-        // E la risposta arrivata in ritardo per un pannello ormai chiuso non lo riempie.
+        // E la risposta arrivata in ritardo by un pannello ormai chiuso non lo riempie.
         cliente.Attesa.SetResult(new ProcessFetch(
             ServiceOutcome.Ok, string.Empty, [new ProcessRowState(99, "in ritardo", "99 %", "1 MiB")]));
         await prima;
 
-        Assert.False(viewModel.ProcessiVisibili);
-        Assert.Empty(viewModel.Processi);
+        Assert.False(viewModel.IsProcessPanelOpen);
+        Assert.Empty(viewModel.Processes);
     }
 
     [Fact]
@@ -245,22 +245,22 @@ public class PannelloProcessiTests
         ClienteConProcessi cliente = new();
         TaskCompletionSource<ProcessFetch> inVolo = new();
         cliente.Attesa = inVolo;
-        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(cliente, configurationProblem: null);
 
-        Task cpu = viewModel.ApriProcessiCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
+        Task cpu = viewModel.OpenProcessesCommand.ExecuteAsync(Riga("cpu|cpu.usage.total|"));
 
         // Il secondo quadrante risponde subito; il primo, dopo.
         cliente.Attesa = null;
-        await viewModel.ApriProcessiCommand.ExecuteAsync(Riga("memory|memory.used.percent|"));
+        await viewModel.OpenProcessesCommand.ExecuteAsync(Riga("memory|memory.used.percent|"));
 
-        Assert.Contains("memory", viewModel.ProcessiTitolo, StringComparison.Ordinal);
-        Assert.Equal(["affamato", "tranquillo"], viewModel.Processi.Select(riga => riga.Nome));
+        Assert.Contains("memory", viewModel.ProcessesTitle, StringComparison.Ordinal);
+        Assert.Equal(["affamato", "tranquillo"], viewModel.Processes.Select(riga => riga.Name));
 
         inVolo.SetResult(new ProcessFetch(
             ServiceOutcome.Ok, string.Empty, [new ProcessRowState(99, "in ritardo", "99 %", "1 MiB")]));
         await cpu;
 
-        Assert.Equal(["affamato", "tranquillo"], viewModel.Processi.Select(riga => riga.Nome));
+        Assert.Equal(["affamato", "tranquillo"], viewModel.Processes.Select(riga => riga.Name));
     }
 
     private sealed class ClienteConProcessi : IMetricsClient
@@ -274,22 +274,22 @@ public class PannelloProcessiTests
 
         public List<string> Chiesti { get; } = [];
 
-        public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.CanaleLocale();
+        public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.LocalChannel();
 
         public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new SnapshotFetch(ServiceOutcome.NonRaggiungibile, "spenta", null));
+            Task.FromResult(new SnapshotFetch(ServiceOutcome.Unreachable, "spenta", null));
 
         public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new CatalogFetch(ServiceOutcome.Ok, string.Empty, MetricCatalog.Empty));
 
         public Task<HistoryFetch> GetHistoryAsync(
-            HistoryQuery richiesta, CancellationToken cancellationToken) =>
+            HistoryQuery query, CancellationToken cancellationToken) =>
             Task.FromResult(new HistoryFetch(ServiceOutcome.Ok, string.Empty, []));
 
         public Task<ProcessFetch> GetProcessesAsync(
-            string per, int quanti, CancellationToken cancellationToken)
+            string by, int top, CancellationToken cancellationToken)
         {
-            Chiesti.Add(per);
+            Chiesti.Add(by);
 
             if (Attesa is { } attesa)
             {

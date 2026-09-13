@@ -25,72 +25,72 @@ public class TemaTests
     [Fact]
     public void LaChiaveTrovaLaSuaVariante()
     {
-        Assert.Equal(ThemeVariant.Light, ThemeOption.Variante("light"));
-        Assert.Equal(ThemeVariant.Dark, ThemeOption.Variante("dark"));
-        Assert.Equal(ThemeVariant.Default, ThemeOption.Variante("system"));
+        Assert.Equal(ThemeVariant.Light, ThemeOption.VariantFor("light"));
+        Assert.Equal(ThemeVariant.Dark, ThemeOption.VariantFor("dark"));
+        Assert.Equal(ThemeVariant.Default, ThemeOption.VariantFor("system"));
 
         // Una chiave che non esiste segue il sistema, mai una variante a caso.
-        Assert.Equal(ThemeVariant.Default, ThemeOption.Variante("nero"));
+        Assert.Equal(ThemeVariant.Default, ThemeOption.VariantFor("nero"));
     }
 
     [Fact]
     public void LeVociDelSelettoreSonoTreNellOrdineGiusto()
     {
-        Assert.Equal(["System", "Light", "Dark"], MainViewModel.OpzioniTema.Select(voce => voce.ToString()));
+        Assert.Equal(["System", "Light", "Dark"], MainViewModel.ThemeOptions.Select(voce => voce.ToString()));
         Assert.Equal(new ThemeOption("dark"), new ThemeOption("dark"));
     }
 
     [Fact]
     public void CambiareTemaOScalaNotificaAncheLaVoceDelSelettore()
     {
-        // La tendina e' legata alla VOCE (TemaScelto, ScalaScelta), ma la finestra scrive la
-        // chiave (Tema, ScalaTesto): senza la notifica della voce, all'avvio con "dark" nel
+        // La tendina e' legata alla VOCE (SelectedTheme, SelectedScale), ma la finestra scrive la
+        // chiave (Theme, Zoom): senza la notifica della voce, all'avvio con "dark" nel
         // file la finestra sarebbe scura con il selettore fermo su System.
-        MainViewModel viewModel = new(client: null, problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(client: null, configurationProblem: null);
         List<string> notificate = [];
         viewModel.PropertyChanged += (_, e) => notificate.Add(e.PropertyName ?? string.Empty);
 
-        viewModel.Tema = "dark";
-        viewModel.ScalaTesto = 1.3d;
+        viewModel.Theme = "dark";
+        viewModel.Zoom = 1.3d;
 
-        Assert.Contains(nameof(MainViewModel.Tema), notificate);
-        Assert.Contains(nameof(MainViewModel.TemaScelto), notificate);
-        Assert.Contains(nameof(MainViewModel.ScalaTesto), notificate);
-        Assert.Contains(nameof(MainViewModel.ScalaScelta), notificate);
+        Assert.Contains(nameof(MainViewModel.Theme), notificate);
+        Assert.Contains(nameof(MainViewModel.SelectedTheme), notificate);
+        Assert.Contains(nameof(MainViewModel.Zoom), notificate);
+        Assert.Contains(nameof(MainViewModel.SelectedScale), notificate);
     }
 
     [Fact]
     public void IlViewModelNonAccettaUnTemaInventato()
     {
-        MainViewModel viewModel = new(client: null, problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(client: null, configurationProblem: null);
 
-        Assert.Equal("system", viewModel.Tema);
+        Assert.Equal("system", viewModel.Theme);
 
-        viewModel.Tema = "dark";
-        Assert.Equal(new ThemeOption("dark"), viewModel.TemaScelto);
+        viewModel.Theme = "dark";
+        Assert.Equal(new ThemeOption("dark"), viewModel.SelectedTheme);
 
-        viewModel.Tema = "nero";
-        Assert.Equal("system", viewModel.Tema);
+        viewModel.Theme = "nero";
+        Assert.Equal("system", viewModel.Theme);
 
         // Il selettore puo' assegnare null mentre cambia elenco: il tema resta com'e'.
-        viewModel.Tema = "light";
-        viewModel.TemaScelto = null!;
-        Assert.Equal("light", viewModel.Tema);
+        viewModel.Theme = "light";
+        viewModel.SelectedTheme = null!;
+        Assert.Equal("light", viewModel.Theme);
     }
 
     [Fact]
     public void IlViewModelParteDallaNormaleEOffreTutteLeScale()
     {
-        // La tendina mostra OpzioniScala, non ScaleAmmesse: un gradino perso fra le due liste
+        // La tendina mostra ScaleOptions, non AllowedZoomLevels: un gradino perso fra le due liste
         // non si vede in nessun altro test. E la scala di partenza e' quella normale, non il
         // primo elemento della lista, che da 0.14.0 e' 0,75.
-        MainViewModel viewModel = new(client: null, problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(client: null, configurationProblem: null);
 
-        Assert.Equal(Preferences.ScalaNormale, viewModel.ScalaTesto);
-        Assert.Equal(Preferences.ScaleAmmesse, MainViewModel.OpzioniScala.Select(voce => voce.Fattore));
+        Assert.Equal(Preferences.NormalZoom, viewModel.Zoom);
+        Assert.Equal(Preferences.AllowedZoomLevels, MainViewModel.ScaleOptions.Select(voce => voce.Factor));
 
         // Come per il tema: una scala inventata non entra, torna alla normale.
-        viewModel.ScalaTesto = 0.5d;
-        Assert.Equal(Preferences.ScalaNormale, viewModel.ScalaTesto);
+        viewModel.Zoom = 0.5d;
+        Assert.Equal(Preferences.NormalZoom, viewModel.Zoom);
     }
 }

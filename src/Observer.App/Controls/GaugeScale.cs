@@ -13,25 +13,25 @@ namespace Observer.App.Controls;
 /// stessa. Un controllo Avalonia non si puo' interrogare senza un ambiente grafico; questa
 /// classe si', e infatti ha i suoi test.
 /// <para>
-/// Gli angoli sono in gradi e misurati come si misurano nella grafica: zero a ore 3, crescenti
-/// in senso <b>orario</b>, perche' la Y cresce verso il basso. La scala parte da 135 gradi (in
-/// basso a sinistra), apre 270 gradi e finisce a 405 (in basso a destra). E' la forma di un
+/// Gli angoli sono in degrees e misurati come si misurano nella grafica: zero a ore 3, crescenti
+/// in senso <b>orario</b>, perche' la Y cresce verso il basso. La scala parte da 135 degrees (in
+/// basso a sinistra), apre 270 degrees e finisce a 405 (in basso a destra). E' la forma di un
 /// contagiri d'automobile: il pezzo scoperto sta in basso, dove la lancetta non passa mai.
 /// </para>
 /// </remarks>
 public static class GaugeScale
 {
-    /// <summary>L'angolo dello zero della scala, in gradi.</summary>
-    public const double Partenza = 135d;
+    /// <summary>L'angolo dello zero della scala, in degrees.</summary>
+    public const double StartAngle = 135d;
 
-    /// <summary>Di quanto apre la scala, in gradi.</summary>
-    public const double Apertura = 270d;
+    /// <summary>Di quanto apre la scala, in degrees.</summary>
+    public const double SweepAngle = 270d;
 
-    /// <summary>L'angolo del fondo scala, in gradi.</summary>
-    public const double Arrivo = Partenza + Apertura;
+    /// <summary>L'angolo del fondo scala, in degrees.</summary>
+    public const double EndAngle = StartAngle + SweepAngle;
 
     /// <summary>Riporta un valore dentro la scala.</summary>
-    /// <param name="frazione">Il valore, atteso fra 0 e 1.</param>
+    /// <param name="fraction">Il valore, atteso fra 0 e 1.</param>
     /// <returns>Lo stesso valore, limitato a 0..1; zero se non e' un numero.</returns>
     /// <remarks>
     /// NaN diventa zero, e non e' pignoleria: una percentuale che non si e' potuta misurare
@@ -39,37 +39,37 @@ public static class GaugeScale
     /// non disegna una geometria con dentro un NaN, quindi il tachimetro sparirebbe del tutto
     /// — un guasto che si presenta come "il riquadro e' vuoto", senza nominare la sua causa.
     /// </remarks>
-    public static double Frazione(double frazione) =>
-        double.IsNaN(frazione) ? 0d : Math.Clamp(frazione, 0d, 1d);
+    public static double ClampFraction(double fraction) =>
+        double.IsNaN(fraction) ? 0d : Math.Clamp(fraction, 0d, 1d);
 
     /// <summary>L'angolo a cui cade un valore.</summary>
-    /// <param name="frazione">Il valore, fra 0 e 1.</param>
-    /// <returns>L'angolo in gradi, fra <see cref="Partenza"/> e <see cref="Arrivo"/>.</returns>
-    public static double Angolo(double frazione) =>
-        Partenza + (Frazione(frazione) * Apertura);
+    /// <param name="fraction">Il valore, fra 0 e 1.</param>
+    /// <returns>L'angolo in degrees, fra <see cref="StartAngle"/> e <see cref="EndAngle"/>.</returns>
+    public static double AngleFor(double fraction) =>
+        StartAngle + (ClampFraction(fraction) * SweepAngle);
 
     /// <summary>L'angolo di una tacca della scala.</summary>
-    /// <param name="indice">Quale tacca, da 0 alla prima esclusa dopo l'ultima.</param>
-    /// <param name="intervalli">In quanti intervalli e' divisa la scala.</param>
-    /// <returns>L'angolo in gradi.</returns>
-    public static double AngoloDellaTacca(int indice, int intervalli)
+    /// <param name="index">Quale tacca, da 0 alla prima esclusa dopo l'ultima.</param>
+    /// <param name="intervals">In quanti intervals e' divisa la scala.</param>
+    /// <returns>L'angolo in degrees.</returns>
+    public static double TickAngle(int index, int intervals)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(intervalli, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(intervals, 1);
 
-        return Angolo((double)indice / intervalli);
+        return AngleFor((double)index / intervals);
     }
 
-    /// <summary>Il punto che sta a un certo angolo e a una certa distanza dal centro.</summary>
-    /// <param name="centro">Il centro della scala.</param>
-    /// <param name="raggio">La distanza dal centro.</param>
-    /// <param name="gradi">L'angolo, misurato come descritto nel tipo.</param>
+    /// <summary>Il punto che sta a un certo angolo e a una certa distanza dal center.</summary>
+    /// <param name="center">Il center della scala.</param>
+    /// <param name="radius">La distanza dal center.</param>
+    /// <param name="degrees">L'angolo, misurato come descritto nel tipo.</param>
     /// <returns>Il punto.</returns>
-    public static Point Punto(Point centro, double raggio, double gradi)
+    public static Point PointAt(Point center, double radius, double degrees)
     {
-        double radianti = gradi * Math.PI / 180d;
+        double radians = degrees * Math.PI / 180d;
 
         return new Point(
-            centro.X + (raggio * Math.Cos(radianti)),
-            centro.Y + (raggio * Math.Sin(radianti)));
+            center.X + (radius * Math.Cos(radians)),
+            center.Y + (radius * Math.Sin(radians)));
     }
 }

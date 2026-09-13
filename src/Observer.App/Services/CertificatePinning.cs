@@ -6,46 +6,46 @@ using Observer.Core.Security;
 namespace Observer.App.Services;
 
 /// <summary>
-/// Decide se il certificato che arriva dalla rete e' quello della macchina giusta.
+/// Decide se il certificate che arriva dalla rete e' quello della macchina giusta.
 /// </summary>
 /// <remarks>
-/// Il certificato di Observer e' <b>autofirmato</b>: nessuna autorita' lo garantisce, e la
+/// Il certificate di Observer e' <b>autofirmato</b>: nessuna autorita' lo garantisce, e la
 /// validazione ordinaria di TLS lo rifiuterebbe sempre. Al suo posto c'e' un confronto con
-/// l'impronta presa a mano dalla macchina stessa, con <c>observer share</c>.
+/// l'fingerprint presa a mano dalla macchina stessa, con <c>observer share</c>.
 /// <para>
 /// Gli errori di catena vengono ignorati <b>di proposito</b>, e non e' una scorciatoia: una
 /// catena che non porta a nessuna autorita' e' esattamente cio' che ci si aspetta qui. Cio' che
 /// NON viene ignorato e' l'identita', ed e' l'unica cosa che conta: senza questo confronto, chi
-/// riesce a mettersi in mezzo presenta il proprio certificato, il collegamento riesce, e il
+/// riesce a mettersi in mezzo presenta il proprio certificate, il collegamento riesce, e il
 /// token gli arriva addosso.
 /// </para>
 /// <para>
-/// L'ultima impronta vista viene conservata per poterla <b>mostrare</b>. Dopo una
-/// reinstallazione del servizio l'impronta cambia per un motivo legittimo, e senza vedere
+/// L'ultima fingerprint seenFingerprint viene conservata per poterla <b>mostrare</b>. Dopo una
+/// reinstallazione del servizio l'fingerprint cambia per un motivo legittimo, e senza vedere
 /// quella nuova l'utente non ha modo di aggiornare la propria configurazione.
 /// </para>
 /// </remarks>
 public sealed class CertificatePinning
 {
-    private string? ultimaVista;
-    private int rifiutato;
+    private string? lastSeenFingerprint;
+    private int rejected;
 
-    /// <summary>Costruisce il confronto su un'impronta attesa.</summary>
-    /// <param name="impronta">L'impronta che quella macchina deve presentare.</param>
-    public CertificatePinning(string impronta)
+    /// <summary>Costruisce il confronto su un'fingerprint attesa.</summary>
+    /// <param name="fingerprint">L'fingerprint che quella macchina deve presentare.</param>
+    public CertificatePinning(string fingerprint)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(impronta);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fingerprint);
 
-        Attesa = impronta;
+        ExpectedFingerprint = fingerprint;
     }
 
-    /// <summary>L'impronta che ci si aspetta.</summary>
-    public string Attesa { get; }
+    /// <summary>L'fingerprint che ci si aspetta.</summary>
+    public string ExpectedFingerprint { get; }
 
-    /// <summary>L'ultima impronta arrivata dalla rete, oppure null se non ne e' arrivata.</summary>
-    public string? UltimaVista => Volatile.Read(ref ultimaVista);
+    /// <summary>L'ultima fingerprint received dalla rete, oppure null se non ne e' received.</summary>
+    public string? LastSeenFingerprint => Volatile.Read(ref lastSeenFingerprint);
 
-    /// <summary>Vero se l'ultima volta che un certificato e' stato esaminato e' stato respinto.</summary>
+    /// <summary>Vero se l'ultima volta che un certificate e' stato esaminato e' stato respinto.</summary>
     /// <remarks>
     /// Serve a non attribuire al fissaggio guasti che non sono suoi. Una connessione TLS puo'
     /// fallire per molte ragioni - protocolli incompatibili, un intermediario che chiude, un
@@ -54,11 +54,11 @@ public sealed class CertificatePinning
     /// mettendo in mezzo", che e' un'accusa pesante da fare senza prove.
     /// <para>
     /// Il callback NON viene invocato quando la connessione viene riusata, quindi la sola
-    /// <see cref="UltimaVista"/> potrebbe essere vecchia: e' questo indicatore, azzerato a ogni
+    /// <see cref="LastSeenFingerprint"/> potrebbe essere vecchia: e' questo indicatore, azzerato a ogni
     /// esame riuscito, a dire se il rifiuto e' di adesso.
     /// </para>
     /// </remarks>
-    public bool HaRifiutato => Volatile.Read(ref rifiutato) != 0;
+    public bool HasRejected => Volatile.Read(ref rejected) != 0;
 
     /// <summary>Un handler che accetta solo quella macchina.</summary>
     /// <returns>L'handler, gia' configurato.</returns>
@@ -71,48 +71,48 @@ public sealed class CertificatePinning
         // niente, e comprimerli sarebbe CPU spesa dalla macchina che questo programma misura.
         SocketsHttpHandler handler = new() { AutomaticDecompression = DecompressionMethods.All };
 
-        handler.SslOptions.RemoteCertificateValidationCallback = (_, presentato, _, _) =>
+        handler.SslOptions.RemoteCertificateValidationCallback = (_, presentedCertificate, _, _) =>
         {
-            if (presentato is not X509Certificate2 certificato)
+            if (presentedCertificate is not X509Certificate2 certificate)
             {
-                Volatile.Write(ref ultimaVista, null);
-                Volatile.Write(ref rifiutato, 1);
+                Volatile.Write(ref lastSeenFingerprint, null);
+                Volatile.Write(ref rejected, 1);
 
                 return false;
             }
 
-            string vista = CertificateFingerprint.From(certificato.RawDataMemory.Span);
-            bool corrisponde = CertificateFingerprint.Match(Attesa, vista);
+            string seenFingerprint = CertificateFingerprint.From(certificate.RawDataMemory.Span);
+            bool matches = CertificateFingerprint.Match(ExpectedFingerprint, seenFingerprint);
 
-            Volatile.Write(ref ultimaVista, vista);
-            Volatile.Write(ref rifiutato, corrisponde ? 0 : 1);
+            Volatile.Write(ref lastSeenFingerprint, seenFingerprint);
+            Volatile.Write(ref rejected, matches ? 0 : 1);
 
-            return corrisponde;
+            return matches;
         };
 
         return handler;
     }
 
-    /// <summary>La frase da mostrare quando il certificato non e' quello atteso.</summary>
-    /// <param name="descrizione">Come si chiama la macchina interrogata.</param>
+    /// <summary>La frase da mostrare quando il certificate non e' quello atteso.</summary>
+    /// <param name="description">Come si chiama la macchina interrogata.</param>
     /// <returns>Il testo per la barra di stato.</returns>
     /// <remarks>
-    /// Dice tutte e due le impronte. Un messaggio che si limita a "non corrisponde" lascia
+    /// Dice tutte e due le impronte. Un messaggio che si limita a "non matches" lascia
     /// l'utente senza il valore nuovo, cioe' senza il modo di distinguere una reinstallazione
     /// da un attacco e senza il dato da incollare per rimettere le cose a posto.
     /// </remarks>
-    public string Spiegazione(string descrizione)
+    public string DescribeMismatch(string description)
     {
-        string vista = UltimaVista is { } arrivata
-            ? CertificateFingerprint.ForHumans(arrivata)
+        string seenFingerprint = LastSeenFingerprint is { } received
+            ? CertificateFingerprint.ForHumans(received)
             : "none - the machine presented no certificate at all";
 
         return
-            $"{descrizione} presented a certificate that is not the one pinned for it, so the " +
+            $"{description} presented a certificate that is not the one pinned for it, so the " +
             "connection was refused before anything was sent. Nothing was disclosed: the token " +
             "never left this machine." + Environment.NewLine +
-            "Expected: " + CertificateFingerprint.ForHumans(Attesa) + Environment.NewLine +
-            "Received: " + vista + Environment.NewLine +
+            "Expected: " + CertificateFingerprint.ForHumans(ExpectedFingerprint) + Environment.NewLine +
+            "Received: " + seenFingerprint + Environment.NewLine +
             "If Observer was reinstalled on that machine this is expected, and the fix is to run " +
             "\"observer share\" there and copy the new fingerprint into this machine's " +
             "machines.json. If it was not reinstalled, do NOT copy the new value: this is what a " +
