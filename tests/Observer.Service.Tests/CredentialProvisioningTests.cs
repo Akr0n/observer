@@ -28,10 +28,10 @@ public class CredentialProvisioningTests : IDisposable
     {
         // Retrocompatibilita', ed e' cio' che tiene in piedi i test e la CI: chi ha gia' un
         // token in appsettings.Local.json non deve accorgersi di niente.
-        ProvisionedCredentials esito = CredentialProvisioning.Provvedi(
-            "token-scelto-a-mano", Percorso, giraComeServizio: false);
+        ProvisionedCredentials esito = CredentialProvisioning.Provision(
+            "token-scelto-a-mano", Percorso, runningAsService: false);
 
-        Assert.Equal(CredentialOrigin.Configurazione, esito.Origin);
+        Assert.Equal(CredentialOrigin.Configuration, esito.Origin);
         Assert.Equal("token-scelto-a-mano", esito.Credentials.Current);
         Assert.False(File.Exists(Percorso));
     }
@@ -39,11 +39,11 @@ public class CredentialProvisioningTests : IDisposable
     [Fact]
     public void SenzaDepositoNeConfigurazione_NeGeneraUnoELoDeposita()
     {
-        ProvisionedCredentials esito = CredentialProvisioning.Provvedi(null, Percorso, giraComeServizio: false);
+        ProvisionedCredentials esito = CredentialProvisioning.Provision(null, Percorso, runningAsService: false);
 
-        Assert.Equal(CredentialOrigin.GeneratoEDepositato, esito.Origin);
+        Assert.Equal(CredentialOrigin.CreatedAndStored, esito.Origin);
         Assert.False(string.IsNullOrWhiteSpace(esito.Credentials.Current));
-        Assert.NotNull(CredentialStore.Leggi(Percorso));
+        Assert.NotNull(CredentialStore.Read(Percorso));
     }
 
     [Fact]
@@ -51,10 +51,10 @@ public class CredentialProvisioningTests : IDisposable
     {
         // Rigenerare a ogni avvio taglierebbe fuori ogni client remoto ogni volta che la
         // macchina si riavvia, e nessuno collegherebbe le due cose.
-        ProvisionedCredentials primo = CredentialProvisioning.Provvedi(null, Percorso, giraComeServizio: false);
-        ProvisionedCredentials secondo = CredentialProvisioning.Provvedi(null, Percorso, giraComeServizio: false);
+        ProvisionedCredentials primo = CredentialProvisioning.Provision(null, Percorso, runningAsService: false);
+        ProvisionedCredentials secondo = CredentialProvisioning.Provision(null, Percorso, runningAsService: false);
 
-        Assert.Equal(CredentialOrigin.Deposito, secondo.Origin);
+        Assert.Equal(CredentialOrigin.Stored, secondo.Origin);
         Assert.Equal(primo.Credentials.Current, secondo.Credentials.Current);
     }
 
@@ -64,7 +64,7 @@ public class CredentialProvisioningTests : IDisposable
         // Un servizio che deposita in silenzio un token leggibile da tutti e' peggio di un
         // servizio che non parte. Un servizio che non parte si nota subito.
         Assert.Throws<InvalidOperationException>(
-            () => CredentialProvisioning.Provvedi(null, PercorsoImpossibile(), giraComeServizio: true));
+            () => CredentialProvisioning.Provision(null, PercorsoImpossibile(), runningAsService: true));
     }
 
     [Fact]
@@ -75,9 +75,9 @@ public class CredentialProvisioningTests : IDisposable
         // credere di averlo messo al sicuro.
         string impossibile = PercorsoImpossibile();
 
-        ProvisionedCredentials esito = CredentialProvisioning.Provvedi(null, impossibile, giraComeServizio: false);
+        ProvisionedCredentials esito = CredentialProvisioning.Provision(null, impossibile, runningAsService: false);
 
-        Assert.Equal(CredentialOrigin.Effimero, esito.Origin);
+        Assert.Equal(CredentialOrigin.Ephemeral, esito.Origin);
         Assert.False(string.IsNullOrWhiteSpace(esito.Credentials.Current));
         Assert.False(File.Exists(impossibile));
     }
@@ -91,7 +91,7 @@ public class CredentialProvisioningTests : IDisposable
         File.WriteAllText(Percorso, "non e' JSON {{{");
 
         Assert.Throws<InvalidOperationException>(
-            () => CredentialProvisioning.Provvedi(null, Percorso, giraComeServizio: false));
+            () => CredentialProvisioning.Provision(null, Percorso, runningAsService: false));
     }
 
     /// <summary>Un percorso in cui nessun utente, su nessun sistema, puo' creare una cartella.</summary>

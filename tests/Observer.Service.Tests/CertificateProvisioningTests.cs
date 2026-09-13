@@ -25,7 +25,7 @@ public class CertificateProvisioningTests : IDisposable
             "observer-cert-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
 
         Directory.CreateDirectory(cartella);
-        deposito = Path.Combine(cartella, CredentialDirectory.NomeFile);
+        deposito = Path.Combine(cartella, CredentialDirectory.FileName);
     }
 
     public void Dispose()
@@ -46,7 +46,7 @@ public class CertificateProvisioningTests : IDisposable
     }
 
     private ProvisionedCertificate Provvedi() =>
-        CertificateProvisioning.Provvedi(deposito, "macchina-di-prova", DateTimeOffset.UtcNow, false);
+        CertificateProvisioning.Provision(deposito, "macchina-di-prova", DateTimeOffset.UtcNow, false);
 
     [Fact]
     public void IlSecondoAvvioRIUSAloStessoCertificato()
@@ -113,17 +113,17 @@ public class CertificateProvisioningTests : IDisposable
     {
         // Sostituirlo sarebbe la cosa comoda, e sarebbe sbagliata: un certificato nuovo ha
         // un'impronta nuova. Meglio fermarsi e farlo decidere a una persona.
-        File.WriteAllText(MachineCertificate.PercorsoAccantoA(deposito), "non sono un PKCS#12");
+        File.WriteAllText(MachineCertificate.PathNextTo(deposito), "non sono un PKCS#12");
 
         InvalidOperationException errore = Assert.Throws<InvalidOperationException>(
-            () => CertificateProvisioning.Provvedi(
+            () => CertificateProvisioning.Provision(
                 deposito,
                 "macchina-di-prova",
                 DateTimeOffset.UtcNow,
-                giraComeServizio: true));
+                runningAsService: true));
 
         Assert.Contains("fingerprint", errore.Message, StringComparison.Ordinal);
-        Assert.Equal("non sono un PKCS#12", File.ReadAllText(MachineCertificate.PercorsoAccantoA(deposito)));
+        Assert.Equal("non sono un PKCS#12", File.ReadAllText(MachineCertificate.PathNextTo(deposito)));
     }
 
     [Fact]
@@ -134,9 +134,9 @@ public class CertificateProvisioningTests : IDisposable
 
         try
         {
-            Assert.Equal(CertificateOrigin.GeneratoEDepositato, provvisto.Origin);
-            Assert.Equal(Path.GetDirectoryName(deposito), Path.GetDirectoryName(provvisto.Percorso));
-            Assert.True(File.Exists(provvisto.Percorso));
+            Assert.Equal(CertificateOrigin.CreatedAndStored, provvisto.Origin);
+            Assert.Equal(Path.GetDirectoryName(deposito), Path.GetDirectoryName(provvisto.Path));
+            Assert.True(File.Exists(provvisto.Path));
         }
         finally
         {
@@ -153,7 +153,7 @@ public class CertificateProvisioningTests : IDisposable
 
         try
         {
-            Assert.Empty(Directory.GetFiles(cartella, "*.nuovo"));
+            Assert.Empty(Directory.GetFiles(cartella, "*.new"));
         }
         finally
         {
@@ -168,13 +168,13 @@ public class CertificateProvisioningTests : IDisposable
         // non per un certificato che c'e' ed e' illeggibile. Ripiegare in silenzio mostrerebbe
         // un servizio che parte, un'impronta nuova a ogni avvio, e nessun indizio sul file
         // rotto che sta sul disco.
-        File.WriteAllText(MachineCertificate.PercorsoAccantoA(deposito), "non sono un PKCS#12");
+        File.WriteAllText(MachineCertificate.PathNextTo(deposito), "non sono un PKCS#12");
 
         Assert.Throws<InvalidOperationException>(
-            () => CertificateProvisioning.Provvedi(
+            () => CertificateProvisioning.Provision(
                 deposito,
                 "macchina-di-prova",
                 DateTimeOffset.UtcNow,
-                giraComeServizio: false));
+                runningAsService: false));
     }
 }

@@ -20,7 +20,7 @@ public class EndpointUrlTests
     [InlineData("http://unix:/run/observer/observer.sock")]
     [InlineData("http://pipe:/Observer")]
     public void UrlValidi_NonProduconoAlcunProblema(string url) =>
-        Assert.Null(EndpointUrl.Problema(url));
+        Assert.Null(EndpointUrl.Problem(url));
 
     [Theory]
     // Il caso che ha aperto la porta 80 su tutte le interfacce senza dire niente.
@@ -34,7 +34,7 @@ public class EndpointUrlTests
     [InlineData("   ")]
     [InlineData("non-un-url")]
     public void UrlRotti_SpieganoIlProblema(string url) =>
-        Assert.False(string.IsNullOrWhiteSpace(EndpointUrl.Problema(url)));
+        Assert.False(string.IsNullOrWhiteSpace(EndpointUrl.Problem(url)));
 
     [Fact]
     public void PercorsoDelSocketDi107Byte_Accettato_Di108_No()
@@ -49,8 +49,8 @@ public class EndpointUrlTests
         Assert.Equal(107, Encoding.UTF8.GetByteCount(a107));
         Assert.Equal(108, Encoding.UTF8.GetByteCount(a108));
 
-        Assert.Null(EndpointUrl.Problema("http://unix:" + a107));
-        Assert.NotNull(EndpointUrl.Problema("http://unix:" + a108));
+        Assert.Null(EndpointUrl.Problem("http://unix:" + a107));
+        Assert.NotNull(EndpointUrl.Problem("http://unix:" + a108));
     }
 
     [Fact]
@@ -62,6 +62,6 @@ public class EndpointUrlTests
 
         Assert.True(accentato.Length <= 107);
         Assert.True(Encoding.UTF8.GetByteCount(accentato) > 107);
-        Assert.NotNull(EndpointUrl.Problema("http://unix:" + accentato));
+        Assert.NotNull(EndpointUrl.Problem("http://unix:" + accentato));
     }
 }

@@ -3,18 +3,18 @@ using System.Security.Cryptography;
 
 namespace Observer.Service.Credentials;
 
-/// <summary>Genera il token di macchina.</summary>
+/// <summary>Generates the machine token.</summary>
 public static class TokenGenerator
 {
-    /// <summary>Byte di entropia. 256 bit: non e' indovinabile e non e' scomodo da copiare.</summary>
-    private const int Byte = 32;
+    /// <summary>Bytes of entropy. 256 bits: not guessable and not awkward to copy.</summary>
+    private const int EntropyBytes = 32;
 
-    /// <summary>Un token nuovo.</summary>
-    /// <returns>Il token, in Base64Url.</returns>
+    /// <summary>A new token.</summary>
+    /// <returns>The token, in Base64Url.</returns>
     /// <remarks>
-    /// Base64Url e non Base64 normale: finisce in un header "Authorization: Bearer ...", e i
-    /// caratteri + / = andrebbero codificati. Chi copia e incolla il token da un terminale a
-    /// un file di configurazione non deve doverci pensare.
+    /// Base64Url and not plain Base64: it ends up in an "Authorization: Bearer ..." header, and
+    /// the characters + / = would have to be encoded. Whoever copies and pastes the token from a
+    /// terminal into a configuration file must not have to think about it.
     /// </remarks>
-    public static string Genera() => Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(Byte));
+    public static string Generate() => Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(EntropyBytes));
 }

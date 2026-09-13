@@ -1,63 +1,63 @@
 namespace Observer.Service.Persistence;
 
 /// <summary>
-/// Decide COSA e' consolidabile e COSA e' cancellabile. Logica pura, senza database: sono le
-/// due domande le cui risposte sbagliate non fanno fallire nulla — una consolida un bucket a
-/// meta' e produce medie false per sempre, l'altra cancella dati che nessuno aveva ancora
-/// aggregato.
+/// Decides WHAT can be consolidated and WHAT can be deleted. Pure logic, no database: these
+/// are the two questions whose wrong answers make nothing fail — one consolidates a bucket
+/// halfway through and produces false averages for ever, the other deletes data nobody had
+/// aggregated yet.
 /// </summary>
 public static class RetentionPolicy
 {
     /// <summary>
-    /// Primo istante NON consolidabile: il limite superiore esclusivo della finestra da
-    /// aggregare adesso.
+    /// First instant that can NOT be consolidated: the exclusive upper bound of the window
+    /// to aggregate now.
     /// </summary>
-    /// <param name="nowMs">Adesso, in millisecondi da Unix epoch (UTC).</param>
-    /// <param name="bucketWidth">Ampiezza dei bucket da produrre.</param>
+    /// <param name="nowMs">Now, in milliseconds since the Unix epoch (UTC).</param>
+    /// <param name="bucketWidth">Width of the buckets to produce.</param>
     /// <param name="grace">
-    /// Attesa aggiuntiva dopo la chiusura di un bucket. Serve perche' i campioni dell'ultimo
-    /// secondo passano da una coda in memoria e potrebbero non essere ancora su disco.
+    /// Extra wait after a bucket closes. It is needed because the last second's samples go
+    /// through an in-memory queue and may not be on disk yet.
     /// </param>
-    /// <returns>L'inizio del primo bucket ancora intoccabile.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">Se la grazia e' negativa.</exception>
+    /// <returns>The start of the first bucket that is still untouchable.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">If the grace is negative.</exception>
     public static long ConsolidationHorizon(long nowMs, TimeSpan bucketWidth, TimeSpan grace)
     {
-        // Una grazia negativa guarderebbe nel futuro e consoliderebbe bucket ancora vuoti.
+        // A negative grace would look into the future and consolidate buckets still empty.
         ArgumentOutOfRangeException.ThrowIfLessThan(grace, TimeSpan.Zero);
 
-        // Allineare "adesso meno la grazia" all'ampiezza fa due cose in un colpo solo:
-        // esclude il bucket in corso (che e' incompleto per definizione) e, se la grazia
-        // sconfina nel bucket precedente, esclude anche quello (che e' completo ma potrebbe
-        // avere campioni ancora in coda).
+        // Aligning "now minus the grace" to the width does two things at once: it excludes
+        // the bucket in progress (which is incomplete by definition) and, if the grace
+        // reaches back into the previous bucket, it excludes that one too (complete, but it
+        // may still have samples in the queue).
         return RollupMath.AlignToBucketStart(nowMs - (long)grace.TotalMilliseconds, bucketWidth);
     }
 
     /// <summary>
-    /// Istante sotto il quale si puo' cancellare. Tutto cio' che e' antecedente e' eliminabile.
+    /// Instant below which deleting is allowed. Everything earlier than it can be removed.
     /// </summary>
-    /// <param name="nowMs">Adesso, in millisecondi da Unix epoch (UTC).</param>
-    /// <param name="retention">Per quanto tempo si vuole conservare questo livello.</param>
+    /// <param name="nowMs">Now, in milliseconds since the Unix epoch (UTC).</param>
+    /// <param name="retention">How long this level is meant to be kept.</param>
     /// <param name="consolidatedThroughMs">
-    /// Fin dove il livello SUCCESSIVO ha gia' aggregato, oppure null se non ha mai girato.
+    /// How far the NEXT level has already aggregated, or null if it has never run.
     /// </param>
-    /// <returns>La soglia, oppure null se non si deve cancellare nulla.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">Se la ritenzione non e' positiva.</exception>
+    /// <returns>The threshold, or null if nothing must be deleted.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">If the retention is not positive.</exception>
     public static long? PurgeCutoff(long nowMs, TimeSpan retention, long? consolidatedThroughMs)
     {
-        // Una ritenzione a zero cancellerebbe nello stesso istante in cui si scrive: il
-        // servizio girerebbe, il file resterebbe piccolo e lo storico sarebbe sempre vuoto.
+        // A retention of zero would delete at the very instant of writing: the service
+        // would run, the file would stay small and the history would always be empty.
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(retention, TimeSpan.Zero);
 
         if (consolidatedThroughMs is not { } consolidated)
         {
-            // Il livello successivo non ha mai aggregato nulla: qui non esiste ancora una
-            // copia riassunta di questi dati, quindi cancellarli e' una perdita secca.
+            // The next level has never aggregated anything: there is no summarised copy of
+            // this data here yet, so deleting it is a straight loss.
             return null;
         }
 
-        // Il vincolo che conta e' il piu' stretto dei due. La ritenzione dice "sono
-        // abbastanza vecchi", il consolidamento dice "sono gia' riassunti altrove": servono
-        // ENTRAMBI, altrimenti un rollup rimasto indietro fa cancellare dati mai aggregati.
+        // The constraint that counts is the tighter of the two. Retention says "they are old
+        // enough", consolidation says "they are already summarised elsewhere": BOTH are
+        // needed, or a rollup that fell behind makes never-aggregated data get deleted.
         return Math.Min(nowMs - (long)retention.TotalMilliseconds, consolidated);
     }
 }

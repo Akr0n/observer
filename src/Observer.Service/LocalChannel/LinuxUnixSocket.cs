@@ -3,105 +3,106 @@ using System.Runtime.Versioning;
 
 namespace Observer.Service.LocalChannel;
 
-/// <summary>Preparazione e bonifica del socket unix.</summary>
+/// <summary>Preparation and cleanup of the unix socket.</summary>
 /// <remarks>
-/// L'ordine e' vincolato: convalida, directory e bonifica PRIMA di costruire l'host; il modo
-/// del file del socket DOPO l'avvio, perche' prima quel file non esiste.
+/// The order is constrained: validation, directory and cleanup BEFORE building the host; the
+/// mode of the socket file AFTER start-up, because before that the file does not exist.
 /// </remarks>
 [SupportedOSPlatform("linux")]
 public static class LinuxUnixSocket
 {
-    // 0750: il proprietario entra e amministra, il gruppo attraversa. Non 0700, che chiuderebbe
-    // fuori la GUI; non 0755, che aprirebbe a chiunque abbia un account sulla macchina.
-    private const UnixFileMode ModoDirectory =
+    // 0750: the owner enters and administers, the group traverses. Not 0700, which would shut
+    // the GUI out; not 0755, which would open it to anyone with an account on the machine.
+    private const UnixFileMode DirectoryMode =
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
         UnixFileMode.GroupRead | UnixFileMode.GroupExecute;
 
-    // 0660: connect(2) su AF_UNIX richiede il bit di SCRITTURA, non di lettura. Un modo che
-    // concedesse al gruppo la sola lettura chiuderebbe fuori esattamente chi deve entrare.
-    private const UnixFileMode ModoSocket =
+    // 0660: connect(2) on AF_UNIX requires the WRITE bit, not the read one. A mode granting
+    // the group read only would shut out exactly whoever has to get in.
+    private const UnixFileMode SocketMode =
         UnixFileMode.UserRead | UnixFileMode.UserWrite |
         UnixFileMode.GroupRead | UnixFileMode.GroupWrite;
 
-    /// <summary>Crea la directory del socket e le impone il modo giusto.</summary>
-    /// <param name="percorso">Il percorso completo del socket.</param>
-    public static void PreparaPercorso(string percorso)
+    /// <summary>Creates the socket directory and forces the right mode on it.</summary>
+    /// <param name="path">The full path of the socket.</param>
+    public static void PreparePath(string path)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(percorso);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        string? cartella = Path.GetDirectoryName(percorso);
+        string? directoryPath = Path.GetDirectoryName(path);
 
-        if (string.IsNullOrEmpty(cartella))
+        if (string.IsNullOrEmpty(directoryPath))
         {
             return;
         }
 
-        Directory.CreateDirectory(cartella, ModoDirectory);
+        Directory.CreateDirectory(directoryPath, DirectoryMode);
 
-        // La riga precedente NON applica il modo a una directory che esiste gia': misurato, e'
-        // un no-op silenzioso. Senza questa seconda riga la protezione non esiste dal secondo
-        // avvio in poi, ne' su una /run/observer creata da systemd con il suo 0755.
-        File.SetUnixFileMode(cartella, ModoDirectory);
+        // The previous line does NOT apply the mode to a directory that already exists:
+        // measured, it is a silent no-op. Without this second line the protection does not
+        // exist from the second start onwards, nor on a /run/observer created by systemd with
+        // its own 0755.
+        File.SetUnixFileMode(directoryPath, DirectoryMode);
     }
 
-    /// <summary>Cancella il file del socket SOLO se nessuno sta ascoltando.</summary>
-    /// <param name="percorso">Il percorso del socket.</param>
-    /// <param name="attesa">Quanto aspettare la risposta della sonda.</param>
-    /// <returns>Vero se il file e' stato rimosso.</returns>
-    public static async Task<bool> BonificaSocketOrfanoAsync(string percorso, TimeSpan attesa)
+    /// <summary>Deletes the socket file ONLY if nobody is listening.</summary>
+    /// <param name="path">The path of the socket.</param>
+    /// <param name="timeout">How long to wait for the probe's answer.</param>
+    /// <returns>True if the file was removed.</returns>
+    public static async Task<bool> RemoveStaleSocketAsync(string path, TimeSpan timeout)
     {
-        if (!File.Exists(percorso))
+        if (!File.Exists(path))
         {
             return false;
         }
 
-        using Socket sonda = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-        using CancellationTokenSource scadenza = new(attesa);
+        using Socket probe = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        using CancellationTokenSource deadline = new(timeout);
 
         try
         {
-            // ConnectAsync con timeout e NON Connect(): contro un listener vivo con la coda di
-            // accept piena, connect(2) su AF_UNIX non rifiuta, aspetta. Misurato: oltre venti
-            // secondi appeso senza decidere ne' vivo ne' morto, che sotto systemd diventa un
-            // timeout di avvio senza alcuna diagnosi.
-            await sonda.ConnectAsync(new UnixDomainSocketEndPoint(percorso), scadenza.Token)
+            // ConnectAsync with a timeout and NOT Connect(): against a live listener whose
+            // accept queue is full, connect(2) on AF_UNIX does not refuse, it waits. Measured:
+            // over twenty seconds hanging without deciding either alive or dead, which under
+            // systemd becomes a start-up timeout with no diagnosis at all.
+            await probe.ConnectAsync(new UnixDomainSocketEndPoint(path), deadline.Token)
                 .ConfigureAwait(false);
 
-            // Qualcuno ha risposto: il socket e' vivo, e cancellarlo lo scippirebbe a
-            // un'istanza sana.
+            // Someone answered: the socket is alive, and deleting it would snatch it away
+            // from a healthy instance.
             return false;
         }
         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionRefused)
         {
-            File.Delete(percorso);
+            File.Delete(path);
             return true;
         }
         catch (OperationCanceledException)
         {
-            // Scaduta la sonda: non sappiamo se sia vivo. Nel dubbio NON si cancella.
+            // The probe timed out: we do not know if it is alive. When in doubt, do NOT delete.
             return false;
         }
     }
 
-    /// <summary>Impone il modo del file del socket. Da chiamare DOPO l'avvio dell'host.</summary>
-    /// <param name="percorso">Il percorso del socket.</param>
-    public static void RestringiAlProprietario(string percorso) =>
-        File.SetUnixFileMode(percorso, ModoSocket);
+    /// <summary>Forces the mode of the socket file. To be called AFTER the host starts.</summary>
+    /// <param name="path">The path of the socket.</param>
+    public static void RestrictToOwner(string path) =>
+        File.SetUnixFileMode(path, SocketMode);
 
-    /// <summary>Registra la restrizione del modo per quando l'host sara' partito.</summary>
-    /// <param name="vita">Il ciclo di vita dell'applicazione.</param>
-    /// <param name="percorso">Il percorso del socket.</param>
+    /// <summary>Registers the mode restriction for when the host has started.</summary>
+    /// <param name="lifetime">The application's lifetime.</param>
+    /// <param name="path">The path of the socket.</param>
     /// <remarks>
-    /// Sta QUI e non in Program.cs perche' il corpo della lambda deve stare dentro una classe
-    /// annotata: [SupportedOSPlatform] non copre il corpo di una lambda, e CA1416 con
-    /// TreatWarningsAsErrors farebbe fallire la build su entrambi i runner.
-    /// Prima dell'avvio il file del socket non esiste ancora, quindi il chmod non puo' stare
-    /// accanto alla creazione della directory.
+    /// It lives HERE and not in Program.cs because the lambda's body must sit inside an
+    /// annotated class: [SupportedOSPlatform] does not cover a lambda's body, and CA1416 with
+    /// TreatWarningsAsErrors would fail the build on both runners.
+    /// Before start-up the socket file does not exist yet, so the chmod cannot sit next to the
+    /// creation of the directory.
     /// </remarks>
-    public static void RestringiDopoAvvio(IHostApplicationLifetime vita, string percorso)
+    public static void RestrictAfterStart(IHostApplicationLifetime lifetime, string path)
     {
-        ArgumentNullException.ThrowIfNull(vita);
+        ArgumentNullException.ThrowIfNull(lifetime);
 
-        vita.ApplicationStarted.Register(() => RestringiAlProprietario(percorso));
+        lifetime.ApplicationStarted.Register(() => RestrictToOwner(path));
     }
 }

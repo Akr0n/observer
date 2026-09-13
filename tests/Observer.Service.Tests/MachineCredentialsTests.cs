@@ -19,7 +19,7 @@ public class MachineCredentialsTests
 
         for (int i = 0; i < 200; i++)
         {
-            Assert.True(visti.Add(TokenGenerator.Genera()), "token ripetuto");
+            Assert.True(visti.Add(TokenGenerator.Generate()), "token ripetuto");
         }
     }
 
@@ -28,7 +28,7 @@ public class MachineCredentialsTests
     {
         // Finisce dentro "Authorization: Bearer ...". Base64 normale userebbe + / =, che in un
         // header vanno codificati e che chiunque copi-incolli sbaglierebbe.
-        string token = TokenGenerator.Genera();
+        string token = TokenGenerator.Generate();
 
         Assert.DoesNotContain('+', token);
         Assert.DoesNotContain('/', token);
@@ -40,18 +40,18 @@ public class MachineCredentialsTests
     [Fact]
     public void LaChiaveCorrenteEAccettata()
     {
-        MachineCredentials credenziali = MachineCredentials.Nuove();
+        MachineCredentials credenziali = MachineCredentials.Create();
 
-        Assert.True(credenziali.Accetta(credenziali.Current, Adesso));
+        Assert.True(credenziali.Accepts(credenziali.Current, Adesso));
     }
 
     [Fact]
     public void UnaChiaveSbagliataERifiutata()
     {
-        MachineCredentials credenziali = MachineCredentials.Nuove();
+        MachineCredentials credenziali = MachineCredentials.Create();
 
-        Assert.False(credenziali.Accetta("non-e-il-token", Adesso));
-        Assert.False(credenziali.Accetta(string.Empty, Adesso));
+        Assert.False(credenziali.Accepts("non-e-il-token", Adesso));
+        Assert.False(credenziali.Accepts(string.Empty, Adesso));
     }
 
     [Fact]
@@ -59,29 +59,29 @@ public class MachineCredentialsTests
     {
         // Senza questa finestra, ruotare taglierebbe fuori ogni client remoto all'ISTANTE, e la
         // rotazione diventerebbe un'operazione che nessuno osa fare.
-        MachineCredentials prima = MachineCredentials.Nuove();
+        MachineCredentials prima = MachineCredentials.Create();
         string vecchia = prima.Current;
 
-        MachineCredentials dopo = prima.Ruota(Adesso, MachineCredentials.FinestraDiGrazia);
+        MachineCredentials dopo = prima.Rotate(Adesso, MachineCredentials.GracePeriod);
 
         Assert.NotEqual(vecchia, dopo.Current);
-        Assert.True(dopo.Accetta(dopo.Current, Adesso));
-        Assert.True(dopo.Accetta(vecchia, Adesso));
+        Assert.True(dopo.Accepts(dopo.Current, Adesso));
+        Assert.True(dopo.Accepts(vecchia, Adesso));
     }
 
     [Fact]
     public void LaChiavePrecedenteSmetteDiValereAllaScadenza()
     {
-        MachineCredentials prima = MachineCredentials.Nuove();
+        MachineCredentials prima = MachineCredentials.Create();
         string vecchia = prima.Current;
 
-        MachineCredentials dopo = prima.Ruota(Adesso, TimeSpan.FromHours(24));
+        MachineCredentials dopo = prima.Rotate(Adesso, TimeSpan.FromHours(24));
 
-        Assert.True(dopo.Accetta(vecchia, Adesso.AddHours(23)));
-        Assert.False(dopo.Accetta(vecchia, Adesso.AddHours(25)));
+        Assert.True(dopo.Accepts(vecchia, Adesso.AddHours(23)));
+        Assert.False(dopo.Accepts(vecchia, Adesso.AddHours(25)));
 
         // La corrente non scade con lei.
-        Assert.True(dopo.Accetta(dopo.Current, Adesso.AddHours(25)));
+        Assert.True(dopo.Accepts(dopo.Current, Adesso.AddHours(25)));
     }
 
     [Fact]
@@ -89,14 +89,14 @@ public class MachineCredentialsTests
     {
         // Si conserva UNA sola chiave precedente. Tenerne una catena significherebbe che una
         // chiave compromessa resta valida finche' qualcuno non ruota abbastanza volte.
-        MachineCredentials prima = MachineCredentials.Nuove();
+        MachineCredentials prima = MachineCredentials.Create();
         string primissima = prima.Current;
 
         MachineCredentials dopo = prima
-            .Ruota(Adesso, TimeSpan.FromHours(24))
-            .Ruota(Adesso, TimeSpan.FromHours(24));
+            .Rotate(Adesso, TimeSpan.FromHours(24))
+            .Rotate(Adesso, TimeSpan.FromHours(24));
 
-        Assert.False(dopo.Accetta(primissima, Adesso));
+        Assert.False(dopo.Accepts(primissima, Adesso));
     }
 
     [Fact]
@@ -104,9 +104,9 @@ public class MachineCredentialsTests
     {
         // Il caso in cui Previous e' null non deve degenerare in "accetta tutto": e' il ramo
         // che un confronto scritto male trasforma in un passaggio libero.
-        MachineCredentials credenziali = MachineCredentials.Nuove();
+        MachineCredentials credenziali = MachineCredentials.Create();
 
         Assert.Null(credenziali.Previous);
-        Assert.False(credenziali.Accetta(string.Empty, Adesso));
+        Assert.False(credenziali.Accepts(string.Empty, Adesso));
     }
 }

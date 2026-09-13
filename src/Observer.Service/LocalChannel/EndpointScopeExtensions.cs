@@ -1,50 +1,50 @@
 namespace Observer.Service.LocalChannel;
 
-/// <summary>Marcatore: questo endpoint accetta solo il canale locale.</summary>
+/// <summary>Marker: this endpoint accepts the local channel only.</summary>
 /// <remarks>
-/// Una classe vuota e non un attributo, perche' gli endpoint minimal-API si marcano con
-/// metadati e non con attributi sui metodi.
+/// An empty class and not an attribute, because minimal-API endpoints are marked with
+/// metadata and not with attributes on methods.
 /// </remarks>
-public sealed class SoloDaLocaleMetadata;
+public sealed class LocalOnlyMetadata;
 
-/// <summary>Come si dichiara e come si legge la portata di un endpoint.</summary>
+/// <summary>How an endpoint's scope is declared and how it is read.</summary>
 public static class EndpointScopeExtensions
 {
-    /// <summary>Dichiara che questo endpoint esiste solo per il canale locale.</summary>
-    /// <typeparam name="TBuilder">Il tipo del costruttore di rotte.</typeparam>
-    /// <param name="builder">L'endpoint o il gruppo di rotte da marcare.</param>
-    /// <returns>Lo stesso costruttore, per concatenare.</returns>
+    /// <summary>Declares that this endpoint exists only for the local channel.</summary>
+    /// <typeparam name="TBuilder">The type of the route builder.</typeparam>
+    /// <param name="builder">The endpoint or the route group to mark.</param>
+    /// <returns>The same builder, for chaining.</returns>
     /// <remarks>
-    /// Funziona anche su un gruppo di rotte, ed e' il modo previsto di usarla: gli endpoint di
-    /// appaiamento nasceranno insieme e vanno marcati una volta sola, non uno per uno.
+    /// It works on a route group too, and that is the intended way to use it: the pairing
+    /// endpoints will be born together and are to be marked once, not one by one.
     /// </remarks>
-    public static TBuilder SoloDaLocale<TBuilder>(this TBuilder builder)
+    public static TBuilder LocalOnly<TBuilder>(this TBuilder builder)
         where TBuilder : IEndpointConventionBuilder
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.WithMetadata(new SoloDaLocaleMetadata());
+        builder.WithMetadata(new LocalOnlyMetadata());
 
         return builder;
     }
 
-    /// <summary>La portata dell'endpoint che sta servendo questa richiesta.</summary>
-    /// <param name="contesto">La richiesta in corso.</param>
-    /// <returns>La portata dichiarata, oppure <see cref="EndpointScope.Ovunque"/>.</returns>
+    /// <summary>The scope of the endpoint that is serving this request.</summary>
+    /// <param name="context">The request in progress.</param>
+    /// <returns>The declared scope, or <see cref="EndpointScope.Anywhere"/>.</returns>
     /// <remarks>
-    /// Restituisce Ovunque quando il marcatore manca, cioe' la restrizione e' a OPT-IN: e' il
-    /// comportamento di tutti gli endpoint esistenti, e non richiede di toccarli.
+    /// It returns Anywhere when the marker is missing, that is, the restriction is OPT-IN: it is
+    /// the behaviour of every existing endpoint, and it does not require touching them.
     /// <para>
-    /// Richiede che il middleware giri DOPO UseRouting: prima, GetEndpoint() e' null e ogni
-    /// endpoint risulterebbe Ovunque, cioe' la restrizione sparirebbe in silenzio.
+    /// It requires the middleware to run AFTER UseRouting: before that, GetEndpoint() is null and
+    /// every endpoint would come out Anywhere, that is, the restriction would vanish silently.
     /// </para>
     /// </remarks>
-    public static EndpointScope PortataDi(HttpContext contesto)
+    public static EndpointScope ScopeOf(HttpContext context)
     {
-        ArgumentNullException.ThrowIfNull(contesto);
+        ArgumentNullException.ThrowIfNull(context);
 
-        return contesto.GetEndpoint()?.Metadata.GetMetadata<SoloDaLocaleMetadata>() is null
-            ? EndpointScope.Ovunque
-            : EndpointScope.SoloLocale;
+        return context.GetEndpoint()?.Metadata.GetMetadata<LocalOnlyMetadata>() is null
+            ? EndpointScope.Anywhere
+            : EndpointScope.LocalOnly;
     }
 }

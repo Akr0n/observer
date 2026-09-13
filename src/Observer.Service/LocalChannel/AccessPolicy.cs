@@ -1,88 +1,89 @@
 namespace Observer.Service.LocalChannel;
 
-/// <summary>Cosa fare di una richiesta.</summary>
+/// <summary>What to do with a request.</summary>
 /// <remarks>
-/// Il valore ZERO e' <see cref="Rifiutato"/>: un campo dimenticato o un ramo aggiunto per
-/// distrazione negano invece di concedere.
+/// The ZERO value is <see cref="Denied"/>: a forgotten field or a branch added by
+/// inattention denies instead of granting.
 /// </remarks>
 public enum AccessDecision
 {
-    /// <summary>401. La credenziale manca o non basta.</summary>
-    Rifiutato = 0,
+    /// <summary>401. The credential is missing or is not enough.</summary>
+    Denied = 0,
 
-    /// <summary>404. L'endpoint non deve nemmeno risultare esistente a questo chiamante.</summary>
-    NonEsiste,
+    /// <summary>404. The endpoint must not even appear to exist to this caller.</summary>
+    NotFound,
 
-    /// <summary>La richiesta prosegue.</summary>
-    Consentito,
+    /// <summary>The request goes through.</summary>
+    Allowed,
 }
 
-/// <summary>Da dove un endpoint accetta di essere raggiunto.</summary>
+/// <summary>Where an endpoint accepts being reached from.</summary>
 /// <remarks>
-/// Il valore ZERO e' <see cref="SoloLocale"/>, cioe' il piu' restrittivo: un endpoint a cui
-/// qualcuno scordasse di dichiarare la portata diventa irraggiungibile dalla rete invece che
-/// esposto, che e' il verso giusto in cui rompersi.
+/// The ZERO value is <see cref="LocalOnly"/>, that is, the most restrictive one: an endpoint
+/// whose scope someone forgot to declare becomes unreachable from the network instead of
+/// exposed, which is the right direction to break in.
 /// </remarks>
 public enum EndpointScope
 {
-    /// <summary>Solo dal canale locale. Non esiste, per chi arriva da altrove.</summary>
-    SoloLocale = 0,
+    /// <summary>Only from the local channel. It does not exist, for anyone arriving from
+    /// elsewhere.</summary>
+    LocalOnly = 0,
 
-    /// <summary>Anche dalla rete, col token.</summary>
-    Ovunque,
+    /// <summary>From the network too, with the token.</summary>
+    Anywhere,
 }
 
 /// <summary>
-/// Decide se una richiesta passa. Funzione PURA: nessuno stato, nessuna I/O.
+/// Decides whether a request passes. PURE function: no state, no I/O.
 /// </summary>
 /// <remarks>
-/// Sostituisce il middleware che pretendeva il bearer token su ogni richiesta. Essendo pura si
-/// verifica con una tabella esaustiva che gira identica sui due runner della CI, mentre un
-/// canale locale no: su ubuntu-latest la named pipe non esiste nemmeno.
+/// It replaces the middleware that demanded the bearer token on every request. Being pure it is
+/// verified with an exhaustive table that runs identically on CI's two runners, while a local
+/// channel cannot be: on ubuntu-latest the named pipe does not even exist.
 /// <para>
-/// QUALI utenti locali siano ammessi non lo decide questa funzione. Lo decide il sistema
-/// operativo: su Windows la DACL della pipe, che rifiuta gia' alla connect; su Linux il modo del
-/// file del socket. Qui si verificano due cose soltanto - che il chiamante sia davvero locale e
-/// che sia identificabile. Aggiungerci una lista di SID duplicherebbe una decisione che il
-/// sistema operativo prende meglio.
+/// WHICH local users are admitted is not decided by this function. The operating system decides
+/// it: on Windows the pipe's DACL, which refuses at the connect already; on Linux the mode of the
+/// socket's file. Only two things are checked here - that the caller really is local and that it
+/// is identifiable. Adding a list of SIDs here would duplicate a decision the operating system
+/// makes better.
 /// </para>
 /// </remarks>
 public static class AccessPolicy
 {
-    /// <summary>L'esito per questa combinazione.</summary>
-    /// <param name="chiamante">Come e' stato classificato chi chiama.</param>
-    /// <param name="portata">Da dove l'endpoint accetta di essere raggiunto.</param>
-    /// <param name="tokenValido">Se il bearer token presentato corrisponde.</param>
-    /// <returns>Cosa fare della richiesta.</returns>
-    public static AccessDecision Decidi(CallerKind chiamante, EndpointScope portata, bool tokenValido)
+    /// <summary>The outcome for this combination.</summary>
+    /// <param name="caller">How the one calling was classified.</param>
+    /// <param name="scope">Where the endpoint accepts being reached from.</param>
+    /// <param name="tokenIsValid">Whether the bearer token presented matches.</param>
+    /// <returns>What to do with the request.</returns>
+    public static AccessDecision Decide(CallerKind caller, EndpointScope scope, bool tokenIsValid)
     {
-        // Il chiamante locale identificato passa su tutto, senza token. E' l'obiettivo del
-        // progetto: sulla macchina il sistema operativo sa gia' chi chiama, e un segreto
-        // condiviso e' lo strumento sbagliato.
-        if (chiamante == CallerKind.LocaleIdentificato)
+        // An identified local caller passes on everything, with no token. It is the project's
+        // goal: on the machine the operating system already knows who is calling, and a shared
+        // secret is the wrong tool.
+        if (caller == CallerKind.LocalIdentified)
         {
-            return AccessDecision.Consentito;
+            return AccessDecision.Allowed;
         }
 
-        // Da qui in giu' il chiamante NON e' un locale identificato.
-        // Un endpoint solo-locale non deve nemmeno risultare esistente: gli endpoint di
-        // appaiamento ruotano le chiavi, e chi rubasse il token non deve poter chiudere fuori
-        // il proprietario. Un 403 confermerebbe che l'endpoint c'e'; un 404 no.
-        if (portata != EndpointScope.Ovunque)
+        // From here down the caller is NOT an identified local one.
+        // A local-only endpoint must not even appear to exist: the pairing endpoints rotate
+        // the keys, and whoever stole the token must not be able to lock the owner out. A 403
+        // would confirm the endpoint is there; a 404 does not.
+        if (scope != EndpointScope.Anywhere)
         {
-            return AccessDecision.NonEsiste;
+            return AccessDecision.NotFound;
         }
 
-        // Identita' non determinabile: rifiuto ANCHE con un token valido. Il livello di
-        // impersonation lo sceglie il CLIENT, e con Anonymous un chiamante si rende
-        // unilateralmente non identificabile pur restando capace di presentare un token. Se il
-        // token bastasse, la regola "l'identita' non determinabile rifiuta" sarebbe vuota.
-        // Chi ha il token puo' sempre usare il canale di rete.
-        if (chiamante != CallerKind.ArrivatoDallaRete)
+        // Identity not determinable: refusal EVEN with a valid token. The impersonation level
+        // is chosen by the CLIENT, and with Anonymous a caller makes itself unilaterally
+        // unidentifiable while still being able to present a token. If the token were enough,
+        // the rule "an identity that cannot be determined refuses" would be empty.
+        // Whoever has the token can always use the network channel.
+        if (caller != CallerKind.FromNetwork)
         {
-            return AccessDecision.Rifiutato;
+            return AccessDecision.Denied;
         }
 
-        return tokenValido ? AccessDecision.Consentito : AccessDecision.Rifiutato;
+        return tokenIsValid ? AccessDecision.Allowed : AccessDecision.Denied;
     }
 }

@@ -5,115 +5,115 @@ using Observer.Core.Security;
 namespace Observer.Service.Credentials;
 
 /// <summary>
-/// Il certificato con cui il servizio si presenta alle ALTRE macchine.
+/// The certificate the service presents to the OTHER machines.
 /// </summary>
 /// <remarks>
-/// Autofirmato, uno per macchina, generato al primo avvio e custodito nello stesso perimetro
-/// del token. Nessuna autorita' lo garantisce: cio' che lega un collegamento a questa macchina
-/// e' la sua impronta, che si prende a mano con <c>observer share</c>.
+/// Self-signed, one per machine, generated on first start and kept in the same perimeter as the
+/// token. No authority vouches for it: what ties a connection to this machine is its
+/// fingerprint, which is taken by hand with <c>observer share</c>.
 /// <para>
-/// <b>La validita' e' lunga di proposito, e non e' pigrizia.</b> Con l'impronta fissata dal
-/// client, sostituire il certificato significa far fallire OGNI client finche' qualcuno non
-/// riscrive l'impronta a mano su ognuno. Una scadenza breve non aggiungerebbe sicurezza — la
-/// fiducia qui non viene ne' dalla scadenza ne' da una catena — e trasformerebbe un rinnovo
-/// automatico in un guasto simultaneo di tutte le dashboard remote.
+/// <b>The validity is long on purpose, and it is not laziness.</b> With the fingerprint pinned by
+/// the client, replacing the certificate means breaking EVERY client until someone rewrites the
+/// fingerprint by hand on each one. A short expiry would add no security — trust here comes
+/// neither from the expiry nor from a chain — and would turn an automatic renewal into a
+/// simultaneous failure of every remote dashboard.
 /// </para>
 /// </remarks>
 public static class MachineCertificate
 {
-    /// <summary>Il nome del file del certificato, accanto al deposito del token.</summary>
-    public const string NomeFile = "certificate.pfx";
+    /// <summary>The certificate's file name, next to the token store.</summary>
+    public const string FileName = "certificate.pfx";
 
-    /// <summary>Quanto vale il certificato. Vedi le note del tipo: e' lunga di proposito.</summary>
-    public static readonly TimeSpan Validita = TimeSpan.FromDays(3653);
+    /// <summary>How long the certificate is valid. See the type's notes: it is long on purpose.</summary>
+    public static readonly TimeSpan Validity = TimeSpan.FromDays(3653);
 
-    /// <summary>Quanto indietro parte la validita', per tollerare orologi non allineati.</summary>
+    /// <summary>How far back the validity starts, to tolerate clocks that are not aligned.</summary>
     /// <remarks>
-    /// Un certificato che comincia a valere "adesso" viene rifiutato da una macchina il cui
-    /// orologio e' indietro di qualche minuto, e il sintomo — un errore TLS all'avvio che
-    /// sparisce da solo poco dopo — non nomina la propria causa.
+    /// A certificate that starts being valid "now" is refused by a machine whose clock is a few
+    /// minutes behind, and the symptom — a TLS error at start-up that clears itself shortly
+    /// after — does not name its own cause.
     /// </remarks>
-    public static readonly TimeSpan Anticipo = TimeSpan.FromDays(1);
+    public static readonly TimeSpan ClockSkewAllowance = TimeSpan.FromDays(1);
 
-    /// <summary>Genera un certificato nuovo per questa macchina.</summary>
-    /// <param name="nomeMacchina">Il nome da mettere nel soggetto e fra i nomi alternativi.</param>
-    /// <param name="adesso">L'istante da cui contare la validita'.</param>
-    /// <returns>Il certificato, con la sua chiave privata.</returns>
-    public static X509Certificate2 Genera(string nomeMacchina, DateTimeOffset adesso)
+    /// <summary>Creates a new certificate for this machine.</summary>
+    /// <param name="machineName">The name to put in the subject and among the subject alternative names.</param>
+    /// <param name="now">The instant to count the validity from.</param>
+    /// <returns>The certificate, with its private key.</returns>
+    public static X509Certificate2 Create(string machineName, DateTimeOffset now)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(nomeMacchina);
+        ArgumentException.ThrowIfNullOrWhiteSpace(machineName);
 
-        using RSA chiave = RSA.Create(3072);
+        using RSA key = RSA.Create(3072);
 
-        CertificateRequest richiesta = new(
-            "CN=" + nomeMacchina,
-            chiave,
+        CertificateRequest request = new(
+            "CN=" + machineName,
+            key,
             HashAlgorithmName.SHA256,
             RSASignaturePadding.Pkcs1);
 
-        richiesta.CertificateExtensions.Add(
+        request.CertificateExtensions.Add(
             new X509BasicConstraintsExtension(certificateAuthority: false, false, 0, critical: true));
 
-        richiesta.CertificateExtensions.Add(new X509KeyUsageExtension(
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(
             X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment,
             critical: true));
 
-        // Autenticazione del SERVER e basta. Un certificato senza uso dichiarato e' un
-        // certificato che vale per tutto, e questo non deve valere per nient'altro.
-        richiesta.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
+        // SERVER authentication and nothing else. A certificate with no declared use is a
+        // certificate that is good for everything, and this one must be good for nothing else.
+        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
             [new Oid("1.3.6.1.5.5.7.3.1", "Server Authentication")],
             critical: false));
 
-        // I nomi alternativi non servono a noi — il client confronta l'impronta, non il nome —
-        // ma servono a chiunque punti un browser o "openssl s_client" a questa porta per
-        // capire con cosa sta parlando.
-        SubjectAlternativeNameBuilder nomi = new();
-        nomi.AddDnsName(nomeMacchina);
-        nomi.AddDnsName("localhost");
-        richiesta.CertificateExtensions.Add(nomi.Build());
+        // The subject alternative names are not for us — the client compares the fingerprint, not the name —
+        // but they are for anyone who points a browser or "openssl s_client" at this port to
+        // understand what they are talking to.
+        SubjectAlternativeNameBuilder subjectAlternativeNames = new();
+        subjectAlternativeNames.AddDnsName(machineName);
+        subjectAlternativeNames.AddDnsName("localhost");
+        request.CertificateExtensions.Add(subjectAlternativeNames.Build());
 
-        return richiesta.CreateSelfSigned(adesso - Anticipo, adesso + Validita);
+        return request.CreateSelfSigned(now - ClockSkewAllowance, now + Validity);
     }
 
-    /// <summary>Impacchetta il certificato con la sua chiave, per depositarlo.</summary>
-    /// <param name="certificato">Il certificato da esportare.</param>
-    /// <returns>Il PKCS#12 in byte.</returns>
+    /// <summary>Packages the certificate with its key, to store it.</summary>
+    /// <param name="certificate">The certificate to export.</param>
+    /// <returns>The PKCS#12 in bytes.</returns>
     /// <remarks>
-    /// Senza password, e non e' una svista: una password scritta accanto al file che dovrebbe
-    /// proteggere non protegge niente. Il file sta gia' in una cartella che esclude ogni altro
-    /// account, e la protezione qui e' il perimetro — esattamente come per il token.
+    /// With no password, and it is not an oversight: a password written next to the file it is
+    /// supposed to protect protects nothing. The file already sits in a folder that excludes
+    /// every other account, and the protection here is the perimeter — exactly as for the token.
     /// </remarks>
-    public static byte[] Esporta(X509Certificate2 certificato)
+    public static byte[] Export(X509Certificate2 certificate)
     {
-        ArgumentNullException.ThrowIfNull(certificato);
+        ArgumentNullException.ThrowIfNull(certificate);
 
-        return certificato.Export(X509ContentType.Pkcs12);
+        return certificate.Export(X509ContentType.Pkcs12);
     }
 
-    /// <summary>Rilegge un certificato depositato.</summary>
-    /// <param name="pkcs12">Il contenuto del file.</param>
-    /// <returns>Il certificato con la sua chiave privata.</returns>
+    /// <summary>Reads back a stored certificate.</summary>
+    /// <param name="pkcs12">The file's content.</param>
+    /// <returns>The certificate with its private key.</returns>
     /// <remarks>
-    /// <b>Il flag cambia per sistema operativo, e non e' una preferenza: e' misurato.</b>
+    /// <b>The flag changes per operating system, and it is not a preference: it is measured.</b>
     /// <para>
-    /// La scelta ovvia sarebbe <c>EphemeralKeySet</c> ovunque — la chiave resta in memoria e
-    /// non tocca il portachiavi del sistema. Su Windows <b>non funziona</b>: il certificato si
-    /// carica benissimo, ma SChannel non riesce a servirlo e l'handshake TLS muore con
-    /// <i>"Received an unexpected EOF or 0 bytes from the transport stream"</i> — un errore che
-    /// non nomina la propria causa e che nessun test di unita' avrebbe visto, perche' fino a
-    /// <c>TrasportoHttpsTests</c> nessun test toccava un trasporto vero.
+    /// The obvious choice would be <c>EphemeralKeySet</c> everywhere — the key stays in memory
+    /// and never touches the system keychain. On Windows it <b>does not work</b>: the certificate
+    /// loads perfectly well, but SChannel cannot serve it and the TLS handshake dies with
+    /// <i>"Received an unexpected EOF or 0 bytes from the transport stream"</i> — an error that
+    /// does not name its own cause and that no unit test would have seen, because until
+    /// <c>TrasportoHttpsTests</c> no test touched a real transport.
     /// </para>
     /// <para>
-    /// Su Windows serve quindi il portachiavi dell'UTENTE del processo: come LocalSystem e'
-    /// il profilo di SYSTEM, protetto quanto il deposito. Volutamente NON
-    /// <c>MachineKeySet</c>, che finirebbe in <c>ProgramData\Microsoft\Crypto\RSA\MachineKeys</c>,
-    /// una cartella con permessi molto piu' larghi. E volutamente NON <c>PersistKeySet</c>:
-    /// senza, il contenitore della chiave si cancella da solo. Misurato contando i file dei
-    /// portachiavi prima e dopo — otto caricamenti, processo del servizio compreso, ucciso
-    /// senza chiusura pulita: quindici file prima, quindici dopo.
+    /// On Windows what is needed is therefore the keychain of the process's USER: as LocalSystem
+    /// that is SYSTEM's profile, as protected as the store. Deliberately NOT
+    /// <c>MachineKeySet</c>, which would end up in <c>ProgramData\Microsoft\Crypto\RSA\MachineKeys</c>,
+    /// a folder with far wider permissions. And deliberately NOT <c>PersistKeySet</c>: without
+    /// it, the key container deletes itself. Measured by counting the keychain files before and
+    /// after — eight loads, the service process included, killed without a clean shutdown:
+    /// fifteen files before, fifteen after.
     /// </para>
     /// </remarks>
-    public static X509Certificate2 Carica(byte[] pkcs12)
+    public static X509Certificate2 Load(byte[] pkcs12)
     {
         ArgumentNullException.ThrowIfNull(pkcs12);
 
@@ -124,39 +124,39 @@ public static class MachineCertificate
         return X509CertificateLoader.LoadPkcs12(pkcs12, null, flag);
     }
 
-    /// <summary>Rilegge un certificato per GUARDARLO, senza importarne la chiave.</summary>
-    /// <param name="pkcs12">Il contenuto del file.</param>
-    /// <returns>Il certificato, utilizzabile solo per leggerne i dati.</returns>
+    /// <summary>Reads back a certificate to LOOK at it, without importing its key.</summary>
+    /// <param name="pkcs12">The file's content.</param>
+    /// <returns>The certificate, usable only for reading its data.</returns>
     /// <remarks>
-    /// Serve alla riga di comando, che del certificato vuole solo l'impronta. Con
-    /// <see cref="Carica"/> la chiave privata finirebbe nel portachiavi dell'utente che ha
-    /// lanciato il comando — un amministratore qualsiasi — mentre <c>EphemeralKeySet</c> la
-    /// tiene in memoria e la butta. Non regge un handshake TLS, e qui non deve reggerlo.
+    /// It is for the command line, which wants only the certificate's fingerprint. With
+    /// <see cref="Load"/> the private key would end up in the keychain of the user who ran the
+    /// command — any administrator at all — whereas <c>EphemeralKeySet</c> keeps it in memory
+    /// and throws it away. It does not hold up a TLS handshake, and here it must not.
     /// </remarks>
-    public static X509Certificate2 SoloPerLeggere(byte[] pkcs12)
+    public static X509Certificate2 LoadForInspection(byte[] pkcs12)
     {
         ArgumentNullException.ThrowIfNull(pkcs12);
 
         return X509CertificateLoader.LoadPkcs12(pkcs12, null, X509KeyStorageFlags.EphemeralKeySet);
     }
 
-    /// <summary>L'impronta con cui i client lo riconoscono.</summary>
-    /// <param name="certificato">Il certificato.</param>
-    /// <returns>L'impronta in forma canonica.</returns>
-    public static string Impronta(X509Certificate2 certificato)
+    /// <summary>The fingerprint by which clients recognise it.</summary>
+    /// <param name="certificate">The certificate.</param>
+    /// <returns>The fingerprint in canonical form.</returns>
+    public static string Fingerprint(X509Certificate2 certificate)
     {
-        ArgumentNullException.ThrowIfNull(certificato);
+        ArgumentNullException.ThrowIfNull(certificate);
 
-        return CertificateFingerprint.From(certificato.RawDataMemory.Span);
+        return CertificateFingerprint.From(certificate.RawDataMemory.Span);
     }
 
-    /// <summary>Il percorso del certificato, accanto al deposito del token.</summary>
-    /// <param name="percorsoDelDeposito">Il percorso di <c>credentials.json</c>.</param>
-    /// <returns>Il percorso del file del certificato.</returns>
-    public static string PercorsoAccantoA(string percorsoDelDeposito)
+    /// <summary>The certificate's path, next to the token store.</summary>
+    /// <param name="storePath">The path of <c>credentials.json</c>.</param>
+    /// <returns>The path of the certificate file.</returns>
+    public static string PathNextTo(string storePath)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(percorsoDelDeposito);
+        ArgumentException.ThrowIfNullOrWhiteSpace(storePath);
 
-        return Path.Combine(Path.GetDirectoryName(percorsoDelDeposito) ?? ".", NomeFile);
+        return Path.Combine(Path.GetDirectoryName(storePath) ?? ".", FileName);
     }
 }

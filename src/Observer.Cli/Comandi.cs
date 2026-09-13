@@ -229,11 +229,11 @@ public static class Comandi
             return 1;
         }
 
-        MachineCredentials ruotate = credenziali.Ruota(DateTimeOffset.UtcNow, MachineCredentials.FinestraDiGrazia);
+        MachineCredentials ruotate = credenziali.Rotate(DateTimeOffset.UtcNow, MachineCredentials.GracePeriod);
 
         try
         {
-            CredentialStore.Scrivi(percorso, ruotate);
+            CredentialStore.Write(percorso, ruotate);
         }
         catch (Exception errore) when (errore is IOException or UnauthorizedAccessException)
         {
@@ -245,7 +245,7 @@ public static class Comandi
         Console.WriteLine();
         Console.WriteLine(string.Create(
             CultureInfo.InvariantCulture,
-            $"The previous one keeps working until {DateTimeOffset.UtcNow + MachineCredentials.FinestraDiGrazia:u}, so remote"));
+            $"The previous one keeps working until {DateTimeOffset.UtcNow + MachineCredentials.GracePeriod:u}, so remote"));
         Console.WriteLine("clients are not cut off at once. Update them before then.");
         Console.WriteLine();
 
@@ -289,7 +289,7 @@ public static class Comandi
     {
         try
         {
-            if (CredentialStore.Leggi(percorso) is { } credenziali)
+            if (CredentialStore.Read(percorso) is { } credenziali)
             {
                 return credenziali;
             }

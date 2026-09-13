@@ -1,54 +1,54 @@
 namespace Observer.Service.Credentials;
 
-/// <summary>Dove vive il deposito, e come si mette in sicurezza la sua cartella.</summary>
+/// <summary>Where the store lives, and how its directory is secured.</summary>
 public static class CredentialDirectory
 {
-    /// <summary>Il nome del file del deposito.</summary>
-    public const string NomeFile = "credentials.json";
+    /// <summary>The name of the store's file.</summary>
+    public const string FileName = "credentials.json";
 
-    // 0700: solo il proprietario, che in produzione e' root perche' il servizio gira come root.
-    // .NET non offre chown, ma non serve: il proprietario e' giusto per costruzione.
-    private const UnixFileMode ModoCartella =
+    // 0700: the owner only, which in production is root because the service runs as root.
+    // .NET offers no chown, but none is needed: the owner is right by construction.
+    private const UnixFileMode DirectoryMode =
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
-    /// <summary>Il percorso predefinito del deposito su questo sistema.</summary>
-    /// <returns>Il percorso completo del file.</returns>
+    /// <summary>The default path of the store on this system.</summary>
+    /// <returns>The full path of the file.</returns>
     public static string DefaultPath() =>
         OperatingSystem.IsWindows()
             ? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
                 "Observer",
-                NomeFile)
-            : Path.Combine("/etc", "observer", NomeFile);
+                FileName)
+            : Path.Combine("/etc", "observer", FileName);
 
-    /// <summary>Porta la cartella del deposito in uno stato in cui puo' ospitare un segreto.</summary>
-    /// <param name="percorsoDelFile">Il percorso del file del deposito.</param>
-    /// <exception cref="InvalidOperationException">Se non e' possibile.</exception>
-    public static void Prepara(string percorsoDelFile)
+    /// <summary>Brings the store's directory into a state where it can hold a secret.</summary>
+    /// <param name="filePath">The path of the store's file.</param>
+    /// <exception cref="InvalidOperationException">If that is not possible.</exception>
+    public static void Prepare(string filePath)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(percorsoDelFile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
 
-        string? cartella = Path.GetDirectoryName(percorsoDelFile);
+        string? directory = Path.GetDirectoryName(filePath);
 
-        if (string.IsNullOrEmpty(cartella))
+        if (string.IsNullOrEmpty(directory))
         {
             return;
         }
 
         if (OperatingSystem.IsWindows())
         {
-            WindowsDirectoryTrust.Prepara(cartella);
+            WindowsDirectoryTrust.Prepare(directory);
             return;
         }
 
-        Directory.CreateDirectory(cartella);
+        Directory.CreateDirectory(directory);
 
         if (OperatingSystem.IsLinux())
         {
-            // La creazione NON applica il modo a una cartella che esiste gia': verificato, e'
-            // un no-op silenzioso. Senza questa seconda riga la protezione non esisterebbe dal
-            // secondo avvio in poi, ne' su una cartella preparata da un installer.
-            File.SetUnixFileMode(cartella, ModoCartella);
+            // Creation does NOT apply the mode to a directory that already exists: verified, it
+            // is a silent no-op. Without this second line the protection would not exist from the
+            // second start on, nor on a directory prepared by an installer.
+            File.SetUnixFileMode(directory, DirectoryMode);
         }
     }
 }

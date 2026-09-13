@@ -3,18 +3,18 @@ using Observer.Core.Metrics;
 namespace Observer.Service.Persistence;
 
 /// <summary>
-/// Trasforma uno snapshot in righe di serie temporali. E' il punto in cui si decide COSA
-/// finisce nello storico e cosa no.
+/// Turns a snapshot into time-series rows. This is where it is decided WHAT ends up in the
+/// history and what does not.
 /// </summary>
 public static class SnapshotFlattener
 {
-    /// <summary>Estrae dallo snapshot i soli valori che hanno senso come serie nel tempo.</summary>
-    /// <param name="snapshot">Lo snapshot appena campionato.</param>
-    /// <returns>Un campione per ogni valore numerico misurato correttamente.</returns>
+    /// <summary>Extracts from the snapshot only the values that make sense as a time series.</summary>
+    /// <param name="snapshot">The snapshot just sampled.</param>
+    /// <returns>One sample for every numeric value that was measured correctly.</returns>
     /// <remarks>
-    /// Scarta e non converte: un punto mancante NON diventa uno zero. Nel grafico uno zero
-    /// e' un dato e un buco e' un buco, e confonderli e' esattamente il modo in cui una
-    /// dashboard mente senza che nulla fallisca.
+    /// It discards, it does not convert: a missing point does NOT become a zero. On the chart
+    /// a zero is data and a gap is a gap, and confusing the two is exactly how a dashboard
+    /// lies without anything failing.
     /// </remarks>
     public static IReadOnlyList<SeriesSample> Flatten(MachineSnapshot snapshot)
     {
@@ -27,9 +27,9 @@ public static class SnapshotFlattener
         {
             foreach (MetricPoint point in collector.Points)
             {
-                // Serve sia lo stato Ok sia il valore presente: uno solo dei due non basta,
-                // perche' un punto degradato non ha valore e un valore senza stato Ok non e'
-                // una misura.
+                // Both the Ok status and a present value are needed: either one alone is
+                // not enough, because a degraded point has no value and a value without an
+                // Ok status is not a measurement.
                 if (point.Status != CollectorStatus.Ok || point.Value is not { } value)
                 {
                     continue;
@@ -58,24 +58,24 @@ public static class SnapshotFlattener
             case MetricValueKind.Number:
                 number = value.Number;
 
-                // MetricValue.FromNumber rifiuta i non finiti, ma un valore arrivato da JSON
-                // no. Un NaN che entrasse nel rollup farebbe lanciare il servizio di
-                // scrittura a ogni giro: lo storico si fermerebbe in silenzio mentre gli
-                // endpoint continuano a rispondere normalmente.
+                // MetricValue.FromNumber rejects non-finite values, but a value that came
+                // from JSON does not. A NaN getting into the rollup would make the writing
+                // service throw on every pass: the history would stop silently while the
+                // endpoints kept answering normally.
                 return double.IsFinite(number);
 
             case MetricValueKind.Flag:
-                // Conservato come 0/1: cosi' la media dell'intervallo resta leggibile
-                // ("vero per meta' del minuto") invece di sparire dallo storico.
+                // Kept as 0/1: this way the interval's average stays readable
+                // ("true for half the minute") instead of vanishing from the history.
                 number = value.Flag ? 1d : 0d;
                 return true;
 
             case MetricValueKind.Unknown:
             case MetricValueKind.Text:
             default:
-                // Il testo e' una costante ripetuta una volta al secondo, non una serie; lo
-                // sconosciuto e' una deserializzazione parziale che vale zero e sembra una
-                // misura. Nessuno dei due entra nello storico.
+                // Text is a constant repeated once a second, not a series; unknown is a
+                // partial deserialization that reads as zero and looks like a
+                // measurement. Neither of the two goes into the history.
                 number = 0d;
                 return false;
         }

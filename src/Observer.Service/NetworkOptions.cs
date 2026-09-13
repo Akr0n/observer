@@ -3,34 +3,34 @@ using System.Globalization;
 namespace Observer.Service;
 
 /// <summary>
-/// Come il servizio si fa raggiungere dalle ALTRE macchine.
+/// How the service makes itself reachable from the OTHER machines.
 /// </summary>
 /// <remarks>
-/// Il canale locale non passa di qui: quello non ha ne' porta ne' certificato, e chi guarda la
-/// macchina su cui e' seduto non tocca mai la rete.
+/// The local channel does not go through here: it has neither a port nor a certificate, and
+/// whoever watches the machine they are sitting at never touches the network.
 /// </remarks>
 public sealed class NetworkOptions
 {
-    /// <summary>La sezione di configurazione.</summary>
+    /// <summary>The configuration section.</summary>
     public const string SectionName = "Observer:Network";
 
-    /// <summary>La porta HTTPS predefinita.</summary>
-    public const int PortaPredefinita = 5058;
+    /// <summary>The default HTTPS port.</summary>
+    public const int DefaultPort = 5058;
 
     /// <summary>
-    /// Se esporre HTTPS alle altre macchine. Acceso di prestazione.
+    /// Whether to expose HTTPS to the other machines. On by default.
     /// </summary>
     /// <remarks>
-    /// Si spegne nei test, dove il trasporto e' finto e generare una chiave RSA a ogni avvio
-    /// dell'host costerebbe secondi per niente.
+    /// It is switched off in the tests, where the transport is fake and generating an RSA key at
+    /// every start of the host would cost seconds for nothing.
     /// </remarks>
     public bool Https { get; set; } = true;
 
-    /// <summary>La porta su cui ascoltare in HTTPS.</summary>
-    public int HttpsPort { get; set; } = PortaPredefinita;
+    /// <summary>The port to listen on for HTTPS.</summary>
+    public int HttpsPort { get; set; } = DefaultPort;
 
-    /// <summary>Controlla le opzioni prima che aprano una porta.</summary>
-    /// <exception cref="InvalidOperationException">Se la porta non e' utilizzabile.</exception>
+    /// <summary>It checks the options before they open a port.</summary>
+    /// <exception cref="InvalidOperationException">If the port is not usable.</exception>
     public void Validate()
     {
         if (Https && HttpsPort is < 1 or > 65535)
@@ -39,7 +39,7 @@ public sealed class NetworkOptions
                 "Observer:Network:HttpsPort is " +
                 HttpsPort.ToString(CultureInfo.InvariantCulture) +
                 ", which is not a usable TCP port. Remove it to use the default (" +
-                PortaPredefinita.ToString(CultureInfo.InvariantCulture) + ").");
+                DefaultPort.ToString(CultureInfo.InvariantCulture) + ").");
         }
     }
 }

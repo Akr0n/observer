@@ -8,116 +8,116 @@ using System.Security.Principal;
 namespace Observer.Service.LocalChannel;
 
 /// <summary>
-/// Stabilisce se il chiamante di una named pipe e' davvero locale, e chi e'.
+/// Establishes whether the caller of a named pipe is genuinely local, and who it is.
 /// </summary>
 /// <remarks>
-/// La domanda "sono locale?" NON si risponde guardando il trasporto: una named pipe e'
-/// raggiungibile da remoto via SMB sulla porta 445. E non si risponde nemmeno guardando il
-/// token: verso la macchina stessa Windows restituisce il token interattivo ORIGINALE, con gli
-/// stessi SID di gruppo della via locale, e il SID NETWORK assente in entrambi i casi.
+/// The question "am I local?" is NOT answered by looking at the transport: a named pipe is
+/// reachable remotely over SMB on port 445. And it is not answered by looking at the token
+/// either: towards the machine itself Windows returns the ORIGINAL interactive token, with the
+/// same group SIDs as the local route, and the NETWORK SID absent in both cases.
 /// <para>
-/// Si risponde con GetNamedPipeClientComputerName, che fallisce con ERROR_PIPE_LOCAL quando la
-/// connessione e' locale e riesce quando e' passata da SMB. Misurato su tre vie: "." locale,
-/// indirizzo di rete remoto, "localhost" REMOTO. E funziona anche quando il token non e'
-/// leggibile, cioe' proprio nel caso di attacco.
+/// It is answered with GetNamedPipeClientComputerName, which fails with ERROR_PIPE_LOCAL when
+/// the connection is local and succeeds when it came through SMB. Measured on three routes:
+/// local ".", remote network address, REMOTE "localhost". And it works even when the token is
+/// not readable, that is to say precisely in the attack case.
 /// </para>
 /// </remarks>
 [SupportedOSPlatform("windows")]
 public static partial class WindowsCallerIdentity
 {
-    /// <summary>ERROR_PIPE_LOCAL: la connessione arriva dalla stessa macchina, non da SMB.</summary>
+    /// <summary>ERROR_PIPE_LOCAL: the connection comes from the same machine, not from SMB.</summary>
     private const int ErrorPipeLocal = 229;
 
     [LibraryImport("kernel32.dll", EntryPoint = "GetNamedPipeClientComputerNameW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool GetNamedPipeClientComputerName(nint pipe, ref byte nome, uint lunghezzaInByte);
+    private static partial bool GetNamedPipeClientComputerName(nint pipe, ref byte name, uint sizeInBytes);
 
-    /// <summary>Classifica il chiamante della pipe.</summary>
-    /// <param name="pipe">Il flusso della connessione in corso.</param>
-    /// <returns>L'origine del chiamante.</returns>
-    public static CallerOrigin Classifica(NamedPipeServerStream pipe)
+    /// <summary>Classifies the caller of the pipe.</summary>
+    /// <param name="pipe">The stream of the connection in progress.</param>
+    /// <returns>The caller's origin.</returns>
+    public static CallerOrigin Classify(NamedPipeServerStream pipe)
     {
         ArgumentNullException.ThrowIfNull(pipe);
 
-        // Buffer di BYTE e non di char: char non e' blittabile e il generatore di
-        // [LibraryImport] pretenderebbe DisableRuntimeMarshalling sull'intero assembly. Qui il
-        // contenuto non serve, serve solo sapere se la chiamata riesce: 512 byte sono 256
-        // caratteri UTF-16, abbondanti per un nome di macchina.
+        // A BYTE buffer and not a char one: char is not blittable and the [LibraryImport]
+        // generator would demand DisableRuntimeMarshalling on the whole assembly. Here the
+        // content is not needed, only knowing whether the call succeeds: 512 bytes are 256
+        // UTF-16 characters, plenty for a machine name.
         Span<byte> buffer = stackalloc byte[512];
 
-        bool riuscito = GetNamedPipeClientComputerName(
+        bool succeeded = GetNamedPipeClientComputerName(
             pipe.SafePipeHandle.DangerousGetHandle(),
             ref MemoryMarshal.GetReference(buffer),
             (uint)buffer.Length);
 
-        int errore = Marshal.GetLastWin32Error();
+        int win32Error = Marshal.GetLastWin32Error();
 
-        if (riuscito || errore != ErrorPipeLocal)
+        if (succeeded || win32Error != ErrorPipeLocal)
         {
-            // Riuscito: la connessione e' passata da SMB, e il buffer contiene il nome del
-            // chiamante. Fallito per un motivo diverso da ERROR_PIPE_LOCAL: non sappiamo dire
-            // che sia locale, e nel dubbio non lo e'.
+            // Succeeded: the connection came through SMB, and the buffer holds the caller's
+            // name. Failed for a reason other than ERROR_PIPE_LOCAL: we cannot tell that it
+            // is local, and when in doubt it is not.
             return new CallerOrigin(
-                CallerKind.ArrivatoDallaRete,
+                CallerKind.FromNetwork,
                 null,
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"GetNamedPipeClientComputerName ok={riuscito} win32={errore}"));
+                    $"GetNamedPipeClientComputerName ok={succeeded} win32={win32Error}"));
         }
 
-        return LeggiIdentita(pipe);
+        return ReadIdentity(pipe);
     }
 
-    private static CallerOrigin LeggiIdentita(NamedPipeServerStream pipe)
+    private static CallerOrigin ReadIdentity(NamedPipeServerStream pipe)
     {
-        Cattura cattura = new();
+        SidCapture capture = new();
 
         try
         {
-            pipe.RunAsClient(cattura.Esegui);
+            pipe.RunAsClient(capture.Run);
         }
         catch (SecurityException ex)
         {
-            // Il caso di ATTACCO: il client ha scelto TokenImpersonationLevel.Anonymous e si e'
-            // reso unilateralmente non identificabile. HRESULT 0x80070543,
-            // ERROR_BAD_IMPERSONATION_LEVEL. Senza questo catch il servizio risponde 500.
-            return NonIdentificabile(ex);
+            // The ATTACK case: the client chose TokenImpersonationLevel.Anonymous and made
+            // itself unilaterally unidentifiable. HRESULT 0x80070543,
+            // ERROR_BAD_IMPERSONATION_LEVEL. Without this catch the service answers 500.
+            return UnidentifiedOrigin(ex);
         }
         catch (UnauthorizedAccessException ex)
         {
-            return NonIdentificabile(ex);
+            return UnidentifiedOrigin(ex);
         }
         catch (IOException ex)
         {
-            return NonIdentificabile(ex);
+            return UnidentifiedOrigin(ex);
         }
 
-        return cattura.Sid is { } sid
-            ? new CallerOrigin(CallerKind.LocaleIdentificato, sid, "local caller identified")
-            : new CallerOrigin(CallerKind.NonIdentificabile, null, "the caller token carried no user SID");
+        return capture.Sid is { } sid
+            ? new CallerOrigin(CallerKind.LocalIdentified, sid, "local caller identified")
+            : new CallerOrigin(CallerKind.Unidentified, null, "the caller token carried no user SID");
     }
 
-    private static CallerOrigin NonIdentificabile(Exception ex) =>
+    private static CallerOrigin UnidentifiedOrigin(Exception ex) =>
         new(
-            CallerKind.NonIdentificabile,
+            CallerKind.Unidentified,
             null,
             string.Create(CultureInfo.InvariantCulture, $"{ex.GetType().Name} 0x{ex.HResult:X8}"));
 
-    /// <summary>Il corpo eseguito sotto impersonation.</summary>
+    /// <summary>The body executed under impersonation.</summary>
     /// <remarks>
-    /// Un metodo di istanza di una classe annotata, e NON una lambda: [SupportedOSPlatform] non
-    /// copre il corpo di una lambda e CA1416 farebbe fallire la build. Passato a RunAsClient
-    /// come gruppo di metodi.
+    /// An instance method of an annotated class, and NOT a lambda: [SupportedOSPlatform] does
+    /// not cover the body of a lambda and CA1416 would fail the build. Passed to RunAsClient
+    /// as a method group.
     /// </remarks>
     [SupportedOSPlatform("windows")]
-    private sealed class Cattura
+    private sealed class SidCapture
     {
         public string? Sid { get; private set; }
 
-        public void Esegui()
+        public void Run()
         {
-            using WindowsIdentity? chiamante = WindowsIdentity.GetCurrent(ifImpersonating: true);
-            Sid = chiamante?.User?.Value;
+            using WindowsIdentity? caller = WindowsIdentity.GetCurrent(ifImpersonating: true);
+            Sid = caller?.User?.Value;
         }
     }
 }

@@ -1,103 +1,103 @@
 namespace Observer.Service.Credentials;
 
-/// <summary>Da dove sono arrivate le credenziali in uso.</summary>
+/// <summary>Where the credentials in use came from.</summary>
 public enum CredentialOrigin
 {
-    /// <summary>Effimere: generate in memoria e mai depositate. Valgono per questa esecuzione.</summary>
-    Effimero = 0,
+    /// <summary>Ephemeral: generated in memory and never stored. They hold for this run only.</summary>
+    Ephemeral = 0,
 
-    /// <summary>Da un token esplicito in configurazione.</summary>
-    Configurazione,
+    /// <summary>From an explicit token in configuration.</summary>
+    Configuration,
 
-    /// <summary>Lette dal deposito su disco.</summary>
-    Deposito,
+    /// <summary>Read from the store on disk.</summary>
+    Stored,
 
-    /// <summary>Generate adesso e depositate su disco.</summary>
-    GeneratoEDepositato,
+    /// <summary>Generated now and stored on disk.</summary>
+    CreatedAndStored,
 }
 
-/// <summary>Le credenziali in uso, con la loro provenienza.</summary>
-/// <param name="Credentials">Le credenziali.</param>
-/// <param name="Origin">Da dove arrivano.</param>
-/// <param name="Percorso">Il deposito usato, oppure null se non ce n'e' uno.</param>
+/// <summary>The credentials in use, with where they came from.</summary>
+/// <param name="Credentials">The credentials.</param>
+/// <param name="Origin">Where they come from.</param>
+/// <param name="Path">The store used, or null if there is none.</param>
 public sealed record ProvisionedCredentials(
     MachineCredentials Credentials,
     CredentialOrigin Origin,
-    string? Percorso);
+    string? Path);
 
 /// <summary>
-/// Procura al servizio il proprio token di macchina.
+/// Provides the service with its own machine token.
 /// </summary>
 /// <remarks>
-/// E' il pezzo che rende possibile un installer. Finche' il servizio pretende un token in
-/// configurazione, chi installa deve generarne uno — cioe' conoscerlo, registrarlo nel proprio
-/// log, e lasciarselo dietro se fallisce a meta'.
+/// This is the piece that makes an installer possible. As long as the service demands a token in
+/// configuration, whoever installs it has to generate one — that is, know it, record it in their
+/// own log, and leave it behind if they fail halfway.
 /// </remarks>
 public static class CredentialProvisioning
 {
-    /// <summary>Procura le credenziali secondo la precedenza stabilita.</summary>
-    /// <param name="tokenDaConfigurazione">Il token esplicito, se configurato.</param>
-    /// <param name="percorsoDeposito">Il percorso del deposito.</param>
-    /// <param name="giraComeServizio">Se il processo e' registrato come servizio di sistema.</param>
-    /// <returns>Le credenziali e la loro provenienza.</returns>
+    /// <summary>Provides the credentials following the precedence that was decided.</summary>
+    /// <param name="configuredToken">The explicit token, if configured.</param>
+    /// <param name="storePath">The path of the store.</param>
+    /// <param name="runningAsService">Whether the process is registered as a system service.</param>
+    /// <returns>The credentials and where they came from.</returns>
     /// <exception cref="InvalidOperationException">
-    /// Quando gira come servizio e il deposito non puo' essere messo in sicurezza.
+    /// When it runs as a service and the store cannot be secured.
     /// </exception>
-    public static ProvisionedCredentials Provvedi(
-        string? tokenDaConfigurazione,
-        string percorsoDeposito,
-        bool giraComeServizio)
+    public static ProvisionedCredentials Provision(
+        string? configuredToken,
+        string storePath,
+        bool runningAsService)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(percorsoDeposito);
+        ArgumentException.ThrowIfNullOrWhiteSpace(storePath);
 
-        if (!string.IsNullOrWhiteSpace(tokenDaConfigurazione))
+        if (!string.IsNullOrWhiteSpace(configuredToken))
         {
-            // La configurazione esplicita vince su tutto: e' la retrocompatibilita', ed e' cio'
-            // che tiene in piedi i test e la CI.
+            // Explicit configuration wins over everything: it is the backwards compatibility, and
+            // it is what keeps the tests and CI working.
             return new ProvisionedCredentials(
-                new MachineCredentials(tokenDaConfigurazione.Trim(), null, null),
-                CredentialOrigin.Configurazione,
+                new MachineCredentials(configuredToken.Trim(), null, null),
+                CredentialOrigin.Configuration,
                 null);
         }
 
         try
         {
-            CredentialDirectory.Prepara(percorsoDeposito);
+            CredentialDirectory.Prepare(storePath);
 
-            if (CredentialStore.Leggi(percorsoDeposito) is { } depositate)
+            if (CredentialStore.Read(storePath) is { } stored)
             {
-                return new ProvisionedCredentials(depositate, CredentialOrigin.Deposito, percorsoDeposito);
+                return new ProvisionedCredentials(stored, CredentialOrigin.Stored, storePath);
             }
 
-            MachineCredentials nuove = MachineCredentials.Nuove();
-            CredentialStore.Scrivi(percorsoDeposito, nuove);
+            MachineCredentials created = MachineCredentials.Create();
+            CredentialStore.Write(storePath, created);
 
-            return new ProvisionedCredentials(nuove, CredentialOrigin.GeneratoEDepositato, percorsoDeposito);
+            return new ProvisionedCredentials(created, CredentialOrigin.CreatedAndStored, storePath);
         }
-        catch (Exception errore) when (errore is IOException or UnauthorizedAccessException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            if (giraComeServizio)
+            if (runningAsService)
             {
-                throw new InvalidOperationException(TestoRifiuto(percorsoDeposito), errore);
+                throw new InvalidOperationException(RefusalMessage(storePath), error);
             }
 
-            // Lanciato a mano. Token EFFIMERO, in memoria, mai scritto: mai un ripiego
-            // per-utente su disco, che sposterebbe il segreto in un posto meno protetto
-            // facendo credere di averlo messo al sicuro.
-            return new ProvisionedCredentials(MachineCredentials.Nuove(), CredentialOrigin.Effimero, null);
+            // Launched by hand. EPHEMERAL token, in memory, never written: never a per-user
+            // fallback on disk, which would move the secret to a less protected place while
+            // making it look like it had been put somewhere safe.
+            return new ProvisionedCredentials(MachineCredentials.Create(), CredentialOrigin.Ephemeral, null);
         }
-        catch (InvalidOperationException) when (!giraComeServizio && !DepositoDanneggiato(percorsoDeposito))
+        catch (InvalidOperationException) when (!runningAsService && !IsStoreDamaged(storePath))
         {
-            return new ProvisionedCredentials(MachineCredentials.Nuove(), CredentialOrigin.Effimero, null);
+            return new ProvisionedCredentials(MachineCredentials.Create(), CredentialOrigin.Ephemeral, null);
         }
     }
 
-    /// <summary>Un deposito che esiste ma non si riesce a interpretare non va mai sovrascritto.</summary>
-    private static bool DepositoDanneggiato(string percorso)
+    /// <summary>A store that exists but cannot be interpreted must never be overwritten.</summary>
+    private static bool IsStoreDamaged(string path)
     {
         try
         {
-            return File.ReadAllText(percorso).Length > 0;
+            return File.ReadAllText(path).Length > 0;
         }
         catch (IOException)
         {
@@ -109,8 +109,8 @@ public static class CredentialProvisioning
         }
     }
 
-    private static string TestoRifiuto(string percorso) =>
-        $"Observer runs as a system service and can't secure its credential store at '{percorso}'. " +
+    private static string RefusalMessage(string path) =>
+        $"Observer runs as a system service and can't secure its credential store at '{path}'. " +
         "It will not start: depositing a machine token that other accounts can read would be " +
         "worse than not starting at all, because nothing would report it. Check that the " +
         "directory is not a junction, that it is owned by SYSTEM or Administrators, and that " +

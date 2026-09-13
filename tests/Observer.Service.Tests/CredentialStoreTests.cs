@@ -20,18 +20,18 @@ public class CredentialStoreTests : IDisposable
     public void UnDepositoAssenteNonEUnErrore()
     {
         // Il primo avvio e' il caso normale, non un guasto.
-        Assert.Null(CredentialStore.Leggi(Percorso));
+        Assert.Null(CredentialStore.Read(Percorso));
     }
 
     [Fact]
     public void CioCheSiScriveSiRilegge()
     {
-        MachineCredentials scritte = MachineCredentials.Nuove()
-            .Ruota(DateTimeOffset.UtcNow, TimeSpan.FromHours(24));
+        MachineCredentials scritte = MachineCredentials.Create()
+            .Rotate(DateTimeOffset.UtcNow, TimeSpan.FromHours(24));
 
-        CredentialStore.Scrivi(Percorso, scritte);
+        CredentialStore.Write(Percorso, scritte);
 
-        MachineCredentials? rilette = CredentialStore.Leggi(Percorso);
+        MachineCredentials? rilette = CredentialStore.Read(Percorso);
 
         Assert.NotNull(rilette);
         Assert.Equal(scritte.Current, rilette.Current);
@@ -49,7 +49,7 @@ public class CredentialStoreTests : IDisposable
         // sostituzione fallisce.
         for (int i = 0; i < 3; i++)
         {
-            CredentialStore.Scrivi(Percorso, MachineCredentials.Nuove());
+            CredentialStore.Write(Percorso, MachineCredentials.Create());
         }
 
         string[] rimasti = Directory.GetFiles(cartella);
@@ -61,13 +61,13 @@ public class CredentialStoreTests : IDisposable
     [Fact]
     public void LaRiscritturaSostituisceDavvero()
     {
-        MachineCredentials prime = MachineCredentials.Nuove();
-        CredentialStore.Scrivi(Percorso, prime);
+        MachineCredentials prime = MachineCredentials.Create();
+        CredentialStore.Write(Percorso, prime);
 
-        MachineCredentials seconde = MachineCredentials.Nuove();
-        CredentialStore.Scrivi(Percorso, seconde);
+        MachineCredentials seconde = MachineCredentials.Create();
+        CredentialStore.Write(Percorso, seconde);
 
-        MachineCredentials? rilette = CredentialStore.Leggi(Percorso);
+        MachineCredentials? rilette = CredentialStore.Read(Percorso);
 
         Assert.NotNull(rilette);
         Assert.Equal(seconde.Current, rilette.Current);
@@ -82,7 +82,7 @@ public class CredentialStoreTests : IDisposable
         // tagliando fuori ogni client remoto senza che nessuno capisca perche'.
         File.WriteAllText(Percorso, "questo non e' JSON {{{");
 
-        Assert.Throws<InvalidOperationException>(() => CredentialStore.Leggi(Percorso));
+        Assert.Throws<InvalidOperationException>(() => CredentialStore.Read(Percorso));
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public class CredentialStoreTests : IDisposable
     {
         // Il file finisce sotto gli occhi di un amministratore che indaga: deve essere ovvio
         // cosa contiene, e non deve contenere niente di piu'.
-        CredentialStore.Scrivi(Percorso, MachineCredentials.Nuove().Ruota(DateTimeOffset.UtcNow, TimeSpan.FromHours(1)));
+        CredentialStore.Write(Percorso, MachineCredentials.Create().Rotate(DateTimeOffset.UtcNow, TimeSpan.FromHours(1)));
 
         string contenuto = File.ReadAllText(Percorso);
 

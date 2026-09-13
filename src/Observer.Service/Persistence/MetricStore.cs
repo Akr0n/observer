@@ -6,19 +6,19 @@ using Observer.Core.Metrics;
 namespace Observer.Service.Persistence;
 
 /// <summary>
-/// Lo strato SQLite. Fa SOLO da magazzino: la matematica del rollup e le decisioni di
-/// ritenzione vivono in <see cref="RollupMath"/> e <see cref="RetentionPolicy"/>, dove si
-/// possono provare senza toccare un file.
+/// The SQLite layer. It is ONLY a store: the rollup arithmetic and the retention decisions
+/// live in <see cref="RollupMath"/> and <see cref="RetentionPolicy"/>, where they can be
+/// tested without touching a file.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Ogni metodo apre e chiude la sua connessione. Con il pool di Microsoft.Data.Sqlite aprire
-/// costa quasi nulla, e in cambio non esiste uno stato condiviso da sincronizzare fra il
-/// servizio che scrive e le richieste HTTP che leggono.
+/// Every method opens and closes its own connection. With Microsoft.Data.Sqlite's pool opening
+/// costs almost nothing, and in exchange there is no shared state to synchronise between the
+/// service that writes and the HTTP requests that read.
 /// </para>
 /// <para>
-/// Il giornale e' in modalita' WAL: i lettori non aspettano lo scrittore, che e' proprio il
-/// requisito "le risposte HTTP non devono rallentare quando si scrive".
+/// The journal is in WAL mode: readers do not wait for the writer, which is exactly the
+/// requirement "HTTP responses must not slow down while writing".
 /// </para>
 /// </remarks>
 public sealed class MetricStore
@@ -32,15 +32,15 @@ public sealed class MetricStore
             value_kind   INTEGER NOT NULL
         );
 
-        -- L'identita' di una serie. instance e' NOT NULL e vale stringa vuota quando la
-        -- metrica e' unica per macchina: in un indice UNIQUE di SQLite due NULL NON sono
-        -- uguali, quindi con NULL la stessa serie verrebbe reinserita a ogni secondo.
+        -- A series' identity. instance is NOT NULL and holds the empty string when the
+        -- metric is unique per machine: in a SQLite UNIQUE index two NULLs are NOT equal,
+        -- so with NULL the same series would be re-inserted every second.
         CREATE UNIQUE INDEX IF NOT EXISTS ux_series_identity
             ON series (collector_id, metric_id, instance);
 
-        -- WITHOUT ROWID: la riga e' quasi tutta chiave, e cosi' non esistono ne' il rowid
-        -- nascosto ne' l'indice separato sulla primary key. Su una tabella che cresce di
-        -- una riga al secondo per serie e' la differenza fra un file e un problema.
+        -- WITHOUT ROWID: the row is almost all key, and this way neither the hidden rowid
+        -- nor the separate index on the primary key exists. On a table that grows by one
+        -- row a second per series that is the difference between a file and a problem.
         CREATE TABLE IF NOT EXISTS sample_raw (
             series_id   INTEGER NOT NULL REFERENCES series (series_id),
             captured_at INTEGER NOT NULL,
@@ -48,14 +48,14 @@ public sealed class MetricStore
             PRIMARY KEY (series_id, captured_at)
         ) WITHOUT ROWID;
 
-        -- Serve alla cancellazione, che filtra per tempo su TUTTE le serie: senza, ogni
-        -- giro di manutenzione scandirebbe l'intera tabella.
+        -- Needed by the deletion, which filters by time across ALL the series: without it,
+        -- every maintenance pass would scan the whole table.
         CREATE INDEX IF NOT EXISTS ix_raw_time ON sample_raw (captured_at);
 
-        -- Un'unica tabella per tutti i livelli, con l'ampiezza come colonna: aggiungere un
-        -- terzo livello sara' una riga di configurazione, non una migrazione di schema.
-        -- value_sum e sample_count invece della media: ricombinando bucket con un numero
-        -- diverso di campioni, la media delle medie e' un numero credibile e falso.
+        -- A single table for every level, with the width as a column: adding a third level
+        -- will be one line of configuration, not a schema migration.
+        -- value_sum and sample_count instead of the average: recombining buckets with a
+        -- different number of samples, the average of averages is a credible, false number.
         CREATE TABLE IF NOT EXISTS sample_rollup (
             series_id      INTEGER NOT NULL REFERENCES series (series_id),
             bucket_seconds INTEGER NOT NULL,
@@ -71,9 +71,9 @@ public sealed class MetricStore
         CREATE INDEX IF NOT EXISTS ix_rollup_time
             ON sample_rollup (bucket_seconds, bucket_start);
 
-        -- Il segnaposto di ogni livello: fin dove ha gia' aggregato. E' quello che permette
-        -- a un giro di manutenzione di leggere solo il nuovo invece di riscandire tutto, ed
-        -- e' anche il vincolo che impedisce di cancellare dati non ancora riassunti.
+        -- Each level's marker: how far it has already aggregated. It is what lets a
+        -- maintenance pass read only what is new instead of rescanning everything, and it
+        -- is also the constraint that prevents deleting data not yet summarised.
         CREATE TABLE IF NOT EXISTS rollup_state (
             bucket_seconds       INTEGER PRIMARY KEY,
             consolidated_through INTEGER NOT NULL
@@ -157,19 +157,19 @@ public sealed class MetricStore
         ON CONFLICT (bucket_seconds) DO UPDATE SET consolidated_through = excluded.consolidated_through;
         """;
 
-    /// <summary>I tre file che SQLite usa in modalita' WAL.</summary>
+    /// <summary>The three files SQLite uses in WAL mode.</summary>
     private static readonly string[] DatabaseFileSuffixes = ["", "-wal", "-shm"];
 
     /// <summary>
-    /// Le serie gia' viste. Evita due interrogazioni al secondo per ogni metrica: le serie
-    /// sono poche decine e non spariscono mai, quindi la cache non puo' invecchiare male.
+    /// The series already seen. Avoids two queries a second for every metric: the series are
+    /// a few dozen and never disappear, so the cache cannot age badly.
     /// </summary>
     private readonly ConcurrentDictionary<SeriesKey, long> seriesIds = new();
 
     private readonly string connectionString;
 
-    /// <summary>Crea il magazzino sul file indicato. Non apre nulla finche' non serve.</summary>
-    /// <param name="databasePath">Percorso del file SQLite.</param>
+    /// <summary>Creates the store on the given file. Opens nothing until it is needed.</summary>
+    /// <param name="databasePath">Path of the SQLite file.</param>
     public MetricStore(string databasePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
@@ -182,17 +182,17 @@ public sealed class MetricStore
             Pooling = true,
             ForeignKeys = true,
 
-            // Microsoft.Data.Sqlite trasforma questo timeout in un'attesa su SQLITE_BUSY.
-            // Serve perche' scrittore e lettori sono processi logici diversi sullo stesso
-            // file: senza, una lettura durante un commit fallirebbe invece di aspettare.
+            // Microsoft.Data.Sqlite turns this timeout into a wait on SQLITE_BUSY. It is
+            // needed because writer and readers are different logical processes on the same
+            // file: without it, a read during a commit would fail instead of waiting.
             DefaultTimeout = 30,
         }.ToString();
     }
 
-    /// <summary>Percorso assoluto del file.</summary>
+    /// <summary>Absolute path of the file.</summary>
     public string DatabasePath { get; }
 
-    /// <summary>Crea lo schema se manca. Idempotente.</summary>
+    /// <summary>Creates the schema if it is missing. Idempotent.</summary>
     public void Initialize()
     {
         string? directory = Path.GetDirectoryName(DatabasePath);
@@ -205,8 +205,8 @@ public sealed class MetricStore
         using SqliteConnection connection = Open();
         using SqliteCommand command = connection.CreateCommand();
 
-        // WAL resta scritto nel file e vale per sempre; synchronous e' invece per
-        // connessione e va rimesso a ogni apertura (vedi Open).
+        // WAL stays written in the file and holds for ever; synchronous, instead, is per
+        // connection and has to be set again at every open (see Open).
         command.CommandText = "PRAGMA journal_mode = WAL;";
         command.ExecuteNonQuery();
 
@@ -214,9 +214,9 @@ public sealed class MetricStore
         command.ExecuteNonQuery();
     }
 
-    /// <summary>Scrive un lotto di campioni grezzi in un'unica transazione.</summary>
-    /// <param name="samples">I campioni da scrivere.</param>
-    /// <returns>Quante righe grezze sono state scritte.</returns>
+    /// <summary>Writes a batch of raw samples in a single transaction.</summary>
+    /// <param name="samples">The samples to write.</param>
+    /// <returns>How many raw rows were written.</returns>
     public int WriteSamples(IReadOnlyList<SeriesSample> samples)
     {
         ArgumentNullException.ThrowIfNull(samples);
@@ -237,9 +237,9 @@ public sealed class MetricStore
         SqliteParameter capturedParam = insertSample.Parameters.Add("$captured", SqliteType.Integer);
         SqliteParameter valueParam = insertSample.Parameters.Add("$value", SqliteType.Real);
 
-        // Gli identificatori risolti adesso entrano nella cache condivisa SOLO dopo il
-        // commit: se la transazione fallisse, la cache resterebbe altrimenti piena di
-        // identificatori di righe che non esistono.
+        // The identifiers resolved now enter the shared cache ONLY after the commit: if the
+        // transaction failed, the cache would otherwise be left full of identifiers of rows
+        // that do not exist.
         Dictionary<SeriesKey, long> resolvedNow = [];
         int written = 0;
 
@@ -263,26 +263,26 @@ public sealed class MetricStore
         return written;
     }
 
-    /// <summary>Consolida il grezzo in bucket da un minuto.</summary>
-    /// <param name="now">Adesso.</param>
-    /// <param name="grace">Attesa dopo la chiusura di un bucket.</param>
-    /// <param name="maxSpanPerPass">Quanto tempo di storico al massimo in questo giro.</param>
-    /// <returns>Quanti bucket sono stati scritti.</returns>
+    /// <summary>Consolidates the raw samples into one-minute buckets.</summary>
+    /// <param name="now">Now.</param>
+    /// <param name="grace">Wait after a bucket closes.</param>
+    /// <param name="maxSpanPerPass">At most how much history in this pass.</param>
+    /// <returns>How many buckets were written.</returns>
     public int ConsolidateMinutes(DateTimeOffset now, TimeSpan grace, TimeSpan maxSpanPerPass) =>
         Consolidate(BucketWidths.RawSeconds, BucketWidths.MinuteSeconds, now, grace, maxSpanPerPass);
 
-    /// <summary>Consolida i bucket da un minuto in bucket da cinque minuti.</summary>
-    /// <param name="now">Adesso.</param>
-    /// <param name="grace">Attesa dopo la chiusura di un bucket.</param>
-    /// <param name="maxSpanPerPass">Quanto tempo di storico al massimo in questo giro.</param>
-    /// <returns>Quanti bucket sono stati scritti.</returns>
+    /// <summary>Consolidates the one-minute buckets into five-minute buckets.</summary>
+    /// <param name="now">Now.</param>
+    /// <param name="grace">Wait after a bucket closes.</param>
+    /// <param name="maxSpanPerPass">At most how much history in this pass.</param>
+    /// <returns>How many buckets were written.</returns>
     public int ConsolidateFiveMinutes(DateTimeOffset now, TimeSpan grace, TimeSpan maxSpanPerPass) =>
         Consolidate(BucketWidths.MinuteSeconds, BucketWidths.FiveMinuteSeconds, now, grace, maxSpanPerPass);
 
-    /// <summary>Cancella il grezzo gia' consolidato e piu' vecchio della ritenzione.</summary>
-    /// <param name="now">Adesso.</param>
-    /// <param name="retention">Per quanto si vuole tenere il grezzo.</param>
-    /// <returns>Quante righe sono state cancellate.</returns>
+    /// <summary>Deletes raw samples already consolidated and older than the retention.</summary>
+    /// <param name="now">Now.</param>
+    /// <param name="retention">How long the raw samples are to be kept.</param>
+    /// <returns>How many rows were deleted.</returns>
     public int PurgeRaw(DateTimeOffset now, TimeSpan retention)
     {
         using SqliteConnection connection = Open();
@@ -304,12 +304,12 @@ public sealed class MetricStore
         return command.ExecuteNonQuery();
     }
 
-    /// <summary>Cancella i bucket di un livello, senza mai superare il livello successivo.</summary>
-    /// <param name="bucketSeconds">Ampiezza del livello da ripulire.</param>
-    /// <param name="now">Adesso.</param>
-    /// <param name="retention">Per quanto si vuole tenere quel livello.</param>
-    /// <returns>Quante righe sono state cancellate.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">Se il livello non esiste.</exception>
+    /// <summary>Deletes a level's buckets, never going past the next level.</summary>
+    /// <param name="bucketSeconds">Width of the level to clean up.</param>
+    /// <param name="now">Now.</param>
+    /// <param name="retention">How long that level is to be kept.</param>
+    /// <returns>How many rows were deleted.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">If the level does not exist.</exception>
     public int PurgeRollup(int bucketSeconds, DateTimeOffset now, TimeSpan retention)
     {
         using SqliteConnection connection = Open();
@@ -319,14 +319,14 @@ public sealed class MetricStore
             BucketWidths.MinuteSeconds =>
                 ReadConsolidatedThrough(connection, transaction: null, BucketWidths.FiveMinuteSeconds),
 
-            // L'ultimo livello non ha nessuno a valle: se aspettasse un consolidamento
-            // successivo non cancellerebbe MAI nulla e il file crescerebbe per sempre.
+            // The last level has nobody downstream: if it waited for a later consolidation
+            // it would NEVER delete anything and the file would grow for ever.
             BucketWidths.FiveMinuteSeconds => long.MaxValue,
 
             _ => throw new ArgumentOutOfRangeException(
                 nameof(bucketSeconds),
                 bucketSeconds,
-                "Livello di aggregazione sconosciuto: sono previsti solo 60 e 300 secondi."),
+                "Unknown aggregation level: only 60 and 300 seconds are supported."),
         };
 
         long? cutoff = RetentionPolicy.PurgeCutoff(now.ToUnixTimeMilliseconds(), retention, downstream);
@@ -345,9 +345,9 @@ public sealed class MetricStore
         return command.ExecuteNonQuery();
     }
 
-    /// <summary>Fin dove un livello ha gia' aggregato, oppure null se non ha mai girato.</summary>
-    /// <param name="bucketSeconds">Ampiezza del livello.</param>
-    /// <returns>L'istante, oppure null.</returns>
+    /// <summary>How far a level has already aggregated, or null if it has never run.</summary>
+    /// <param name="bucketSeconds">Width of the level.</param>
+    /// <returns>The instant, or null.</returns>
     public DateTimeOffset? ConsolidatedThrough(int bucketSeconds)
     {
         using SqliteConnection connection = Open();
@@ -357,18 +357,18 @@ public sealed class MetricStore
             : null;
     }
 
-    /// <summary>Consolidamento e cancellazione, nell'ordine giusto, in un colpo solo.</summary>
-    /// <param name="now">Adesso.</param>
-    /// <param name="options">La configurazione dello storico.</param>
-    /// <returns>Cosa e' stato scritto e cancellato.</returns>
+    /// <summary>Consolidation and deletion, in the right order, in one go.</summary>
+    /// <param name="now">Now.</param>
+    /// <param name="options">The history configuration.</param>
+    /// <returns>What was written and deleted.</returns>
     public MaintenanceReport RunMaintenance(DateTimeOffset now, StorageOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        // L'ORDINE non e' negoziabile: prima si aggrega, poi si cancella. Al contrario, il
-        // primo giro cancellerebbe il grezzo che il consolidamento dello stesso giro doveva
-        // ancora leggere — e non se ne accorgerebbe nessuno, perche' i bucket verrebbero
-        // comunque scritti, solo vuoti.
+        // The ORDER is not negotiable: aggregate first, delete afterwards. The other way
+        // round, the first pass would delete the raw samples that the same pass's
+        // consolidation had still to read — and nobody would notice, because the buckets
+        // would be written all the same, just empty.
         int minuteBuckets = ConsolidateMinutes(now, options.ConsolidationGrace, options.MaxSpanPerPass);
         int fiveMinuteBuckets = ConsolidateFiveMinutes(now, options.ConsolidationGrace, options.MaxSpanPerPass);
 
@@ -380,8 +380,8 @@ public sealed class MetricStore
             PurgeRollup(BucketWidths.FiveMinuteSeconds, now, options.FiveMinuteRetention));
     }
 
-    /// <summary>Elenca le serie presenti nello storico.</summary>
-    /// <returns>Le serie, ordinate per collector, metrica e istanza.</returns>
+    /// <summary>Lists the series present in the history.</summary>
+    /// <returns>The series, ordered by collector, metric and instance.</returns>
     public IReadOnlyList<StoredSeries> ListSeries()
     {
         using SqliteConnection connection = Open();
@@ -405,14 +405,14 @@ public sealed class MetricStore
         return series;
     }
 
-    /// <summary>Legge una finestra di storico di una serie.</summary>
-    /// <param name="key">La serie.</param>
-    /// <param name="bucketSeconds">Risoluzione: 1 per il grezzo, 60 o 300 per gli aggregati.</param>
-    /// <param name="from">Inizio della finestra, incluso.</param>
-    /// <param name="toExclusive">Fine della finestra, esclusa.</param>
-    /// <param name="maxPoints">Numero massimo di punti da restituire.</param>
-    /// <returns>I punti, in ordine di tempo crescente.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">Se la risoluzione non esiste.</exception>
+    /// <summary>Reads a window of a series' history.</summary>
+    /// <param name="key">The series.</param>
+    /// <param name="bucketSeconds">Resolution: 1 for raw, 60 or 300 for the aggregates.</param>
+    /// <param name="from">Start of the window, included.</param>
+    /// <param name="toExclusive">End of the window, excluded.</param>
+    /// <param name="maxPoints">Maximum number of points to return.</param>
+    /// <returns>The points, in increasing time order.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">If the resolution does not exist.</exception>
     public IReadOnlyList<HistoryPoint> ReadHistory(
         SeriesKey key,
         int bucketSeconds,
@@ -420,9 +420,9 @@ public sealed class MetricStore
         DateTimeOffset toExclusive,
         int maxPoints)
     {
-        // Una risoluzione inventata non deve restituire una lista vuota: sembrerebbe
-        // "nessun dato" invece di "hai sbagliato a chiedere", e chi guarda il grafico
-        // concluderebbe che la macchina non e' monitorata.
+        // A made-up resolution must not return an empty list: it would look like "no data"
+        // instead of "you asked wrong", and whoever is looking at the graph would conclude
+        // that the machine is not monitored.
         if (bucketSeconds is not (BucketWidths.RawSeconds
             or BucketWidths.MinuteSeconds
             or BucketWidths.FiveMinuteSeconds))
@@ -430,7 +430,7 @@ public sealed class MetricStore
             throw new ArgumentOutOfRangeException(
                 nameof(bucketSeconds),
                 bucketSeconds,
-                "Risoluzione sconosciuta: sono previsti solo 1 (grezzo), 60 e 300 secondi.");
+                "Unknown resolution: only 1 (raw), 60 and 300 seconds are supported.");
         }
 
         ArgumentOutOfRangeException.ThrowIfLessThan(maxPoints, 1);
@@ -460,9 +460,9 @@ public sealed class MetricStore
         {
             DateTimeOffset timestamp = DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(0));
 
-            // Il grezzo esce con la STESSA forma degli aggregati: conteggio 1 e i quattro
-            // valori uguali fra loro. E' cio' che permette al client di cambiare risoluzione
-            // senza avere due rami di disegno, di cui uno sempre meno collaudato.
+            // The raw samples come out with the SAME shape as the aggregates: count 1 and
+            // the four values equal to each other. That is what lets the client change
+            // resolution without having two drawing branches, one always less tested.
             points.Add(raw
                 ? new HistoryPoint(timestamp, 1, reader.GetDouble(1), reader.GetDouble(1), reader.GetDouble(1), reader.GetDouble(1))
                 : new HistoryPoint(
@@ -474,18 +474,18 @@ public sealed class MetricStore
                     reader.GetDouble(5)));
         }
 
-        // Le due query ordinano al CONTRARIO di proposito: con un ordinamento crescente il
-        // LIMIT terrebbe i punti piu' vecchi, e chiedendo novanta giorni si otterrebbe un
-        // grafico che finisce diciassette giorni fa, plausibile e senza alcun errore. Su una
-        // dashboard il presente e' il pezzo che non si puo' perdere. Qui si rimette l'ordine
-        // crescente promesso dal contratto, cosi' il client disegna senza riordinare nulla.
+        // The two queries order the OTHER way round on purpose: with an increasing order the
+        // LIMIT would keep the oldest points, and asking for ninety days would give a graph
+        // that ends seventeen days ago, plausible and with no error at all. On a dashboard
+        // the present is the piece you cannot lose. Here the increasing order promised by the
+        // contract is put back, so the client draws without reordering anything.
         points.Reverse();
 
         return points;
     }
 
-    /// <summary>Quanto occupa lo storico e fin dove e' consolidato.</summary>
-    /// <returns>Le statistiche.</returns>
+    /// <summary>How much room the history takes and how far it is consolidated.</summary>
+    /// <returns>The statistics.</returns>
     public StorageStats ReadStats()
     {
         using SqliteConnection connection = Open();
@@ -516,8 +516,8 @@ public sealed class MetricStore
 
     private long FileSizeBytes()
     {
-        // Il WAL fa parte del database a tutti gli effetti: contare solo il file principale
-        // farebbe apparire uno storico da centinaia di megabyte come uno da pochi kilobyte.
+        // The WAL is part of the database in every respect: counting only the main file would
+        // make a history of hundreds of megabytes look like one of a few kilobytes.
         long total = 0L;
 
         foreach (string suffix in DatabaseFileSuffixes)
@@ -540,9 +540,9 @@ public sealed class MetricStore
 
         using SqliteCommand pragma = connection.CreateCommand();
 
-        // NORMAL con WAL: una mancanza di corrente puo' costare le ultime transazioni, mai
-        // il database. Per telemetria di macchina e' il compromesso giusto — FULL
-        // significherebbe un fsync al secondo su un dato che vale pochi secondi di grafico.
+        // NORMAL with WAL: a power failure can cost the last transactions, never the
+        // database. For machine telemetry it is the right compromise — FULL would mean one
+        // fsync a second on data worth a few seconds of graph.
         pragma.CommandText = "PRAGMA synchronous = NORMAL;";
         pragma.ExecuteNonQuery();
 
@@ -588,7 +588,7 @@ public sealed class MetricStore
         if (scalar is null)
         {
             throw new InvalidOperationException(FormattableString.Invariant(
-                $"La serie {sample.Key.CollectorId}/{sample.Key.MetricId}/{sample.Key.Instance} e' stata inserita ma non si rilegge."));
+                $"Series {sample.Key.CollectorId}/{sample.Key.MetricId}/{sample.Key.Instance} was inserted but cannot be read back."));
         }
 
         long seriesId = Convert.ToInt64(scalar, CultureInfo.InvariantCulture);
@@ -618,14 +618,14 @@ public sealed class MetricStore
 
             if (sourceThrough is not { } covered)
             {
-                // Il livello sotto non ha mai aggregato: qualunque bucket costruito adesso
-                // sarebbe fatto di niente, e il segnaposto lo renderebbe definitivo.
+                // The level below has never aggregated: any bucket built now would be made
+                // of nothing, and the marker would make it permanent.
                 return 0;
             }
 
-            // Ci si ferma dove arriva il livello inferiore, arrotondato al bucket pieno piu'
-            // vicino. Senza questo, un bucket da cinque minuti verrebbe costruito su tre
-            // minuti su cinque: media plausibile, media falsa, e mai piu' corretta.
+            // It stops where the lower level reaches, rounded to the nearest full bucket.
+            // Without this, a five-minute bucket would be built on three minutes out of
+            // five: plausible average, false average, and never corrected again.
             upperLimit = Math.Min(upperLimit, RollupMath.AlignToBucketStart(covered, targetWidth));
         }
 
@@ -641,8 +641,8 @@ public sealed class MetricStore
 
             if (firstSource is not { } first)
             {
-                // Non c'e' proprio niente da aggregare. Il segnaposto avanza lo stesso, per
-                // non riscandire il vuoto a ogni giro di manutenzione.
+                // There is simply nothing to aggregate. The marker advances all the same, so
+                // as not to rescan the emptiness at every maintenance pass.
                 WriteConsolidatedThrough(connection, transaction, targetSeconds, upperLimit);
                 transaction.Commit();
 

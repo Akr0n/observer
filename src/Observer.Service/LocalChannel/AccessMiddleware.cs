@@ -3,53 +3,53 @@ using Observer.Service.Credentials;
 
 namespace Observer.Service.LocalChannel;
 
-/// <summary>Il controllo d'accesso del servizio, applicato a ogni richiesta.</summary>
+/// <summary>The service's access control, applied to every request.</summary>
 /// <remarks>
-/// Sta in una classe e non nei top-level statements di Program.cs per una ragione precisa: cosi'
-/// i test possono montarlo su un host Kestrel VERO ed esercitare il codice di produzione, invece
-/// di verificare una copia riscritta nel banco di prova.
+/// It sits in a class and not in Program.cs's top-level statements for a precise reason: this way
+/// the tests can mount it on a REAL Kestrel host and exercise the production code, instead of
+/// verifying a copy rewritten in the test bench.
 /// </remarks>
 public static class AccessMiddleware
 {
-    /// <summary>Installa l'istradamento e il controllo d'accesso, in quest'ordine.</summary>
-    /// <param name="app">L'applicazione.</param>
-    /// <param name="credenziali">Le credenziali di macchina in uso.</param>
+    /// <summary>Installs routing and access control, in that order.</summary>
+    /// <param name="app">The application.</param>
+    /// <param name="credentials">The machine credentials in use.</param>
     /// <remarks>
-    /// UseRouting lo chiama QUESTO metodo, di proposito. Il controllo legge la portata
-    /// dell'endpoint da <c>GetEndpoint()</c>, che prima dell'istradamento e' null: e con null
-    /// ogni endpoint risulterebbe raggiungibile da ovunque, cioe' la restrizione sparirebbe in
-    /// silenzio invece di fallire. Tenere le due chiamate insieme rende quell'errore
-    /// impossibile da commettere.
+    /// UseRouting is called by THIS method, on purpose. The check reads the endpoint's scope
+    /// from <c>GetEndpoint()</c>, which before routing is null: and with null every endpoint
+    /// would come out reachable from anywhere, that is, the restriction would vanish in
+    /// silence instead of failing. Keeping the two calls together makes that mistake
+    /// impossible to commit.
     /// </remarks>
-    public static void UseObserverAccessControl(this WebApplication app, MachineCredentials credenziali)
+    public static void UseObserverAccessControl(this WebApplication app, MachineCredentials credentials)
     {
         ArgumentNullException.ThrowIfNull(app);
-        ArgumentNullException.ThrowIfNull(credenziali);
+        ArgumentNullException.ThrowIfNull(credentials);
 
         app.UseRouting();
 
         app.Use(async (context, next) =>
         {
-            CallerOrigin chiamante = LocalCaller.Classifica(context);
-            EndpointScope portata = EndpointScopeExtensions.PortataDi(context);
-            bool tokenValido = TokenValido(context.Request.Headers.Authorization, credenziali, DateTimeOffset.UtcNow);
+            CallerOrigin caller = LocalCaller.Classify(context);
+            EndpointScope scope = EndpointScopeExtensions.ScopeOf(context);
+            bool tokenIsValid = IsTokenValid(context.Request.Headers.Authorization, credentials, DateTimeOffset.UtcNow);
 
-            switch (AccessPolicy.Decidi(chiamante.Kind, portata, tokenValido))
+            switch (AccessPolicy.Decide(caller.Kind, scope, tokenIsValid))
             {
-                case AccessDecision.Consentito:
+                case AccessDecision.Allowed:
                     break;
 
-                case AccessDecision.NonEsiste:
-                    // 404 e non 403: chi rubasse il token non deve poter scoprire che esistono
-                    // endpoint capaci di ruotare le chiavi, ne' usarli per chiudere fuori il
-                    // proprietario della macchina.
+                case AccessDecision.NotFound:
+                    // 404 and not 403: whoever stole the token must not be able to discover
+                    // that endpoints capable of rotating the keys exist, nor use them to lock
+                    // the machine's owner out.
                     context.Response.StatusCode = StatusCodes.Status404NotFound;
                     return;
 
                 default:
-                    // Il ramo predefinito e' il RIFIUTO, non il passaggio: se un giorno
-                    // qualcuno aggiungesse un valore all'enum senza gestirlo qui, cadrebbe
-                    // nel 401.
+                    // The default branch is REFUSAL, not passage: if one day someone added a
+                    // value to the enum without handling it here, it would fall into the
+                    // 401.
                     context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     context.Response.Headers.WWWAuthenticate = "Bearer";
                     return;
@@ -59,25 +59,25 @@ public static class AccessMiddleware
         });
     }
 
-    /// <summary>Se l'header Authorization porta una chiave che il servizio accetta.</summary>
-    /// <param name="header">Il valore dell'header, eventualmente assente.</param>
-    /// <param name="credenziali">Le credenziali di macchina in uso.</param>
-    /// <param name="adesso">L'istante corrente, per la scadenza della chiave precedente.</param>
-    /// <returns>Vero se corrisponde alla corrente o alla precedente non ancora scaduta.</returns>
+    /// <summary>Whether the Authorization header carries a key the service accepts.</summary>
+    /// <param name="header">The header's value, possibly absent.</param>
+    /// <param name="credentials">The machine credentials in use.</param>
+    /// <param name="now">The current instant, for the expiry of the previous key.</param>
+    /// <returns>True if it matches the current one, or the previous one not yet expired.</returns>
     /// <remarks>
-    /// Le credenziali sono una FOTOGRAFIA presa all'avvio: una rotazione fatta dalla riga di
-    /// comando riscrive il deposito, e il servizio comincia a usare la chiave nuova solo al
-    /// riavvio. E' voluto - rileggere il deposito a ogni richiesta significherebbe toccare il
-    /// disco una volta al secondo per macchina collegata - ed e' documentato nel verbo che ruota.
+    /// The credentials are a SNAPSHOT taken at start-up: a rotation done from the command line
+    /// rewrites the store, and the service starts using the new key only at restart. It is
+    /// deliberate - re-reading the store on every request would mean touching the disk once a
+    /// second per connected machine - and it is documented in the verb that rotates.
     /// </remarks>
-    public static bool TokenValido(StringValues header, MachineCredentials credenziali, DateTimeOffset adesso)
+    public static bool IsTokenValid(StringValues header, MachineCredentials credentials, DateTimeOffset now)
     {
-        ArgumentNullException.ThrowIfNull(credenziali);
+        ArgumentNullException.ThrowIfNull(credentials);
 
-        string? valore = header.Count == 1 ? header[0] : null;
+        string? value = header.Count == 1 ? header[0] : null;
 
-        return valore is not null
-            && valore.StartsWith("Bearer ", StringComparison.Ordinal)
-            && credenziali.Accetta(valore["Bearer ".Length..], adesso);
+        return value is not null
+            && value.StartsWith("Bearer ", StringComparison.Ordinal)
+            && credentials.Accepts(value["Bearer ".Length..], now);
     }
 }

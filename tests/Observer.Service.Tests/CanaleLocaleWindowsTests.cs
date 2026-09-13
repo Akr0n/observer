@@ -22,7 +22,7 @@ public class CanaleLocaleWindowsTests
     {
         // Authenticated Users comprende OGNI principal autenticato che raggiunga la macchina,
         // anche via SMB sulla porta 445. INTERACTIVE comprende solo chi ha una sessione qui.
-        string sddl = WindowsNamedPipe.Sicurezza()
+        string sddl = WindowsNamedPipe.SecurityDescriptor()
             .GetSecurityDescriptorSddlForm(AccessControlSections.Access);
 
         Assert.Contains(";;;IU)", sddl, StringComparison.Ordinal);
@@ -39,7 +39,7 @@ public class CanaleLocaleWindowsTests
         // quel guasto non ha alcun sintomo visibile.
         NamedPipeTransportOptions opzioni = new();
 
-        WindowsNamedPipe.ConfiguraTrasporto(opzioni);
+        WindowsNamedPipe.ConfigureTransport(opzioni);
 
         Assert.False(opzioni.CurrentUserOnly);
         Assert.NotNull(opzioni.PipeSecurity);
@@ -96,14 +96,14 @@ public class CanaleLocaleWindowsTests
             opzioni => opzioni.ListenNamedPipe(pipe),
             app => app.MapGet("/chi", (HttpContext contesto) =>
             {
-                CallerOrigin origine = LocalCaller.Classifica(contesto);
+                CallerOrigin origine = LocalCaller.Classify(contesto);
                 return origine.Kind + "|" + (origine.Sid ?? "(nessuno)");
             }));
 
         using HttpClient client = BancoKestrelReale.ClientSu(HandlerVersoLaPipe(pipe));
         string esito = await client.GetStringAsync("chi", CancellationToken.None);
 
-        Assert.StartsWith(nameof(CallerKind.LocaleIdentificato) + "|S-1-", esito, StringComparison.Ordinal);
+        Assert.StartsWith(nameof(CallerKind.LocalIdentified) + "|S-1-", esito, StringComparison.Ordinal);
     }
 
     [SoloSuWindows]
@@ -119,7 +119,7 @@ public class CanaleLocaleWindowsTests
 
         await using BancoKestrelReale banco = await BancoKestrelReale.AvviaAsync(
             opzioni => opzioni.ListenNamedPipe(pipe),
-            app => app.MapGet("/chi", (HttpContext contesto) => LocalCaller.Classifica(contesto).Kind.ToString()));
+            app => app.MapGet("/chi", (HttpContext contesto) => LocalCaller.Classify(contesto).Kind.ToString()));
 
         using HttpClient client = BancoKestrelReale.ClientSu(
             HandlerVersoLaPipe(pipe, TokenImpersonationLevel.Anonymous));
@@ -128,7 +128,7 @@ public class CanaleLocaleWindowsTests
 
         Assert.Equal(HttpStatusCode.OK, risposta.StatusCode);
         Assert.Equal(
-            nameof(CallerKind.NonIdentificabile),
+            nameof(CallerKind.Unidentified),
             await risposta.Content.ReadAsStringAsync(CancellationToken.None));
     }
 
@@ -142,13 +142,13 @@ public class CanaleLocaleWindowsTests
 
         await using BancoKestrelReale banco = await BancoKestrelReale.AvviaAsync(
             opzioni => opzioni.ListenNamedPipe(pipe),
-            app => app.MapGet("/chi", (HttpContext contesto) => LocalCaller.Classifica(contesto).Kind.ToString()));
+            app => app.MapGet("/chi", (HttpContext contesto) => LocalCaller.Classify(contesto).Kind.ToString()));
 
         using HttpClient client = BancoKestrelReale.ClientSu(
             HandlerVersoLaPipe(pipe, TokenImpersonationLevel.Identification, server: "localhost"));
 
         Assert.Equal(
-            nameof(CallerKind.ArrivatoDallaRete),
+            nameof(CallerKind.FromNetwork),
             await client.GetStringAsync("chi", CancellationToken.None));
     }
 
@@ -163,13 +163,13 @@ public class CanaleLocaleWindowsTests
                 opzioni.Listen(IPAddress.Loopback, 0);
                 opzioni.ListenNamedPipe(pipe);
             },
-            app => app.MapGet("/chi", (HttpContext contesto) => LocalCaller.Classifica(contesto).Kind.ToString()));
+            app => app.MapGet("/chi", (HttpContext contesto) => LocalCaller.Classify(contesto).Kind.ToString()));
 
         string tcp = banco.Indirizzi.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
         using HttpClient client = new() { BaseAddress = new Uri(tcp) };
 
         Assert.Equal(
-            nameof(CallerKind.ArrivatoDallaRete),
+            nameof(CallerKind.FromNetwork),
             await client.GetStringAsync("chi", CancellationToken.None));
     }
 
@@ -237,7 +237,7 @@ public class CanaleLocaleWindowsTests
                 opzioni.Listen(IPAddress.Loopback, 0);
                 opzioni.ListenNamedPipe(pipe);
             },
-            app => app.MapGet("/riservato", () => "segreto").SoloDaLocale(),
+            app => app.MapGet("/riservato", () => "segreto").LocalOnly(),
             middleware: app => app.UseObserverAccessControl(Token));
 
         string tcp = banco.Indirizzi.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));

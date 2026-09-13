@@ -1,38 +1,38 @@
 namespace Observer.Service.LocalChannel;
 
-/// <summary>Dove sta il canale locale su questa macchina.</summary>
+/// <summary>Where the local channel sits on this machine.</summary>
 /// <remarks>
-/// Nome della pipe e percorso del socket sono CONFIGURABILI, e non e' una comodita': un
-/// endpoint che non si binda abbatte l'INTERO host, endpoint TCP compreso. Con valori fissi,
-/// lanciare a mano il servizio su una macchina dove quello installato gira non fallirebbe piu'
-/// "solo sulla porta": non partirebbe affatto.
+/// The pipe name and the socket path are CONFIGURABLE, and that is not a convenience: an
+/// endpoint that fails to bind brings down the WHOLE host, the TCP endpoint included. With
+/// fixed values, starting the service by hand on a machine where the installed one is running
+/// would no longer fail "on the port alone": it would not start at all.
 /// </remarks>
 public sealed class LocalChannelOptions
 {
-    /// <summary>Il percorso della sezione in configurazione.</summary>
+    /// <summary>The path of the section in configuration.</summary>
     public const string SectionName = "Observer:LocalChannel";
 
-    /// <summary>Se aprire il canale locale.</summary>
+    /// <summary>Whether to open the local channel.</summary>
     public bool Enabled { get; set; } = true;
 
-    /// <summary>Il nome della named pipe su Windows, senza prefisso.</summary>
+    /// <summary>The name of the named pipe on Windows, without the prefix.</summary>
     public string PipeName { get; set; } = "Observer";
 
-    /// <summary>Il percorso del socket unix su Linux.</summary>
+    /// <summary>The path of the unix socket on Linux.</summary>
     public string SocketPath { get; set; } = "/run/observer/observer.sock";
 
-    /// <summary>Si rifiuta di partire con valori inutilizzabili.</summary>
+    /// <summary>It refuses to start with unusable values.</summary>
     /// <remarks>
-    /// Convalida ENTRAMBI i valori su ogni sistema, non solo quello della piattaforma corrente:
-    /// il file di configurazione e' lo stesso su Windows e su Linux, e un refuso nel campo
-    /// dell'altro sistema va scoperto da chi lo scrive, non da chi ci arriva dopo.
+    /// It validates BOTH values on every system, not only the one of the current platform:
+    /// the configuration file is the same on Windows and on Linux, and a typo in the other
+    /// system's field is to be found by whoever writes it, not by whoever gets there later.
     /// </remarks>
     public void Validate()
     {
         if (!Enabled)
         {
-            // Una macchina che non vuole il canale locale non deve inventarsi valori validi
-            // per poter partire.
+            // A machine that does not want the local channel must not invent valid values
+            // just to be able to start.
             return;
         }
 
@@ -42,9 +42,9 @@ public sealed class LocalChannelOptions
                 $"{SectionName}:PipeName is empty. Give the pipe a name, or set Enabled to false.");
         }
 
-        if (EndpointUrl.Problema("http://unix:" + SocketPath) is { } problema)
+        if (EndpointUrl.Problem("http://unix:" + SocketPath) is { } problem)
         {
-            throw new InvalidOperationException($"{SectionName}:SocketPath can't be used. {problema}");
+            throw new InvalidOperationException($"{SectionName}:SocketPath can't be used. {problem}");
         }
     }
 }

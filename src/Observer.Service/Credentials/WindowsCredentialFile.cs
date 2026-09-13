@@ -4,65 +4,65 @@ using System.Security.Principal;
 
 namespace Observer.Service.Credentials;
 
-/// <summary>Crea il file del deposito su Windows, gia' con la DACL giusta.</summary>
+/// <summary>Creates the store's file on Windows, already with the right DACL.</summary>
 /// <remarks>
-/// Classe a parte e annotata per CA1416, che con TreatWarningsAsErrors fa fallire la build su
-/// entrambi i runner.
+/// A separate class, annotated for CA1416, which with TreatWarningsAsErrors fails the build on
+/// both runners.
 /// </remarks>
 [SupportedOSPlatform("windows")]
 public static class WindowsCredentialFile
 {
-    /// <summary>Crea un file nuovo con una DACL protetta.</summary>
-    /// <param name="percorso">Il percorso del file da creare.</param>
-    /// <returns>Il flusso su cui scrivere.</returns>
-    public static Stream CreaProtetto(string percorso) =>
-        new FileInfo(percorso).Create(
-            // CreateNew e non Create: su un file gia' esistente, Create IGNORA il descrittore
-            // passato e lascia in piedi quello che c'era. La chiamata riesce senza errore, e il
-            // segreto finisce dentro una DACL scelta da qualcun altro.
+    /// <summary>Creates a new file with a protected DACL.</summary>
+    /// <param name="path">The path of the file to create.</param>
+    /// <returns>The stream to write to.</returns>
+    public static Stream CreateProtected(string path) =>
+        new FileInfo(path).Create(
+            // CreateNew and not Create: on an already existing file, Create IGNORES the descriptor
+            // passed in and leaves the one that was there in place. The call succeeds with no
+            // error, and the secret ends up inside a DACL chosen by somebody else.
             FileMode.CreateNew,
             FileSystemRights.WriteData | FileSystemRights.Synchronize,
             FileShare.None,
             bufferSize: 4096,
             FileOptions.None,
-            Sicurezza());
+            SecurityDescriptor());
 
-    /// <summary>La DACL del deposito.</summary>
-    /// <returns>Il descrittore.</returns>
+    /// <summary>The store's DACL.</summary>
+    /// <returns>The descriptor.</returns>
     /// <remarks>
-    /// SYSTEM e amministratori, piu' l'account che ESEGUE questo processo. In produzione il
-    /// servizio gira come LocalSystem e quella terza regola coincide con la prima, quindi non
-    /// concede nulla di nuovo; lanciato a mano durante lo sviluppo e' cio' che permette al
-    /// servizio di rileggere il proprio deposito invece di trovarselo chiuso in faccia.
+    /// SYSTEM and the administrators, plus the account that RUNS this process. In production the
+    /// service runs as LocalSystem and that third rule coincides with the first, so it grants
+    /// nothing new; launched by hand during development it is what lets the service read its own
+    /// store back instead of finding the door shut in its face.
     /// </remarks>
-    public static FileSecurity Sicurezza()
+    public static FileSecurity SecurityDescriptor()
     {
-        FileSecurity sicurezza = new();
+        FileSecurity security = new();
 
-        // Taglia l'ereditarieta': la cartella di sistema che ospita il deposito concede a
-        // BUILTIN\Users la lettura ereditabile, e ereditare basta a perdere il segreto.
-        sicurezza.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        // Cuts inheritance: the system directory that hosts the store grants BUILTIN\Users
+        // inheritable read access, and inheriting is enough to lose the secret.
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
 
-        sicurezza.AddAccessRule(new FileSystemAccessRule(
+        security.AddAccessRule(new FileSystemAccessRule(
             new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
             FileSystemRights.FullControl,
             AccessControlType.Allow));
 
-        sicurezza.AddAccessRule(new FileSystemAccessRule(
+        security.AddAccessRule(new FileSystemAccessRule(
             new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
             FileSystemRights.FullControl,
             AccessControlType.Allow));
 
-        using WindowsIdentity corrente = WindowsIdentity.GetCurrent();
+        using WindowsIdentity current = WindowsIdentity.GetCurrent();
 
-        if (corrente.User is { } account)
+        if (current.User is { } account)
         {
-            sicurezza.AddAccessRule(new FileSystemAccessRule(
+            security.AddAccessRule(new FileSystemAccessRule(
                 account,
                 FileSystemRights.FullControl,
                 AccessControlType.Allow));
         }
 
-        return sicurezza;
+        return security;
     }
 }

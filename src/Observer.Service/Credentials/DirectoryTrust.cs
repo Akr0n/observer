@@ -1,141 +1,140 @@
 namespace Observer.Service.Credentials;
 
-/// <summary>Cosa si e' osservato di una cartella candidata a ospitare il token di macchina.</summary>
-/// <param name="Esiste">Se la cartella esiste.</param>
-/// <param name="PuntoDiReparse">Se e' una giunzione o un collegamento simbolico.</param>
-/// <param name="DescrittoreLeggibile">Se si e' riusciti a leggere il descrittore di sicurezza.</param>
-/// <param name="ProprietarioSid">Il SID del proprietario, in forma testuale.</param>
-/// <param name="DaclProtetta">Se la DACL e' protetta, cioe' NON eredita dal padre.</param>
-/// <param name="SidNellaDacl">I SID che compaiono nelle regole di accesso.</param>
+/// <summary>What was observed of a directory that is a candidate to hold the machine token.</summary>
+/// <param name="Exists">Whether the directory exists.</param>
+/// <param name="IsReparsePoint">Whether it is a junction or a symbolic link.</param>
+/// <param name="SecurityDescriptorReadable">Whether the security descriptor could be read.</param>
+/// <param name="OwnerSid">The owner's SID, in textual form.</param>
+/// <param name="DaclProtected">Whether the DACL is protected, that is, does NOT inherit from the parent.</param>
+/// <param name="DaclSids">The SIDs that appear in the access rules.</param>
 public sealed record DirectoryFacts(
-    bool Esiste,
-    bool PuntoDiReparse,
-    bool DescrittoreLeggibile,
-    string? ProprietarioSid,
-    bool DaclProtetta,
-    IReadOnlyList<string> SidNellaDacl);
+    bool Exists,
+    bool IsReparsePoint,
+    bool SecurityDescriptorReadable,
+    string? OwnerSid,
+    bool DaclProtected,
+    IReadOnlyList<string> DaclSids);
 
-/// <summary>L'esito della valutazione. Il valore ZERO non e' quello che autorizza.</summary>
+/// <summary>The outcome of the evaluation. The ZERO value is not the one that authorizes.</summary>
 public enum DirectoryVerdict
 {
-    /// <summary>Non si e' potuto nemmeno leggere il descrittore.</summary>
-    Sconosciuto = 0,
+    /// <summary>The descriptor could not even be read.</summary>
+    Unknown = 0,
 
-    /// <summary>E' una giunzione o un collegamento: i dati finirebbero altrove.</summary>
-    PuntoDiReparse,
+    /// <summary>It is a junction or a link: the data would end up somewhere else.</summary>
+    ReparsePoint,
 
-    /// <summary>Il proprietario puo' riscrivere la DACL quando vuole.</summary>
-    ProprietarioNonFidato,
+    /// <summary>The owner can rewrite the DACL whenever it wants.</summary>
+    UntrustedOwner,
 
-    /// <summary>La DACL eredita, oppure concede a qualcuno che non deve entrare.</summary>
-    DaclAperta,
+    /// <summary>The DACL inherits, or grants to someone who must not get in.</summary>
+    OpenDacl,
 
-    /// <summary>Non esiste: si puo' creare da zero, che e' il caso migliore.</summary>
-    Assente,
+    /// <summary>It does not exist: it can be created from scratch, which is the best case.</summary>
+    Missing,
 
-    /// <summary>Proprietario fidato, DACL protetta, nessun estraneo.</summary>
-    Sicura,
+    /// <summary>Trusted owner, protected DACL, no outsiders.</summary>
+    Safe,
 }
 
-/// <summary>Comodita' per non elencare a mano i casi negativi.</summary>
+/// <summary>A convenience so the negative cases need not be listed by hand.</summary>
 public static class DirectoryVerdictExtensions
 {
-    /// <summary>Se una cartella in questo stato puo' gia' ospitare un segreto.</summary>
-    /// <param name="verdetto">L'esito della valutazione.</param>
-    /// <returns>Vero solo per <see cref="DirectoryVerdict.Sicura"/>.</returns>
+    /// <summary>Whether a directory in this state can already hold a secret.</summary>
+    /// <param name="verdict">The outcome of the evaluation.</param>
+    /// <returns>True only for <see cref="DirectoryVerdict.Safe"/>.</returns>
     /// <remarks>
-    /// Scritto come "uguale a Sicura" e non come "diverso da questi tre": aggiungere domani un
-    /// caso negativo all'enum non deve trasformarlo in un permesso per distrazione.
+    /// Written as "equal to Safe" and not as "different from these three": adding a negative case
+    /// to the enum tomorrow must not turn it into a permission through inattention.
     /// </remarks>
-    public static bool PuoOspitareUnSegreto(this DirectoryVerdict verdetto) =>
-        verdetto == DirectoryVerdict.Sicura;
+    public static bool CanHoldSecret(this DirectoryVerdict verdict) =>
+        verdict == DirectoryVerdict.Safe;
 }
 
 /// <summary>
-/// Decide se ci si puo' fidare della cartella che ospitera' il token di macchina.
+/// Decides whether the directory that will hold the machine token can be trusted.
 /// </summary>
 /// <remarks>
-/// Funzione PURA sui fatti osservati, perche' i casi che contano non si possono costruire tutti
-/// su una macchina qualsiasi — una cartella posseduta da SYSTEM richiede una sessione
-/// amministrativa — e perche' e' la decisione di sicurezza portante del deposito.
+/// A PURE function over the observed facts, because the cases that matter cannot all be built on
+/// just any machine — a directory owned by SYSTEM requires an administrative session — and because
+/// it is the load-bearing security decision of the store.
 /// <para>
-/// L'ordine dei controlli e' vincolato e non e' un dettaglio di stile. Vedi i commenti.
+/// The order of the checks is binding and is not a matter of style. See the comments.
 /// </para>
 /// </remarks>
 public static class DirectoryTrust
 {
     /// <summary>NT AUTHORITY\SYSTEM.</summary>
-    public const string SidSistema = "S-1-5-18";
+    public const string SystemSid = "S-1-5-18";
 
     /// <summary>BUILTIN\Administrators.</summary>
-    public const string SidAmministratori = "S-1-5-32-544";
+    public const string AdministratorsSid = "S-1-5-32-544";
 
-    /// <summary>I proprietari fidati quando non se ne indicano altri.</summary>
-    public static readonly IReadOnlyList<string> FidatiPredefiniti = [SidSistema, SidAmministratori];
+    /// <summary>The trusted owners when no others are given.</summary>
+    public static readonly IReadOnlyList<string> DefaultTrustedSids = [SystemSid, AdministratorsSid];
 
-    /// <summary>Valuta la cartella contro SYSTEM e gli amministratori.</summary>
-    /// <param name="fatti">I fatti raccolti dal sistema operativo.</param>
-    /// <returns>Il verdetto.</returns>
-    public static DirectoryVerdict Valuta(DirectoryFacts fatti) => Valuta(fatti, FidatiPredefiniti);
+    /// <summary>Evaluates the directory against SYSTEM and the administrators.</summary>
+    /// <param name="facts">The facts gathered from the operating system.</param>
+    /// <returns>The verdict.</returns>
+    public static DirectoryVerdict Evaluate(DirectoryFacts facts) => Evaluate(facts, DefaultTrustedSids);
 
-    /// <summary>Valuta la cartella contro un insieme esplicito di principal fidati.</summary>
-    /// <param name="fatti">I fatti raccolti dal sistema operativo.</param>
-    /// <param name="fidati">
-    /// I SID che possono possedere la cartella e comparire nella sua DACL. In produzione
-    /// sono SYSTEM e gli amministratori, piu' l'account che ESEGUE il servizio - il quale
-    /// in produzione coincide con SYSTEM e quindi non concede nulla di nuovo. Lanciato a
-    /// mano in sviluppo e' cio' che permette al servizio di fidarsi della cartella che ha
-    /// creato lui. Un utente standard non puo' in alcun modo creare una cartella posseduta
-    /// da SYSTEM, verificato: SetOwner fallisce. L'estensione non apre strade a nessuno.
+    /// <summary>Evaluates the directory against an explicit set of trusted principals.</summary>
+    /// <param name="facts">The facts gathered from the operating system.</param>
+    /// <param name="trustedSids">
+    /// The SIDs that may own the directory and appear in its DACL. In production these are
+    /// SYSTEM and the administrators, plus the account that RUNS the service - which in
+    /// production coincides with SYSTEM and therefore grants nothing new. Launched by hand
+    /// in development it is what lets the service trust the directory it created itself.
+    /// A standard user cannot in any way create a directory owned by SYSTEM, verified:
+    /// SetOwner fails. The extension opens no path for anyone.
     /// </param>
-    /// <returns>Il verdetto.</returns>
-    public static DirectoryVerdict Valuta(DirectoryFacts fatti, IReadOnlyList<string> fidati)
+    /// <returns>The verdict.</returns>
+    public static DirectoryVerdict Evaluate(DirectoryFacts facts, IReadOnlyList<string> trustedSids)
     {
-        ArgumentNullException.ThrowIfNull(fatti);
-        ArgumentNullException.ThrowIfNull(fidati);
+        ArgumentNullException.ThrowIfNull(facts);
+        ArgumentNullException.ThrowIfNull(trustedSids);
 
-        if (!fatti.Esiste)
+        if (!facts.Exists)
         {
-            // Il caso migliore: si crea da zero, gia' con proprietario e DACL giusti, senza
-            // dover riparare niente.
-            return DirectoryVerdict.Assente;
+            // The best case: it is created from scratch, already with the right owner and DACL,
+            // with nothing to repair.
+            return DirectoryVerdict.Missing;
         }
 
-        if (fatti.PuntoDiReparse)
+        if (facts.IsReparsePoint)
         {
-            // PRIMO, prima di leggere qualunque ACL. Una giunzione la crea un utente standard
-            // senza alcun privilegio: se questo controllo venisse dopo, si correggerebbero
-            // proprietario e ACL della cartella dell'ATTACCANTE e ci si depositerebbe dentro
-            // il token.
-            return DirectoryVerdict.PuntoDiReparse;
+            // FIRST, before reading any ACL. A junction is created by a standard user with no
+            // privilege at all: if this check came later, the owner and the ACL of the ATTACKER's
+            // directory would be fixed up and the token would be deposited inside it.
+            return DirectoryVerdict.ReparsePoint;
         }
 
-        if (!fatti.DescrittoreLeggibile)
+        if (!facts.SecurityDescriptorReadable)
         {
-            return DirectoryVerdict.Sconosciuto;
+            return DirectoryVerdict.Unknown;
         }
 
-        if (!Fidato(fatti.ProprietarioSid, fidati))
+        if (!IsTrusted(facts.OwnerSid, trustedSids))
         {
-            // SECONDO, e prima della DACL. Il proprietario ha WRITE_DAC implicito: una DACL
-            // perfetta su una cartella posseduta da un utente e' un "finto protetto", e quel
-            // l'utente se la riscrive con una sola chiamata. Misurato.
-            return DirectoryVerdict.ProprietarioNonFidato;
+            // SECOND, and before the DACL. The owner has implicit WRITE_DAC: a perfect DACL on a
+            // directory owned by a user is a "fake protected", and that user rewrites it with a
+            // single call. Measured.
+            return DirectoryVerdict.UntrustedOwner;
         }
 
-        if (!fatti.DaclProtetta)
+        if (!facts.DaclProtected)
         {
-            // Non protetta significa che eredita, e la cartella di sistema che ospita il
-            // deposito concede a BUILTIN\Users la lettura ereditabile: ereditare basta a
-            // perdere il segreto, senza bisogno di alcun attaccante.
-            return DirectoryVerdict.DaclAperta;
+            // Not protected means it inherits, and the system directory that hosts the store
+            // grants BUILTIN\Users inheritable read access: inheriting is enough to lose the
+            // secret, with no attacker needed at all.
+            return DirectoryVerdict.OpenDacl;
         }
 
-        return fatti.SidNellaDacl.All(sid => Fidato(sid, fidati))
-            ? DirectoryVerdict.Sicura
-            : DirectoryVerdict.DaclAperta;
+        return facts.DaclSids.All(sid => IsTrusted(sid, trustedSids))
+            ? DirectoryVerdict.Safe
+            : DirectoryVerdict.OpenDacl;
     }
 
-    private static bool Fidato(string? sid, IReadOnlyList<string> fidati) =>
-        sid is not null && fidati.Contains(sid, StringComparer.OrdinalIgnoreCase);
+    private static bool IsTrusted(string? sid, IReadOnlyList<string> trustedSids) =>
+        sid is not null && trustedSids.Contains(sid, StringComparer.OrdinalIgnoreCase);
 }

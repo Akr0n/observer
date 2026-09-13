@@ -22,7 +22,7 @@ public class DirectoryTrustTests
     [Fact]
     public void UnaCartellaAssenteSiPuoCreare()
     {
-        Assert.Equal(DirectoryVerdict.Assente, DirectoryTrust.Valuta(Fatti(esiste: false)));
+        Assert.Equal(DirectoryVerdict.Missing, DirectoryTrust.Evaluate(Fatti(esiste: false)));
     }
 
     [Fact]
@@ -37,15 +37,15 @@ public class DirectoryTrustTests
             daclProtetta: true,
             sid: [Sistema, Amministratori]);
 
-        Assert.Equal(DirectoryVerdict.PuntoDiReparse, DirectoryTrust.Valuta(perfettaMaGiunzione));
+        Assert.Equal(DirectoryVerdict.ReparsePoint, DirectoryTrust.Evaluate(perfettaMaGiunzione));
     }
 
     [Fact]
     public void UnDescrittoreIlleggibileENonSicuro_NonSconosciutoEBasta()
     {
         Assert.Equal(
-            DirectoryVerdict.Sconosciuto,
-            DirectoryTrust.Valuta(Fatti(descrittoreLeggibile: false)));
+            DirectoryVerdict.Unknown,
+            DirectoryTrust.Evaluate(Fatti(descrittoreLeggibile: false)));
     }
 
     [Fact]
@@ -59,7 +59,7 @@ public class DirectoryTrustTests
             daclProtetta: true,
             sid: [Sistema, Amministratori]);
 
-        Assert.Equal(DirectoryVerdict.ProprietarioNonFidato, DirectoryTrust.Valuta(fintoProtetto));
+        Assert.Equal(DirectoryVerdict.UntrustedOwner, DirectoryTrust.Evaluate(fintoProtetto));
     }
 
     [Theory]
@@ -68,8 +68,8 @@ public class DirectoryTrustTests
     public void IDueSoliProprietariAmmessi(string proprietario)
     {
         Assert.Equal(
-            DirectoryVerdict.Sicura,
-            DirectoryTrust.Valuta(Fatti(proprietario: proprietario, daclProtetta: true, sid: [Sistema, Amministratori])));
+            DirectoryVerdict.Safe,
+            DirectoryTrust.Evaluate(Fatti(proprietario: proprietario, daclProtetta: true, sid: [Sistema, Amministratori])));
     }
 
     [Fact]
@@ -79,8 +79,8 @@ public class DirectoryTrustTests
         // concede a BUILTIN\Users la lettura ereditabile. Ereditare basta a perdere il segreto,
         // senza bisogno di alcun attaccante.
         Assert.Equal(
-            DirectoryVerdict.DaclAperta,
-            DirectoryTrust.Valuta(Fatti(proprietario: Sistema, daclProtetta: false, sid: [Sistema, Amministratori])));
+            DirectoryVerdict.OpenDacl,
+            DirectoryTrust.Evaluate(Fatti(proprietario: Sistema, daclProtetta: false, sid: [Sistema, Amministratori])));
     }
 
     [Theory]
@@ -90,16 +90,16 @@ public class DirectoryTrustTests
     public void UnaSolaAceDiTroppoBastaARenderlaNonSicura(string intruso)
     {
         Assert.Equal(
-            DirectoryVerdict.DaclAperta,
-            DirectoryTrust.Valuta(Fatti(proprietario: Sistema, daclProtetta: true, sid: [Sistema, Amministratori, intruso])));
+            DirectoryVerdict.OpenDacl,
+            DirectoryTrust.Evaluate(Fatti(proprietario: Sistema, daclProtetta: true, sid: [Sistema, Amministratori, intruso])));
     }
 
     [Fact]
     public void IlValoreZeroDelVerdettoNonEQuelloCheAutorizza()
     {
         // Un campo dimenticato o una struct non inizializzata non devono produrre "Sicura".
-        Assert.Equal(DirectoryVerdict.Sconosciuto, default(DirectoryVerdict));
-        Assert.NotEqual(DirectoryVerdict.Sicura, default(DirectoryVerdict));
+        Assert.Equal(DirectoryVerdict.Unknown, default(DirectoryVerdict));
+        Assert.NotEqual(DirectoryVerdict.Safe, default(DirectoryVerdict));
     }
 
     [Fact]
@@ -107,14 +107,14 @@ public class DirectoryTrustTests
     {
         // Chiunque usi il verdetto deve poter distinguere "vai avanti" da "fermati", senza
         // dover elencare a mano i casi negativi e senza dimenticarne uno.
-        Assert.True(DirectoryVerdict.Sicura.PuoOspitareUnSegreto());
-        Assert.False(DirectoryVerdict.Assente.PuoOspitareUnSegreto());
+        Assert.True(DirectoryVerdict.Safe.CanHoldSecret());
+        Assert.False(DirectoryVerdict.Missing.CanHoldSecret());
 
         foreach (DirectoryVerdict verdetto in Enum.GetValues<DirectoryVerdict>())
         {
-            if (verdetto != DirectoryVerdict.Sicura)
+            if (verdetto != DirectoryVerdict.Safe)
             {
-                Assert.False(verdetto.PuoOspitareUnSegreto(), verdetto.ToString());
+                Assert.False(verdetto.CanHoldSecret(), verdetto.ToString());
             }
         }
     }

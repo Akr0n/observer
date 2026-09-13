@@ -3,33 +3,33 @@ using Microsoft.AspNetCore.Connections.Features;
 
 namespace Observer.Service.LocalChannel;
 
-/// <summary>Chi ha mandato questa richiesta, visto da codice che non sa su quale sistema gira.</summary>
+/// <summary>Who sent this request, seen from code that does not know which system it runs on.</summary>
 public static class LocalCaller
 {
-    /// <summary>Classifica il chiamante della richiesta in corso.</summary>
-    /// <param name="contesto">La richiesta in corso.</param>
-    /// <returns>L'origine del chiamante.</returns>
-    public static CallerOrigin Classifica(HttpContext contesto)
+    /// <summary>Classifies the caller of the request in progress.</summary>
+    /// <param name="context">The request in progress.</param>
+    /// <returns>The caller's origin.</returns>
+    public static CallerOrigin Classify(HttpContext context)
     {
-        ArgumentNullException.ThrowIfNull(contesto);
+        ArgumentNullException.ThrowIfNull(context);
 
-        // Le due feature sono mutuamente esclusive e affidabili come INSTRADAMENTO: misurato,
-        // sulla pipe c'e' solo la prima e sul socket unix solo la seconda. Ma dicono da DOVE e'
-        // entrata la richiesta, NON se il chiamante sia ammesso. Confondere le due cose e' il
-        // difetto documentato nella specifica, e non va scritto qui.
+        // The two features are mutually exclusive and reliable as ROUTING: measured, on the pipe
+        // there is only the first and on the unix socket only the second. But they say from WHERE
+        // the request came in, NOT whether the caller is admitted. Confusing the two is the
+        // defect documented in the specification, and it must not be written here.
         if (OperatingSystem.IsWindows()
-            && contesto.Features.Get<IConnectionNamedPipeFeature>() is { } pipe)
+            && context.Features.Get<IConnectionNamedPipeFeature>() is { } pipe)
         {
-            return WindowsCallerIdentity.Classifica(pipe.NamedPipe);
+            return WindowsCallerIdentity.Classify(pipe.NamedPipe);
         }
 
         if (OperatingSystem.IsLinux()
-            && contesto.Features.Get<IConnectionSocketFeature>() is { } presa
-            && presa.Socket.AddressFamily == AddressFamily.Unix)
+            && context.Features.Get<IConnectionSocketFeature>() is { } socket
+            && socket.Socket.AddressFamily == AddressFamily.Unix)
         {
-            return LinuxCallerIdentity.Classifica(presa.Socket);
+            return LinuxCallerIdentity.Classify(socket.Socket);
         }
 
-        return new CallerOrigin(CallerKind.ArrivatoDallaRete, null, "the request arrived over TCP");
+        return new CallerOrigin(CallerKind.FromNetwork, null, "the request arrived over TCP");
     }
 }

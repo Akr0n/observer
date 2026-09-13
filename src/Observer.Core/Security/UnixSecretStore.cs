@@ -86,7 +86,7 @@ public sealed class UnixSecretStore : ISecretStore
         // secret truncated halfway if the process dies, and recreating it would leave a window
         // with no secret. The mode is passed at CREATION, so the file never exists with wider
         // permissions.
-        string temporary = path + ".nuovo";
+        string temporary = path + ".new";
 
         using (FileStream stream = new(temporary, new FileStreamOptions
         {

@@ -37,7 +37,7 @@ public class DiagnosiTests
         {
             bool diceProtetto = Diagnosi.Frase(verdetto).StartsWith("PROTECTED", StringComparison.Ordinal);
 
-            Assert.Equal(verdetto == DirectoryVerdict.Sicura, diceProtetto);
+            Assert.Equal(verdetto == DirectoryVerdict.Safe, diceProtetto);
         }
     }
 
@@ -47,7 +47,7 @@ public class DiagnosiTests
         // E' il verdetto che nessuno scriverebbe senza averlo misurato: la DACL sembra giusta,
         // ma il proprietario se la riscrive quando vuole. Se la frase non lo spiega, chi legge
         // conclude che sia un falso allarme.
-        string frase = Diagnosi.Frase(DirectoryVerdict.ProprietarioNonFidato);
+        string frase = Diagnosi.Frase(DirectoryVerdict.UntrustedOwner);
 
         Assert.Contains("OWNER", frase, StringComparison.Ordinal);
         Assert.Contains("looks safe", frase, StringComparison.OrdinalIgnoreCase);
@@ -58,7 +58,7 @@ public class DiagnosiTests
     {
         // Senza questa riga, "altri utenti possono leggerlo" suona come un problema di
         // riservatezza locale, e non come un accesso permanente da un altro computer.
-        Assert.Contains("NETWORK", Diagnosi.Frase(DirectoryVerdict.DaclAperta), StringComparison.Ordinal);
+        Assert.Contains("NETWORK", Diagnosi.Frase(DirectoryVerdict.OpenDacl), StringComparison.Ordinal);
     }
 
     [Theory]

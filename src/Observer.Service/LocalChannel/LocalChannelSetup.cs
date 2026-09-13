@@ -2,71 +2,71 @@ using System.Runtime.Versioning;
 
 namespace Observer.Service.LocalChannel;
 
-/// <summary>Apre il canale locale sulla piattaforma corrente.</summary>
+/// <summary>Opens the local channel on the current platform.</summary>
 /// <remarks>
-/// Punto d'ingresso cross-platform: il codice specifico di ogni sistema sta nelle classi
-/// annotate, e qui ci sono solo le guardie. Non puo' vivere nei top-level statements di
-/// Program.cs perche' [SupportedOSPlatform] non li copre.
+/// Cross-platform entry point: the code specific to each system lives in the annotated
+/// classes, and only the guards are here. It cannot live in Program.cs's top-level
+/// statements because [SupportedOSPlatform] does not cover them.
 /// </remarks>
 public static class LocalChannelSetup
 {
-    /// <summary>Configura l'ascolto locale.</summary>
-    /// <param name="builder">Il builder dell'applicazione.</param>
-    /// <param name="opzioni">Nome della pipe e percorso del socket, gia' convalidati.</param>
-    /// <returns>Il percorso del socket effettivamente usato su Linux, altrimenti null.</returns>
-    public static async Task<string?> ConfiguraAsync(WebApplicationBuilder builder, LocalChannelOptions opzioni)
+    /// <summary>Configures local listening.</summary>
+    /// <param name="builder">The application builder.</param>
+    /// <param name="options">Pipe name and socket path, already validated.</param>
+    /// <returns>The socket path actually used on Linux, null otherwise.</returns>
+    public static async Task<string?> ConfigureAsync(WebApplicationBuilder builder, LocalChannelOptions options)
     {
         ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(opzioni);
+        ArgumentNullException.ThrowIfNull(options);
 
-        if (!opzioni.Enabled)
+        if (!options.Enabled)
         {
             return null;
         }
 
         if (OperatingSystem.IsWindows())
         {
-            WindowsNamedPipe.Ascolta(builder, opzioni.PipeName);
+            WindowsNamedPipe.Listen(builder, options.PipeName);
             return null;
         }
 
         if (OperatingSystem.IsLinux())
         {
-            string percorso = await PercorsoUtilizzabileAsync(opzioni.SocketPath).ConfigureAwait(false);
+            string path = await PrepareUsablePathAsync(options.SocketPath).ConfigureAwait(false);
 
-            builder.WebHost.ConfigureKestrel(kestrel => kestrel.ListenUnixSocket(percorso));
+            builder.WebHost.ConfigureKestrel(kestrel => kestrel.ListenUnixSocket(path));
 
-            return percorso;
+            return path;
         }
 
         return null;
     }
 
-    /// <summary>Il primo percorso che questo processo riesce davvero a preparare.</summary>
+    /// <summary>The first path this process can actually prepare.</summary>
     /// <remarks>
-    /// /run/observer non e' creabile da un utente normale, e "dotnet run" durante lo sviluppo
-    /// gira come utente normale su meta' della CI. Senza un ripiego il servizio non sarebbe
-    /// avviabile fuori da systemd. Chi lo esegue deve pero' sapere DOVE e' finito il socket:
-    /// per questo il percorso scelto viene restituito e stampato dal chiamante, invece di
-    /// restare un dettaglio interno.
+    /// /run/observer cannot be created by a normal user, and "dotnet run" during development
+    /// runs as a normal user on half of the CI. Without a fallback the service would not be
+    /// startable outside systemd. Whoever runs it must however know WHERE the socket ended up:
+    /// that is why the chosen path is returned and printed by the caller, instead of staying
+    /// an internal detail.
     /// </remarks>
     [SupportedOSPlatform("linux")]
-    private static async Task<string> PercorsoUtilizzabileAsync(string preferito)
+    private static async Task<string> PrepareUsablePathAsync(string preferred)
     {
-        List<string> tentati = [];
+        List<string> attemptedPaths = [];
 
-        foreach (string candidato in Candidati(preferito))
+        foreach (string candidate in CandidatePaths(preferred))
         {
-            tentati.Add(candidato);
+            attemptedPaths.Add(candidate);
 
-            if (EndpointUrl.Problema("http://unix:" + candidato) is not null)
+            if (EndpointUrl.Problem("http://unix:" + candidate) is not null)
             {
                 continue;
             }
 
             try
             {
-                LinuxUnixSocket.PreparaPercorso(candidato);
+                LinuxUnixSocket.PreparePath(candidate);
             }
             catch (UnauthorizedAccessException)
             {
@@ -77,21 +77,21 @@ public static class LocalChannelSetup
                 continue;
             }
 
-            await LinuxUnixSocket.BonificaSocketOrfanoAsync(candidato, TimeSpan.FromSeconds(2))
+            await LinuxUnixSocket.RemoveStaleSocketAsync(candidate, TimeSpan.FromSeconds(2))
                 .ConfigureAwait(false);
 
-            return candidato;
+            return candidate;
         }
 
         throw new InvalidOperationException(
-            "None of these unix socket paths could be prepared: " + string.Join(", ", tentati) +
+            "None of these unix socket paths could be prepared: " + string.Join(", ", attemptedPaths) +
             ". Set " + LocalChannelOptions.SectionName + ":SocketPath to a directory this " +
             "process can write to, or set Enabled to false.");
     }
 
-    private static IEnumerable<string> Candidati(string preferito)
+    private static IEnumerable<string> CandidatePaths(string preferred)
     {
-        yield return preferito;
+        yield return preferred;
 
         if (Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") is { Length: > 0 } xdg)
         {
