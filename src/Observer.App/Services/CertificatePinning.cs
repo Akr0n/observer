@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using Observer.Core.Security;
@@ -63,7 +64,12 @@ public sealed class CertificatePinning
     /// <returns>L'handler, gia' configurato.</returns>
     public SocketsHttpHandler Handler()
     {
-        SocketsHttpHandler handler = new();
+        // Questo e' il percorso di RETE, quindi e' qui che i byte costano: senza questa riga il
+        // servizio non comprimerebbe niente, perche' la compressione si negozia per richiesta e
+        // un client che non manda Accept-Encoding riceve il chiaro. Le due meta' stanno insieme
+        // o non stanno. Il canale locale NON la mette, di proposito: li' i byte non attraversano
+        // niente, e comprimerli sarebbe CPU spesa dalla macchina che questo programma misura.
+        SocketsHttpHandler handler = new() { AutomaticDecompression = DecompressionMethods.All };
 
         handler.SslOptions.RemoteCertificateValidationCallback = (_, presentato, _, _) =>
         {

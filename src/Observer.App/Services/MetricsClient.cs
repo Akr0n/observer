@@ -197,10 +197,17 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
 
     private Uri BaseAddress => Endpoint.BaseAddress;
 
+    /// <remarks>
+    /// Il ramo di rete qui e' un RIPIEGO che oggi non si esegue: ci si arriva solo con un punto
+    /// remoto senza impronta, e non ne esistono - MachineDirectory scarta la voce e
+    /// ClientConfiguration non produce un Remoto senza. Chi cerca dove la decompressione si
+    /// accende davvero la trova in <see cref="CertificatePinning.Handler"/>, che e' il percorso
+    /// vero, ed e' li' che sta scritto perche' il canale locale ne resti fuori.
+    /// </remarks>
     private static SocketsHttpHandler HandlerPer(ObserverEndpoint endpoint) =>
         endpoint.Kind == EndpointKind.Locale
             ? LocalChannelHandler.Crea()
-            : new SocketsHttpHandler();
+            : new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All };
 
     /// <inheritdoc />
     public async Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken)
@@ -399,8 +406,19 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
                 richiesta.Headers.Authorization = authorization;
             }
 
+            // Una scadenza che copre anche la LETTURA, non solo gli header. Il Timeout di
+            // HttpClient si ferma agli header quando si legge con ResponseHeadersRead: misurato,
+            // un servizio che manda gli header e poi smette di scrivere teneva il giro fermo
+            // venticinque secondi senza che nessuno annullasse niente, e la finestra non diceva
+            // "Timed out" - smetteva di aggiornarsi in silenzio. Con la compressione quella fase
+            // si allunga ancora: il corpo arriva a pezzi e si decomprime li' dentro.
+            using CancellationTokenSource scadenza =
+                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+            scadenza.CancelAfter(RequestTimeout);
+
             using HttpResponseMessage risposta =
-                await http.SendAsync(richiesta, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                await http.SendAsync(richiesta, HttpCompletionOption.ResponseHeadersRead, scadenza.Token)
                     .ConfigureAwait(false);
 
             string codice = ((int)risposta.StatusCode).ToString(CultureInfo.InvariantCulture);
@@ -443,7 +461,7 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
             }
 
             T? valore = await risposta.Content
-                .ReadFromJsonAsync<T>(WireOptions, cancellationToken)
+                .ReadFromJsonAsync<T>(WireOptions, scadenza.Token)
                 .ConfigureAwait(false);
 
             return valore is null
@@ -476,6 +494,20 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
                     null);
             }
 
+            ServiceOutcome esito = TransportFailure.Classifica(ex);
+
+            return (esito, TestoDiTrasporto(esito, ex.Message), null);
+        }
+        catch (IOException ex)
+        {
+            // La connessione caduta MENTRE il corpo arriva - la macchina remota che si riavvia,
+            // un servizio aggiornato, un singhiozzo del Wi-Fi - lancia IOException, che non e'
+            // una HttpRequestException. Senza questo ramo risaliva fino al catch generale del
+            // ciclo, che NON riprova: la finestra diceva "Updates stopped, close and reopen" e
+            // restava morta per tutta la sessione, per un guasto che si sarebbe risolto da solo
+            // al giro dopo. Classifica scende lungo le InnerException a caccia della
+            // SocketException, quindi un reset diventa NonRaggiungibile e un timeout del socket
+            // TempoScaduto, invece di una diagnosi sola e sbagliata per tutti.
             ServiceOutcome esito = TransportFailure.Classifica(ex);
 
             return (esito, TestoDiTrasporto(esito, ex.Message), null);

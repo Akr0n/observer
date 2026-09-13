@@ -3,6 +3,7 @@ using Observer.Core.Composition;
 using Observer.Core.Metrics;
 using Observer.Core.Platform;
 using Observer.Core.Processes;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.Extensions.Hosting.Systemd;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Observer.Service;
@@ -43,6 +44,50 @@ builder.Host.UseSystemd();
 
 builder.Services.AddObserverMetrics();
 builder.Services.AddSingleton<MetricSnapshotCache>();
+
+// La compressione delle risposte, con UNA sola opzione, e quella riga e' una decisione di
+// sicurezza presa, non un dettaglio di configurazione.
+//
+// PERCHE' ACCENDERLA SU HTTPS. Il predefinito di ASP.NET Core e' EnableForHttps = false, e
+// serve a tenere lontano BREACH. BREACH pero' vuole TRE cose insieme: un segreto nella
+// risposta, input dell'attaccante riflesso nella stessa risposta, e la possibilita' di
+// osservarne molte. Qui ne regge UNA sola. La riflessione c'e' ed e' totale - /metrics/history
+// rimanda collector, metrica e istanza verbatim - ma nei corpi non c'e' nessun segreto: il
+// token non compare in nessuna risposta, e l'impronta del certificato non e' un segreto, e'
+// proprio cio' che il client si aspetta di vedere. Soprattutto: NESSUNO puo' far produrre al
+// servizio un corpo comprimibile senza avere gia' il token - senza, la risposta e' 401 con
+// Content-Length 0, misurato su ogni rotta. L'attaccante di BREACH qui e' qualcuno che ha gia'
+// la credenziale, e con quella legge tutto in chiaro e puo' anche terminare processi. Non c'e'
+// browser, non ci sono cookie, non c'e' autorita' ambientale da rubare.
+// Cio' che si apre davvero, e si accetta per iscritto: le lunghezze dei record TLS diventano
+// funzione del contenuto invece che quasi costanti, quindi chi sta in mezzo puo' dedurre
+// qualcosa sulla forma del traffico. E' un canale di lato modesto, contro un guadagno misurato.
+//
+// E lasciare il predefinito non sarebbe "piu' prudente", sarebbe il verso SBAGLIATO: senza
+// questa riga si comprimerebbe solo il canale locale - named pipe e unix socket sono HTTP, non
+// HTTPS - cioe' si spenderebbe la CPU della macchina misurata per zero byte di rete, lasciando
+// scoperto l'unico percorso dove i byte costano davvero.
+//
+// GZIP PRIMA DI BROTLI, ed e' misurato sul filo, non su un buffer. A parita' di preferenza il
+// servizio sceglie il PRIMO provider registrato, e il predefinito mette Brotli davanti.
+// Comprimendo un corpo tutto in una volta Brotli vince, ed e' il confronto che viene d'istinto;
+// ma questo servizio SERIALIZZA - Results.Ok fa uscire lo JSON dal writer a pezzi, con un flush
+// per segmento - e i flush puniscono Brotli molto piu' di Gzip. Misurato dal banco su TLS vero,
+// sullo stesso corpo: gzip 2 720 byte, brotli 3 223. Diciotto per cento in piu', e proprio sulle
+// risposte che pesano. Registrarli esplicitamente inverte solo la precedenza a parita' di
+// preferenza: Brotli resta disponibile per un client che accetti soltanto quello.
+//
+// Il livello resta Fastest, che e' il predefinito di entrambi: Optimal costa da 4 a 30 volte per
+// una manciata di byte, ed e' l'unica scelta capace di farsi vedere nel numero che questo
+// servizio pubblica su se' stesso. Il grosso non e' /metrics/latest (3,2 kB) ma
+// /metrics/history: la coda grezza pesa 76 kB a un'ora e 114 kB a ventiquattro, ed e' chiesta
+// una volta per quadrante.
+builder.Services.AddResponseCompression(opzioni =>
+{
+    opzioni.EnableForHttps = true;
+    opzioni.Providers.Add<GzipCompressionProvider>();
+    opzioni.Providers.Add<BrotliCompressionProvider>();
+});
 
 // Singleton e non transient, per la stessa ragione dei collector: la classifica dei processi
 // conserva il campione precedente per PID, e ricrearla a ogni richiesta lascerebbe la CPU di
@@ -183,6 +228,13 @@ if (OperatingSystem.IsLinux() && percorsoDelSocket is { } socketLocale)
 }
 
 app.UseObserverAccessControl(credenziali.Credentials);
+
+// DOPO il controllo d'accesso, e l'ordine e' misurato. Cosi' le risposte che il middleware
+// corto-circuita - 401 e 404 - non passano dal compressore: non ha senso spendere CPU per un
+// chiamante che non ha la credenziale, ed e' anche gratis da rispettare, perche' quei corpi
+// sono di zero byte. Cio' che si comprime resta tutto: il middleware degli endpoint viene
+// accodato in fondo da app.Run(), quindi qualunque cosa registrata qui gira prima di loro.
+app.UseResponseCompression();
 
 // Il catalogo descrive le metriche esistenti, comprese quelle non misurabili qui: e' cio'
 // che permette al client di disegnare una metrica che non conosceva a tempo di compilazione.
