@@ -161,7 +161,7 @@ public static class ClientConfiguration
 
         string? impronta = Primo(fingerprintFromEnvironment, file?.Fingerprint);
 
-        if (CertificateFingerprint.Normalizza(impronta) is null)
+        if (CertificateFingerprint.Normalize(impronta) is null)
         {
             // Cifrato non basta. Senza impronta il collegamento e' protetto da chi ascolta ma
             // non da chi si mette in mezzo, e quello e' il caso peggiore perche' sembra sicuro.

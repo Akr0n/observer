@@ -3,47 +3,47 @@ using Observer.Core.Units;
 namespace Observer.Core.Metrics.Memory;
 
 /// <summary>
-/// Porta verso i valori di memoria della piattaforma. A differenza della CPU non serve un
-/// delta: sono valori istantanei, basta una lettura.
+/// Port to the platform's memory values. Unlike the CPU no delta is needed: these are
+/// instantaneous values, one reading is enough.
 /// </summary>
 public interface IMemoryReadingProvider
 {
-    /// <summary>False quando la piattaforma non espone questi valori.</summary>
+    /// <summary>False when the platform does not expose these values.</summary>
     bool IsSupported { get; }
 
-    /// <summary>Perche' non e' supportata, quando <see cref="IsSupported"/> e' false.</summary>
+    /// <summary>Why it is not supported, when <see cref="IsSupported"/> is false.</summary>
     string? UnsupportedReason { get; }
 
-    /// <summary>Legge i valori di memoria. False se la lettura non riesce ora.</summary>
+    /// <summary>Reads the memory values. False if the reading does not succeed now.</summary>
     bool TryRead(out MemoryReading value);
 }
 
 /// <summary>
-/// Collector della memoria. Pubblica l'uso calcolato su "disponibile" e non su "libera":
-/// su Linux la differenza fra le due e' quella fra dire 50% e dire 99% sulla stessa
-/// macchina rilassata.
+/// Memory collector. Publishes usage computed on "available" and not on "free": on Linux
+/// the difference between the two is the difference between saying 50% and saying 99% on
+/// the same relaxed machine.
 /// </summary>
 public sealed class MemoryCollector : IMetricCollector
 {
-    /// <summary>Memoria fisica totale, in byte.</summary>
+    /// <summary>Total physical memory, in bytes.</summary>
     public const string TotalBytesMetricId = "memory.total.bytes";
 
-    /// <summary>Memoria disponibile per nuove allocazioni, in byte.</summary>
+    /// <summary>Memory available for new allocations, in bytes.</summary>
     public const string AvailableBytesMetricId = "memory.available.bytes";
 
-    /// <summary>Memoria in uso, in byte.</summary>
+    /// <summary>Memory in use, in bytes.</summary>
     public const string UsedBytesMetricId = "memory.used.bytes";
 
-    /// <summary>Memoria in uso, in punti percentuali.</summary>
+    /// <summary>Memory in use, in percentage points.</summary>
     public const string UsedPercentMetricId = "memory.used.percent";
 
-    /// <summary>True quando "disponibile" e' una stima e non una misura.</summary>
+    /// <summary>True when "available" is an estimate and not a measurement.</summary>
     public const string AvailableEstimatedMetricId = "memory.available.estimated";
 
-    /// <summary>Swap totale, in byte. Assente su macchine senza swap.</summary>
+    /// <summary>Total swap, in bytes. Absent on machines without swap.</summary>
     public const string SwapTotalMetricId = "memory.swap.total.bytes";
 
-    /// <summary>Swap in uso, in byte. Assente su macchine senza swap.</summary>
+    /// <summary>Swap in use, in bytes. Absent on machines without swap.</summary>
     public const string SwapUsedMetricId = "memory.swap.used.bytes";
 
     private static readonly MetricDescriptor[] DescriptorList =
@@ -51,14 +51,14 @@ public sealed class MemoryCollector : IMetricCollector
         new(TotalBytesMetricId, "Total memory", MetricUnit.Bytes, IsPerInstance: false),
         new(AvailableBytesMetricId, "Available memory", MetricUnit.Bytes, IsPerInstance: false),
         new(UsedBytesMetricId, "Used memory", MetricUnit.Bytes, IsPerInstance: false),
-        // "Memory usage" e non un secondo "Used memory": due righe con lo STESSO nome
-        // costringevano la proiezione a distinguerle con il simbolo dell'unita', e quel
-        // simbolo non e' quello che si legge nel valore - la riga diceva "Used memory (B)"
-        // mentre a destra c'era "11.2 GiB", perche' le dimensioni si mostrano scalate.
-        // Il nome fa anche il paio con "CPU usage", che e' la stessa cosa per l'altro riquadro.
+        // "Memory usage" and not a second "Used memory": two rows with the SAME name
+        // forced the projection to tell them apart by the unit symbol, and that symbol
+        // is not the one read in the value - the row said "Used memory (B)" while on the
+        // right there was "11.2 GiB", because sizes are shown scaled.
+        // The name also pairs with "CPU usage", which is the same thing for the other panel.
         new(UsedPercentMetricId, "Memory usage", MetricUnit.Percent, IsPerInstance: false),
-        // Per esteso: "Available is estimated" non dice a chi legge di COSA si sta parlando.
-        // Vale "Yes" quando il sistema non riporta la memoria disponibile e va dedotta.
+        // Spelled out: "Available is estimated" does not tell the reader WHAT it is about.
+        // It is "Yes" when the system does not report available memory and it has to be deduced.
         new(AvailableEstimatedMetricId, "Available memory is an estimate", MetricUnit.None, IsPerInstance: false),
         new(SwapTotalMetricId, "Total swap", MetricUnit.Bytes, IsPerInstance: false),
         new(SwapUsedMetricId, "Used swap", MetricUnit.Bytes, IsPerInstance: false),
@@ -66,7 +66,7 @@ public sealed class MemoryCollector : IMetricCollector
 
     private readonly IMemoryReadingProvider provider;
 
-    /// <summary>Crea il collector sopra la porta indicata.</summary>
+    /// <summary>Creates the collector over the given port.</summary>
     public MemoryCollector(IMemoryReadingProvider provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
@@ -108,16 +108,16 @@ public sealed class MemoryCollector : IMetricCollector
             MetricPoint.Measured(UsedBytesMetricId, null, MetricValue.FromNumber(reading.Used.Bytes)),
         ];
 
-        // Il totale a zero renderebbe la percentuale una divisione per zero: si omette il
-        // punto invece di pubblicare un NaN, che oltretutto non e' JSON valido.
+        // A total of zero would make the percentage a division by zero: the point is omitted
+        // instead of publishing a NaN, which on top of that is not valid JSON.
         if (reading.Total.Bytes > 0L
             && Percent.TryFromRatio((double)reading.Used.Bytes / reading.Total.Bytes, out Percent used))
         {
             points.Add(MetricPoint.Measured(UsedPercentMetricId, null, MetricValue.FromNumber(used.Points)));
         }
 
-        // Una macchina senza swap e' una configurazione legittima, non un guasto: l'assenza
-        // dei punti dice "non applicabile", mentre uno zero direbbe "c'e' ed e' vuoto".
+        // A machine without swap is a legitimate configuration, not a fault: the absence of
+        // the points says "not applicable", while a zero would say "it is there and it is empty".
         if (reading.SwapTotal.Bytes > 0L)
         {
             points.Add(MetricPoint.Measured(
@@ -130,8 +130,9 @@ public sealed class MemoryCollector : IMetricCollector
                 MetricValue.FromNumber(reading.SwapTotal.SaturatingSubtract(reading.SwapFree).Bytes)));
         }
 
-        // In FONDO, e non fra le quantita': e' l'unica riga che non e' una misura ma una nota
-        // su un'altra riga, e in mezzo alle altre spezzava la lettura.
+        // At the BOTTOM, and not among the quantities: it is the only row that is not a
+        // measurement but a note about another row, and in the middle of the others it broke
+        // the reading.
         points.Add(MetricPoint.Measured(
             AvailableEstimatedMetricId,
             null,

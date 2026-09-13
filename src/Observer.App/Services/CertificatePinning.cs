@@ -81,8 +81,8 @@ public sealed class CertificatePinning
                 return false;
             }
 
-            string vista = CertificateFingerprint.Da(certificato.RawDataMemory.Span);
-            bool corrisponde = CertificateFingerprint.Uguali(Attesa, vista);
+            string vista = CertificateFingerprint.From(certificato.RawDataMemory.Span);
+            bool corrisponde = CertificateFingerprint.Match(Attesa, vista);
 
             Volatile.Write(ref ultimaVista, vista);
             Volatile.Write(ref rifiutato, corrisponde ? 0 : 1);
@@ -104,14 +104,14 @@ public sealed class CertificatePinning
     public string Spiegazione(string descrizione)
     {
         string vista = UltimaVista is { } arrivata
-            ? CertificateFingerprint.PerLUomo(arrivata)
+            ? CertificateFingerprint.ForHumans(arrivata)
             : "none - the machine presented no certificate at all";
 
         return
             $"{descrizione} presented a certificate that is not the one pinned for it, so the " +
             "connection was refused before anything was sent. Nothing was disclosed: the token " +
             "never left this machine." + Environment.NewLine +
-            "Expected: " + CertificateFingerprint.PerLUomo(Attesa) + Environment.NewLine +
+            "Expected: " + CertificateFingerprint.ForHumans(Attesa) + Environment.NewLine +
             "Received: " + vista + Environment.NewLine +
             "If Observer was reinstalled on that machine this is expected, and the fix is to run " +
             "\"observer share\" there and copy the new fingerprint into this machine's " +

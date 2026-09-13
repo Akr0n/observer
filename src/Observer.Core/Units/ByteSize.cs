@@ -1,30 +1,30 @@
 namespace Observer.Core.Units;
 
 /// <summary>
-/// Una quantita' di byte. Esiste per rendere impossibile confondere le unita' di partenza:
-/// /proc/meminfo scrive "kB" ma intende KiB (1024 byte), e sbagliare quel fattore produce
-/// numeri credibili e sbagliati invece di un errore.
+/// A quantity of bytes. It exists to make it impossible to confuse the source units:
+/// /proc/meminfo writes "kB" but means KiB (1024 bytes), and getting that factor wrong produces
+/// credible, wrong numbers instead of an error.
 /// </summary>
 public readonly record struct ByteSize
 {
     private ByteSize(long bytes) => Bytes = bytes;
 
-    /// <summary>Quantita' in byte.</summary>
+    /// <summary>Quantity in bytes.</summary>
     public long Bytes { get; }
 
-    /// <summary>Costruisce da un valore gia' espresso in byte.</summary>
+    /// <summary>Builds from a value already expressed in bytes.</summary>
     public static ByteSize FromBytes(long bytes) => new(bytes);
 
     /// <summary>
-    /// Costruisce da kibibyte (1024 byte). E' la fabbrica da usare per /proc/meminfo,
-    /// che etichetta i suoi valori "kB" pur essendo KiB.
+    /// Builds from kibibytes (1024 bytes). This is the factory to use for /proc/meminfo,
+    /// which labels its values "kB" even though they are KiB.
     /// </summary>
     public static ByteSize FromKibibytes(long kibibytes) => new(kibibytes * 1024L);
 
     /// <summary>
-    /// Sottrazione che si ferma a zero invece di diventare negativa. Serve perche' su
-    /// alcune macchine virtuali "available" supera momentaneamente "total": senza
-    /// saturazione l'usato diventerebbe negativo e il grafico impazzirebbe in silenzio.
+    /// Subtraction that stops at zero instead of going negative. It is needed because on
+    /// some virtual machines "available" momentarily exceeds "total": without
+    /// saturation the used amount would become negative and the chart would go wrong silently.
     /// </summary>
     public ByteSize SaturatingSubtract(ByteSize other) =>
         new(Bytes > other.Bytes ? Bytes - other.Bytes : 0L);

@@ -4,31 +4,31 @@ using Observer.Core.Processes;
 namespace Observer.Core.Platform.Linux;
 
 /// <summary>
-/// Adattatore Linux del contatore di I/O per processo, sopra <c>/proc/PID/io</c>.
+/// Linux adapter of the per-process I/O counter, on top of <c>/proc/PID/io</c>.
 /// </summary>
 /// <remarks>
-/// Si sommano <c>rchar</c> e <c>wchar</c>, NON <c>read_bytes</c> e <c>write_bytes</c>, e la
-/// scelta va spiegata perche' la seconda coppia sembra quella giusta: conta i byte arrivati
-/// davvero al disco, la prima conta ogni lettura e scrittura chiesta dal processo, cache
-/// compresa. Ma su Windows l'unico contatore per processo e' del secondo tipo — <c>IO_COUNTERS</c>
-/// conta le chiamate, non i settori — e un elenco che dicesse "byte su disco" su una macchina e
-/// "byte chiesti" sull'altra confronterebbe due cose diverse sotto lo stesso titolo. Il pannello
-/// si chiama "I/O", e dice la stessa cosa dappertutto.
+/// <c>rchar</c> and <c>wchar</c> are summed, NOT <c>read_bytes</c> and <c>write_bytes</c>, and the
+/// choice needs explaining because the second pair looks like the right one: it counts the bytes
+/// that really reached the disk, the first counts every read and write the process asked for, cache
+/// included. But on Windows the only per-process counter is of the second kind — <c>IO_COUNTERS</c>
+/// counts the calls, not the sectors — and a list that said "bytes on disk" on one machine and
+/// "bytes asked for" on the other would compare two different things under the same title. The panel
+/// is called "I/O", and it says the same thing everywhere.
 /// <para>
-/// <c>/proc/PID/io</c> si legge solo con il permesso di <i>ptrace</i> su quel processo: i propri
-/// si', quelli di un altro utente no, a meno di <c>CAP_SYS_PTRACE</c>. Il servizio gira come
-/// utente <c>observer</c> e quella capability non ce l'ha, di proposito — permetterebbe di
-/// leggere la memoria di qualunque processo — quindi su Linux la colonna resta un trattino per
-/// tutto cio' che non e' suo. E' una limitazione dichiarata, non un guasto: chi la vuole
-/// togliere aggiunge <c>AmbientCapabilities=CAP_SYS_PTRACE</c> alla unit, sapendo cosa concede.
+/// <c>/proc/PID/io</c> can only be read with <i>ptrace</i> permission on that process: your own
+/// yes, another user's no, short of <c>CAP_SYS_PTRACE</c>. The service runs as the <c>observer</c>
+/// user and does not have that capability, deliberately — it would allow reading any process's
+/// memory — so on Linux the column stays a dash for everything that is not its own. It is a
+/// declared limitation, not a fault: whoever wants it removed adds
+/// <c>AmbientCapabilities=CAP_SYS_PTRACE</c> to the unit, knowing what that grants.
 /// </para>
 /// </remarks>
 public sealed class LinuxProcessIoReader : IProcessIoReader
 {
     private readonly IFileTextReader reader;
 
-    /// <summary>Crea l'adattatore sopra il lettore indicato.</summary>
-    /// <param name="reader">Da dove leggere i file di sistema.</param>
+    /// <summary>Creates the adapter on top of the given reader.</summary>
+    /// <param name="reader">Where to read the system files from.</param>
     public LinuxProcessIoReader(IFileTextReader reader)
     {
         ArgumentNullException.ThrowIfNull(reader);
@@ -41,58 +41,58 @@ public sealed class LinuxProcessIoReader : IProcessIoReader
     {
         bytes = 0;
 
-        string percorso = "/proc/" + pid.ToString(CultureInfo.InvariantCulture) + "/io";
+        string path = "/proc/" + pid.ToString(CultureInfo.InvariantCulture) + "/io";
 
-        return reader.TryReadAllText(percorso, out string contenuto) && TryParse(contenuto, out bytes);
+        return reader.TryReadAllText(path, out string content) && TryParse(content, out bytes);
     }
 
-    /// <summary>Legge <c>rchar</c> e <c>wchar</c> dal contenuto di <c>/proc/PID/io</c>.</summary>
-    /// <param name="contenuto">Il file, una coppia <c>chiave: valore</c> per riga.</param>
-    /// <param name="bytes">La somma dei due.</param>
-    /// <returns>False se uno dei due manca o non e' un intero.</returns>
-    public static bool TryParse(string contenuto, out ulong bytes)
+    /// <summary>Reads <c>rchar</c> and <c>wchar</c> from the contents of <c>/proc/PID/io</c>.</summary>
+    /// <param name="content">The file, one <c>key: value</c> pair per line.</param>
+    /// <param name="bytes">The sum of the two.</param>
+    /// <returns>False if either one is missing or is not an integer.</returns>
+    public static bool TryParse(string content, out ulong bytes)
     {
         bytes = 0;
 
-        ulong? letti = null;
-        ulong? scritti = null;
+        ulong? read = null;
+        ulong? written = null;
 
-        foreach (ReadOnlySpan<char> riga in contenuto.AsSpan().EnumerateLines())
+        foreach (ReadOnlySpan<char> line in content.AsSpan().EnumerateLines())
         {
-            if (Valore(riga, "rchar:", out ulong valore))
+            if (Value(line, "rchar:", out ulong value))
             {
-                letti = valore;
+                read = value;
             }
-            else if (Valore(riga, "wchar:", out valore))
+            else if (Value(line, "wchar:", out value))
             {
-                scritti = valore;
+                written = value;
             }
         }
 
-        if (letti is not { } r || scritti is not { } w)
+        if (read is not { } r || written is not { } w)
         {
             return false;
         }
 
-        ulong somma = r + w;
+        ulong sum = r + w;
 
-        // Un giro completo dei 64 bit non e' un totale: e' un totale sbagliato.
-        if (somma < r)
+        // A full wrap of the 64 bits is not a total: it is a wrong total.
+        if (sum < r)
         {
             return false;
         }
 
-        bytes = somma;
+        bytes = sum;
 
         return true;
     }
 
-    private static bool Valore(ReadOnlySpan<char> riga, string chiave, out ulong valore)
+    private static bool Value(ReadOnlySpan<char> line, string key, out ulong value)
     {
-        valore = 0;
+        value = 0;
 
-        return riga.StartsWith(chiave, StringComparison.Ordinal)
+        return line.StartsWith(key, StringComparison.Ordinal)
             && ulong.TryParse(
-                riga[chiave.Length..].Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out valore);
+                line[key.Length..].Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out value);
     }
 }

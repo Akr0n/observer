@@ -3,56 +3,57 @@ using Observer.Core.Units;
 namespace Observer.Core.Metrics.Disk;
 
 /// <summary>
-/// Lo spazio di UN volume montato.
+/// The space of ONE mounted volume.
 /// </summary>
 /// <param name="Instance">
-/// Come si chiama il volume per chi guarda: <c>C:</c> su Windows, il punto di innesto su
-/// Linux. E' anche l'istanza con cui i punti vengono pubblicati, quindi deve restare stabile
-/// da un campione all'altro: se cambiasse, la riga a schermo verrebbe ricostruita ogni volta
-/// e lo storico si spezzerebbe in due serie diverse.
+/// What the volume is called for whoever is looking: <c>C:</c> on Windows, the mount point on
+/// Linux. It is also the instance the points are published under, so it must stay stable from
+/// one sample to the next: if it changed, the row on screen would be rebuilt every time and the
+/// history would break into two different series.
 /// </param>
-/// <param name="Total">Capienza del volume.</param>
+/// <param name="Total">Capacity of the volume.</param>
 /// <param name="Free">
-/// Spazio disponibile <b>a questo utente</b>. Su un volume con quote non coincide con lo
-/// spazio libero del disco, ed e' comunque il numero giusto: dice quanto ci si puo' ancora
-/// scrivere, che e' la domanda che si fa chi guarda.
+/// Space available <b>to this user</b>. On a volume with quotas it does not coincide with the
+/// disk's free space, and it is the right number anyway: it says how much can still be written
+/// there, which is the question whoever is looking is asking.
 /// </param>
 public readonly record struct DiskReading(string Instance, ByteSize Total, ByteSize Free)
 {
-    /// <summary>Spazio occupato, saturato a zero se "libero" superasse "totale".</summary>
+    /// <summary>Space used, saturated to zero if "free" were to exceed "total".</summary>
     /// <remarks>
-    /// La sottrazione satura per la stessa ragione della memoria: su un volume con quote o
-    /// con blocchi riservati i due numeri arrivano da contatori diversi, e una differenza
-    /// negativa produrrebbe una percentuale assurda invece di un numero mancante.
+    /// The subtraction saturates for the same reason as memory: on a volume with quotas or with
+    /// reserved blocks the two numbers come from different counters, and a negative difference
+    /// would produce an absurd percentage instead of a missing number.
     /// </remarks>
     public ByteSize Used => Total.SaturatingSubtract(Free);
 
-    /// <summary>Quanto e' pieno, da 0 a 1, oppure null se la capienza non e' nota.</summary>
+    /// <summary>How full it is, from 0 to 1, or null if the capacity is not known.</summary>
     /// <remarks>
-    /// Null e non zero quando il totale e' zero: un volume di capienza nulla non e' "vuoto",
-    /// e' un volume di cui non si conosce la dimensione — succede sui montaggi speciali e sui
-    /// dispositivi che si smontano mentre li si legge. Zero direbbe "c'e' tutto lo spazio del
-    /// mondo", che e' esattamente il contrario.
+    /// Null and not zero when the total is zero: a volume of zero capacity is not "empty", it is
+    /// a volume whose size is not known — it happens on special mounts and on devices that
+    /// unmount while they are being read. Zero would say "there is all the space in the world",
+    /// which is exactly the opposite.
     /// </remarks>
     public double? Fraction => Total.Bytes > 0L ? (double)Used.Bytes / Total.Bytes : null;
 }
 
 /// <summary>
-/// Porta di lettura dello spazio sui dischi.
+/// Reading port for disk space.
 /// </summary>
 /// <remarks>
-/// Restituisce una lista perche' i volumi sono piu' d'uno e cambiano mentre il programma
-/// gira: una chiavetta compare, un disco di rete sparisce. Un volume che non si riesce a
-/// interrogare non fa fallire gli altri — la lista torna con quelli letti, e chi manca manca.
+/// Returns a list because there is more than one volume and they change while the program runs:
+/// a USB stick appears, a network disk disappears. A volume that cannot be queried does not make
+/// the others fail — the list comes back with the ones that were read, and what is missing is
+/// missing.
 /// </remarks>
 public interface IDiskReadingProvider
 {
-    /// <summary>Falso quando su questa piattaforma non si misura affatto.</summary>
+    /// <summary>False when on this platform nothing is measured at all.</summary>
     bool IsSupported { get; }
 
-    /// <summary>Perche' non si misura, quando non si misura.</summary>
+    /// <summary>Why it is not measured, when it is not measured.</summary>
     string? UnsupportedReason { get; }
 
-    /// <summary>Legge i volumi. False quando la lettura fallisce del tutto.</summary>
+    /// <summary>Reads the volumes. False when the reading fails entirely.</summary>
     bool TryRead(out IReadOnlyList<DiskReading> readings);
 }

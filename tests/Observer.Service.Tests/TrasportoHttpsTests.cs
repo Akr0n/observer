@@ -95,7 +95,7 @@ public class TrasportoHttpsTests
         handler.SslOptions.RemoteCertificateValidationCallback = (_, presentato, _, _) =>
         {                      // a osservare cosa arriva sul filo, non a decidere se fidarsi.
             vistaDalClient = presentato is X509Certificate2 arrivato
-                ? CertificateFingerprint.Da(arrivato.RawDataMemory.Span)
+                ? CertificateFingerprint.From(arrivato.RawDataMemory.Span)
                 : null;        // Confrontare qui trasformerebbe una divergenza fra i byte in
                                // memoria e quelli spediti in un errore di rete oscuro, invece
             return true;       // che in un confronto leggibile con un messaggio chiaro.
@@ -162,9 +162,9 @@ public class TrasportoHttpsTests
 
         handler.SslOptions.RemoteCertificateValidationCallback = (_, presentato, _, _) =>
             presentato is X509Certificate2 certificato
-            && CertificateFingerprint.Uguali(
+            && CertificateFingerprint.Match(
                 impronta,
-                CertificateFingerprint.Da(certificato.RawDataMemory.Span));
+                CertificateFingerprint.From(certificato.RawDataMemory.Span));
 
         return new HttpClient(handler, disposeHandler: true);
     }

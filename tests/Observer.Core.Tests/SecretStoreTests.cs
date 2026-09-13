@@ -18,7 +18,7 @@ public class SecretStoreTests
     [InlineData("lavoro")]
     [InlineData("PC di Federico")]
     [InlineData("nas-01.locale")]
-    public void UnNomeNormaleVaBene(string nome) => Assert.Equal(nome, SecretName.Valida(nome));
+    public void UnNomeNormaleVaBene(string nome) => Assert.Equal(nome, SecretName.Validate(nome));
 
     [Theory]
     [InlineData("../../id_rsa")]
@@ -32,19 +32,19 @@ public class SecretStoreTests
         // Il nome arriva da machines.json, che lo scrive una persona, e finisce a comporre un
         // percorso di file: senza questo controllo una voce chiamata "../../id_rsa" farebbe
         // leggere - e riscrivere - un file fuori dalla cartella dei segreti.
-        Assert.Throws<SecretStoreException>(() => SecretName.Valida(nome));
+        Assert.Throws<SecretStoreException>(() => SecretName.Validate(nome));
     }
 
     [Fact]
     public void GliSpaziAiBordiNonFannoDueSegretiDiversi() =>
-        Assert.Equal("lavoro", SecretName.Valida("  lavoro  "));
+        Assert.Equal("lavoro", SecretName.Validate("  lavoro  "));
 
     [Fact]
     public void SuUnaPiattaformaSconosciutaIlDepositoLoDice()
     {
         // Non un deposito vuoto: un deposito vuoto farebbe concludere di essersi dimenticati
         // di depositare il token, e manderebbe a cercare il problema dalla parte sbagliata.
-        ISecretStore deposito = SecretStores.Per(HostPlatform.Unknown);
+        ISecretStore deposito = SecretStores.For(HostPlatform.Unknown);
 
         Assert.Throws<SecretStoreException>(() => deposito.TryRead("lavoro", out _));
     }
@@ -58,7 +58,7 @@ public class SecretStoreTests
         string nome = "observer-prova-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
         const string Segreto = "un-token-che-non-serve-a-niente";
 
-        ISecretStore deposito = SecretStores.Per(HostPlatform.Windows);
+        ISecretStore deposito = SecretStores.For(HostPlatform.Windows);
 
         Assert.False(deposito.TryRead(nome, out _), "il deposito conteneva gia' un nome col guid");
 
@@ -82,6 +82,6 @@ public class SecretStoreTests
     {
         string nome = "observer-mai-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
 
-        Assert.False(SecretStores.Per(HostPlatform.Windows).Delete(nome));
+        Assert.False(SecretStores.For(HostPlatform.Windows).Delete(nome));
     }
 }

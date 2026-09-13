@@ -27,7 +27,7 @@ public class ProcessRankingTests
         // diverse.
         Banco banco = new([Processo(10, "notepad", 5, 100_000)]);
 
-        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> primo));
+        Assert.True(banco.Classifica.TryRead(out IReadOnlyList<ProcessUsage> primo));
 
         ProcessUsage solo = Assert.Single(primo);
         Assert.Null(solo.CpuPercent);
@@ -42,10 +42,10 @@ public class ProcessRankingTests
         // su una macchina a 16 core direbbe 100% e sembrerebbe che la macchina sia satura.
         Banco banco = new([Processo(10, "notepad", 5, 100_000)]);
 
-        banco.Classifica.TryLeggi(out _);
+        banco.Classifica.TryRead(out _);
         banco.Avanza([Processo(10, "notepad", 5.5, 100_000)]);
 
-        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> secondo));
+        Assert.True(banco.Classifica.TryRead(out IReadOnlyList<ProcessUsage> secondo));
         Assert.Equal(12.5d, Assert.Single(secondo).CpuPercent!.Value, 6);
     }
 
@@ -58,10 +58,10 @@ public class ProcessRankingTests
         // cioe' esattamente dove chi guarda decide che cosa terminare.
         Banco banco = new([Processo(10, "notepad", 5, 100_000)]);
 
-        banco.Classifica.TryLeggi(out _);
+        banco.Classifica.TryRead(out _);
         banco.Avanza([Processo(10, "chrome", 300, 100_000)]);
 
-        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> secondo));
+        Assert.True(banco.Classifica.TryRead(out IReadOnlyList<ProcessUsage> secondo));
         Assert.Null(Assert.Single(secondo).CpuPercent);
     }
 
@@ -70,10 +70,10 @@ public class ProcessRankingTests
     {
         Banco banco = new([Processo(10, "notepad", 5, 100_000)]);
 
-        banco.Classifica.TryLeggi(out _);
+        banco.Classifica.TryRead(out _);
         banco.Avanza([Processo(10, "notepad", 4, 100_000)]);
 
-        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> secondo));
+        Assert.True(banco.Classifica.TryRead(out IReadOnlyList<ProcessUsage> secondo));
         Assert.Null(Assert.Single(secondo).CpuPercent);
     }
 
@@ -85,10 +85,10 @@ public class ProcessRankingTests
         // stesso orologio, ed e' la stessa ragione per cui si limita l'occupazione dei dischi.
         Banco banco = new([Processo(10, "build", 0, 100_000)]);
 
-        banco.Classifica.TryLeggi(out _);
+        banco.Classifica.TryRead(out _);
         banco.Avanza([Processo(10, "build", 8, 100_000)]);
 
-        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> secondo));
+        Assert.True(banco.Classifica.TryRead(out IReadOnlyList<ProcessUsage> secondo));
         Assert.Equal(100d, Assert.Single(secondo).CpuPercent!.Value);
     }
 
@@ -97,12 +97,12 @@ public class ProcessRankingTests
     {
         Banco banco = new([Processo(10, "notepad", 5, 100_000)]);
 
-        banco.Classifica.TryLeggi(out _);
+        banco.Classifica.TryRead(out _);
 
         banco.Elenco.Leggibile = false;
         banco.Orologio.Avanza(TimeSpan.FromSeconds(1));
 
-        Assert.False(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> rotto));
+        Assert.False(banco.Classifica.TryRead(out IReadOnlyList<ProcessUsage> rotto));
         Assert.Empty(rotto);
 
         banco.Elenco.Leggibile = true;
@@ -110,7 +110,7 @@ public class ProcessRankingTests
 
         // Senza l'azzeramento, i 495 secondi accumulati durante il buco verrebbero divisi per
         // l'ultimo secondo e notepad risulterebbe il colpevole di tutto.
-        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> ripresa));
+        Assert.True(banco.Classifica.TryRead(out IReadOnlyList<ProcessUsage> ripresa));
         Assert.Null(Assert.Single(ripresa).CpuPercent);
     }
 
@@ -124,7 +124,7 @@ public class ProcessRankingTests
             new(3, "affamato", 80d, ByteSize.FromBytes(10)),
         ];
 
-        IReadOnlyList<ProcessUsage> ordinati = ProcessRanking.PiuAffamatiDiCpu(tutti, 3);
+        IReadOnlyList<ProcessUsage> ordinati = ProcessRanking.TopByCpu(tutti, 3);
 
         Assert.Equal(["affamato", "fermo", "ignoto"], ordinati.Select(processo => processo.Name));
     }
@@ -134,7 +134,7 @@ public class ProcessRankingTests
     {
         Banco banco = new([Processo(10, "copia", 5, 100_000, byteDiIo: 1_000_000)]);
 
-        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> primo));
+        Assert.True(banco.Classifica.TryRead(out IReadOnlyList<ProcessUsage> primo));
         Assert.Null(Assert.Single(primo).IoBytesPerSecond);
     }
 
@@ -145,10 +145,10 @@ public class ProcessRankingTests
         // di core - a differenza della CPU, qui la macchina intera non divide niente.
         Banco banco = new([Processo(10, "copia", 5, 100_000, byteDiIo: 1_000_000)]);
 
-        banco.Classifica.TryLeggi(out _);
+        banco.Classifica.TryRead(out _);
         banco.Avanza([Processo(10, "copia", 5, 100_000, byteDiIo: 1_500_000)]);
 
-        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> secondo));
+        Assert.True(banco.Classifica.TryRead(out IReadOnlyList<ProcessUsage> secondo));
         Assert.Equal(500_000d, Assert.Single(secondo).IoBytesPerSecond!.Value, 6);
     }
 
@@ -159,10 +159,10 @@ public class ProcessRankingTests
         // trasferito e un "editor" nato al suo posto non devono produrre un tasso.
         Banco banco = new([Processo(10, "backup", 5, 100_000, byteDiIo: 1_000_000_000_000)]);
 
-        banco.Classifica.TryLeggi(out _);
+        banco.Classifica.TryRead(out _);
         banco.Avanza([Processo(10, "editor", 5, 100_000, byteDiIo: 1_000_000_000_500)]);
 
-        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> secondo));
+        Assert.True(banco.Classifica.TryRead(out IReadOnlyList<ProcessUsage> secondo));
         Assert.Null(Assert.Single(secondo).IoBytesPerSecond);
     }
 
@@ -171,10 +171,10 @@ public class ProcessRankingTests
     {
         Banco banco = new([Processo(10, "copia", 5, 100_000, byteDiIo: 1_000_000)]);
 
-        banco.Classifica.TryLeggi(out _);
+        banco.Classifica.TryRead(out _);
         banco.Avanza([Processo(10, "copia", 5, 100_000, byteDiIo: 900_000)]);
 
-        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> secondo));
+        Assert.True(banco.Classifica.TryRead(out IReadOnlyList<ProcessUsage> secondo));
         Assert.Null(Assert.Single(secondo).IoBytesPerSecond);
     }
 
@@ -188,10 +188,10 @@ public class ProcessRankingTests
         // leggibile - o smettere di esserlo - fra un giro e l'altro. Un solo campione non basta.
         Banco banco = new([Processo(10, "copia", 5, 100_000, prima)]);
 
-        banco.Classifica.TryLeggi(out _);
+        banco.Classifica.TryRead(out _);
         banco.Avanza([Processo(10, "copia", 5, 100_000, dopo)]);
 
-        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> secondo));
+        Assert.True(banco.Classifica.TryRead(out IReadOnlyList<ProcessUsage> secondo));
         Assert.Null(Assert.Single(secondo).IoBytesPerSecond);
     }
 
@@ -202,10 +202,10 @@ public class ProcessRankingTests
         // I/O che manca non deve cancellare una percentuale di CPU valida.
         Banco banco = new([Processo(10, "copia", 5, 100_000)]);
 
-        banco.Classifica.TryLeggi(out _);
+        banco.Classifica.TryRead(out _);
         banco.Avanza([Processo(10, "copia", 5.5, 100_000, byteDiIo: 10)]);
 
-        Assert.True(banco.Classifica.TryLeggi(out IReadOnlyList<ProcessUsage> secondo));
+        Assert.True(banco.Classifica.TryRead(out IReadOnlyList<ProcessUsage> secondo));
 
         ProcessUsage solo = Assert.Single(secondo);
         Assert.Equal(12.5d, solo.CpuPercent!.Value, 6);
@@ -222,7 +222,7 @@ public class ProcessRankingTests
             new(3, "indaffarato", 0d, ByteSize.FromBytes(10), 5_000_000d),
         ];
 
-        IReadOnlyList<ProcessUsage> ordinati = ProcessRanking.PiuAffamatiDiIo(tutti, 3);
+        IReadOnlyList<ProcessUsage> ordinati = ProcessRanking.TopByIo(tutti, 3);
 
         Assert.Equal(["indaffarato", "fermo", "ignoto"], ordinati.Select(processo => processo.Name));
     }
@@ -237,7 +237,7 @@ public class ProcessRankingTests
             new(3, "medio", 0d, ByteSize.FromBytes(5_000)),
         ];
 
-        IReadOnlyList<ProcessUsage> ordinati = ProcessRanking.PiuAffamatiDiMemoria(tutti, 2);
+        IReadOnlyList<ProcessUsage> ordinati = ProcessRanking.TopByMemory(tutti, 2);
 
         Assert.Equal(["grosso", "medio"], ordinati.Select(processo => processo.Name));
     }
@@ -270,7 +270,7 @@ public class ProcessRankingTests
         {
             try
             {
-                classifica.TryLeggi(out IReadOnlyList<ProcessUsage> _);
+                classifica.TryRead(out IReadOnlyList<ProcessUsage> _);
             }
 #pragma warning disable CA1031 // Qui l'eccezione E' il risultato: va portata al test, non
             catch (Exception ex) // lasciata uccidere il processo che esegue i test.

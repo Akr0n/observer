@@ -7,23 +7,23 @@ using Observer.Core.Units;
 namespace Observer.Core.Platform.Linux;
 
 /// <summary>
-/// Parser della riga aggregata di /proc/stat. Funzione pura: riceve il contenuto gia'
-/// letto e non apre file. Per questo gira identico anche sul runner Windows della CI.
+/// Parser for the aggregate line of /proc/stat. Pure function: it receives the content
+/// already read and opens no file. That is why it runs identically on CI's Windows runner.
 /// </summary>
 public static class ProcStatParser
 {
-    // user, nice, system, idle, iowait, irq, softirq, steal. I due campi successivi
-    // (guest, guest_nice) sono GIA' conteggiati dentro user e nice: risommarli gonfierebbe
-    // il denominatore e farebbe sottostimare la CPU.
+    // user, nice, system, idle, iowait, irq, softirq, steal. The next two fields
+    // (guest, guest_nice) are ALREADY counted inside user and nice: adding them again would
+    // inflate the denominator and make the CPU read low.
     private const int MaxCountedFields = 8;
 
-    // Servono almeno user, nice, system, idle: il /proc emulato di MSYS2 si ferma qui.
+    // At least user, nice, system, idle are needed: MSYS2's emulated /proc stops here.
     private const int MinRequiredFields = 4;
 
     /// <summary>
-    /// Estrae i tempi cumulativi dalla riga "cpu" aggregata. Restituisce false su qualunque
-    /// input che non contenga una riga aggregata leggibile, senza mai lanciare: un'eccezione
-    /// qui abbatterebbe il campionamento di tutte le metriche, non solo della CPU.
+    /// Extracts the cumulative times from the aggregate "cpu" line. Returns false for any
+    /// input that does not contain a readable aggregate line, and never throws: an exception
+    /// here would bring down the sampling of every metric, not only of the CPU.
     /// </summary>
     public static bool TryParseAggregate(string content, out CpuTimes times)
     {
@@ -36,8 +36,8 @@ public static class ProcStatParser
 
         foreach (ReadOnlySpan<char> line in content.AsSpan().EnumerateLines())
         {
-            // "cpu " con lo spazio finale: esclude le righe per-core "cpu0", "cpu1", ...
-            // La riga aggregata di spazi ne ha due, ed e' per questo che lo split scarta i vuoti.
+            // "cpu " with the trailing space: it excludes the per-core lines "cpu0", "cpu1", ...
+            // The aggregate line has two spaces, and that is why the split discards empty entries.
             if (!line.StartsWith("cpu ", StringComparison.Ordinal))
             {
                 continue;
@@ -85,7 +85,7 @@ public static class ProcStatParser
 
             total += value;
 
-            // idle (indice 3) + iowait (indice 4): entrambi sono tempo non lavorato.
+            // idle (index 3) + iowait (index 4): both are time not worked.
             if (parsedFields is 3 or 4)
             {
                 idle += value;
@@ -105,14 +105,14 @@ public static class ProcStatParser
 }
 
 /// <summary>
-/// Parser di /proc/meminfo. Funzione pura, come <see cref="ProcStatParser"/>.
+/// Parser for /proc/meminfo. Pure function, like <see cref="ProcStatParser"/>.
 /// </summary>
 public static class ProcMeminfoParser
 {
     /// <summary>
-    /// Estrae totale, disponibile e swap. Restituisce false se manca MemTotal, perche' un
-    /// totale a zero renderebbe ogni percentuale una divisione per zero: meglio dichiarare
-    /// il campione non credibile che pubblicarne uno inventato.
+    /// Extracts total, available and swap. Returns false when MemTotal is missing, because a
+    /// total of zero would turn every percentage into a division by zero: better to declare
+    /// the sample not credible than to publish an invented one.
     /// </summary>
     public static bool TryParse(string content, out MemoryReading reading)
     {
@@ -183,8 +183,8 @@ public static class ProcMeminfoParser
             return false;
         }
 
-        // Kernel < 3.14 e /proc parziali non espongono MemAvailable. Si stima, ma lo si
-        // DICHIARA: la UI deve poter scrivere "approssimato" invece di mentire.
+        // Kernels < 3.14 and partial /proc do not expose MemAvailable. It is estimated, but it
+        // is DECLARED: the UI must be able to write "approximate" instead of lying.
         bool estimated = available is null;
         long availableKib = available ?? (free + buffers + cached + reclaimable - shmem);
 
@@ -218,8 +218,8 @@ public static class ProcMeminfoParser
         key = line[..colon].Trim();
         ReadOnlySpan<char> rest = line[(colon + 1)..].Trim();
 
-        // "524288 kB" -> ci si ferma al primo spazio. L'unita' e' sempre etichettata "kB"
-        // ma vale 1024 byte, ed e' per questo che si passa da ByteSize.FromKibibytes.
+        // "524288 kB" -> stop at the first space. The unit is always labelled "kB" but it is
+        // worth 1024 bytes, and that is why it goes through ByteSize.FromKibibytes.
         int space = rest.IndexOf(' ');
         ReadOnlySpan<char> number = space < 0 ? rest : rest[..space];
 
@@ -227,105 +227,105 @@ public static class ProcMeminfoParser
     }
 }
 
-/// <summary>Lettura di /proc/self/mountinfo: quali filesystem sono innestati e dove.</summary>
+/// <summary>Reading of /proc/self/mountinfo: which filesystems are mounted and where.</summary>
 public static class ProcMountInfoParser
 {
-    /// <summary>I punti di innesto dei filesystem ammessi, letti da /proc/self/mountinfo.</summary>
-    /// <param name="content">Il contenuto del file.</param>
-    /// <param name="ammessi">I tipi di filesystem da tenere.</param>
-    /// <returns>I punti di innesto, senza ripetizioni, nell'ordine in cui compaiono.</returns>
+    /// <summary>The mount points of the allowed filesystems, read from /proc/self/mountinfo.</summary>
+    /// <param name="content">The content of the file.</param>
+    /// <param name="allowed">The filesystem types to keep.</param>
+    /// <returns>The mount points, without repetitions, in the order in which they appear.</returns>
     /// <remarks>
-    /// Il formato ha un numero VARIABILE di campi: fra il sesto e il separatore <c>-</c> ci
-    /// sono zero o piu' campi facoltativi, e il tipo di filesystem sta subito DOPO quel
-    /// separatore. Contare i campi dall'inizio funziona finche' non c'e' un montaggio
-    /// condiviso, e allora smette — quindi il tipo si cerca a partire dal separatore, che e'
-    /// l'unico punto fermo della riga.
+    /// The format has a VARIABLE number of fields: between the sixth and the <c>-</c>
+    /// separator there are zero or more optional fields, and the filesystem type sits right
+    /// AFTER that separator. Counting the fields from the start works until there is a shared
+    /// mount, and then it stops — so the type is looked for starting from the separator, which
+    /// is the only fixed point of the line.
     /// <para>
-    /// Lo stesso filesystem puo' essere innestato piu' volte (bind mount): senza togliere le
-    /// ripetizioni comparirebbe piu' volte a schermo, ogni volta con gli stessi numeri, come
-    /// se fossero dischi diversi.
+    /// The same filesystem can be mounted more than once (bind mount): without removing the
+    /// repetitions it would appear on screen several times, every time with the same numbers,
+    /// as if they were different disks.
     /// </para>
     /// </remarks>
-    public static IReadOnlyList<string> MountPoints(string content, ISet<string> ammessi)
+    public static IReadOnlyList<string> MountPoints(string content, ISet<string> allowed)
     {
         ArgumentNullException.ThrowIfNull(content);
-        ArgumentNullException.ThrowIfNull(ammessi);
+        ArgumentNullException.ThrowIfNull(allowed);
 
-        List<string> punti = [];
-        HashSet<string> visti = new(StringComparer.Ordinal);
+        List<string> points = [];
+        HashSet<string> seen = new(StringComparer.Ordinal);
 
-        foreach (string riga in content.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        foreach (string line in content.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
-            string[] pezzi = riga.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            string[] fields = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-            int separatore = Array.LastIndexOf(pezzi, "-");
+            int separator = Array.LastIndexOf(fields, "-");
 
-            // Serve il campo dopo il separatore (il tipo) e il quinto dall'inizio (il punto
-            // di innesto): sotto queste misure la riga non e' un montaggio.
-            if (separatore < 4 || separatore + 1 >= pezzi.Length)
+            // The field after the separator (the type) and the fifth from the start (the mount
+            // point) are both needed: below these sizes the line is not a mount.
+            if (separator < 4 || separator + 1 >= fields.Length)
             {
                 continue;
             }
 
-            if (!ammessi.Contains(pezzi[separatore + 1]))
+            if (!allowed.Contains(fields[separator + 1]))
             {
                 continue;
             }
 
-            string punto = Ottali(pezzi[4]);
+            string point = DecodeOctal(fields[4]);
 
-            if (visti.Add(punto))
+            if (seen.Add(point))
             {
-                punti.Add(punto);
+                points.Add(point);
             }
         }
 
-        return punti;
+        return points;
     }
 
-    /// <summary>Rimette i caratteri che mountinfo scrive in ottale.</summary>
+    /// <summary>Puts back the characters that mountinfo writes in octal.</summary>
     /// <remarks>
-    /// Uno spazio in un punto di innesto arriva come <c> </c>, e senza tradurlo il
-    /// percorso non esiste: il volume sparirebbe dall'elenco senza un errore. Succede con i
-    /// dischi esterni, che spesso hanno spazi nel nome.
+    /// A space in a mount point arrives as <c> </c>, and without translating it the path
+    /// does not exist: the volume would disappear from the list without an error. It happens
+    /// with external disks, which often have spaces in their name.
     /// </remarks>
-    private static string Ottali(string percorso)
+    private static string DecodeOctal(string path)
     {
-        if (!percorso.Contains('\\', StringComparison.Ordinal))
+        if (!path.Contains('\\', StringComparison.Ordinal))
         {
-            return percorso;
+            return path;
         }
 
-        StringBuilder costruito = new(percorso.Length);
+        StringBuilder built = new(path.Length);
 
-        for (int i = 0; i < percorso.Length; i++)
+        for (int i = 0; i < path.Length; i++)
         {
-            if (percorso[i] == '\\'
-                && i + 3 < percorso.Length
+            if (path[i] == '\\'
+                && i + 3 < path.Length
                 && int.TryParse(
-                    percorso.AsSpan(i + 1, 3),
+                    path.AsSpan(i + 1, 3),
                     NumberStyles.None,
                     CultureInfo.InvariantCulture,
-                    out int ottale))
+                    out int octal))
             {
-                costruito.Append((char)Convert.ToInt32(ottale.ToString(CultureInfo.InvariantCulture), 8));
+                built.Append((char)Convert.ToInt32(octal.ToString(CultureInfo.InvariantCulture), 8));
                 i += 3;
 
                 continue;
             }
 
-            costruito.Append(percorso[i]);
+            built.Append(path[i]);
         }
 
-        return costruito.ToString();
+        return built.ToString();
     }
 }
 
-/// <summary>Una riga di /proc/diskstats, gia' convertita in byte e tempo.</summary>
-/// <param name="Device">Nome del dispositivo, per esempio <c>sda</c> o <c>nvme0n1</c>.</param>
-/// <param name="BytesRead">Byte letti dall'accensione.</param>
-/// <param name="BytesWritten">Byte scritti dall'accensione.</param>
-/// <param name="Busy">Tempo cumulativo con almeno una richiesta in corso.</param>
+/// <summary>One line of /proc/diskstats, already converted into bytes and time.</summary>
+/// <param name="Device">Name of the device, for example <c>sda</c> or <c>nvme0n1</c>.</param>
+/// <param name="BytesRead">Bytes read since power-on.</param>
+/// <param name="BytesWritten">Bytes written since power-on.</param>
+/// <param name="Busy">Cumulative time with at least one request in flight.</param>
 public readonly record struct DiskStatsLine(
     string Device,
     ulong BytesRead,
@@ -333,82 +333,83 @@ public readonly record struct DiskStatsLine(
     TimeSpan Busy);
 
 /// <summary>
-/// Parser di /proc/diskstats. Funzione pura come gli altri: riceve il contenuto gia' letto,
-/// quindi gira identico sul runner Windows.
+/// Parser for /proc/diskstats. Pure function like the others: it receives the content already
+/// read, so it runs identically on the Windows runner.
 /// </summary>
 /// <remarks>
-/// Due cose vanno sapute e nessuna delle due si indovina.
+/// Two things have to be known and neither of them can be guessed.
 /// <para>
-/// La prima: i settori qui sono <b>sempre</b> da 512 byte, per contratto documentato del
-/// kernel, e non hanno niente a che vedere con la dimensione fisica del blocco. Un disco
-/// "4K native" li conta comunque da 512, e chi moltiplicasse per la dimensione vera del
-/// settore pubblicherebbe numeri otto volte piu' grandi del vero.
+/// The first: sectors here are <b>always</b> 512 bytes, by documented contract of the kernel,
+/// and have nothing to do with the physical block size. A "4K native" disk counts them as 512
+/// all the same, and multiplying by the real size of the sector would publish numbers eight
+/// times larger than the truth.
 /// </para>
 /// <para>
-/// La seconda: il tempo di occupazione e' il campo 13 (<c>io_ticks</c>), che conta i
-/// millisecondi in cui la coda NON era vuota. Non e' la somma dei millisecondi di lettura e
-/// di scrittura, che sono i campi 7 e 11: quelli si sovrappongono, e sommarli ha gia' dato
-/// 843% su una stessa finestra.
+/// The second: busy time is field 13 (<c>io_ticks</c>), which counts the milliseconds in which
+/// the queue was NOT empty. It is not the sum of the read and the write milliseconds, which are
+/// fields 7 and 11: those overlap, and summing them has already given 843% on one and the same
+/// window.
 /// </para>
 /// </remarks>
 public static class ProcDiskStatsParser
 {
-    private const ulong ByteDelSettore = 512UL;
+    private const ulong SectorBytes = 512UL;
 
-    // Indici contando da zero dopo lo split. I campi successivi — scarti e flush — esistono
-    // solo sui kernel recenti, e non servono qui: per questo la riga si accetta a 14 campi.
-    private const int IndiceNome = 2;
-    private const int IndiceSettoriLetti = 5;
-    private const int IndiceSettoriScritti = 9;
-    private const int IndiceMillisecondiOccupato = 12;
-    private const int CampiMinimi = 14;
+    // Indices counting from zero after the split. The later fields — discards and flushes —
+    // exist only on recent kernels, and are not needed here: that is why a line is accepted
+    // at 14 fields.
+    private const int NameIndex = 2;
+    private const int SectorsReadIndex = 5;
+    private const int SectorsWrittenIndex = 9;
+    private const int BusyMillisecondsIndex = 12;
+    private const int MinFields = 14;
 
-    /// <summary>Legge le righe utilizzabili, saltando quelle che non lo sono.</summary>
-    /// <param name="content">Contenuto di /proc/diskstats.</param>
-    /// <returns>Una riga per dispositivo riconosciuto.</returns>
+    /// <summary>Reads the usable lines, skipping the ones that are not.</summary>
+    /// <param name="content">Content of /proc/diskstats.</param>
+    /// <returns>One line per recognized device.</returns>
     public static IReadOnlyList<DiskStatsLine> Read(string content)
     {
         ArgumentNullException.ThrowIfNull(content);
 
-        List<DiskStatsLine> righe = [];
+        List<DiskStatsLine> lines = [];
 
-        foreach (string riga in content.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        foreach (string line in content.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
-            string[] pezzi = riga.Split(
+            string[] fields = line.Split(
                 (char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-            if (pezzi.Length < CampiMinimi)
+            if (fields.Length < MinFields)
             {
                 continue;
             }
 
-            if (!Numero(pezzi[IndiceSettoriLetti], out ulong settoriLetti)
-                || !Numero(pezzi[IndiceSettoriScritti], out ulong settoriScritti)
-                || !Numero(pezzi[IndiceMillisecondiOccupato], out ulong millisecondi))
+            if (!TryNumber(fields[SectorsReadIndex], out ulong sectorsRead)
+                || !TryNumber(fields[SectorsWrittenIndex], out ulong sectorsWritten)
+                || !TryNumber(fields[BusyMillisecondsIndex], out ulong milliseconds))
             {
                 continue;
             }
 
-            // Un prodotto che trabocca tornerebbe indietro in silenzio, e il collector lo
-            // leggerebbe come un contatore andato all'indietro invece che come una riga da
-            // buttare. Serve piu' spazio di quanto un disco vero possa avere scritto, ma
-            // costa un confronto.
-            if (settoriLetti > ulong.MaxValue / ByteDelSettore
-                || settoriScritti > ulong.MaxValue / ByteDelSettore)
+            // A product that overflows would come back around in silence, and the collector
+            // would read it as a counter gone backwards instead of as a line to throw away.
+            // It takes more room than a real disk can have written, but it costs one
+            // comparison.
+            if (sectorsRead > ulong.MaxValue / SectorBytes
+                || sectorsWritten > ulong.MaxValue / SectorBytes)
             {
                 continue;
             }
 
-            righe.Add(new DiskStatsLine(
-                pezzi[IndiceNome],
-                settoriLetti * ByteDelSettore,
-                settoriScritti * ByteDelSettore,
-                TimeSpan.FromMilliseconds(millisecondi)));
+            lines.Add(new DiskStatsLine(
+                fields[NameIndex],
+                sectorsRead * SectorBytes,
+                sectorsWritten * SectorBytes,
+                TimeSpan.FromMilliseconds(milliseconds)));
         }
 
-        return righe;
+        return lines;
     }
 
-    private static bool Numero(string testo, out ulong valore) =>
-        ulong.TryParse(testo, NumberStyles.None, CultureInfo.InvariantCulture, out valore);
+    private static bool TryNumber(string text, out ulong value) =>
+        ulong.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out value);
 }

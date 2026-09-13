@@ -3,26 +3,25 @@ using Observer.Core.Units;
 namespace Observer.Core.Metrics.Cpu;
 
 /// <summary>
-/// Contatori cumulativi di tempo CPU letti dalla piattaforma. L'unita' dei tick non e'
-/// dichiarata di proposito: su Linux sono jiffy, su Windows intervalli da 100 ns, e nel
-/// rapporto fra due differenze l'unita' si semplifica. Questo e' cio' che rende identica
-/// la matematica sulle due piattaforme.
+/// Cumulative CPU time counters read from the platform. The unit of the ticks is deliberately
+/// not declared: on Linux they are jiffies, on Windows 100 ns intervals, and in the ratio
+/// between two differences the unit cancels out. That is what makes the maths identical on
+/// the two platforms.
 /// </summary>
-/// <param name="Idle">Tempo cumulativo trascorso in inattivita'.</param>
-/// <param name="Total">Tempo cumulativo totale, inattivita' inclusa.</param>
+/// <param name="Idle">Cumulative time spent idle.</param>
+/// <param name="Total">Total cumulative time, idle included.</param>
 public readonly record struct CpuTimes(long Idle, long Total);
 
 /// <summary>
-/// Matematica pura dell'utilizzo CPU. Non apre file, non chiama l'OS e non attende:
-/// due campioni dentro, una percentuale fuori. E' il punto in cui si compra la
-/// testabilita' senza hardware.
+/// Pure CPU usage maths. It opens no file, calls no OS and waits for nothing: two samples
+/// in, one percentage out. This is the point where testability without hardware is bought.
 /// </summary>
 public static class CpuUsage
 {
     /// <summary>
-    /// Calcola la percentuale di CPU occupata fra due campioni cumulativi.
-    /// Restituisce false, valorizzando <paramref name="failure"/>, quando la finestra non
-    /// e' utilizzabile: e' preferibile un valore assente e spiegato a un numero inventato.
+    /// Computes the percentage of busy CPU between two cumulative samples.
+    /// Returns false, setting <paramref name="failure"/>, when the window is not usable:
+    /// a missing value with a reason is preferable to an invented number.
     /// </summary>
     public static bool TryComputePercent(
         CpuTimes previous,
@@ -49,12 +48,12 @@ public static class CpuUsage
 
         long busy = deltaTotal - deltaIdle;
 
-        // Entrambi i delta possono essere positivi e la finestra restare incoerente: se idle
-        // cresce piu' del totale, "occupato" e' negativo. Succede quando "steal" arretra dopo
-        // una live migration (iowait si cancella da entrambi i lati e sfugge al guard sopra),
-        // o su Windows perche' l'aggregazione per-processore di GetSystemTimes non e' atomica.
-        // Senza questo controllo si pubblicherebbe un -3% marcato Ok, che a grafico passa per
-        // rumore: un numero sbagliato e credibile, cioe' il caso peggiore.
+        // Both deltas can be positive and the window still be inconsistent: if idle grows more
+        // than the total, "busy" is negative. It happens when "steal" goes backwards after a
+        // live migration (iowait cancels out on both sides and escapes the guard above), or on
+        // Windows because the per-processor aggregation of GetSystemTimes is not atomic.
+        // Without this check a -3% marked Ok would be published, which on a chart passes for
+        // noise: a wrong and credible number, which is the worst case.
         if (busy < 0L)
         {
             percent = default;

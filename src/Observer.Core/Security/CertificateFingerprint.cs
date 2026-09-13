@@ -4,115 +4,114 @@ using System.Security.Cryptography;
 namespace Observer.Core.Security;
 
 /// <summary>
-/// L'impronta di un certificato: come si calcola, come si scrive, come si confronta.
+/// A certificate's fingerprint: how it is computed, how it is written, how it is compared.
 /// </summary>
 /// <remarks>
-/// Sta in Observer.Core e non da una parte sola perche' servono ENTRAMBI i lati: il servizio la
-/// stampa, il client la confronta con quella che si e' portato dietro. Client e servizio non
-/// possono referenziarsi, quindi una copia per parte sarebbero due copie della regola che
-/// decide di chi fidarsi - e il giorno che divergono, il sintomo e' un rifiuto che nessuno
-/// riesce a spiegare.
+/// It lives in Observer.Core and not on one side alone because BOTH sides need it: the service
+/// prints it, the client compares it with the one it brought along. Client and service cannot
+/// reference each other, so one copy per side would be two copies of the rule that decides who
+/// to trust - and the day they diverge, the symptom is a refusal nobody manages to explain.
 /// <para>
-/// Il certificato di Observer e' AUTOFIRMATO: nessuna autorita' lo garantisce, e la catena non
-/// dice niente. L'unica cosa che lega un collegamento a una macchina precisa e' questa
-/// impronta, presa a mano dalla macchina stessa con <c>observer share</c>.
+/// Observer's certificate is SELF-SIGNED: no authority vouches for it, and the chain says
+/// nothing. The only thing that ties a connection to one precise machine is this fingerprint,
+/// taken by hand from the machine itself with <c>observer share</c>.
 /// </para>
 /// </remarks>
 public static class CertificateFingerprint
 {
-    /// <summary>Il prefisso che dichiara l'algoritmo. Sempre presente in uscita.</summary>
+    /// <summary>The prefix that declares the algorithm. Always present on output.</summary>
     public const string Prefisso = "sha256:";
 
-    /// <summary>Quanti caratteri esadecimali ha un SHA-256.</summary>
+    /// <summary>How many hexadecimal characters an SHA-256 has.</summary>
     public const int CifreEsadecimali = 64;
 
-    /// <summary>Calcola l'impronta della codifica DER di un certificato.</summary>
-    /// <param name="certificatoDer">Il certificato codificato in DER.</param>
-    /// <returns>L'impronta in forma canonica, con il prefisso.</returns>
-    public static string Da(ReadOnlySpan<byte> certificatoDer) =>
-        Prefisso + Convert.ToHexString(SHA256.HashData(certificatoDer));
+    /// <summary>Computes the fingerprint of a certificate's DER encoding.</summary>
+    /// <param name="derCertificate">The certificate encoded in DER.</param>
+    /// <returns>The fingerprint in canonical form, with the prefix.</returns>
+    public static string From(ReadOnlySpan<byte> derCertificate) =>
+        Prefisso + Convert.ToHexString(SHA256.HashData(derCertificate));
 
     /// <summary>
-    /// Riduce alla forma canonica cio' che un umano ha copiato a mano.
+    /// Reduces to canonical form what a human copied by hand.
     /// </summary>
-    /// <param name="testo">L'impronta scritta in un file di configurazione.</param>
-    /// <returns>Le 64 cifre in maiuscolo, oppure null se non e' un'impronta SHA-256.</returns>
+    /// <param name="text">The fingerprint written in a configuration file.</param>
+    /// <returns>The 64 digits in upper case, or null if it is not an SHA-256 fingerprint.</returns>
     /// <remarks>
-    /// Tollerante in ingresso e rigida in uscita, e non e' indulgenza: questo valore lo copia
-    /// una persona da un terminale a un file di testo, e gli strumenti che lo stampano non
-    /// concordano su come separarlo. Due punti, spazi e trattini si accettano; tutto il resto
-    /// no, perche' un'impronta "quasi giusta" deve essere rifiutata e non aggiustata.
+    /// Tolerant on input and strict on output, and that is not indulgence: this value is copied
+    /// by a person from a terminal into a text file, and the tools that print it do not agree on
+    /// how to separate it. Colons, spaces and dashes are accepted; nothing else is, because an
+    /// "almost right" fingerprint must be refused and not fixed up.
     /// </remarks>
-    public static string? Normalizza(string? testo)
+    public static string? Normalize(string? text)
     {
-        if (string.IsNullOrWhiteSpace(testo))
+        if (string.IsNullOrWhiteSpace(text))
         {
             return null;
         }
 
-        ReadOnlySpan<char> resto = testo.AsSpan().Trim();
+        ReadOnlySpan<char> rest = text.AsSpan().Trim();
 
-        if (resto.StartsWith(Prefisso, StringComparison.OrdinalIgnoreCase))
+        if (rest.StartsWith(Prefisso, StringComparison.OrdinalIgnoreCase))
         {
-            resto = resto[Prefisso.Length..];
+            rest = rest[Prefisso.Length..];
         }
 
-        Span<char> cifre = stackalloc char[CifreEsadecimali];
-        int quante = 0;
+        Span<char> digits = stackalloc char[CifreEsadecimali];
+        int count = 0;
 
-        foreach (char carattere in resto)
+        foreach (char character in rest)
         {
-            if (carattere is ':' or ' ' or '-')
+            if (character is ':' or ' ' or '-')
             {
                 continue;
             }
 
-            if (quante == CifreEsadecimali || !Uri.IsHexDigit(carattere))
+            if (count == CifreEsadecimali || !Uri.IsHexDigit(character))
             {
                 return null;
             }
 
-            cifre[quante++] = char.ToUpperInvariant(carattere);
+            digits[count++] = char.ToUpperInvariant(character);
         }
 
-        return quante == CifreEsadecimali ? new string(cifre) : null;
+        return count == CifreEsadecimali ? new string(digits) : null;
     }
 
-    /// <summary>Dice se due impronte designano lo stesso certificato.</summary>
-    /// <param name="attesa">L'impronta fissata nella configurazione.</param>
-    /// <param name="presentata">L'impronta del certificato arrivato dalla rete.</param>
-    /// <returns>True solo se sono entrambe valide e uguali.</returns>
+    /// <summary>Says whether two fingerprints designate the same certificate.</summary>
+    /// <param name="expected">The fingerprint pinned in the configuration.</param>
+    /// <param name="presented">The fingerprint of the certificate that arrived from the network.</param>
+    /// <returns>True only if both are valid and equal.</returns>
     /// <remarks>
-    /// Un'impronta illeggibile non e' mai uguale a niente. Trattarla come "salta il controllo"
-    /// trasformerebbe un errore di battitura nella disattivazione silenziosa della sola cosa
-    /// che protegge il collegamento.
+    /// An unreadable fingerprint is never equal to anything. Treating it as "skip the check"
+    /// would turn a typo into the silent disabling of the only thing that protects the
+    /// connection.
     /// </remarks>
-    public static bool Uguali(string? attesa, string? presentata) =>
-        Normalizza(attesa) is { } a && Normalizza(presentata) is { } b
+    public static bool Match(string? expected, string? presented) =>
+        Normalize(expected) is { } a && Normalize(presented) is { } b
         && string.Equals(a, b, StringComparison.Ordinal);
 
-    /// <summary>Scrive l'impronta a gruppi di due cifre, per chi la deve confrontare a occhio.</summary>
-    /// <param name="impronta">L'impronta, in qualsiasi forma accettata.</param>
-    /// <returns>La forma leggibile, oppure il testo originale se non e' un'impronta valida.</returns>
-    public static string PerLUomo(string impronta)
+    /// <summary>Writes the fingerprint in groups of two digits, for whoever has to compare it by eye.</summary>
+    /// <param name="fingerprint">The fingerprint, in any accepted form.</param>
+    /// <returns>The readable form, or the original text if it is not a valid fingerprint.</returns>
+    public static string ForHumans(string fingerprint)
     {
-        if (Normalizza(impronta) is not { } cifre)
+        if (Normalize(fingerprint) is not { } digits)
         {
-            return impronta;
+            return fingerprint;
         }
 
-        string[] coppie = new string[CifreEsadecimali / 2];
+        string[] pairs = new string[CifreEsadecimali / 2];
 
-        for (int i = 0; i < coppie.Length; i++)
+        for (int i = 0; i < pairs.Length; i++)
         {
-            coppie[i] = cifre.Substring(i * 2, 2);
+            pairs[i] = digits.Substring(i * 2, 2);
         }
 
-        return string.Join(':', coppie).ToUpperInvariant();
+        return string.Join(':', pairs).ToUpperInvariant();
     }
 
-    /// <summary>Il numero di cifre, per i messaggi d'errore.</summary>
-    /// <returns>Il conteggio come testo.</returns>
-    public static string QuanteCifre() =>
+    /// <summary>The digit count, for error messages.</summary>
+    /// <returns>The count as text.</returns>
+    public static string DigitCount() =>
         CifreEsadecimali.ToString(CultureInfo.InvariantCulture);
 }

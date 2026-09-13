@@ -147,7 +147,7 @@ public static class MachineCertificate
     {
         ArgumentNullException.ThrowIfNull(certificato);
 
-        return CertificateFingerprint.Da(certificato.RawDataMemory.Span);
+        return CertificateFingerprint.From(certificato.RawDataMemory.Span);
     }
 
     /// <summary>Il percorso del certificato, accanto al deposito del token.</summary>

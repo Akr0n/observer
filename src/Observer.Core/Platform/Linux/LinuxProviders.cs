@@ -6,19 +6,19 @@ using Observer.Core.Units;
 namespace Observer.Core.Platform.Linux;
 
 /// <summary>
-/// Adattatore /proc/stat. Contiene SOLO la lettura grezza: l'interpretazione sta in
-/// <see cref="ProcStatParser"/> e il calcolo in <see cref="CpuUsage"/>. Non interroga il
-/// sistema operativo, quindi si prova interamente dal runner Windows iniettando un lettore
-/// finto — ed e' il comportamento del provider, non solo del parser, a risultare coperto.
+/// /proc/stat adapter. It holds ONLY the raw read: the interpretation lives in
+/// <see cref="ProcStatParser"/> and the arithmetic in <see cref="CpuUsage"/>. It does not query
+/// the operating system, so it can be tested entirely from the Windows runner by injecting a
+/// fake reader — and what ends up covered is the provider's behaviour, not just the parser's.
 /// </summary>
 public sealed class LinuxCpuTimesProvider : ICpuTimesProvider
 {
-    /// <summary>Percorso del file dei contatori CPU.</summary>
+    /// <summary>Path of the file holding the CPU counters.</summary>
     public const string StatPath = "/proc/stat";
 
     private readonly IFileTextReader reader;
 
-    /// <summary>Crea l'adattatore sopra il lettore indicato.</summary>
+    /// <summary>Creates the adapter over the given reader.</summary>
     public LinuxCpuTimesProvider(IFileTextReader reader)
     {
         ArgumentNullException.ThrowIfNull(reader);
@@ -27,8 +27,8 @@ public sealed class LinuxCpuTimesProvider : ICpuTimesProvider
 
     /// <inheritdoc />
     /// <remarks>
-    /// Sempre true: su Linux /proc/stat esiste per contratto del kernel. Se non e'
-    /// leggibile ora e' un guasto momentaneo (Unavailable), non una mancanza di supporto.
+    /// Always true: on Linux /proc/stat exists by kernel contract. If it cannot be read right
+    /// now that is a momentary fault (Unavailable), not a lack of support.
     /// </remarks>
     public bool IsSupported => true;
 
@@ -48,15 +48,15 @@ public sealed class LinuxCpuTimesProvider : ICpuTimesProvider
     }
 }
 
-/// <summary>Adattatore /proc/meminfo, con le stesse proprieta' di <see cref="LinuxCpuTimesProvider"/>.</summary>
+/// <summary>/proc/meminfo adapter, with the same properties as <see cref="LinuxCpuTimesProvider"/>.</summary>
 public sealed class LinuxMemoryReadingProvider : IMemoryReadingProvider
 {
-    /// <summary>Percorso del file dei valori di memoria.</summary>
+    /// <summary>Path of the file holding the memory values.</summary>
     public const string MeminfoPath = "/proc/meminfo";
 
     private readonly IFileTextReader reader;
 
-    /// <summary>Crea l'adattatore sopra il lettore indicato.</summary>
+    /// <summary>Creates the adapter over the given reader.</summary>
     public LinuxMemoryReadingProvider(IFileTextReader reader)
     {
         ArgumentNullException.ThrowIfNull(reader);
@@ -83,26 +83,25 @@ public sealed class LinuxMemoryReadingProvider : IMemoryReadingProvider
 }
 
 
-/// <summary>Adattatore Linux dello spazio sui volumi, via /proc/self/mountinfo.</summary>
+/// <summary>Linux adapter for the space on the volumes, through /proc/self/mountinfo.</summary>
 /// <remarks>
-/// <b>NON si enumera con DriveInfo.GetDrives().</b> Su Linux restituisce ogni singolo
-/// montaggio del kernel — misurate 34 voci in un container, di cui UNA sola era un
-/// filesystem vero — e leggerne le proprieta' costa: 234 microsecondi a montaggio per il tipo
-/// di unita' e 270 per il formato, cioe' 7,4 ms in tutto contro gli 0,59 della strada qui
-/// sotto. A un campione al secondo, dodici volte tanto per buttare via il 97 per cento di
-/// quello che si e' letto.
+/// <b>Enumeration does NOT go through DriveInfo.GetDrives().</b> On Linux that returns every
+/// single kernel mount — 34 entries measured in a container, of which ONE alone was a real
+/// filesystem — and reading their properties costs: 234 microseconds per mount for the drive
+/// type and 270 for the format, that is 7.4 ms in total against the 0.59 of the route below. At
+/// one sample a second, twelve times as much to throw away 97 per cent of what was read.
 /// <para>
-/// Si legge invece <c>/proc/self/mountinfo</c>, si sceglie in base al tipo di filesystem, e
-/// solo sui montaggi scelti si chiede lo spazio. La scelta e' per <b>elenco di ammessi</b> e
-/// non di esclusi: un filesystem che non conosciamo resta fuori invece di entrare, e un
-/// montaggio in meno si nota e si aggiunge, mentre un <c>tmpfs</c> presentato come disco fa
-/// credere di avere spazio che non esiste.
+/// What is read instead is <c>/proc/self/mountinfo</c>, the choice is made on the filesystem
+/// type, and space is asked for only on the chosen mounts. The choice is by <b>allow list</b>
+/// and not by deny list: a filesystem we do not know stays out instead of getting in, and a
+/// missing mount gets noticed and added, while a <c>tmpfs</c> presented as a disk makes you
+/// believe you have space that does not exist.
 /// </para>
 /// </remarks>
 public sealed class LinuxDiskReadingProvider : IDiskReadingProvider
 {
-    /// <summary>I filesystem che rappresentano spazio vero su un supporto.</summary>
-    private static readonly HashSet<string> Ammessi = new(StringComparer.Ordinal)
+    /// <summary>The filesystems that stand for real space on a medium.</summary>
+    private static readonly HashSet<string> Allowed = new(StringComparer.Ordinal)
     {
         "ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "jfs", "reiserfs",
         "zfs", "vfat", "exfat", "ntfs", "ntfs3", "fuseblk",
@@ -110,8 +109,8 @@ public sealed class LinuxDiskReadingProvider : IDiskReadingProvider
 
     private readonly IFileTextReader reader;
 
-    /// <summary>Crea il provider sopra il lettore indicato.</summary>
-    /// <param name="reader">Da dove si legge /proc.</param>
+    /// <summary>Creates the provider over the given reader.</summary>
+    /// <param name="reader">Where /proc is read from.</param>
     public LinuxDiskReadingProvider(IFileTextReader reader)
     {
         ArgumentNullException.ThrowIfNull(reader);
@@ -121,12 +120,12 @@ public sealed class LinuxDiskReadingProvider : IDiskReadingProvider
 
     /// <inheritdoc />
     /// <remarks>
-    /// Sempre vero, come gli altri provider Linux, e NON <c>OperatingSystem.IsLinux()</c>:
-    /// qui la piattaforma e' un parametro di composizione, non una lettura dell'ambiente. E'
-    /// cio' che permette di provare il ramo Linux dal runner Windows della CI — che e' proprio
-    /// il punto in cui nasce la degradazione, e quindi quello che va provato in entrambe le
-    /// direzioni. Su un sistema che non e' Linux <c>/proc/self/mountinfo</c> semplicemente non
-    /// si legge, e il collector dichiara Unavailable con il motivo.
+    /// Always true, like the other Linux providers, and NOT <c>OperatingSystem.IsLinux()</c>:
+    /// here the platform is a composition parameter, not a reading of the environment. That is
+    /// what makes it possible to test the Linux branch from CI's Windows runner — which is
+    /// exactly where the degradation is born, and therefore what has to be tested in both
+    /// directions. On a system that is not Linux <c>/proc/self/mountinfo</c> simply does not
+    /// read, and the collector declares Unavailable with the reason.
     /// </remarks>
     public bool IsSupported => true;
 
@@ -143,64 +142,64 @@ public sealed class LinuxDiskReadingProvider : IDiskReadingProvider
             return false;
         }
 
-        List<DiskReading> trovati = [];
+        List<DiskReading> found = [];
 
-        foreach (string punto in ProcMountInfoParser.MountPoints(content, Ammessi))
+        foreach (string mountPoint in ProcMountInfoParser.MountPoints(content, Allowed))
         {
             try
             {
-                DriveInfo unita = new(punto);
+                DriveInfo drive = new(mountPoint);
 
-                if (!unita.IsReady)
+                if (!drive.IsReady)
                 {
                     continue;
                 }
 
-                trovati.Add(new DiskReading(
-                    punto,
-                    ByteSize.FromBytes(unita.TotalSize),
-                    ByteSize.FromBytes(unita.AvailableFreeSpace)));
+                found.Add(new DiskReading(
+                    mountPoint,
+                    ByteSize.FromBytes(drive.TotalSize),
+                    ByteSize.FromBytes(drive.AvailableFreeSpace)));
             }
             catch (IOException)
             {
-                // Smontato fra la lettura di mountinfo e la domanda sullo spazio.
+                // Unmounted between reading mountinfo and asking about the space.
             }
             catch (UnauthorizedAccessException)
             {
-                // Montato ma non attraversabile da questo utente.
+                // Mounted but not traversable by this user.
             }
             catch (ArgumentException)
             {
-                // Un percorso che DriveInfo non accetta: fuori, non fa cadere gli altri.
+                // A path DriveInfo does not accept: out, and it does not bring the others down.
             }
         }
 
-        readings = trovati;
+        readings = found;
 
         return true;
     }
 }
 
 /// <summary>
-/// Adattatore /proc/diskstats per l'attivita' dei dischi.
+/// /proc/diskstats adapter for disk activity.
 /// </summary>
 /// <remarks>
-/// Il problema vero non e' leggere i contatori, e' decidere di CHI sono. /proc/diskstats
-/// elenca insieme dischi interi, partizioni e dispositivi finti — <c>loop0</c>, <c>ram0</c>,
-/// <c>dm-0</c>, <c>zram0</c> — e sommarli tutti conterebbe lo stesso byte due o tre volte.
+/// The real problem is not reading the counters, it is deciding WHOSE they are. /proc/diskstats
+/// lists whole disks, partitions and fake devices together — <c>loop0</c>, <c>ram0</c>,
+/// <c>dm-0</c>, <c>zram0</c> — and summing them all would count the same byte two or three times.
 /// <para>
-/// Il filtro non e' un elenco di prefissi da indovinare, che sbaglierebbe in silenzio al
-/// primo nome nuovo. E' una domanda sola al filesystem, attraverso
-/// <see cref="IFileTextReader"/> e quindi provabile dal runner Windows: esiste
-/// <c>/sys/block/NOME/device/uevent</c>?
+/// The filter is not a list of prefixes to be guessed, which would go wrong silently on the
+/// first new name. It is one single question to the filesystem, through
+/// <see cref="IFileTextReader"/> and therefore testable from the Windows runner: does
+/// <c>/sys/block/NAME/device/uevent</c> exist?
 /// </para>
 /// <para>
-/// Quella domanda sola copre tutti e due i casi, e la prima stesura non se n'era accorta:
-/// aveva anche un controllo su <c>/sys/block/NOME/stat</c> per escludere le partizioni. E'
-/// stata una mutazione a mostrare che non serviva — toglierlo non faceva fallire niente —
-/// perche' una partizione sotto <c>/sys/block</c> non compare affatto: sta piu' in basso,
-/// dentro la cartella del disco che la contiene. Chi non ha un dispositivo fisico dietro
-/// (loop, ram, zram, i volumi logici, un array md) resta fuori per lo stesso motivo.
+/// That one question covers both cases, and the first version had not noticed: it also had a
+/// check on <c>/sys/block/NAME/stat</c> to exclude partitions. It was a mutation that showed it
+/// was not needed — removing it made nothing fail — because a partition does not appear under
+/// <c>/sys/block</c> at all: it lives lower down, inside the directory of the disk that contains
+/// it. Whatever has no physical device behind it (loop, ram, zram, logical volumes, an md array)
+/// stays out for the same reason.
 /// </para>
 /// </remarks>
 public sealed class LinuxDiskActivityProvider : IDiskActivityProvider
@@ -209,8 +208,8 @@ public sealed class LinuxDiskActivityProvider : IDiskActivityProvider
 
     private readonly IFileTextReader reader;
 
-    /// <summary>Crea l'adattatore sopra il lettore indicato.</summary>
-    /// <param name="reader">Da dove leggere i file di sistema.</param>
+    /// <summary>Creates the adapter over the given reader.</summary>
+    /// <param name="reader">Where the system files are read from.</param>
     public LinuxDiskActivityProvider(IFileTextReader reader)
     {
         ArgumentNullException.ThrowIfNull(reader);
@@ -220,8 +219,8 @@ public sealed class LinuxDiskActivityProvider : IDiskActivityProvider
 
     /// <inheritdoc />
     /// <remarks>
-    /// Vero sempre, anche fuori da Linux: la piattaforma e' un parametro della composizione e
-    /// non una lettura dell'ambiente, ed e' cosi' che questo ramo si prova dal runner Windows.
+    /// Always true, even outside Linux: the platform is a parameter of the composition and not a
+    /// reading of the environment, and that is how this branch is tested from the Windows runner.
     /// </remarks>
     public bool IsSupported => true;
 
@@ -231,31 +230,31 @@ public sealed class LinuxDiskActivityProvider : IDiskActivityProvider
     /// <inheritdoc />
     public bool TryRead(out IReadOnlyList<DiskActivityReading> readings)
     {
-        if (!reader.TryReadAllText(DiskStatsPath, out string contenuto))
+        if (!reader.TryReadAllText(DiskStatsPath, out string content))
         {
             readings = [];
 
             return false;
         }
 
-        List<DiskActivityReading> trovati = [];
+        List<DiskActivityReading> found = [];
 
-        foreach (DiskStatsLine riga in ProcDiskStatsParser.Read(contenuto))
+        foreach (DiskStatsLine line in ProcDiskStatsParser.Read(content))
         {
-            if (!HaUnDispositivoDietro(riga.Device))
+            if (!HasDeviceBehind(line.Device))
             {
                 continue;
             }
 
-            trovati.Add(DiskActivityReading.ConTempoOccupato(
-                riga.Device, riga.BytesRead, riga.BytesWritten, riga.Busy));
+            found.Add(DiskActivityReading.WithBusyTime(
+                line.Device, line.BytesRead, line.BytesWritten, line.Busy));
         }
 
-        readings = trovati;
+        readings = found;
 
         return true;
     }
 
-    private bool HaUnDispositivoDietro(string nome) =>
-        reader.TryReadAllText($"/sys/block/{nome}/device/uevent", out _);
+    private bool HasDeviceBehind(string name) =>
+        reader.TryReadAllText($"/sys/block/{name}/device/uevent", out _);
 }

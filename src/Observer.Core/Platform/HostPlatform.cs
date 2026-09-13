@@ -5,13 +5,13 @@ using Observer.Core.Metrics.Memory;
 namespace Observer.Core.Platform;
 
 /// <summary>
-/// La piattaforma su cui raccogliere. E' un PARAMETRO e non una lettura dell'ambiente,
-/// cosi' il ramo Linux si puo' provare dal runner Windows della CI: il punto da cui nasce
-/// la degradazione e' esattamente quello che va testato in entrambe le direzioni.
+/// The platform to collect on. It is a PARAMETER and not a reading of the environment,
+/// so the Linux branch can be exercised from CI's Windows runner: the point where the
+/// degradation starts is exactly what has to be tested in both directions.
 /// </summary>
 public enum HostPlatform
 {
-    /// <summary>Piattaforma non riconosciuta: nessuna sorgente e' misurabile.</summary>
+    /// <summary>Unrecognized platform: no source is measurable.</summary>
     Unknown = 0,
 
     /// <summary>Windows.</summary>
@@ -21,10 +21,10 @@ public enum HostPlatform
     Linux = 2,
 }
 
-/// <summary>Rileva la piattaforma corrente.</summary>
+/// <summary>Detects the current platform.</summary>
 public static class HostPlatformDetector
 {
-    /// <summary>Piattaforma su cui il processo sta girando ora.</summary>
+    /// <summary>Platform the process is running on right now.</summary>
     public static HostPlatform Current
     {
         get
@@ -40,17 +40,17 @@ public static class HostPlatformDetector
 }
 
 /// <summary>
-/// Porta di lettura di file di testo. Esiste per rendere provabili i provider Linux senza
-/// una macchina Linux: il test inietta un lettore finto e verifica il comportamento reale
-/// del provider, non solo quello del parser.
+/// Port for reading text files. It exists to make the Linux providers testable without a
+/// Linux machine: the test injects a fake reader and verifies what the provider really
+/// does, not only what the parser does.
 /// </summary>
 public interface IFileTextReader
 {
-    /// <summary>Legge tutto il contenuto. False se il file non esiste o non e' leggibile.</summary>
+    /// <summary>Reads the whole content. False if the file does not exist or is not readable.</summary>
     bool TryReadAllText(string path, out string content);
 }
 
-/// <summary>Lettore reale, sul filesystem.</summary>
+/// <summary>Real reader, on the filesystem.</summary>
 public sealed class FileTextReader : IFileTextReader
 {
     /// <inheritdoc />
@@ -63,7 +63,7 @@ public sealed class FileTextReader : IFileTextReader
         }
         catch (IOException)
         {
-            // /proc puo' sparire o essere illeggibile: degradare, non abbattere il servizio.
+            // /proc can vanish or become unreadable: degrade, do not bring the service down.
             content = string.Empty;
             return false;
         }
@@ -76,13 +76,13 @@ public sealed class FileTextReader : IFileTextReader
 }
 
 /// <summary>
-/// Porta CPU per una piattaforma su cui la misura non e' possibile. Esiste perche' la
-/// metrica resti nel catalogo con la sua spiegazione invece di sparire: "non si puo'
-/// misurare qui" e "me la sono dimenticata" devono essere distinguibili in dashboard.
+/// CPU port for a platform where the measurement is not possible. It exists so that the
+/// metric stays in the catalog with its explanation instead of disappearing: "it cannot be
+/// measured here" and "I forgot about it" must be distinguishable in a dashboard.
 /// </summary>
 public sealed class UnsupportedCpuTimesProvider : ICpuTimesProvider
 {
-    /// <summary>Crea la porta con il motivo da mostrare.</summary>
+    /// <summary>Creates the port with the reason to show.</summary>
     public UnsupportedCpuTimesProvider(string reason)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
@@ -103,10 +103,10 @@ public sealed class UnsupportedCpuTimesProvider : ICpuTimesProvider
     }
 }
 
-/// <summary>Equivalente di <see cref="UnsupportedCpuTimesProvider"/> per la memoria.</summary>
+/// <summary>Equivalent of <see cref="UnsupportedCpuTimesProvider"/> for memory.</summary>
 public sealed class UnsupportedMemoryReadingProvider : IMemoryReadingProvider
 {
-    /// <summary>Crea la porta con il motivo da mostrare.</summary>
+    /// <summary>Creates the port with the reason to show.</summary>
     public UnsupportedMemoryReadingProvider(string reason)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
@@ -127,10 +127,10 @@ public sealed class UnsupportedMemoryReadingProvider : IMemoryReadingProvider
     }
 }
 
-/// <summary>Porta dei dischi per una piattaforma che non si sa misurare.</summary>
+/// <summary>Disk port for a platform this program does not know how to measure.</summary>
 public sealed class UnsupportedDiskReadingProvider : IDiskReadingProvider
 {
-    /// <summary>Crea la porta con il motivo da mostrare.</summary>
+    /// <summary>Creates the port with the reason to show.</summary>
     public UnsupportedDiskReadingProvider(string reason)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
@@ -152,11 +152,11 @@ public sealed class UnsupportedDiskReadingProvider : IDiskReadingProvider
     }
 }
 
-/// <summary>Porta dell'attivita' dei dischi per una piattaforma che non si sa misurare.</summary>
+/// <summary>Disk activity port for a platform this program does not know how to measure.</summary>
 public sealed class UnsupportedDiskActivityProvider : IDiskActivityProvider
 {
-    /// <summary>Crea la porta con il motivo da mostrare.</summary>
-    /// <param name="reason">Perche' qui non si misura.</param>
+    /// <summary>Creates the port with the reason to show.</summary>
+    /// <param name="reason">Why nothing is measured here.</param>
     public UnsupportedDiskActivityProvider(string reason)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);

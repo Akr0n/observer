@@ -82,7 +82,7 @@ public static class Comandi
             return Aiuto(2);
         }
 
-        ISecretStore deposito = SecretStores.PerQuestaMacchina();
+        ISecretStore deposito = SecretStores.ForThisMachine();
 
         try
         {
@@ -114,7 +114,7 @@ public static class Comandi
 
         deposito.Write(macchina, segreto);
 
-        Console.WriteLine($"The token for {macchina} is now kept in {deposito.Descrizione}.");
+        Console.WriteLine($"The token for {macchina} is now kept in {deposito.Description}.");
         Console.WriteLine(
             $"If machines.json still has an \"apiToken\" line for {macchina}, delete it: " +
             "Observer refuses to use a token from that file.");
@@ -182,7 +182,7 @@ public static class Comandi
 
     private static int Share(bool soloIlValore)
     {
-        string percorso = CredentialDirectory.PercorsoPredefinito();
+        string percorso = CredentialDirectory.DefaultPath();
 
         if (Leggi(percorso) is not { } credenziali)
         {
@@ -222,7 +222,7 @@ public static class Comandi
 
     private static int RotateKey()
     {
-        string percorso = CredentialDirectory.PercorsoPredefinito();
+        string percorso = CredentialDirectory.DefaultPath();
 
         if (Leggi(percorso) is not { } credenziali)
         {
@@ -270,7 +270,7 @@ public static class Comandi
 
     private static int Doctor()
     {
-        string percorso = CredentialDirectory.PercorsoPredefinito();
+        string percorso = CredentialDirectory.DefaultPath();
 
         Console.WriteLine("Credential store: " + percorso);
         Console.WriteLine("Protection      : " + Diagnosi.Protezione(percorso));

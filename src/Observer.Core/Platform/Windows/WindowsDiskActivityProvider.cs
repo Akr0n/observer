@@ -7,30 +7,29 @@ using Observer.Core.Metrics.Disk;
 namespace Observer.Core.Platform.Windows;
 
 /// <summary>
-/// Adattatore Windows dei contatori di attivita' dei dischi, via
-/// <c>IOCTL_DISK_PERFORMANCE</c> su <c>\\.\PhysicalDriveN</c>.
+/// Windows adapter for the disk activity counters, through
+/// <c>IOCTL_DISK_PERFORMANCE</c> on <c>\\.\PhysicalDriveN</c>.
 /// </summary>
 /// <remarks>
-/// Scelto invece dei contatori di prestazione per due motivi misurati. Il primo: non serve
-/// alcun pacchetto in piu' — <c>System.Diagnostics.PerformanceCounter</c> e' un NuGet a parte
-/// su .NET, e una dipendenza va motivata, non aggiunta di sfuggita. Il secondo: i nomi delle
-/// categorie di quei contatori sono TRADOTTI, e su una macchina italiana cercare
-/// "PhysicalDisk" non trova niente — un guasto che non si vede finche' non si prova su una
-/// macchina localizzata.
+/// Chosen over the performance counters for two measured reasons. The first: no extra package
+/// is needed — <c>System.Diagnostics.PerformanceCounter</c> is a separate NuGet on .NET, and a
+/// dependency has to be argued for, not added in passing. The second: the category names of
+/// those counters are TRANSLATED, and on an Italian machine looking for "PhysicalDisk" finds
+/// nothing — a fault that stays invisible until it is tried on a localized machine.
 /// <para>
-/// Il dispositivo si apre con accesso <b>zero</b>, non in lettura: e' quanto basta a questo
-/// IOCTL, e con zero funziona senza privilegi di amministratore. Verificato su questa
-/// macchina, processo non elevato: <c>PhysicalDrive0</c> e <c>PhysicalDrive1</c> rispondono,
-/// il terzo da' ERROR_FILE_NOT_FOUND perche' non esiste.
+/// The device is opened with <b>zero</b> access, not read access: that is all this IOCTL needs,
+/// and with zero it works without administrator privileges. Verified on this machine, on an
+/// unelevated process: <c>PhysicalDrive0</c> and <c>PhysicalDrive1</c> answer, the third gives
+/// ERROR_FILE_NOT_FOUND because it does not exist.
 /// </para>
 /// </remarks>
 public sealed partial class WindowsDiskActivityProvider : IDiskActivityProvider
 {
-    // Windows numera i dischi fisici a partire da zero, con buchi possibili: un numero non
-    // trovato non chiude la ricerca. Il limite e' dichiarato invece che silenzioso — una
-    // macchina con piu' di 32 dischi fisici mostrerebbe solo i primi 32, e questa riga e'
-    // l'unico posto in cui si vede.
-    private const int DischiEsaminati = 32;
+    // Windows numbers physical disks from zero, with possible holes: a number that is not found
+    // does not end the search. The limit is declared instead of silent — a machine with more
+    // than 32 physical disks would show only the first 32, and this line is the only place
+    // where that shows.
+    private const int DisksExamined = 32;
 
     private const uint IoctlDiskPerformance = 0x00070020;
     private const uint FileShareReadWrite = 0x00000003;
@@ -38,10 +37,10 @@ public sealed partial class WindowsDiskActivityProvider : IDiskActivityProvider
 
     /// <inheritdoc />
     /// <remarks>
-    /// Vero sempre, anche fuori da Windows: la piattaforma e' un parametro della
-    /// composizione, non una lettura dell'ambiente, e i test devono poter costruire questo
-    /// provider dal runner Linux. Chi non e' su Windows non arriva mai a costruirlo, perche'
-    /// <c>ObserverMetrics.CreateCollectors</c> sceglie un altro ramo.
+    /// Always true, even outside Windows: the platform is a parameter of the composition, not a
+    /// reading of the environment, and the tests must be able to build this provider from the
+    /// Linux runner. Whoever is not on Windows never gets to build it, because
+    /// <c>ObserverMetrics.CreateCollectors</c> picks another branch.
     /// </remarks>
     public bool IsSupported => true;
 
@@ -58,32 +57,32 @@ public sealed partial class WindowsDiskActivityProvider : IDiskActivityProvider
             return false;
         }
 
-        List<DiskActivityReading> trovati = [];
+        List<DiskActivityReading> found = [];
 
-        for (int numero = 0; numero < DischiEsaminati; numero++)
+        for (int number = 0; number < DisksExamined; number++)
         {
-            if (TryLeggiDisco(numero, out DiskActivityReading lettura))
+            if (TryReadDisk(number, out DiskActivityReading reading))
             {
-                trovati.Add(lettura);
+                found.Add(reading);
             }
         }
 
-        readings = trovati;
+        readings = found;
 
-        // Zero dischi non e' un fallimento della LETTURA: e' una risposta, e il collector la
-        // sa distinguere da "non sono riuscito a leggere".
+        // Zero disks is not a READ failure: it is an answer, and the collector can tell it
+        // apart from "I could not read".
         return true;
     }
 
     [SupportedOSPlatform("windows")]
-    private static bool TryLeggiDisco(int numero, out DiskActivityReading lettura)
+    private static bool TryReadDisk(int number, out DiskActivityReading reading)
     {
-        lettura = default;
+        reading = default;
 
-        string quale = numero.ToString(CultureInfo.InvariantCulture);
+        string numberText = number.ToString(CultureInfo.InvariantCulture);
 
-        using SafeFileHandle dispositivo = CreateFileW(
-            $@"\\.\PhysicalDrive{quale}",
+        using SafeFileHandle device = CreateFileW(
+            $@"\\.\PhysicalDrive{numberText}",
             dwDesiredAccess: 0,
             FileShareReadWrite,
             IntPtr.Zero,
@@ -91,19 +90,19 @@ public sealed partial class WindowsDiskActivityProvider : IDiskActivityProvider
             dwFlagsAndAttributes: 0,
             IntPtr.Zero);
 
-        if (dispositivo.IsInvalid)
+        if (device.IsInvalid)
         {
             return false;
         }
 
-        DiskPerformance prestazioni = default;
+        DiskPerformance performance = default;
 
         if (!DeviceIoControl(
-                dispositivo,
+                device,
                 IoctlDiskPerformance,
                 IntPtr.Zero,
                 0,
-                ref prestazioni,
+                ref performance,
                 (uint)Marshal.SizeOf<DiskPerformance>(),
                 out _,
                 IntPtr.Zero))
@@ -111,19 +110,19 @@ public sealed partial class WindowsDiskActivityProvider : IDiskActivityProvider
             return false;
         }
 
-        // I contatori tornano come interi con segno ma non sono mai negativi; se una versione
-        // di Windows ne restituisse uno negativo, saltarlo e' meglio che pubblicare un numero
-        // enorme dopo la conversione a senza segno.
-        if (prestazioni.BytesRead < 0 || prestazioni.BytesWritten < 0 || prestazioni.IdleTime < 0)
+        // The counters come back as signed integers but are never negative; if some version of
+        // Windows returned a negative one, skipping it is better than publishing a huge number
+        // after the conversion to unsigned.
+        if (performance.BytesRead < 0 || performance.BytesWritten < 0 || performance.IdleTime < 0)
         {
             return false;
         }
 
-        lettura = DiskActivityReading.ConTempoInattivo(
-            $"Disk {quale}",
-            (ulong)prestazioni.BytesRead,
-            (ulong)prestazioni.BytesWritten,
-            TimeSpan.FromTicks(prestazioni.IdleTime));
+        reading = DiskActivityReading.WithIdleTime(
+            $"Disk {numberText}",
+            (ulong)performance.BytesRead,
+            (ulong)performance.BytesWritten,
+            TimeSpan.FromTicks(performance.IdleTime));
 
         return true;
     }
@@ -153,14 +152,14 @@ public sealed partial class WindowsDiskActivityProvider : IDiskActivityProvider
         IntPtr lpOverlapped);
 
     /// <summary>
-    /// <c>DISK_PERFORMANCE</c>, 88 byte.
+    /// <c>DISK_PERFORMANCE</c>, 88 bytes.
     /// </summary>
     /// <remarks>
-    /// Gli ultimi 16 byte sono gli 8 <c>WCHAR</c> di <c>StorageManagerName</c>: non servono a
-    /// niente qui, ma la loro DIMENSIONE si'. Con una struct piu' corta — quella che viene
-    /// scrivendo il campo come stringa ANSI — l'IOCTL risponde <c>ERROR_INSUFFICIENT_BUFFER</c>
-    /// (122) e non legge nulla. Misurato: il primo tentativo falliva esattamente cosi', su
-    /// tutti i dischi, e la struct corretta ne misura 88.
+    /// The last 16 bytes are the 8 <c>WCHAR</c>s of <c>StorageManagerName</c>: they are of no
+    /// use here, but their SIZE is. With a shorter struct — the one you get by writing that
+    /// field as an ANSI string — the IOCTL answers <c>ERROR_INSUFFICIENT_BUFFER</c> (122) and
+    /// reads nothing. Measured: the first attempt failed exactly like that, on every disk, and
+    /// the correct struct measures 88.
     /// </remarks>
     [StructLayout(LayoutKind.Sequential)]
     private struct DiskPerformance
@@ -176,9 +175,9 @@ public sealed partial class WindowsDiskActivityProvider : IDiskActivityProvider
         public uint SplitCount;
         public long QueryTime;
         public uint StorageDeviceNumber;
-        public uint NomeParte0;
-        public uint NomeParte1;
-        public uint NomeParte2;
-        public uint NomeParte3;
+        public uint NamePart0;
+        public uint NamePart1;
+        public uint NamePart2;
+        public uint NamePart3;
     }
 }

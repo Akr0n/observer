@@ -1,39 +1,39 @@
 namespace Observer.Core.Metrics;
 
 /// <summary>
-/// Perche' un campione non ha prodotto un valore. Esiste per non perdere il MOTIVO:
-/// restituire semplicemente "nessun valore" costringerebbe chi guarda la dashboard a
-/// indovinare se il dato manca, e' rotto o non e' ancora pronto.
+/// Why a sample did not produce a value. It exists so that the REASON is not lost:
+/// simply returning "no value" would force whoever is looking at the dashboard to
+/// guess whether the datum is missing, broken or not ready yet.
 /// </summary>
 public enum SampleFailure
 {
     /// <summary>
-    /// Nessuna diagnosi. E' il valore di default(SampleFailure) e non deve mai spacciarsi
-    /// per una causa reale: uno zero che significasse "contatori tornati indietro" farebbe
-    /// apparire in dashboard una diagnosi mai effettuata.
+    /// No diagnosis. It is the value of default(SampleFailure) and must never pass itself
+    /// off as a real cause: a zero that meant "counters went backwards" would make a
+    /// diagnosis that was never performed appear on the dashboard.
     /// </summary>
     Unknown = 0,
 
-    /// <summary>Prima lettura: serve un secondo campione per calcolare una differenza.</summary>
+    /// <summary>First reading: a second sample is needed to compute a difference.</summary>
     FirstSample = 1,
 
-    /// <summary>I contatori sono diminuiti (sospensione, ripristino, migrazione di VM).</summary>
+    /// <summary>The counters decreased (suspend, resume, VM migration).</summary>
     CounterWentBackwards = 2,
 
-    /// <summary>Fra i due campioni non e' trascorso tempo misurabile.</summary>
+    /// <summary>No measurable time passed between the two samples.</summary>
     NoElapsedTime = 3,
 
-    /// <summary>Il calcolo ha prodotto un valore non finito (NaN o infinito).</summary>
+    /// <summary>The computation produced a non-finite value (NaN or infinity).</summary>
     NotFinite = 4,
 }
 
 /// <summary>
-/// Traduce un <see cref="SampleFailure"/> in una frase leggibile da mostrare al posto del
-/// valore mancante.
+/// Turns a <see cref="SampleFailure"/> into a readable sentence to show in place of the
+/// missing value.
 /// </summary>
 public static class SampleFailureText
 {
-    /// <summary>Spiegazione in italiano del motivo per cui il campione non ha un valore.</summary>
+    /// <summary>Explanation of why the sample has no value.</summary>
     public static string Describe(SampleFailure failure) => failure switch
     {
         SampleFailure.FirstSample =>

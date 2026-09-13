@@ -7,154 +7,154 @@ using System.Text;
 namespace Observer.Core.Security;
 
 /// <summary>
-/// I token delle macchine remote nel Credential Manager di Windows.
+/// The remote machines' tokens in the Windows Credential Manager.
 /// </summary>
 /// <remarks>
-/// Scelto perche' e' l'unica opzione in cui <b>non esiste un file</b>. Contro un attaccante
-/// che gira gia' come l'utente, questo deposito e DPAPI si equivalgono — entrambi
-/// restituiscono il segreto a chi lo chiede con quell'identita' — ma un file, anche cifrato,
-/// e' una cosa che si puo' copiare, sincronizzare, allegare o fotografare per sbaglio. Qui
-/// non c'e' niente da mandare via per errore.
+/// Chosen because it is the only option in which <b>no file exists</b>. Against an attacker
+/// already running as the user, this store and DPAPI are equivalent — both hand the secret to
+/// whoever asks for it with that identity — but a file, even an encrypted one, is something
+/// that can be copied, synchronized, attached or photographed by mistake. Here there is
+/// nothing to send away by accident.
 /// <para>
-/// La persistenza e' <c>CRED_PERSIST_LOCAL_MACHINE</c> e non <c>ENTERPRISE</c>, ed e' una
-/// decisione di sicurezza: la seconda fa viaggiare la credenziale insieme al profilo su ogni
-/// macchina del dominio, che e' esattamente cio' che questa modifica esiste per evitare.
+/// Persistence is <c>CRED_PERSIST_LOCAL_MACHINE</c> and not <c>ENTERPRISE</c>, and it is a
+/// security decision: the latter makes the credential travel along with the profile to every
+/// machine in the domain, which is exactly what this change exists to avoid.
 /// </para>
 /// </remarks>
 [SupportedOSPlatform("windows")]
 public sealed partial class WindowsSecretStore : ISecretStore
 {
-    /// <summary>Il prefisso dei target, per non collidere con le credenziali di nessun altro.</summary>
-    public const string Prefisso = "Observer:machine:";
+    /// <summary>The prefix of the targets, so as not to collide with anyone else's credentials.</summary>
+    public const string Prefix = "Observer:machine:";
 
-    private const uint TipoGenerico = 1;
-    private const uint PersistenzaLocale = 2;
-    private const int ErroreNonTrovato = 1168;
-
-    /// <inheritdoc />
-    public string Descrizione => "the Windows Credential Manager";
+    private const uint GenericType = 1;
+    private const uint LocalPersistence = 2;
+    private const int NotFoundError = 1168;
 
     /// <inheritdoc />
-    public bool TryRead(string nome, out string segreto)
+    public string Description => "the Windows Credential Manager";
+
+    /// <inheritdoc />
+    public bool TryRead(string name, out string secret)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(nome);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        segreto = string.Empty;
+        secret = string.Empty;
 
-        if (!CredReadW(Prefisso + nome, TipoGenerico, 0, out IntPtr puntatore))
+        if (!CredReadW(Prefix + name, GenericType, 0, out IntPtr pointer))
         {
-            int errore = Marshal.GetLastWin32Error();
+            int error = Marshal.GetLastWin32Error();
 
-            if (errore == ErroreNonTrovato)
+            if (error == NotFoundError)
             {
                 return false;
             }
 
             throw new SecretStoreException(
-                "The Windows Credential Manager refused to return the token for " + nome + ".",
-                new Win32Exception(errore));
+                "The Windows Credential Manager refused to return the token for " + name + ".",
+                new Win32Exception(error));
         }
 
         try
         {
-            Credenziale credenziale = Marshal.PtrToStructure<Credenziale>(puntatore);
+            CredentialW credential = Marshal.PtrToStructure<CredentialW>(pointer);
 
-            if (credenziale.CredentialBlobSize == 0 || credenziale.CredentialBlob == IntPtr.Zero)
+            if (credential.CredentialBlobSize == 0 || credential.CredentialBlob == IntPtr.Zero)
             {
                 return false;
             }
 
-            byte[] byteDelSegreto = new byte[credenziale.CredentialBlobSize];
+            byte[] secretBytes = new byte[credential.CredentialBlobSize];
 
             try
             {
-                Marshal.Copy(credenziale.CredentialBlob, byteDelSegreto, 0, byteDelSegreto.Length);
-                segreto = Encoding.UTF8.GetString(byteDelSegreto);
+                Marshal.Copy(credential.CredentialBlob, secretBytes, 0, secretBytes.Length);
+                secret = Encoding.UTF8.GetString(secretBytes);
             }
             finally
             {
-                // I byte si azzerano; la stringa no, perche' in .NET e' immutabile e resta nel
-                // heap gestito finche' il garbage collector non la ricicla. E' un limite noto
-                // della piattaforma, non una svista: SecureString non lo risolve, e fuori da
-                // Windows non cifra nemmeno.
-                CryptographicOperations.ZeroMemory(byteDelSegreto);
+                // The bytes are zeroed; the string is not, because in .NET it is immutable and
+                // stays in the managed heap until the garbage collector recycles it. It is a
+                // known limit of the platform, not an oversight: SecureString does not solve it,
+                // and outside Windows it does not even encrypt.
+                CryptographicOperations.ZeroMemory(secretBytes);
             }
 
             return true;
         }
         finally
         {
-            CredFree(puntatore);
+            CredFree(pointer);
         }
     }
 
     /// <inheritdoc />
-    public void Write(string nome, string segreto)
+    public void Write(string name, string secret)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(nome);
-        ArgumentException.ThrowIfNullOrWhiteSpace(segreto);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(secret);
 
-        byte[] byteDelSegreto = Encoding.UTF8.GetBytes(segreto);
-        byte[] zeri = new byte[byteDelSegreto.Length];
+        byte[] secretBytes = Encoding.UTF8.GetBytes(secret);
+        byte[] zeros = new byte[secretBytes.Length];
 
-        IntPtr blob = Marshal.AllocHGlobal(byteDelSegreto.Length);
-        IntPtr target = Marshal.StringToHGlobalUni(Prefisso + nome);
-        IntPtr utente = Marshal.StringToHGlobalUni(Environment.UserName);
+        IntPtr blob = Marshal.AllocHGlobal(secretBytes.Length);
+        IntPtr target = Marshal.StringToHGlobalUni(Prefix + name);
+        IntPtr user = Marshal.StringToHGlobalUni(Environment.UserName);
 
         try
         {
-            Marshal.Copy(byteDelSegreto, 0, blob, byteDelSegreto.Length);
+            Marshal.Copy(secretBytes, 0, blob, secretBytes.Length);
 
-            Credenziale credenziale = new()
+            CredentialW credential = new()
             {
-                Type = TipoGenerico,
+                Type = GenericType,
                 TargetName = target,
-                CredentialBlobSize = (uint)byteDelSegreto.Length,
+                CredentialBlobSize = (uint)secretBytes.Length,
                 CredentialBlob = blob,
-                Persist = PersistenzaLocale,
-                UserName = utente,
+                Persist = LocalPersistence,
+                UserName = user,
             };
 
-            if (!CredWriteW(ref credenziale, 0))
+            if (!CredWriteW(ref credential, 0))
             {
                 throw new SecretStoreException(
-                    "The Windows Credential Manager refused to store the token for " + nome + ".",
+                    "The Windows Credential Manager refused to store the token for " + name + ".",
                     new Win32Exception(Marshal.GetLastWin32Error()));
             }
         }
         finally
         {
-            // Anche la copia non gestita si sovrascrive prima di liberarla: la memoria
-            // liberata resta leggibile finche' qualcun altro non la riusa.
-            Marshal.Copy(zeri, 0, blob, zeri.Length);
-            CryptographicOperations.ZeroMemory(byteDelSegreto);
+            // The unmanaged copy is overwritten too before it is freed: freed memory stays
+            // readable until somebody else reuses it.
+            Marshal.Copy(zeros, 0, blob, zeros.Length);
+            CryptographicOperations.ZeroMemory(secretBytes);
 
             Marshal.FreeHGlobal(blob);
             Marshal.FreeHGlobal(target);
-            Marshal.FreeHGlobal(utente);
+            Marshal.FreeHGlobal(user);
         }
     }
 
     /// <inheritdoc />
-    public bool Delete(string nome)
+    public bool Delete(string name)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(nome);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        if (CredDeleteW(Prefisso + nome, TipoGenerico, 0))
+        if (CredDeleteW(Prefix + name, GenericType, 0))
         {
             return true;
         }
 
-        int errore = Marshal.GetLastWin32Error();
+        int error = Marshal.GetLastWin32Error();
 
-        if (errore == ErroreNonTrovato)
+        if (error == NotFoundError)
         {
             return false;
         }
 
         throw new SecretStoreException(
-            "The Windows Credential Manager refused to remove the token for " + nome + ".",
-            new Win32Exception(errore));
+            "The Windows Credential Manager refused to remove the token for " + name + ".",
+            new Win32Exception(error));
     }
 
     [LibraryImport("advapi32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
@@ -164,7 +164,7 @@ public sealed partial class WindowsSecretStore : ISecretStore
 
     [LibraryImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool CredWriteW(ref Credenziale credential, uint flags);
+    private static partial bool CredWriteW(ref CredentialW credential, uint flags);
 
     [LibraryImport("advapi32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -173,9 +173,9 @@ public sealed partial class WindowsSecretStore : ISecretStore
     [LibraryImport("advapi32.dll")]
     private static partial void CredFree(IntPtr buffer);
 
-    /// <summary><c>CREDENTIALW</c>, coi puntatori lasciati tali per restare blittable.</summary>
+    /// <summary><c>CREDENTIALW</c>, with the pointers left as such so it stays blittable.</summary>
     [StructLayout(LayoutKind.Sequential)]
-    private struct Credenziale
+    private struct CredentialW
     {
         public uint Flags;
         public uint Type;

@@ -55,7 +55,7 @@ public static class MachineDirectory
     /// <summary>Legge davvero il disco e l'ambiente.</summary>
     /// <returns>L'elenco e i problemi.</returns>
     public static MachineListResult Read() =>
-        Resolve(LeggiFile(FilePath), ClientConfiguration.Read(), SecretStores.PerQuestaMacchina());
+        Resolve(LeggiFile(FilePath), ClientConfiguration.Read(), SecretStores.ForThisMachine());
 
     /// <summary>Compone l'elenco senza toccare il disco.</summary>
     /// <param name="contenuto">Il contenuto grezzo di <c>machines.json</c>, se esiste.</param>
@@ -188,7 +188,7 @@ public static class MachineDirectory
         if (string.IsNullOrWhiteSpace(voce.BaseAddress)
             || !Uri.TryCreate(ConBarraFinale(voce.BaseAddress.Trim()), UriKind.Absolute, out Uri? indirizzo)
             || indirizzo.Scheme != Uri.UriSchemeHttps
-            || CertificateFingerprint.Normalizza(voce.Fingerprint) is null
+            || CertificateFingerprint.Normalize(voce.Fingerprint) is null
             || string.IsNullOrWhiteSpace(voce.Name))
         {
             return null;
@@ -235,13 +235,13 @@ public static class MachineDirectory
                 "add that machine's fingerprint.";
         }
 
-        if (CertificateFingerprint.Normalizza(voce.Fingerprint) is null)
+        if (CertificateFingerprint.Normalize(voce.Fingerprint) is null)
         {
             return string.IsNullOrWhiteSpace(voce.Fingerprint)
                 ? chi + " has no fingerprint, so there is no way to tell that machine apart from " +
                   "anyone able to stand in the middle of the connection. " + Esempio()
                 : chi + " has a fingerprint that isn't a SHA-256 value of " +
-                  CertificateFingerprint.QuanteCifre() + " hex digits. " + Esempio();
+                  CertificateFingerprint.DigitCount() + " hex digits. " + Esempio();
         }
 
         if (!string.IsNullOrWhiteSpace(voce.ApiToken))
@@ -259,7 +259,7 @@ public static class MachineDirectory
             return
                 "An entry with address " + (voce.BaseAddress ?? "(none)").Trim() + " has no " +
                 "\"name\", and the name is how its token is looked up in " +
-                deposito.Descrizione + ". " + Esempio();
+                deposito.Description + ". " + Esempio();
         }
 
         // L'indirizzo si controlla PRIMA del token mancante: con un indirizzo malformato quella
@@ -273,7 +273,7 @@ public static class MachineDirectory
         }
 
         return
-            chi + " has no token in " + deposito.Descrizione + ", and another machine's Observer " +
+            chi + " has no token in " + deposito.Description + ", and another machine's Observer " +
             "rejects every request that isn't authenticated. Run \"observer token set " + chi +
             "\" to store it.";
     }

@@ -3,17 +3,18 @@ using Observer.Core.Units;
 namespace Observer.Core.Metrics.Disk;
 
 /// <summary>
-/// I contatori cumulativi di UN dispositivo: quanto ha letto, quanto ha scritto, e da quanto
-/// tempo sta lavorando.
+/// The cumulative counters of ONE device: how much it has read, how much it has written, and how
+/// long it has been working.
 /// </summary>
 /// <remarks>
-/// Sono contatori dall'accensione, non misure: da soli non dicono niente di utile. Il valore
-/// nasce dalla differenza fra due letture, ed e' <see cref="DiskActivityRates"/> a farla.
+/// These are counters since power-on, not measurements: on their own they say nothing useful. The
+/// value comes from the difference between two readings, and <see cref="DiskActivityRates"/> is
+/// what takes it.
 /// <para>
-/// Il tempo di lavoro arriva dai due lati opposti a seconda della piattaforma, e per questo
-/// ci sono due fabbriche invece di un campo solo: Windows conta i tick di INATTIVITA', Linux
-/// i tick di OCCUPATO. Sono la stessa grandezza vista dal verso opposto, e appiattirle qui
-/// dentro vorrebbe dire che una delle due parti mente.
+/// Working time arrives from the two opposite sides depending on the platform, and that is why
+/// there are two factories instead of a single field: Windows counts IDLE ticks, Linux counts
+/// BUSY ticks. They are the same quantity seen from the opposite direction, and flattening them
+/// in here would mean one of the two sides is lying.
 /// </para>
 /// </remarks>
 public readonly record struct DiskActivityReading
@@ -33,112 +34,112 @@ public readonly record struct DiskActivityReading
     }
 
     /// <summary>
-    /// Come si chiama il dispositivo per chi guarda: <c>Disk 0</c> su Windows, <c>sda</c> su
-    /// Linux. Deve restare stabile da un campione all'altro, o la serie si spezza in due.
+    /// What the device is called for whoever is looking: <c>Disk 0</c> on Windows, <c>sda</c> on
+    /// Linux. It must stay stable from one sample to the next, or the series breaks in two.
     /// </summary>
     /// <remarks>
-    /// E' un DISPOSITIVO, non un volume: <c>C:</c> e <c>Disk 0</c> non sono la stessa cosa e
-    /// la corrispondenza fra i due non e' uno a uno. Legarli richiederebbe di attraversare le
-    /// partizioni, e una riga che dicesse "C:" mostrando il traffico di due volumi sarebbe
-    /// peggio di una riga che dice onestamente "Disk 0".
+    /// It is a DEVICE, not a volume: <c>C:</c> and <c>Disk 0</c> are not the same thing and the
+    /// correspondence between the two is not one to one. Tying them together would require
+    /// crossing the partitions, and a row saying "C:" while showing the traffic of two volumes
+    /// would be worse than a row that honestly says "Disk 0".
     /// </remarks>
     public string Instance { get; }
 
-    /// <summary>Byte letti dall'accensione.</summary>
+    /// <summary>Bytes read since power-on.</summary>
     public ulong BytesRead { get; }
 
-    /// <summary>Byte scritti dall'accensione.</summary>
+    /// <summary>Bytes written since power-on.</summary>
     public ulong BytesWritten { get; }
 
-    /// <summary>Tempo cumulativo in cui il dispositivo aveva richieste in corso, se noto.</summary>
+    /// <summary>Cumulative time in which the device had requests in flight, when known.</summary>
     public TimeSpan? Busy { get; }
 
-    /// <summary>Tempo cumulativo in cui il dispositivo non aveva niente da fare, se noto.</summary>
+    /// <summary>Cumulative time in which the device had nothing to do, when known.</summary>
     public TimeSpan? Idle { get; }
 
-    /// <summary>Costruisce una lettura da una piattaforma che conta il tempo OCCUPATO.</summary>
-    /// <param name="instance">Nome del dispositivo.</param>
-    /// <param name="bytesRead">Byte letti dall'accensione.</param>
-    /// <param name="bytesWritten">Byte scritti dall'accensione.</param>
-    /// <param name="busy">Tempo cumulativo con richieste in corso.</param>
-    /// <returns>La lettura.</returns>
-    public static DiskActivityReading ConTempoOccupato(
+    /// <summary>Builds a reading from a platform that counts BUSY time.</summary>
+    /// <param name="instance">Device name.</param>
+    /// <param name="bytesRead">Bytes read since power-on.</param>
+    /// <param name="bytesWritten">Bytes written since power-on.</param>
+    /// <param name="busy">Cumulative time with requests in flight.</param>
+    /// <returns>The reading.</returns>
+    public static DiskActivityReading WithBusyTime(
         string instance,
         ulong bytesRead,
         ulong bytesWritten,
         TimeSpan busy)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instance);
-        NonNegativo(busy, nameof(busy));
+        NonNegative(busy, nameof(busy));
 
         return new DiskActivityReading(instance, bytesRead, bytesWritten, busy, idle: null);
     }
 
-    /// <summary>Costruisce una lettura da una piattaforma che conta il tempo INATTIVO.</summary>
-    /// <param name="instance">Nome del dispositivo.</param>
-    /// <param name="bytesRead">Byte letti dall'accensione.</param>
-    /// <param name="bytesWritten">Byte scritti dall'accensione.</param>
-    /// <param name="idle">Tempo cumulativo senza richieste in corso.</param>
-    /// <returns>La lettura.</returns>
-    public static DiskActivityReading ConTempoInattivo(
+    /// <summary>Builds a reading from a platform that counts IDLE time.</summary>
+    /// <param name="instance">Device name.</param>
+    /// <param name="bytesRead">Bytes read since power-on.</param>
+    /// <param name="bytesWritten">Bytes written since power-on.</param>
+    /// <param name="idle">Cumulative time with no requests in flight.</param>
+    /// <returns>The reading.</returns>
+    public static DiskActivityReading WithIdleTime(
         string instance,
         ulong bytesRead,
         ulong bytesWritten,
         TimeSpan idle)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instance);
-        NonNegativo(idle, nameof(idle));
+        NonNegative(idle, nameof(idle));
 
         return new DiskActivityReading(instance, bytesRead, bytesWritten, busy: null, idle);
     }
 
-    private static void NonNegativo(TimeSpan quanto, string nome)
+    private static void NonNegative(TimeSpan amount, string parameterName)
     {
-        if (quanto < TimeSpan.Zero)
+        if (amount < TimeSpan.Zero)
         {
-            throw new ArgumentOutOfRangeException(nome, quanto, "a cumulative time cannot be negative");
+            throw new ArgumentOutOfRangeException(parameterName, amount, "a cumulative time cannot be negative");
         }
     }
 }
 
 /// <summary>
-/// Porta di lettura dei contatori di attivita' dei dischi.
+/// The port that reads the disks' activity counters.
 /// </summary>
 /// <remarks>
-/// Separata da <see cref="IDiskReadingProvider"/> di proposito, anche se parla degli stessi
-/// oggetti fisici: quella misura lo spazio sui VOLUMI, questa il traffico sui DISPOSITIVI, e
-/// le due cose si leggono da posti diversi con nomi diversi. Un'unica porta obbligherebbe una
-/// delle due a fingere di conoscere l'altra.
+/// Kept separate from <see cref="IDiskReadingProvider"/> on purpose, even though it speaks of the
+/// same physical objects: that one measures space on the VOLUMES, this one traffic on the
+/// DEVICES, and the two are read from different places under different names. A single port would
+/// force one of the two to pretend it knows the other.
 /// </remarks>
 public interface IDiskActivityProvider
 {
-    /// <summary>Falso quando su questa piattaforma non si misura affatto.</summary>
+    /// <summary>False when on this platform nothing is measured at all.</summary>
     bool IsSupported { get; }
 
-    /// <summary>Perche' non si misura, quando non si misura.</summary>
+    /// <summary>Why nothing is measured, when nothing is measured.</summary>
     string? UnsupportedReason { get; }
 
-    /// <summary>Legge i contatori. False quando la lettura fallisce del tutto.</summary>
+    /// <summary>Reads the counters. False when the reading fails entirely.</summary>
     bool TryRead(out IReadOnlyList<DiskActivityReading> readings);
 }
 
 /// <summary>
-/// Da due letture successive ai numeri da mostrare.
+/// From two successive readings to the numbers to show.
 /// </summary>
 /// <remarks>
-/// Funzione pura e separata dal collector per la stessa ragione di <c>CpuUsage</c>: qui ogni
-/// modo di sbagliare produce un numero credibile, e un numero credibile e falso non lo trova
-/// nessuno guardando la finestra.
+/// A pure function, kept apart from the collector for the same reason as <c>CpuUsage</c>: here
+/// every way of getting it wrong produces a believable number, and a believable number that is
+/// false is one nobody finds by looking at the window.
 /// </remarks>
 public static class DiskActivityRates
 {
-    /// <summary>Byte al secondo fra due letture dello stesso contatore.</summary>
-    /// <param name="previous">Contatore al campione precedente.</param>
-    /// <param name="current">Contatore adesso.</param>
-    /// <param name="elapsed">Tempo trascorso fra i due.</param>
-    /// <param name="rate">Il tasso, valorizzato solo se il calcolo riesce.</param>
-    /// <param name="failure">Perche' non si e' potuto calcolare.</param>
-    /// <returns>True se il tasso e' utilizzabile.</returns>
+    /// <summary>Bytes per second between two readings of the same counter.</summary>
+    /// <param name="previous">The counter at the previous sample.</param>
+    /// <param name="current">The counter now.</param>
+    /// <param name="elapsed">Time elapsed between the two.</param>
+    /// <param name="rate">The rate, set only if the computation succeeds.</param>
+    /// <param name="failure">Why it could not be computed.</param>
+    /// <returns>True if the rate is usable.</returns>
     public static bool TryComputeBytesPerSecond(
         ulong previous,
         ulong current,
@@ -150,9 +151,9 @@ public static class DiskActivityRates
 
         if (elapsed <= TimeSpan.Zero)
         {
-            // Non e' pedanteria: dividere per zero qui non solleva un errore, produce
-            // infinito, e MetricValue.FromNumber lancia sui valori non finiti — perdendo
-            // l'intera risposta HTTP per colpa di un disco solo.
+            // This is not pedantry: dividing by zero here does not raise an error, it produces
+            // infinity, and MetricValue.FromNumber throws on non-finite values — losing the
+            // whole HTTP response because of a single disk.
             failure = SampleFailure.NoElapsedTime;
 
             return false;
@@ -165,32 +166,32 @@ public static class DiskActivityRates
             return false;
         }
 
-        double valore = (current - previous) / elapsed.TotalSeconds;
+        double value = (current - previous) / elapsed.TotalSeconds;
 
-        if (!double.IsFinite(valore))
+        if (!double.IsFinite(value))
         {
             failure = SampleFailure.NotFinite;
 
             return false;
         }
 
-        rate = valore;
+        rate = value;
         failure = SampleFailure.Unknown;
 
         return true;
     }
 
-    /// <summary>Quanto e' stato occupato il dispositivo, in percentuale del tempo trascorso.</summary>
-    /// <param name="previous">Lettura precedente.</param>
-    /// <param name="current">Lettura attuale.</param>
-    /// <param name="elapsed">Tempo trascorso fra le due.</param>
-    /// <param name="busy">L'occupazione, valorizzata solo se il calcolo riesce.</param>
-    /// <param name="failure">Perche' non si e' potuto calcolare.</param>
-    /// <returns>True se l'occupazione e' utilizzabile.</returns>
+    /// <summary>How busy the device has been, as a percentage of the elapsed time.</summary>
+    /// <param name="previous">Previous reading.</param>
+    /// <param name="current">Current reading.</param>
+    /// <param name="elapsed">Time elapsed between the two.</param>
+    /// <param name="busy">The busy share, set only if the computation succeeds.</param>
+    /// <param name="failure">Why it could not be computed.</param>
+    /// <returns>True if the busy share is usable.</returns>
     /// <remarks>
-    /// <b>Non</b> si sommano il tempo di lettura e quello di scrittura. Le due code si
-    /// sovrappongono, e su una stessa finestra quella somma ha gia' dato 843%: un numero che
-    /// nessuno riconosce come sbagliato finche' non supera cento.
+    /// Read time and write time are <b>not</b> summed. The two queues overlap, and on one window
+    /// that sum has already given 843%: a number nobody takes for wrong until it goes past a
+    /// hundred.
     /// </remarks>
     public static bool TryComputeBusy(
         DiskActivityReading previous,
@@ -208,54 +209,54 @@ public static class DiskActivityRates
             return false;
         }
 
-        double rapporto;
+        double ratio;
 
-        if (previous.Busy is { } occupatoPrima && current.Busy is { } occupatoAdesso)
+        if (previous.Busy is { } busyBefore && current.Busy is { } busyNow)
         {
-            if (occupatoAdesso < occupatoPrima)
+            if (busyNow < busyBefore)
             {
                 failure = SampleFailure.CounterWentBackwards;
 
                 return false;
             }
 
-            rapporto = (occupatoAdesso - occupatoPrima) / elapsed;
+            ratio = (busyNow - busyBefore) / elapsed;
         }
-        else if (previous.Idle is { } fermoPrima && current.Idle is { } fermoAdesso)
+        else if (previous.Idle is { } idleBefore && current.Idle is { } idleNow)
         {
-            if (fermoAdesso < fermoPrima)
+            if (idleNow < idleBefore)
             {
                 failure = SampleFailure.CounterWentBackwards;
 
                 return false;
             }
 
-            rapporto = 1d - ((fermoAdesso - fermoPrima) / elapsed);
+            ratio = 1d - ((idleNow - idleBefore) / elapsed);
         }
         else
         {
-            // Irraggiungibile passando dalle due fabbriche, che valorizzano sempre uno dei
-            // due tempi. Ci si arriva solo con una lettura costruita come default, e in quel
-            // caso non c'e' davvero nessuna diagnosi da dare.
+            // Unreachable when going through the two factories, which always set one of the two
+            // times. It is only reached with a reading built as default, and in that case there
+            // really is no diagnosis to give.
             failure = SampleFailure.Unknown;
 
             return false;
         }
 
-        if (!double.IsFinite(rapporto))
+        if (!double.IsFinite(ratio))
         {
             failure = SampleFailure.NotFinite;
 
             return false;
         }
 
-        // I due estremi sono misurati, non teorici. Sotto zero: su un disco FERMO
-        // l'inattivita' avanza di un filo piu' dell'intervallo, perche' non e' lo stesso
-        // orologio a contarli, e su questa macchina il calcolo dava -0,07% — che
-        // Percent.TryFromRatio rifiuta, trasformando un disco fermo in un guasto. Sopra
-        // cento: con piu' richieste in coda i tick di occupato superano l'intervallo, e un
-        // disco non e' occupato al 150%, e' occupato.
-        if (!Percent.TryFromRatio(Math.Clamp(rapporto, 0d, 1d), out busy))
+        // The two bounds are measured, not theoretical. Below zero: on an IDLE disk the idle
+        // counter advances by a hair more than the interval, because it is not the same clock
+        // counting them, and on this machine the computation gave -0.07% — which
+        // Percent.TryFromRatio rejects, turning an idle disk into a fault. Above a hundred: with
+        // more requests queued the busy ticks exceed the interval, and a disk is not 150% busy,
+        // it is busy.
+        if (!Percent.TryFromRatio(Math.Clamp(ratio, 0d, 1d), out busy))
         {
             failure = SampleFailure.NotFinite;
 

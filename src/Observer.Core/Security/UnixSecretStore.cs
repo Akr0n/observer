@@ -4,152 +4,152 @@ using System.Text;
 namespace Observer.Core.Security;
 
 /// <summary>
-/// I token delle macchine remote in file leggibili solo dal proprietario.
+/// The tokens of remote machines, in files readable only by their owner.
 /// </summary>
 /// <remarks>
-/// Su Linux non esiste un deposito di sistema sempre presente: il portachiavi di GNOME o di
-/// KDE c'e' su una sessione grafica e non su una macchina raggiunta via SSH, e farne una
-/// dipendenza vorrebbe dire che la dashboard non parte dove quel servizio non gira. Un file a
-/// <c>0600</c> e' lo stesso livello di protezione con cui vive una chiave privata di SSH, ed
-/// e' quello che il servizio usa gia' per il proprio token.
+/// On Linux there is no system store that is always there: the GNOME or the KDE keyring is on a
+/// graphical session and not on a machine reached over SSH, and making it a dependency would
+/// mean the dashboard does not start where that service is not running. A <c>0600</c> file is
+/// the same level of protection an SSH private key lives with, and it is the one the service
+/// already uses for its own token.
 /// <para>
-/// La differenza che conta rispetto a <c>machines.json</c> non e' solo il modo del file: e'
-/// che qui i permessi si <b>verificano in lettura</b>, e un file che qualcun altro puo'
-/// leggere fa fallire la lettura invece di funzionare in silenzio. Un permesso sbagliato che
-/// non rompe niente e' un permesso sbagliato che resta li' per sempre.
+/// The difference that counts against <c>machines.json</c> is not only the file mode: it is
+/// that here the permissions are <b>checked on read</b>, and a file someone else can read makes
+/// the read fail instead of working in silence. A wrong permission that breaks nothing is a
+/// wrong permission that stays there for ever.
 /// </para>
 /// </remarks>
 [SupportedOSPlatform("linux")]
 public sealed class UnixSecretStore : ISecretStore
 {
-    private const UnixFileMode SoloProprietario = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+    private const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite;
 
-    private const UnixFileMode CartellaSoloProprietario =
+    private const UnixFileMode FolderOwnerOnly =
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
-    /// <summary>Cio' che nessun altro deve poter fare sul file di un segreto.</summary>
-    private const UnixFileMode Altrui =
+    /// <summary>What nobody else must be able to do on a secret's file.</summary>
+    private const UnixFileMode Others =
         UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
         UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
 
-    private readonly string cartella;
+    private readonly string folder;
 
-    /// <summary>Crea il deposito nella cartella indicata.</summary>
-    /// <param name="cartella">Dove tenere i segreti, oppure null per il percorso predefinito.</param>
-    public UnixSecretStore(string? cartella = null) =>
-        this.cartella = cartella ?? PercorsoPredefinito();
+    /// <summary>Creates the store in the given folder.</summary>
+    /// <param name="folder">Where to keep the secrets, or null for the default path.</param>
+    public UnixSecretStore(string? folder = null) =>
+        this.folder = folder ?? DefaultPath();
 
-    /// <summary>La cartella dei segreti sotto il profilo dell'utente.</summary>
-    /// <returns>Il percorso.</returns>
-    public static string PercorsoPredefinito() => Path.Combine(
+    /// <summary>The secrets folder under the user's profile.</summary>
+    /// <returns>The path.</returns>
+    public static string DefaultPath() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Observer",
         "secrets");
 
     /// <inheritdoc />
-    public string Descrizione => "files readable only by their owner, under " + cartella;
+    public string Description => "files readable only by their owner, under " + folder;
 
     /// <inheritdoc />
-    public bool TryRead(string nome, out string segreto)
+    public bool TryRead(string name, out string secret)
     {
-        segreto = string.Empty;
+        secret = string.Empty;
 
-        string percorso = Percorso(nome);
+        string path = PathFor(name);
 
-        if (!File.Exists(percorso))
+        if (!File.Exists(path))
         {
             return false;
         }
 
-        Verifica(percorso);
+        Verify(path);
 
-        segreto = File.ReadAllText(percorso, Encoding.UTF8).Trim();
+        secret = File.ReadAllText(path, Encoding.UTF8).Trim();
 
-        return segreto.Length > 0;
+        return secret.Length > 0;
     }
 
     /// <inheritdoc />
-    public void Write(string nome, string segreto)
+    public void Write(string name, string secret)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(segreto);
+        ArgumentException.ThrowIfNullOrWhiteSpace(secret);
 
-        string percorso = Percorso(nome);
+        string path = PathFor(name);
 
-        Directory.CreateDirectory(cartella, CartellaSoloProprietario);
+        Directory.CreateDirectory(folder, FolderOwnerOnly);
 
-        // La cartella puo' esistere gia' da prima, con permessi ereditati piu' larghi:
-        // CreateDirectory non li corregge, e un segreto dentro una cartella attraversabile da
-        // altri e' protetto solo finche' nessuno prova.
-        File.SetUnixFileMode(cartella, CartellaSoloProprietario);
+        // The folder may already exist from before, with wider inherited permissions:
+        // CreateDirectory does not fix them, and a secret inside a folder others can traverse is
+        // protected only until someone tries.
+        File.SetUnixFileMode(folder, FolderOwnerOnly);
 
-        // Si scrive su un file temporaneo e poi si sposta: sovrascrivere sul posto lascerebbe
-        // il segreto vecchio troncato a meta' se il processo muore, e ricrearlo lascerebbe una
-        // finestra senza segreto. Il modo si passa alla CREAZIONE, quindi il file non esiste
-        // mai con permessi piu' larghi.
-        string temporaneo = percorso + ".nuovo";
+        // Write to a temporary file and then move it: overwriting in place would leave the old
+        // secret truncated halfway if the process dies, and recreating it would leave a window
+        // with no secret. The mode is passed at CREATION, so the file never exists with wider
+        // permissions.
+        string temporary = path + ".nuovo";
 
-        using (FileStream flusso = new(temporaneo, new FileStreamOptions
+        using (FileStream stream = new(temporary, new FileStreamOptions
         {
             Mode = FileMode.Create,
             Access = FileAccess.Write,
             Share = FileShare.None,
-            UnixCreateMode = SoloProprietario,
+            UnixCreateMode = OwnerOnly,
         }))
         {
-            flusso.Write(Encoding.UTF8.GetBytes(segreto));
-            flusso.Flush(flushToDisk: true);
+            stream.Write(Encoding.UTF8.GetBytes(secret));
+            stream.Flush(flushToDisk: true);
         }
 
-        File.SetUnixFileMode(temporaneo, SoloProprietario);
-        File.Move(temporaneo, percorso, overwrite: true);
+        File.SetUnixFileMode(temporary, OwnerOnly);
+        File.Move(temporary, path, overwrite: true);
     }
 
     /// <inheritdoc />
-    public bool Delete(string nome)
+    public bool Delete(string name)
     {
-        string percorso = Percorso(nome);
+        string path = PathFor(name);
 
-        if (!File.Exists(percorso))
+        if (!File.Exists(path))
         {
             return false;
         }
 
-        File.Delete(percorso);
+        File.Delete(path);
 
         return true;
     }
 
-    private static void Verifica(string percorso)
+    private static void Verify(string path)
     {
-        UnixFileMode modo = File.GetUnixFileMode(percorso);
+        UnixFileMode mode = File.GetUnixFileMode(path);
 
-        if ((modo & Altrui) != 0)
+        if ((mode & Others) != 0)
         {
             throw new SecretStoreException(
-                $"The token file {percorso} is readable by someone other than you ({modo}). " +
-                $"Observer will not use it. Fix it with: chmod 600 \"{percorso}\"");
+                $"The token file {path} is readable by someone other than you ({mode}). " +
+                $"Observer will not use it. Fix it with: chmod 600 \"{path}\"");
         }
 
-        string? contenitore = Path.GetDirectoryName(percorso);
+        string? parent = Path.GetDirectoryName(path);
 
-        if (contenitore is null)
+        if (parent is null)
         {
             return;
         }
 
-        UnixFileMode modoCartella = File.GetUnixFileMode(contenitore);
+        UnixFileMode parentMode = File.GetUnixFileMode(parent);
 
-        // La cartella conta quanto il file: chi puo' scriverci dentro puo' sostituire il file
-        // con uno suo, e da quel momento la dashboard presenterebbe alle macchine remote un
-        // token scelto da qualcun altro.
-        if ((modoCartella & (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite)) != 0)
+        // The folder counts as much as the file: whoever can write inside it can replace the
+        // file with one of their own, and from that moment the dashboard would present remote
+        // machines a token chosen by someone else.
+        if ((parentMode & (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite)) != 0)
         {
             throw new SecretStoreException(
-                $"The folder {contenitore} is writable by others ({modoCartella}), so the token " +
+                $"The folder {parent} is writable by others ({parentMode}), so the token " +
                 $"inside it can be replaced. Observer will not use it. Fix it with: " +
-                $"chmod 700 \"{contenitore}\"");
+                $"chmod 700 \"{parent}\"");
         }
     }
 
-    private string Percorso(string nome) => Path.Combine(cartella, SecretName.Valida(nome));
+    private string PathFor(string name) => Path.Combine(folder, SecretName.Validate(name));
 }

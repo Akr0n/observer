@@ -3,71 +3,71 @@ using Observer.Core.Units;
 namespace Observer.Core.Metrics.Disk;
 
 /// <summary>
-/// Quanto stanno lavorando i dischi: byte letti e scritti al secondo, e percentuale di tempo
-/// occupato.
+/// How hard the disks are working: bytes read and written per second, and the percentage of
+/// time busy.
 /// </summary>
 /// <remarks>
-/// E' il primo collector che misura una VELOCITA', e questo cambia tre cose rispetto a tutti
-/// gli altri.
+/// It is the first collector that measures a RATE, and that changes three things compared
+/// with all the others.
 /// <para>
-/// La prima: serve un orologio. La CPU calcola una percentuale come rapporto fra due delta
-/// della stessa grandezza, e nel rapporto l'unita' si semplifica — nessun collector, finora,
-/// ha mai avuto bisogno di sapere quanto tempo fosse passato. I byte al secondo si', e
-/// l'orologio arriva da fuori (<see cref="TimeProvider"/>) perche' un test non deve aspettare
-/// un secondo vero per provare una divisione.
+/// The first: a clock is needed. The CPU computes a percentage as the ratio of two deltas of
+/// the same quantity, and in the ratio the unit cancels out — no collector, so far, has ever
+/// needed to know how much time had passed. Bytes per second do, and the clock comes from
+/// outside (<see cref="TimeProvider"/>) because a test must not wait a real second to
+/// exercise a division.
 /// </para>
 /// <para>
-/// La seconda: lo stato e' PER ISTANZA. I dischi compaiono e spariscono mentre il programma
-/// gira — una chiavetta, un disco di rete — e un dispositivo appena comparso non ha un
-/// campione precedente. Se ne rubasse uno altrui, o se il suo contatore assoluto venisse
-/// diviso per un secondo, comparirebbe a schermo con un numero enorme e plausibile.
+/// The second: the state is PER INSTANCE. Disks appear and vanish while the program runs — a
+/// memory stick, a network drive — and a device that has just appeared has no previous
+/// sample. If it stole somebody else's, or if its absolute counter were divided by one
+/// second, it would show up on screen with a huge and plausible number.
 /// </para>
 /// <para>
-/// La terza: le istanze sono DISPOSITIVI, non volumi, e quindi non coincidono con quelle di
-/// <see cref="DiskCollector"/>. Un disco puo' portare piu' volumi e un volume puo' stare su
-/// piu' dischi: la corrispondenza non e' uno a uno, e fingere che lo sia per far combaciare
-/// due elenchi a schermo significherebbe attribuire a <c>C:</c> traffico che non e' suo.
+/// The third: the instances are DEVICES, not volumes, and therefore do not line up with those
+/// of <see cref="DiskCollector"/>. A disk can carry several volumes and a volume can span
+/// several disks: the correspondence is not one to one, and pretending it is in order to make
+/// two on-screen lists match would mean attributing to <c>C:</c> traffic that is not its own.
 /// </para>
 /// </remarks>
 public sealed class DiskActivityCollector : IMetricCollector
 {
-    /// <summary>Byte letti al secondo.</summary>
+    /// <summary>Bytes read per second.</summary>
     public const string ReadBytesPerSecondMetricId = "disk.read.bytespersecond";
 
-    /// <summary>Byte scritti al secondo.</summary>
+    /// <summary>Bytes written per second.</summary>
     public const string WriteBytesPerSecondMetricId = "disk.write.bytespersecond";
 
-    /// <summary>Percentuale di tempo in cui il dispositivo aveva richieste in corso.</summary>
+    /// <summary>Percentage of time in which the device had requests outstanding.</summary>
     public const string BusyPercentMetricId = "disk.busy.percent";
 
-    // MetricUnit e' un tipo aperto e non un enum, apposta: una unita' nuova non tocca Core.
-    private static readonly MetricUnit ByteAlSecondo = new("B/s");
+    // MetricUnit is an open type and not an enum, on purpose: a new unit does not touch Core.
+    private static readonly MetricUnit BytesPerSecond = new("B/s");
 
     private static readonly IReadOnlyList<MetricDescriptor> DescriptorList =
     [
-        new(ReadBytesPerSecondMetricId, "Disk read", ByteAlSecondo, IsPerInstance: true),
-        new(WriteBytesPerSecondMetricId, "Disk write", ByteAlSecondo, IsPerInstance: true),
+        new(ReadBytesPerSecondMetricId, "Disk read", BytesPerSecond, IsPerInstance: true),
+        new(WriteBytesPerSecondMetricId, "Disk write", BytesPerSecond, IsPerInstance: true),
         new(BusyPercentMetricId, "Disk activity", MetricUnit.Percent, IsPerInstance: true),
     ];
 
     private readonly IDiskActivityProvider provider;
-    private readonly TimeProvider orologio;
+    private readonly TimeProvider clock;
 
-    private readonly Dictionary<string, DiskActivityReading> precedenti =
+    private readonly Dictionary<string, DiskActivityReading> previous =
         new(StringComparer.Ordinal);
 
-    private long istantePrecedente;
-    private bool haUnPrecedente;
+    private long previousInstant;
+    private bool hasPrevious;
 
-    /// <summary>Crea il collector sopra la porta indicata.</summary>
-    /// <param name="provider">Da dove si leggono i contatori.</param>
-    /// <param name="timeProvider">L'orologio, o null per quello di sistema.</param>
+    /// <summary>Creates the collector over the given port.</summary>
+    /// <param name="provider">Where the counters are read from.</param>
+    /// <param name="timeProvider">The clock, or null for the system one.</param>
     public DiskActivityCollector(IDiskActivityProvider provider, TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(provider);
 
         this.provider = provider;
-        orologio = timeProvider ?? TimeProvider.System;
+        clock = timeProvider ?? TimeProvider.System;
     }
 
     /// <inheritdoc />
@@ -88,121 +88,121 @@ public sealed class DiskActivityCollector : IMetricCollector
     {
         if (!provider.IsSupported)
         {
-            return Degradato(
+            return Degraded(
                 CollectorStatus.Unsupported,
                 provider.UnsupportedReason ?? "source not supported on this platform");
         }
 
-        if (!provider.TryRead(out IReadOnlyList<DiskActivityReading> letture))
+        if (!provider.TryRead(out IReadOnlyList<DiskActivityReading> readings))
         {
-            // La storia si azzera: riprendendo dopo il buco, la differenza sarebbe divisa per
-            // un intervallo di cui non si conosce la durata. Un giro di riscaldamento in piu'
-            // costa un secondo; una media su un tempo sconosciuto non si riconosce piu'.
-            Dimentica();
+            // The history is cleared: resuming after the gap, the difference would be divided
+            // by an interval whose duration is not known. One extra warm-up round costs a
+            // second; an average over an unknown span cannot be told apart afterwards.
+            Forget();
 
-            return Degradato(CollectorStatus.Unavailable, "the disk activity counters could not be read");
+            return Degraded(CollectorStatus.Unavailable, "the disk activity counters could not be read");
         }
 
-        long adesso = orologio.GetTimestamp();
+        long now = clock.GetTimestamp();
 
-        if (!haUnPrecedente)
+        if (!hasPrevious)
         {
-            Ricorda(letture, adesso);
+            Remember(readings, now);
 
-            return Degradato(CollectorStatus.Warmup, SampleFailureText.Describe(SampleFailure.FirstSample));
+            return Degraded(CollectorStatus.Warmup, SampleFailureText.Describe(SampleFailure.FirstSample));
         }
 
-        TimeSpan trascorso = orologio.GetElapsedTime(istantePrecedente, adesso);
-        List<MetricPoint> punti = new(letture.Count * 3);
+        TimeSpan elapsed = clock.GetElapsedTime(previousInstant, now);
+        List<MetricPoint> points = new(readings.Count * 3);
 
-        foreach (DiskActivityReading lettura in letture)
+        foreach (DiskActivityReading reading in readings)
         {
-            if (precedenti.TryGetValue(lettura.Instance, out DiskActivityReading prima))
+            if (previous.TryGetValue(reading.Instance, out DiskActivityReading before))
             {
-                Misura(punti, prima, lettura, trascorso);
+                Measure(points, before, reading, elapsed);
             }
             else
             {
-                // Dispositivo comparso ora: esiste, e va detto che esiste, ma non ha ancora
-                // un valore. Tacerlo lo farebbe sembrare assente; pubblicarne uno lo farebbe
-                // sembrare misurato.
-                Mancante(punti, lettura.Instance, SampleFailure.FirstSample);
+                // Device that has just appeared: it exists, and that it exists must be said,
+                // but it has no value yet. Staying silent about it would make it look absent;
+                // publishing one would make it look measured.
+                Missing(points, reading.Instance, SampleFailure.FirstSample);
             }
         }
 
-        // Solo i dispositivi visti ADESSO restano in memoria: uno staccato sparisce dai punti
-        // invece di mostrare per sempre il suo ultimo numero.
-        Ricorda(letture, adesso);
+        // Only the devices seen NOW stay in memory: one that is unplugged disappears from the
+        // points instead of showing its last number for ever.
+        Remember(readings, now);
 
-        return letture.Count == 0
+        return readings.Count == 0
             ? new MetricSnapshot(Id, CollectorStatus.Ok, "no disk device to report on this machine", [])
-            : new MetricSnapshot(Id, CollectorStatus.Ok, null, punti);
+            : new MetricSnapshot(Id, CollectorStatus.Ok, null, points);
     }
 
-    private static void Misura(
-        List<MetricPoint> punti,
-        DiskActivityReading prima,
-        DiskActivityReading adesso,
-        TimeSpan trascorso)
+    private static void Measure(
+        List<MetricPoint> points,
+        DiskActivityReading before,
+        DiskActivityReading now,
+        TimeSpan elapsed)
     {
-        punti.Add(Tasso(
-            ReadBytesPerSecondMetricId, adesso.Instance, prima.BytesRead, adesso.BytesRead, trascorso));
+        points.Add(Rate(
+            ReadBytesPerSecondMetricId, now.Instance, before.BytesRead, now.BytesRead, elapsed));
 
-        punti.Add(Tasso(
+        points.Add(Rate(
             WriteBytesPerSecondMetricId,
-            adesso.Instance,
-            prima.BytesWritten,
-            adesso.BytesWritten,
-            trascorso));
+            now.Instance,
+            before.BytesWritten,
+            now.BytesWritten,
+            elapsed));
 
-        punti.Add(
+        points.Add(
             DiskActivityRates.TryComputeBusy(
-                prima, adesso, trascorso, out Percent occupato, out SampleFailure guasto)
+                before, now, elapsed, out Percent busy, out SampleFailure failure)
                 ? MetricPoint.Measured(
-                    BusyPercentMetricId, adesso.Instance, MetricValue.FromNumber(occupato.Points))
+                    BusyPercentMetricId, now.Instance, MetricValue.FromNumber(busy.Points))
                 : MetricPoint.Unavailable(
-                    BusyPercentMetricId, adesso.Instance, SampleFailureText.Describe(guasto)));
+                    BusyPercentMetricId, now.Instance, SampleFailureText.Describe(failure)));
     }
 
-    private static MetricPoint Tasso(
-        string metrica,
-        string istanza,
-        ulong prima,
-        ulong adesso,
-        TimeSpan trascorso) =>
+    private static MetricPoint Rate(
+        string metric,
+        string instance,
+        ulong before,
+        ulong now,
+        TimeSpan elapsed) =>
         DiskActivityRates.TryComputeBytesPerSecond(
-            prima, adesso, trascorso, out double tasso, out SampleFailure guasto)
-            ? MetricPoint.Measured(metrica, istanza, MetricValue.FromNumber(tasso))
-            : MetricPoint.Unavailable(metrica, istanza, SampleFailureText.Describe(guasto));
+            before, now, elapsed, out double rate, out SampleFailure failure)
+            ? MetricPoint.Measured(metric, instance, MetricValue.FromNumber(rate))
+            : MetricPoint.Unavailable(metric, instance, SampleFailureText.Describe(failure));
 
-    private static void Mancante(List<MetricPoint> punti, string istanza, SampleFailure guasto)
+    private static void Missing(List<MetricPoint> points, string instance, SampleFailure failure)
     {
-        string motivo = SampleFailureText.Describe(guasto);
+        string reason = SampleFailureText.Describe(failure);
 
-        punti.Add(MetricPoint.Unavailable(ReadBytesPerSecondMetricId, istanza, motivo));
-        punti.Add(MetricPoint.Unavailable(WriteBytesPerSecondMetricId, istanza, motivo));
-        punti.Add(MetricPoint.Unavailable(BusyPercentMetricId, istanza, motivo));
+        points.Add(MetricPoint.Unavailable(ReadBytesPerSecondMetricId, instance, reason));
+        points.Add(MetricPoint.Unavailable(WriteBytesPerSecondMetricId, instance, reason));
+        points.Add(MetricPoint.Unavailable(BusyPercentMetricId, instance, reason));
     }
 
-    private void Ricorda(IReadOnlyList<DiskActivityReading> letture, long adesso)
+    private void Remember(IReadOnlyList<DiskActivityReading> readings, long now)
     {
-        precedenti.Clear();
+        previous.Clear();
 
-        foreach (DiskActivityReading lettura in letture)
+        foreach (DiskActivityReading reading in readings)
         {
-            precedenti[lettura.Instance] = lettura;
+            previous[reading.Instance] = reading;
         }
 
-        istantePrecedente = adesso;
-        haUnPrecedente = true;
+        previousInstant = now;
+        hasPrevious = true;
     }
 
-    private void Dimentica()
+    private void Forget()
     {
-        precedenti.Clear();
-        haUnPrecedente = false;
+        previous.Clear();
+        hasPrevious = false;
     }
 
-    private MetricSnapshot Degradato(CollectorStatus stato, string motivo) =>
-        new(Id, stato, motivo, []);
+    private MetricSnapshot Degraded(CollectorStatus status, string reason) =>
+        new(Id, status, reason, []);
 }

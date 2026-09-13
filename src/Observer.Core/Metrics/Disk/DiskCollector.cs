@@ -1,39 +1,39 @@
 namespace Observer.Core.Metrics.Disk;
 
 /// <summary>
-/// Lo spazio occupato sui volumi montati.
+/// The space used on the mounted volumes.
 /// </summary>
 /// <remarks>
-/// E' il primo collector <b>per istanza</b>: un volume, un'istanza. La dimensione per istanza
-/// e' un campo del punto e non una gerarchia di tipi, quindi qui non serve niente di nuovo —
-/// era gia' previsto, e questa e' la prima sorgente che lo usa davvero.
+/// It is the first <b>per-instance</b> collector: one volume, one instance. The per-instance
+/// dimension is a field of the point and not a hierarchy of types, so nothing new is needed here —
+/// it was already provided for, and this is the first source that really uses it.
 /// <para>
-/// Misura lo SPAZIO e non l'attivita' di lettura e scrittura. Non e' una dimenticanza:
-/// l'attivita' si legge con <c>DeviceIoControl</c> e il marshalling di una struct, e porta
-/// dentro trappole che vanno affrontate con calma — fra le altre, che la percentuale di tempo
-/// occupato si calcola dall'INATTIVITA' e non sommando i tempi di lettura e scrittura, che si
-/// sovrappongono in coda e su una stessa finestra hanno dato 843%.
+/// It measures SPACE and not read and write activity. That is not an oversight: activity is read
+/// with <c>DeviceIoControl</c> and the marshalling of a struct, and it brings in traps that have
+/// to be faced calmly — among others, that the percentage of busy time is computed from IDLE time
+/// and not by summing read and write times, which overlap in the queue and on one and the same
+/// window gave 843%.
 /// </para>
 /// <para>
-/// Non c'e' nemmeno la distinzione fra disco a stato solido e meccanico, ed e' una scelta:
-/// e' stato misurato che <b>mente</b>. In macchina virtuale quattro dischi si dichiarano
-/// meccanici mentre il supporto fisico e' NVMe, e dietro un adattatore USB la domanda non
-/// passa affatto. Una colonna che dice "meccanico" su un SSD e' peggio di una colonna che non
-/// c'e'.
+/// There is not even a distinction between solid state and mechanical disk, and that is a choice:
+/// it was measured that it <b>lies</b>. In a virtual machine four disks declare themselves
+/// mechanical while the physical medium is NVMe, and behind a USB adapter the question does not
+/// get through at all. A column that says "mechanical" on an SSD is worse than a column that is
+/// not there.
 /// </para>
 /// </remarks>
 public sealed class DiskCollector : IMetricCollector
 {
-    /// <summary>Capienza del volume.</summary>
+    /// <summary>Capacity of the volume.</summary>
     public const string TotalBytesMetricId = "disk.total.bytes";
 
-    /// <summary>Spazio ancora scrivibile.</summary>
+    /// <summary>Space still writable.</summary>
     public const string FreeBytesMetricId = "disk.free.bytes";
 
-    /// <summary>Spazio occupato.</summary>
+    /// <summary>Space used.</summary>
     public const string UsedBytesMetricId = "disk.used.bytes";
 
-    /// <summary>Quanto e' pieno il volume, in percentuale.</summary>
+    /// <summary>How full the volume is, as a percentage.</summary>
     public const string UsedPercentMetricId = "disk.used.percent";
 
     private static readonly IReadOnlyList<MetricDescriptor> DescriptorList =
@@ -46,8 +46,8 @@ public sealed class DiskCollector : IMetricCollector
 
     private readonly IDiskReadingProvider provider;
 
-    /// <summary>Crea il collector sopra la porta indicata.</summary>
-    /// <param name="provider">Da dove si leggono i volumi.</param>
+    /// <summary>Creates the collector on top of the given port.</summary>
+    /// <param name="provider">Where the volumes are read from.</param>
     public DiskCollector(IDiskReadingProvider provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
@@ -89,9 +89,9 @@ public sealed class DiskCollector : IMetricCollector
                 []);
         }
 
-        // Nessun volume NON e' un guasto, ed e' importante non chiamarlo tale: dentro un
-        // container minimale puo' non esserci un solo filesystem che valga la pena mostrare.
-        // "Ok con zero punti" e "non sono riuscito a leggere" devono restare distinguibili.
+        // No volume is NOT a fault, and it matters not to call it one: inside a minimal
+        // container there may be not a single filesystem worth showing. "Ok with zero points"
+        // and "I could not read" must stay distinguishable.
         if (readings.Count == 0)
         {
             return new MetricSnapshot(
@@ -114,15 +114,15 @@ public sealed class DiskCollector : IMetricCollector
             points.Add(MetricPoint.Measured(
                 UsedBytesMetricId, reading.Instance, MetricValue.FromNumber(reading.Used.Bytes)));
 
-            // La percentuale e' l'unica che puo' MANCARE su un volume che esiste: la capienza
-            // arriva a zero dai montaggi speciali e dai dispositivi che si smontano mentre li
-            // si legge. Si dichiara non disponibile su quel volume soltanto, con il motivo,
-            // invece di pubblicare uno zero che si leggerebbe come "vuoto".
-            points.Add(reading.Fraction is { } quanto
+            // The percentage is the only one that can be MISSING on a volume that exists: the
+            // capacity comes out as zero from special mounts and from devices that unmount while
+            // they are being read. It is declared unavailable on that volume alone, with the
+            // reason, instead of publishing a zero that would read as "empty".
+            points.Add(reading.Fraction is { } fraction
                 ? MetricPoint.Measured(
                     UsedPercentMetricId,
                     reading.Instance,
-                    MetricValue.FromNumber(quanto * 100d))
+                    MetricValue.FromNumber(fraction * 100d))
                 : MetricPoint.Unavailable(
                     UsedPercentMetricId,
                     reading.Instance,

@@ -1,32 +1,32 @@
 namespace Observer.Core.Metrics.Cpu;
 
 /// <summary>
-/// Porta verso i contatori di tempo CPU della piattaforma. Esiste per tenere la lettura
-/// grezza fuori dal collector: e' cio' che rende il calcolo testabile senza hardware.
+/// Port to the platform's CPU time counters. It exists to keep the raw reading out of the
+/// collector: that is what makes the computation testable without hardware.
 /// </summary>
 public interface ICpuTimesProvider
 {
-    /// <summary>False quando la piattaforma non espone affatto questi contatori.</summary>
+    /// <summary>False when the platform does not expose these counters at all.</summary>
     bool IsSupported { get; }
 
     /// <summary>
-    /// Perche' non e' supportata, quando <see cref="IsSupported"/> e' false. E' la frase
-    /// che finisce in dashboard al posto del valore.
+    /// Why it is not supported, when <see cref="IsSupported"/> is false. It is the sentence
+    /// that ends up in the dashboard in place of the value.
     /// </summary>
     string? UnsupportedReason { get; }
 
-    /// <summary>Legge i contatori cumulativi. False se la lettura non riesce ora.</summary>
+    /// <summary>Reads the cumulative counters. False if the reading fails right now.</summary>
     bool TryRead(out CpuTimes times);
 }
 
 /// <summary>
-/// Collector dell'utilizzo CPU. Non apre file e non chiama l'OS: chiede i tick alla porta e
-/// applica <see cref="CpuUsage"/>. Conserva il campione precedente perche' una percentuale
-/// e' per definizione una differenza fra due letture.
+/// CPU usage collector. It opens no file and calls no OS API: it asks the port for the ticks and
+/// applies <see cref="CpuUsage"/>. It keeps the previous sample because a percentage is by
+/// definition a difference between two readings.
 /// </summary>
 public sealed class CpuCollector : IMetricCollector
 {
-    /// <summary>Identificatore della metrica di utilizzo CPU totale.</summary>
+    /// <summary>Identifier of the total CPU usage metric.</summary>
     public const string TotalUsageMetricId = "cpu.usage.total";
 
     private static readonly MetricDescriptor[] DescriptorList =
@@ -37,7 +37,7 @@ public sealed class CpuCollector : IMetricCollector
     private readonly ICpuTimesProvider provider;
     private CpuTimes? previous;
 
-    /// <summary>Crea il collector sopra la porta indicata.</summary>
+    /// <summary>Creates the collector on top of the given port.</summary>
     public CpuCollector(ICpuTimesProvider provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
@@ -62,8 +62,8 @@ public sealed class CpuCollector : IMetricCollector
     {
         if (!provider.IsSupported)
         {
-            // Resta nel catalogo con la spiegazione: "non si puo' misurare qui" e'
-            // un'informazione, "la metrica e' sparita" e' un bug apparente.
+            // Stays in the catalog with the explanation: "it cannot be measured here" is
+            // information, "the metric is gone" is an apparent bug.
             return Degraded(
                 CollectorStatus.Unsupported,
                 provider.UnsupportedReason ?? "source not supported on this platform");
@@ -71,8 +71,8 @@ public sealed class CpuCollector : IMetricCollector
 
         if (!provider.TryRead(out CpuTimes current))
         {
-            // Azzera la storia: calcolare un delta a cavallo di un buco produrrebbe una
-            // percentuale mediata su un intervallo sconosciuto, cioe' un numero inventato.
+            // Clear the history: computing a delta across a hole would produce a percentage
+            // averaged over an unknown interval, that is, a made-up number.
             previous = null;
             return Degraded(CollectorStatus.Unavailable, "couldn't read the CPU counters");
         }
@@ -89,7 +89,7 @@ public sealed class CpuCollector : IMetricCollector
 
         if (!CpuUsage.TryComputePercent(last, current, out Units.Percent usage, out SampleFailure failure))
         {
-            // Vuoto e spiegato, mai un numero sbagliato.
+            // Empty and explained, never a wrong number.
             return Degraded(CollectorStatus.Unavailable, SampleFailureText.Describe(failure));
         }
 
