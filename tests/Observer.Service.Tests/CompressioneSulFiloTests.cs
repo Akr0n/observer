@@ -6,9 +6,12 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Observer.Core.Security;
 using Observer.Service.Credentials;
+using Observer.Service.LocalChannel;
 
 namespace Observer.Service.Tests;
 
@@ -99,6 +102,67 @@ public class CompressioneSulFiloTests
     }
 
     [Fact]
+    public async Task OffrendoTuttiGliEncoderSiOttieneIlPiuPiccoloSulFilo()
+    {
+        // Il client offre "gzip, deflate, br" e a parita' di preferenza il servizio sceglie il
+        // PRIMO provider registrato. Sembra un dettaglio e non lo e': il servizio SERIALIZZA,
+        // cioe' lo JSON esce dal writer a pezzi con un flush per segmento, e i flush puniscono
+        // Brotli molto piu' di Gzip. Misurato QUI, sul filo vero, non su un buffer compresso in
+        // un colpo solo - che e' esattamente l'errore che aveva fatto preferire Brotli.
+        using X509Certificate2 certificato = Depositato();
+        string impronta = MachineCertificate.Impronta(certificato);
+
+        await using Banco banco = await Banco.AvviaAsync(certificato);
+
+        (long conTutti, string? scelto, string corpo) = await banco.LeggiAsync(impronta, "gzip, deflate, br");
+        (long soloBrotli, _, _) = await banco.LeggiAsync(impronta, "br");
+        (long soloGzip, _, _) = await banco.LeggiAsync(impronta, "gzip");
+
+        Assert.Equal(Corpo, corpo);
+
+        // La scelta non e' un gusto: deve essere la piu' PICCOLA fra quelle disponibili, e il
+        // test la MISURA invece di fidarsi del nome dell'encoder. Confrontare con un encoder
+        // solo non proverebbe niente - se il servizio sceglie quello, si confronta con se
+        // stesso - quindi si confronta con il minimo dei due.
+        long ilMigliore = Math.Min(soloGzip, soloBrotli);
+
+        Assert.True(
+            conTutti <= ilMigliore,
+            $"offrendo tutto si ottengono {conTutti} byte (scelto: {scelto}), ma il migliore "
+            + $"disponibile ne fa {ilMigliore} — gzip {soloGzip}, br {soloBrotli}");
+    }
+
+    [Fact]
+    public async Task LaPipelineVeraComprimeENonSoloIlBanco()
+    {
+        // Le prove qui sopra costruiscono una COPIA della registrazione di Program.cs dentro il
+        // proprio host: provano che la compressione funziona, non che il servizio la ABBIA.
+        // Cancellando le due righe da Program.cs resterebbero tutte verdi, e il ramo perderebbe
+        // la funzione in silenzio lasciando in piedi trenta righe di commento che la
+        // giustificano. Questa prova monta il servizio VERO - ServizioInMemoria e'
+        // WebApplicationFactory<Program> - e guarda due cose che solo li' si vedono.
+        using ServizioInMemoria servizio = new();
+        using HttpClient client = servizio.CreateAuthorizedClient();
+
+        using HttpRequestMessage richiesta = new(HttpMethod.Get, "metrics/catalog");
+        richiesta.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip");
+
+        using HttpResponseMessage risposta = await client.SendAsync(richiesta);
+
+        risposta.EnsureSuccessStatusCode();
+
+        // Sotto TestServer la richiesta e' http, quindi passa dal compressore comunque: questa
+        // asserzione pinna la PRESENZA delle due righe e la loro posizione utile, non l'opzione.
+        Assert.Equal("gzip", risposta.Content.Headers.ContentEncoding.FirstOrDefault());
+
+        // E l'opzione la si legge dal contenitore del servizio vero, che e' l'unico posto dove
+        // EnableForHttps si puo' osservare senza un trasporto TLS.
+        Assert.True(
+            servizio.Services.GetRequiredService<IOptions<ResponseCompressionOptions>>().Value.EnableForHttps,
+            "EnableForHttps e' tornato al predefinito: sulla rete non si comprimerebbe piu' niente");
+    }
+
+    [Fact]
     public async Task UnaRichiestaRifiutataNonHaNienteDaComprimere()
     {
         // La precondizione su cui poggia la decisione di sicurezza scritta in Program.cs: chi non
@@ -148,21 +212,23 @@ public class CompressioneSulFiloTests
                 kestrel.Listen(IPAddress.Loopback, 0, porta => porta.UseHttps(certificato)));
 
             // La stessa identica registrazione di Program.cs, unica opzione compresa.
-            builder.Services.AddResponseCompression(opzioni => opzioni.EnableForHttps = true);
+            builder.Services.AddResponseCompression(opzioni =>
+            {
+                opzioni.EnableForHttps = true;
+                opzioni.Providers.Add<GzipCompressionProvider>();
+                opzioni.Providers.Add<BrotliCompressionProvider>();
+            });
 
             WebApplication applicazione = builder.Build();
 
             if (conGuardia)
             {
-                // Un rifiuto come quello vero: corto circuito PRIMA della compressione, e senza
-                // corpo. Non e' il middleware di produzione - quello vuole credenziali e
-                // routing - ma riproduce l'unica cosa che questa prova deve osservare.
-                applicazione.Use((HttpContext contesto, RequestDelegate avanti) =>
-                {
-                    contesto.Response.StatusCode = StatusCodes.Status401Unauthorized;
-
-                    return Task.CompletedTask;
-                });
+                // Il middleware VERO, non una copia scritta nel banco: la sua stessa classe
+                // esiste perche' i test possano montarlo invece di riscriverlo, e riscriverlo
+                // qui renderebbe la prova circolare - misurerebbe lo stub, e un 401 che un
+                // giorno imparasse a portare un corpo resterebbe verde. Le credenziali sono
+                // nuove e il test non manda alcun header: cade nel ramo di rifiuto vero.
+                applicazione.UseObserverAccessControl(MachineCredentials.Nuove());
             }
 
             applicazione.UseResponseCompression();
@@ -210,7 +276,13 @@ public class CompressioneSulFiloTests
             }
 
             using MemoryStream compresso = new(byteSulFilo);
-            using GZipStream espansore = new(compresso, CompressionMode.Decompress);
+            using Stream espansore = codificaRisposta switch
+            {
+                "gzip" => new GZipStream(compresso, CompressionMode.Decompress),
+                "br" => new BrotliStream(compresso, CompressionMode.Decompress),
+                "deflate" => new DeflateStream(compresso, CompressionMode.Decompress),
+                _ => throw new InvalidOperationException($"codifica inattesa: {codificaRisposta}"),
+            };
             using StreamReader lettore = new(espansore);
 
             return (byteSulFilo.Length, codificaRisposta, await lettore.ReadToEndAsync());

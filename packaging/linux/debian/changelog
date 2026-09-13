@@ -23,11 +23,27 @@ observer (0.21.0) unstable; urgency=medium
   * Leaving the default would not have been the cautious choice but the
     wrong way round: it compresses only the local channel, where bytes are
     free, and leaves the network in the clear.
-  * Encoders and level stay at the framework defaults - Brotli, then gzip,
-    both at Fastest. Measured: Brotli at Fastest matches gzip at Optimal in
-    size for a third of the CPU, while Brotli at Optimal costs 4 to 30 times
-    that for 3-12 % fewer bytes, and is the only setting large enough to
-    show up in the number this service publishes about itself.
+  * gzip is preferred over Brotli, against the framework default, and it is
+    measured on the wire rather than on a buffer. Compressing a body in one
+    go Brotli wins; but this service SERIALISES, so the JSON leaves the
+    writer in pieces with a flush per segment, and flushes punish Brotli far
+    more. On the same body: gzip 2 720 bytes, Brotli 3 223 - eighteen per
+    cent more, on exactly the responses that weigh. Brotli stays available
+    for a client that accepts only that.
+  * The level stays at Fastest, the default for both: Optimal costs 4 to 30
+    times as much for a handful of bytes, and is the only setting large
+    enough to show up in the number this service publishes about itself.
+  * A response that stalls half way no longer freezes the dashboard in
+    silence. The eight-second budget only ever covered the headers, because
+    the body is read separately; measured, a service that sent headers and
+    then stopped writing held the loop for twenty-five seconds while the
+    window simply stopped updating. Compression lengthens exactly that
+    phase.
+  * A connection cut mid-body no longer kills the update loop for the whole
+    session. It raises IOException, which is not an HttpRequestException, so
+    it reached the loop's outer handler - the one that does not retry - and
+    the window said "Updates stopped, close and reopen" for a hiccup that
+    would have cleared itself on the next round.
 
  -- Federico Cardinali <noreply@example.invalid>  Sat, 12 Sep 2026 20:00:00 +0000
 

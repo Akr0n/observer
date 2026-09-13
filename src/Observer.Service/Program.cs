@@ -3,6 +3,7 @@ using Observer.Core.Composition;
 using Observer.Core.Metrics;
 using Observer.Core.Platform;
 using Observer.Core.Processes;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.Extensions.Hosting.Systemd;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Observer.Service;
@@ -67,16 +68,26 @@ builder.Services.AddSingleton<MetricSnapshotCache>();
 // HTTPS - cioe' si spenderebbe la CPU della macchina misurata per zero byte di rete, lasciando
 // scoperto l'unico percorso dove i byte costano davvero.
 //
-// Encoder e livello restano quelli predefiniti (Brotli, poi Gzip come ripiego, entrambi a
-// Fastest), e non e' pigrizia: misurato sui corpi veri di questa macchina, Brotli Fastest fa la
-// stessa dimensione di Gzip Optimal a un terzo della CPU (storico di 7 giorni: 15 631 byte in
-// 0,505 ms contro 15 235 in 1,490), mentre Brotli Optimal costa da 4 a 30 volte Fastest per il
-// 3-12 % di byte in meno - ed e' l'unico livello capace di farsi vedere nel numero che questo
-// servizio pubblica su se' stesso. Costo a regime con un cruscotto sulla vista da un'ora:
-// 6,6 ms di CPU al minuto, lo 0,011 % di un core, per togliere dalla rete circa 860 MB al
-// giorno. Il grosso non e' /metrics/latest (3,2 kB) ma /metrics/history: la coda grezza pesa
-// 76 kB a un'ora e 114 kB a ventiquattro, ed e' chiesta una volta per quadrante.
-builder.Services.AddResponseCompression(opzioni => opzioni.EnableForHttps = true);
+// GZIP PRIMA DI BROTLI, ed e' misurato sul filo, non su un buffer. A parita' di preferenza il
+// servizio sceglie il PRIMO provider registrato, e il predefinito mette Brotli davanti.
+// Comprimendo un corpo tutto in una volta Brotli vince, ed e' il confronto che viene d'istinto;
+// ma questo servizio SERIALIZZA - Results.Ok fa uscire lo JSON dal writer a pezzi, con un flush
+// per segmento - e i flush puniscono Brotli molto piu' di Gzip. Misurato dal banco su TLS vero,
+// sullo stesso corpo: gzip 2 720 byte, brotli 3 223. Diciotto per cento in piu', e proprio sulle
+// risposte che pesano. Registrarli esplicitamente inverte solo la precedenza a parita' di
+// preferenza: Brotli resta disponibile per un client che accetti soltanto quello.
+//
+// Il livello resta Fastest, che e' il predefinito di entrambi: Optimal costa da 4 a 30 volte per
+// una manciata di byte, ed e' l'unica scelta capace di farsi vedere nel numero che questo
+// servizio pubblica su se' stesso. Il grosso non e' /metrics/latest (3,2 kB) ma
+// /metrics/history: la coda grezza pesa 76 kB a un'ora e 114 kB a ventiquattro, ed e' chiesta
+// una volta per quadrante.
+builder.Services.AddResponseCompression(opzioni =>
+{
+    opzioni.EnableForHttps = true;
+    opzioni.Providers.Add<GzipCompressionProvider>();
+    opzioni.Providers.Add<BrotliCompressionProvider>();
+});
 
 // Singleton e non transient, per la stessa ragione dei collector: la classifica dei processi
 // conserva il campione precedente per PID, e ricrearla a ogni richiesta lascerebbe la CPU di
