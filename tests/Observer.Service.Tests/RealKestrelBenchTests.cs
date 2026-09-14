@@ -2,7 +2,7 @@ using System.Net;
 
 namespace Observer.Service.Tests;
 
-/// <summary>Il banco stesso funziona: senza questo, i fallimenti dei test seguenti sono ambigui.</summary>
+/// <summary>The bench itself works: without this, the failures of the tests that follow are ambiguous.</summary>
 [Collection(ProcessEnvironment.Name)]
 public class RealKestrelBenchTests
 {
@@ -22,8 +22,8 @@ public class RealKestrelBenchTests
     [Fact]
     public async Task TheBenchDoesNotInheritTheRealServiceConfiguration()
     {
-        // Senza Sources.Clear() il banco leggerebbe l'appsettings.json copiato nell'output dei
-        // test e proverebbe a legare la 5057, scontrandosi con il servizio installato.
+        // Without Sources.Clear() the bench would read the appsettings.json copied into the test
+        // output and would try to bind 5057, colliding with the installed service.
         await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
             options => options.Listen(IPAddress.Loopback, 0));
 

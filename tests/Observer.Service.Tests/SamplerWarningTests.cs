@@ -6,14 +6,14 @@ using Observer.Service.Persistence;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Quante righe scrive il campionatore quando una sorgente si guasta, e quali.
+/// How many lines the sampler writes when a source fails, and which ones.
 /// </summary>
 /// <remarks>
-/// Il freno da solo e' provato altrove; qui si prova il CABLAGGIO, che e' dove stanno le due
-/// decisioni che il codice si preoccupa di commentare e che nessun test toccava: un freno per
-/// SORGENTE e non uno condiviso — con uno solo, il guasto della seconda sorgente sarebbe
-/// silenziato dal guasto della prima — e la riga di rientro, senza la quale il registro resta
-/// con l'inizio del guasto e nessuna fine.
+/// The throttle on its own is tested elsewhere; what is tested here is the WIRING, which is where
+/// the two decisions the code bothers to comment on live and that no test touched: one throttle
+/// per SOURCE and not a shared one — with a single one, the second source's fault would be
+/// silenced by the first source's — and the recovery line, without which the log is left with the
+/// start of the fault and no end.
 /// </remarks>
 public class SamplerWarningTests
 {
@@ -45,9 +45,9 @@ public class SamplerWarningTests
             await sampler.StopAsync(CancellationToken.None);
         }
 
-        // Quattro giri, due sorgenti guaste: senza freno sarebbero otto righe; con UN freno
-        // condiviso ne resterebbe una sola invece di due, e il guasto della seconda sorgente
-        // non comparirebbe da nessuna parte.
+        // Four rounds, two failing sources: with no throttle there would be eight lines; with ONE
+        // shared throttle only a single line would be left instead of two, and the second source's
+        // fault would appear nowhere.
         Assert.Equal(2, recorder.CountFor(FailureEvent));
     }
 
@@ -71,7 +71,7 @@ public class SamplerWarningTests
         {
             await sink.Reached.WaitAsync(TimeSpan.FromSeconds(30));
 
-            // Una sola sorgente guasta, una sola riga: la sana non dice niente.
+            // One failing source, one single line: the healthy one says nothing.
             Assert.Equal(1, recorder.CountFor(FailureEvent));
             Assert.Equal(0, recorder.CountFor(RecoveryEvent));
 
@@ -116,7 +116,7 @@ public class SamplerWarningTests
         }
     }
 
-    /// <summary>Conta i giri e avvisa quando ne ha visti abbastanza.</summary>
+    /// <summary>Counts the rounds and signals when it has seen enough of them.</summary>
     private sealed class CountingSink(int expected) : IMetricSnapshotSink
     {
         private readonly TaskCompletionSource signal =
@@ -140,17 +140,17 @@ public class SamplerWarningTests
         }
     }
 
-    /// <summary>Tiene il conto delle righe scritte, per evento.</summary>
+    /// <summary>Keeps count of the lines written, per event.</summary>
     private sealed class LogRecorder : ILogger<MetricSamplingService>
     {
         private readonly Lock gate = new();
-        private readonly List<(int Evento, LogLevel Livello)> lines = [];
+        private readonly List<(int EventId, LogLevel Level)> lines = [];
 
         public int CountFor(int eventId)
         {
             lock (gate)
             {
-                return lines.Count(line => line.Evento == eventId);
+                return lines.Count(line => line.EventId == eventId);
             }
         }
 

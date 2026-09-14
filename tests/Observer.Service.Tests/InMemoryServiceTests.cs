@@ -1,35 +1,35 @@
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Raggruppa le prove che toccano stato GLOBALE del processo.
+/// Groups the tests that touch GLOBAL process state.
 /// </summary>
 /// <remarks>
-/// xunit esegue in parallelo le classi che non dichiarano una collezione, e queste prove
-/// scrivono variabili d'ambiente e svuotano i pool di SQLite: due cose che non appartengono a
-/// un test ma all'intero processo. Senza questa collezione, il banco che il canale locale dovra'
-/// costruire (host Kestrel veri, nomi di pipe, percorsi di socket) leggerebbe le variabili
-/// impostate da un'altra classe a meta' della propria esecuzione, e il guasto comparirebbe a
-/// caso su un runner di CI e non sull'altro.
+/// xunit runs classes that do not declare a collection in parallel, and these tests write
+/// environment variables and clear the SQLite pools: two things that belong not to a test but to
+/// the whole process. Without this collection, the bench the local channel will have to build
+/// (real Kestrel hosts, pipe names, socket paths) would read the variables set by another class
+/// halfway through its own run, and the fault would show up at random on one CI runner and not
+/// on the other.
 /// </remarks>
 /// <para>
-/// La collezione porta anche <see cref="ServizioInMemoria"/>, e quindi il servizio in memoria
-/// e' UNO SOLO per tutte le classi che lo usano. Con una fixture per classe ce n'erano due, e
-/// su Linux la seconda non partiva: il canale locale crea <c>/run/user/N/observer/</c>
-/// all'avvio e la rimuove alla chiusura, quindi il primo banco che finiva portava via la
-/// cartella al secondo, che falliva con "Could not find file ... observer.sock". Senza host
-/// nessuno chiamava <c>MetricStore.Initialize()</c>, e le prove sullo storico morivano con
-/// "no such table: series" — un messaggio che non nomina la causa nemmeno da lontano.
-/// Su Windows non si vedeva: una named pipe non ha una cartella da rimuovere.
+/// The collection also carries <see cref="InMemoryService"/>, so there is only ONE in-memory
+/// service for all the classes that use it. With a fixture per class there were two, and on
+/// Linux the second would not start: the local channel creates <c>/run/user/N/observer/</c>
+/// at start-up and removes it at shutdown, so the first bench to finish took the folder away
+/// from the second, which failed with "Could not find file ... observer.sock". With no host
+/// nobody called <c>MetricStore.Initialize()</c>, and the history tests died with
+/// "no such table: series" — a message that does not name the cause even distantly.
+/// On Windows it was invisible: a named pipe has no folder to remove.
 /// </para>
 [CollectionDefinition(Name)]
 public sealed class ProcessEnvironment : ICollectionFixture<InMemoryService>
 {
-    /// <summary>Il nome della collezione, per non ripeterlo come stringa in giro.</summary>
+    /// <summary>The name of the collection, so it is not repeated as a string all over.</summary>
     public const string Name = "ambiente-del-processo";
 }
 
 /// <summary>
-/// Prove sul banco stesso: se il banco sporca il processo, sporca i test degli altri.
+/// Tests on the bench itself: if the bench dirties the process, it dirties everyone else's tests.
 /// </summary>
 [Collection(ProcessEnvironment.Name)]
 public class InMemoryServiceTests
@@ -37,10 +37,10 @@ public class InMemoryServiceTests
     [Fact]
     public void AfterDispose_EnvironmentVariablesAreRestored()
     {
-        // La fixture configura il servizio dalle variabili d'ambiente perche' Program.cs legge
-        // il token PRIMA di costruire l'host: e' una scelta obbligata, non un difetto. Il
-        // difetto e' non rimetterle a posto, perche' quelle variabili sopravvivono alla fixture
-        // e restano addosso a chiunque venga dopo.
+        // The fixture configures the service from environment variables because Program.cs reads
+        // the token BEFORE building the host: a forced choice, not a defect. The defect is not
+        // putting them back, because those variables outlive the fixture and are left on
+        // whoever runs next.
         string? tokenBefore = Environment.GetEnvironmentVariable("Observer__ApiToken");
         string? databaseBefore = Environment.GetEnvironmentVariable("Observer__Storage__DatabasePath");
         string? maintenanceBefore = Environment.GetEnvironmentVariable("Observer__Storage__MaintenanceInterval");

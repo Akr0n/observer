@@ -1,15 +1,14 @@
 namespace Observer.Service.Tests;
 
-/// <summary>Un fatto che fuori da Windows viene SALTATO invece che fallire.</summary>
+/// <summary>A fact that is SKIPPED outside Windows instead of failing.</summary>
 /// <remarks>
-/// xunit 2.9.3 non ha Assert.Skip: l'unico modo di saltare per piattaforma e' valorizzare Skip
-/// nel costruttore dell'attributo. Saltare e' l'esito giusto, non una rinuncia: un test di
-/// named pipe che fallisse su ubuntu-latest renderebbe rosso il runner sbagliato e
-/// nasconderebbe i guasti veri.
+/// xunit 2.9.3 has no Assert.Skip: the only way to skip by platform is to set Skip in the
+/// attribute's constructor. Skipping is the right outcome, not giving up: a named pipe test
+/// that failed on ubuntu-latest would turn the wrong runner red and hide the real faults.
 /// </remarks>
 public sealed class WindowsOnlyAttribute : FactAttribute
 {
-    /// <summary>Salta se il sistema non e' Windows.</summary>
+    /// <summary>Skips when the system is not Windows.</summary>
     public WindowsOnlyAttribute()
     {
         if (!OperatingSystem.IsWindows())
@@ -19,10 +18,10 @@ public sealed class WindowsOnlyAttribute : FactAttribute
     }
 }
 
-/// <summary>Un fatto che fuori da Linux viene SALTATO invece che fallire.</summary>
+/// <summary>A fact that is SKIPPED outside Linux instead of failing.</summary>
 public sealed class LinuxOnlyAttribute : FactAttribute
 {
-    /// <summary>Salta se il sistema non e' Linux.</summary>
+    /// <summary>Skips when the system is not Linux.</summary>
     public LinuxOnlyAttribute()
     {
         if (!OperatingSystem.IsLinux())

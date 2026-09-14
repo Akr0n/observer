@@ -4,10 +4,10 @@ using Observer.Service.Persistence;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// La coda fra il campionatore e il disco. Il requisito che difende non e' la velocita': e'
-/// la CORRETTEZZA della misura successiva. La percentuale di CPU si calcola sulla distanza
-/// fra due letture, quindi un campionatore che aspetta il disco non produce un grafico
-/// lento, produce numeri sbagliati.
+/// The queue between the sampler and the disk. What it protects is not speed: it is the
+/// CORRECTNESS of the next measurement. CPU percentage is computed from the distance between
+/// two readings, so a sampler that waits for the disk does not produce a slow chart, it
+/// produces wrong numbers.
 /// </summary>
 public class SnapshotBufferTests
 {
@@ -44,9 +44,9 @@ public class SnapshotBufferTests
 
         IReadOnlyList<MachineSnapshot> drained = buffer.DrainAll();
 
-        // In un monitor di macchina il campione appena letto vale piu' di quello di prima:
-        // scartare il piu' nuovo lascerebbe la dashboard indietro proprio quando la
-        // macchina e' sotto carico, cioe' l'unico momento in cui qualcuno la guarda.
+        // In a machine monitor the sample just read is worth more than the one before it:
+        // dropping the newest would leave the dashboard behind exactly when the machine is
+        // under load, which is the only moment anyone is looking at it.
         Assert.Equal(2, drained.Count);
         Assert.Equal(Snapshot(2).CapturedAt, drained[0].CapturedAt);
         Assert.Equal(Snapshot(3).CapturedAt, drained[1].CapturedAt);
@@ -60,8 +60,8 @@ public class SnapshotBufferTests
 
         for (int i = 0; i < 1000; i++)
         {
-            // Nessuna di queste chiamate deve bloccare: se una lo facesse, il test non
-            // finirebbe mai invece di fallire. E' il modo piu' diretto di dimostrarlo.
+            // None of these calls may block: if one did, the test would never finish
+            // instead of failing. This is the most direct way of showing it.
             buffer.Enqueue(Snapshot(i % 60));
         }
 

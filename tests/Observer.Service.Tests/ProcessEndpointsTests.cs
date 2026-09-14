@@ -4,19 +4,20 @@ using System.Text.Json;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Gli endpoint dei processi, sul servizio vero avviato in memoria.
+/// The process endpoints, against the real service started in memory.
 /// </summary>
 /// <remarks>
-/// Qui c'e' l'unica cosa che questo servizio fa e non e' una lettura, e le verifiche che
-/// contano sono proprio quelle: che senza token non si arrivi a <c>/processes</c>, e che
-/// <c>kill</c> su un PID che non esiste risponda "non c'e'" invece di far cadere qualcos'altro.
+/// Here is the one thing this service does that is not a read, and those are exactly the
+/// checks that matter: that <c>/processes</c> cannot be reached without a token, and that
+/// <c>kill</c> on a PID that does not exist answers "not there" instead of bringing something
+/// else down.
 /// <para>
-/// Il percorso in cui un processo viene terminato DAVVERO non e' coperto, ed e' una scelta:
-/// un test che uccide un processo su una macchina di sviluppo o su un runner della CI puo'
-/// colpire qualcosa che serve, e l'unica parte nostra di quel percorso — trovare il processo
-/// dal PID e chiedere al sistema di fermarlo — sono due chiamate della libreria standard. Il
-/// rischio vero non e' che Kill non funzioni: e' che si fermi il processo sbagliato, e quello
-/// dipende dal PID che arriva nella richiesta.
+/// The path where a process is REALLY terminated is not covered, and that is a choice: a test
+/// that kills a process on a development machine or on a CI runner can hit something that is
+/// needed, and the only part of that path that is ours — finding the process from the PID and
+/// asking the system to stop it — is two calls into the standard library. The real risk is not
+/// that Kill does not work: it is that the wrong process gets stopped, and that depends on the
+/// PID arriving in the request.
 /// </para>
 /// </remarks>
 [Collection(ProcessEnvironment.Name)]
@@ -34,9 +35,9 @@ public class ProcessEndpointsTests
     [InlineData("/processes?by=memory")]
     public async Task TheProcessListIsRefusedWithoutAToken(string path)
     {
-        // L'elenco dei processi dice molto piu' di una percentuale di CPU: dice quali
-        // programmi usa chi sta a quella macchina. Un endpoint aggiunto fuori dal middleware
-        // lo regalerebbe a chiunque sia sulla rete.
+        // The process list says far more than a CPU percentage: it says which programs the
+        // person at that machine uses. An endpoint added outside the middleware would hand it
+        // to anyone on the network.
         using HttpClient anonymous = service.CreateClient();
 
         using HttpResponseMessage response = await anonymous.GetAsync(new Uri(path, UriKind.Relative));
@@ -104,8 +105,8 @@ public class ProcessEndpointsTests
     {
         using HttpClient client = service.CreateAuthorizedClient();
 
-        // Un PID cosi' alto non e' assegnabile su nessuno dei due sistemi: il caso e' "non
-        // c'e'", e la risposta giusta e' dirlo, non un errore del server.
+        // A PID this high cannot be assigned on either system: the case is "not there", and
+        // the right answer is to say so, not a server error.
         using HttpResponseMessage response = await client.PostAsync(
             new Uri("/processes/2147483646/kill", UriKind.Relative), content: null);
 
@@ -120,8 +121,8 @@ public class ProcessEndpointsTests
     [InlineData("/processes?by=boh", "cpu")]
     public async Task TheResponseEchoesTheCriterionItApplied(string path, string expected)
     {
-        // Il client lo usa per accorgersi di un servizio che non conosce ancora "io": senza,
-        // riceverebbe l'elenco della CPU e lo mostrerebbe sotto il titolo dell'I/O.
+        // The client uses it to notice a service that does not know "io" yet: without it, the
+        // client would receive the CPU list and show it under the I/O title.
         using HttpClient client = service.CreateAuthorizedClient();
 
         using HttpResponseMessage response = await client.GetAsync(new Uri(path, UriKind.Relative));
@@ -138,7 +139,7 @@ public class ProcessEndpointsTests
         using HttpClient client = service.CreateAuthorizedClient();
         Uri path = new("/processes?by=io&top=100", UriKind.Relative);
 
-        // Due letture: alla prima non c'e' un campione precedente e ogni tasso e' ignoto.
+        // Two reads: on the first there is no previous sample and every rate is unknown.
         (await client.GetAsync(path)).Dispose();
         await Task.Delay(TimeSpan.FromMilliseconds(200));
 
@@ -167,10 +168,10 @@ public class ProcessEndpointsTests
             previous = current;
         }
 
-        // Almeno un tasso deve essere NOTO. Senza questa riga il test passerebbe a vuoto con
-        // ogni tasso null - cioe' con il lettore dell'I/O mai collegato in Program.cs - e
-        // l'ha dimostrato una mutazione: new SystemProcessLister(ioReader: null), suite verde.
-        // Questo e' l'unico test che attraversa il cablaggio vero, dal servizio al sistema.
+        // At least one rate must be KNOWN. Without this line the test would pass vacuously
+        // with every rate null - that is, with the I/O reader never wired up in Program.cs -
+        // and a mutation proved it: new SystemProcessLister(ioReader: null), suite green.
+        // This is the only test that crosses the real wiring, from the service to the system.
         Assert.Contains(
             document.RootElement.GetProperty("processes").EnumerateArray(),
             process => process.GetProperty("ioBytesPerSecond").ValueKind != JsonValueKind.Null);

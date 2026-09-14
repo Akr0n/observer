@@ -3,29 +3,29 @@ using Observer.Service.LocalChannel;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// La decisione di autorizzazione, come tabella esaustiva.
+/// The authorization decision, as an exhaustive table.
 /// </summary>
 /// <remarks>
-/// Dodici casi, che sono TUTTI i casi: tre modi di essere un chiamante per due portate di
-/// endpoint per due esiti del token. Verificarla cosi' costa meno che avviare il servizio, e
-/// soprattutto gira identica sui due runner della CI, mentre un canale locale no.
+/// Twelve cases, which are ALL the cases: three kinds of caller times two endpoint scopes times
+/// two token outcomes. Checking it this way costs less than starting the service, and above all
+/// it runs identically on both CI runners, which a local channel does not.
 /// </remarks>
 public class AccessPolicyTests
 {
     [Theory]
-    // Il chiamante locale identificato passa SEMPRE, senza token. E' l'obiettivo del progetto.
+    // A local identified caller is ALWAYS allowed, with no token. That is the goal of the project.
     [InlineData(CallerKind.LocalIdentified, EndpointScope.Anywhere, true, AccessDecision.Allowed)]
     [InlineData(CallerKind.LocalIdentified, EndpointScope.Anywhere, false, AccessDecision.Allowed)]
     [InlineData(CallerKind.LocalIdentified, EndpointScope.LocalOnly, true, AccessDecision.Allowed)]
     [InlineData(CallerKind.LocalIdentified, EndpointScope.LocalOnly, false, AccessDecision.Allowed)]
-    // Dalla rete: il token e' l'unica credenziale, come oggi.
+    // From the network: the token is the only credential, as it is today.
     [InlineData(CallerKind.FromNetwork, EndpointScope.Anywhere, true, AccessDecision.Allowed)]
     [InlineData(CallerKind.FromNetwork, EndpointScope.Anywhere, false, AccessDecision.Denied)]
-    // Gli endpoint solo-locali NON esistono per chi non e' locale, nemmeno col token giusto:
-    // chi ruba il token non deve poter ruotare le chiavi e chiudere fuori il proprietario.
+    // Local-only endpoints do NOT exist for a caller that is not local, not even with the right
+    // token: whoever steals the token must not be able to rotate the keys and lock the owner out.
     [InlineData(CallerKind.FromNetwork, EndpointScope.LocalOnly, true, AccessDecision.NotFound)]
     [InlineData(CallerKind.FromNetwork, EndpointScope.LocalOnly, false, AccessDecision.NotFound)]
-    // Identita' non determinabile: rifiuto, ANCHE con un token valido.
+    // An identity that cannot be read: refused, EVEN with a valid token.
     [InlineData(CallerKind.Unidentified, EndpointScope.Anywhere, true, AccessDecision.Denied)]
     [InlineData(CallerKind.Unidentified, EndpointScope.Anywhere, false, AccessDecision.Denied)]
     [InlineData(CallerKind.Unidentified, EndpointScope.LocalOnly, true, AccessDecision.NotFound)]
@@ -40,9 +40,9 @@ public class AccessPolicyTests
     [Fact]
     public void AValidTokenDoesNotSaveAnUnidentifiableCaller()
     {
-        // Il livello di impersonation lo sceglie il CLIENT: con Anonymous un chiamante si rende
-        // unilateralmente non identificabile pur restando capace di presentare un token. Se
-        // il token bastasse, la regola "l'identita' non determinabile rifiuta" sarebbe vuota.
+        // The impersonation level is chosen by the CLIENT: with Anonymous a caller unilaterally
+        // makes itself unidentifiable while still being able to present a token. If the token
+        // were enough, the rule "an identity that cannot be read refuses" would mean nothing.
         Assert.Equal(
             AccessDecision.Denied,
             AccessPolicy.Decide(CallerKind.Unidentified, EndpointScope.Anywhere, tokenIsValid: true));
@@ -51,9 +51,9 @@ public class AccessPolicyTests
     [Fact]
     public void TheDefaultEnumValuesAreTheOnesThatDeny()
     {
-        // Un campo dimenticato, una struct non inizializzata o un ramo aggiunto per distrazione
-        // devono NEGARE. Un endpoint a cui si scordasse la portata diventa irraggiungibile dalla
-        // rete, che e' il verso giusto in cui rompersi.
+        // A forgotten field, an uninitialized struct or a branch added by mistake must DENY. An
+        // endpoint whose scope was forgotten becomes unreachable from the network, which is the
+        // right direction to break in.
         Assert.Equal(AccessDecision.Denied, default(AccessDecision));
         Assert.Equal(EndpointScope.LocalOnly, default(EndpointScope));
         Assert.Equal(CallerKind.Unidentified, default(CallerKind));
@@ -66,7 +66,7 @@ public class AccessPolicyTests
     [Fact]
     public void EveryCombinationHasADecision()
     {
-        // Nessun caso resta senza risposta, e nessuno cade in un ramo predefinito per caso.
+        // No case is left without an answer, and none falls into a default branch by accident.
         foreach (CallerKind caller in Enum.GetValues<CallerKind>())
         {
             foreach (EndpointScope scope in Enum.GetValues<EndpointScope>())

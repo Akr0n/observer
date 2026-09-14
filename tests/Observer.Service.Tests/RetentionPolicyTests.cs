@@ -4,9 +4,9 @@ using Observer.Service.Persistence;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Le due decisioni che, sbagliate, non fanno rumore: consolidare un bucket ancora aperto
-/// (medie false per sempre, perche' il grezzo poi sparisce) e cancellare grezzo che nessuno
-/// ha ancora aggregato (buco nello storico che nessuno puo' piu' ricostruire).
+/// The two decisions that make no noise when they are wrong: consolidating a bucket that is
+/// still open (false averages for ever, because the raw data disappears afterwards) and deleting
+/// raw data that nothing has aggregated yet (a hole in the history nobody can rebuild).
 /// </summary>
 public class RetentionPolicyTests
 {
@@ -20,9 +20,9 @@ public class RetentionPolicyTests
     [Fact]
     public void Horizon_DoesNotConsolidateTheInProgressBucket()
     {
-        // Alle 12:03:47 il minuto delle 12:03 non e' finito: aggregarlo adesso scriverebbe
-        // una media su 47 campioni invece che su 60, e siccome il grezzo verra' cancellato
-        // quel numero resterebbe sbagliato per sempre.
+        // At 12:03:47 the 12:03 minute is not over: aggregating it now would write an average
+        // over 47 samples instead of 60, and since the raw data will be deleted that number
+        // would stay wrong for ever.
         long horizon = RollupMath.AlignToBucketStart(
             RetentionPolicy.ConsolidationHorizon(Ms("2026-08-26T12:03:47Z"), OneMinute, TimeSpan.Zero),
             OneMinute);
@@ -33,9 +33,9 @@ public class RetentionPolicyTests
     [Fact]
     public void Horizon_WaitsOutTheGraceAfterTheBucketCloses()
     {
-        // Il minuto delle 12:02 si e' chiuso alle 12:03:00, cioe' due secondi fa. I campioni
-        // dei suoi ultimi istanti sono ancora nella coda in memoria: consolidarlo adesso
-        // significa perderli.
+        // The 12:02 minute closed at 12:03:00, that is two seconds ago. The samples from its
+        // last instants are still in the in-memory buffer: consolidating it now means losing
+        // them.
         long horizon = RetentionPolicy.ConsolidationHorizon(
             Ms("2026-08-26T12:03:02Z"), OneMinute, FiveSecondGrace);
 
@@ -63,7 +63,7 @@ public class RetentionPolicyTests
     [Fact]
     public void Horizon_RejectsANegativeGrace()
     {
-        // Una grazia negativa consoliderebbe bucket dal FUTURO, cioe' ancora vuoti.
+        // A negative grace period would consolidate buckets from the FUTURE, which are still empty.
         Assert.Throws<ArgumentOutOfRangeException>(
             () => RetentionPolicy.ConsolidationHorizon(0L, OneMinute, TimeSpan.FromSeconds(-1)));
     }
@@ -71,9 +71,8 @@ public class RetentionPolicyTests
     [Fact]
     public void Cutoff_WithNothingConsolidatedDeletesNothing()
     {
-        // Se il rollup non ha mai girato, ogni cancellazione e' una perdita secca: non
-        // esiste un aggregato che conservi quei numeri. Meglio un file che cresce di un
-        // buco nello storico.
+        // If the rollup has never run, every deletion is a dead loss: no aggregate holds those
+        // numbers. A file that grows is better than a hole in the history.
         long? cutoff = RetentionPolicy.PurgeCutoff(
             Ms("2026-08-26T12:00:00Z"), TimeSpan.FromHours(6), consolidatedThroughMs: null);
 
@@ -83,10 +82,10 @@ public class RetentionPolicyTests
     [Fact]
     public void Cutoff_NeverGoesPastWhatHasBeenConsolidated()
     {
-        // IL test della ritenzione. Il rollup e' rimasto indietro (servizio fermo, disco
-        // lento, riavvio): la ritenzione da sola cancellerebbe fino alle 06:00, ma dalle
-        // 03:00 in poi nessuno ha ancora aggregato niente. Cancellare li' significa perdere
-        // quei dati e basta, senza errori e senza log.
+        // THE retention test. The rollup has fallen behind (service stopped, slow disk,
+        // restart): retention alone would delete up to 06:00, but from 03:00 onwards nothing
+        // has been aggregated yet. Deleting there just loses that data, with no error and
+        // nothing in the log.
         long? cutoff = RetentionPolicy.PurgeCutoff(
             Ms("2026-08-26T12:00:00Z"),
             TimeSpan.FromHours(6),
@@ -109,8 +108,8 @@ public class RetentionPolicyTests
     [Fact]
     public void Cutoff_RejectsANonPositiveRetention()
     {
-        // Una ritenzione a zero cancellerebbe i dati nello stesso istante in cui li scrive:
-        // il servizio girerebbe, il file resterebbe piccolo e lo storico sarebbe sempre vuoto.
+        // A retention of zero would delete the data at the same instant it writes it: the
+        // service would run, the file would stay small and the history would always be empty.
         Assert.Throws<ArgumentOutOfRangeException>(
             () => RetentionPolicy.PurgeCutoff(0L, TimeSpan.Zero, 0L));
     }

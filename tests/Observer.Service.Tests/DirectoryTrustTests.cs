@@ -3,13 +3,13 @@ using Observer.Service.Credentials;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Se ci si puo' fidare della cartella che ospitera' il token di macchina.
+/// Whether the directory that will hold the machine token can be trusted.
 /// </summary>
 /// <remarks>
-/// Funzione PURA sui fatti osservati, per due motivi. Il primo e' che i casi che contano non si
-/// possono costruire tutti su una macchina qualsiasi: una cartella posseduta da SYSTEM richiede
-/// una sessione amministrativa. Il secondo e' che questa e' la decisione di sicurezza portante
-/// del deposito, e va verificata a tabella e non per campione.
+/// A PURE function over the observed facts, for two reasons. The first is that the cases that
+/// matter cannot all be built on just any machine: a directory owned by SYSTEM needs an
+/// administrative session. The second is that this is the store's load-bearing security decision,
+/// and it has to be verified as a table and not by sampling.
 /// </remarks>
 public class DirectoryTrustTests
 {
@@ -28,9 +28,9 @@ public class DirectoryTrustTests
     [Fact]
     public void AReparsePointOutweighsEVERYTHINGElse()
     {
-        // Una giunzione la crea un utente standard SENZA privilegi. Se il controllo non venisse
-        // per primo, si correggerebbero proprietario e ACL della cartella dell'ATTACCANTE, e ci
-        // si depositerebbe dentro il token. Qui i fatti sono per il resto perfetti, apposta.
+        // A junction is created by a standard user with NO privileges. If this check did not come
+        // first, the owner and the ACL of the ATTACKER's directory would be repaired, and the
+        // token would be stored inside it. The rest of the facts here are perfect, on purpose.
         DirectoryFacts perfectButAJunction = Facts(
             isReparsePoint: true,
             owner: SystemSid,
@@ -51,9 +51,9 @@ public class DirectoryTrustTests
     [Fact]
     public void APerfectDaclOwnedByAUSERIsNOTSafe()
     {
-        // E' il "finto protetto": la DACL non nomina l'utente in alcun modo, ma il proprietario
-        // ha WRITE_DAC implicito e se la riscrive quando vuole. Misurato: una sola chiamata e
-        // l'accesso torna completo. Chi guarda solo le ACE dice "sicura" e sbaglia.
+        // This is the "fake protected" case: the DACL does not name the user in any way, but the
+        // owner has implicit WRITE_DAC and rewrites it whenever it likes. Measured: a single call
+        // and access is complete again. Whoever looks only at the ACEs says "safe" and is wrong.
         DirectoryFacts fakeProtected = Facts(
             owner: UserSid,
             daclProtected: true,
@@ -75,9 +75,9 @@ public class DirectoryTrustTests
     [Fact]
     public void AnUnprotectedDaclIsNOTSafeEvenIfTheAcesAreRight()
     {
-        // Non protetta significa che eredita: e la cartella di sistema che ospita il deposito
-        // concede a BUILTIN\Users la lettura ereditabile. Ereditare basta a perdere il segreto,
-        // senza bisogno di alcun attaccante.
+        // Not protected means it inherits: and the system directory that holds the store grants
+        // BUILTIN\Users inheritable read access. Inheriting is enough to lose the secret, with no
+        // attacker needed at all.
         Assert.Equal(
             DirectoryVerdict.OpenDacl,
             DirectoryTrust.Evaluate(Facts(owner: SystemSid, daclProtected: false, daclSids: [SystemSid, AdministratorsSid])));
@@ -97,7 +97,7 @@ public class DirectoryTrustTests
     [Fact]
     public void TheZeroVerdictIsNotTheOneThatAuthorizes()
     {
-        // Un campo dimenticato o una struct non inizializzata non devono produrre "Sicura".
+        // A forgotten field or an uninitialised struct must not produce "Safe".
         Assert.Equal(DirectoryVerdict.Unknown, default(DirectoryVerdict));
         Assert.NotEqual(DirectoryVerdict.Safe, default(DirectoryVerdict));
     }
@@ -105,8 +105,8 @@ public class DirectoryTrustTests
     [Fact]
     public void OnlySafeCanHoldTheSecret()
     {
-        // Chiunque usi il verdetto deve poter distinguere "vai avanti" da "fermati", senza
-        // dover elencare a mano i casi negativi e senza dimenticarne uno.
+        // Whoever uses the verdict must be able to tell "go ahead" from "stop", without having
+        // to list the negative cases by hand and without forgetting one.
         Assert.True(DirectoryVerdict.Safe.CanHoldSecret());
         Assert.False(DirectoryVerdict.Missing.CanHoldSecret());
 

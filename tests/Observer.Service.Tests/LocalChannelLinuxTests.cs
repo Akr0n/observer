@@ -7,11 +7,11 @@ using Observer.Service.LocalChannel;
 
 namespace Observer.Service.Tests;
 
-/// <summary>Il canale locale su Linux.</summary>
+/// <summary>The local channel on Linux.</summary>
 /// <remarks>
-/// L'attributo sulla CLASSE e non sui singoli metodi: CA1416 guarda il sito di chiamata, e
-/// [SoloSuLinux] e' un salto a RUNTIME che l'analyzer non vede. Tutti i test qui dentro sono
-/// comunque Linux, quindi annotare la classe e' la forma piu' onesta.
+/// The attribute goes on the CLASS and not on the individual methods: CA1416 looks at the call
+/// site, and [LinuxOnly] is a RUNTIME jump the analyzer cannot see. Every test in here is Linux
+/// anyway, so annotating the class is the most honest form.
 /// </remarks>
 [Collection(ProcessEnvironment.Name)]
 [SupportedOSPlatform("linux")]
@@ -33,9 +33,9 @@ public class LocalChannelLinuxTests
     [LinuxOnly]
     public async Task ACleanShutdownDeletesTheSocketFile()
     {
-        // Contro l'idea diffusa che su Linux il file sopravviva sempre: .NET fa l'unlink
-        // esplicito, perche' UnixDomainSocketEndPoint porta un boundFileName. La bonifica serve
-        // SOLO dopo una morte violenta.
+        // Against the widespread belief that on Linux the file always survives: .NET does the
+        // unlink explicitly, because UnixDomainSocketEndPoint carries a boundFileName. Cleanup is
+        // needed ONLY after a violent death.
         string path = ShortSocketPath();
 
         await using (RealKestrelBench bench = await RealKestrelBench.StartAsync(
@@ -50,8 +50,8 @@ public class LocalChannelLinuxTests
     [LinuxOnly]
     public async Task CleanupDoesNotStealTheSocketFromALiveInstance()
     {
-        // "Se il file esiste, cancellalo" permette a una seconda istanza di scippare il socket
-        // a una prima istanza sana. La bonifica deve sondare, e sondare con un TIMEOUT.
+        // "If the file exists, delete it" lets a second instance steal the socket from a first,
+        // healthy instance. Cleanup has to probe, and probe with a TIMEOUT.
         string path = ShortSocketPath();
 
         await using RealKestrelBench alive = await RealKestrelBench.StartAsync(
@@ -75,7 +75,7 @@ public class LocalChannelLinuxTests
             Assert.True(File.Exists(path));
         }
 
-        // Simula la morte violenta: il file resta a terra senza nessuno in ascolto.
+        // Simulate the violent death: the file is left behind with nobody listening.
         await File.WriteAllTextAsync(path, string.Empty, CancellationToken.None);
 
         Assert.True(await LinuxUnixSocket.RemoveStaleSocketAsync(path, TimeSpan.FromSeconds(2)));
@@ -85,9 +85,9 @@ public class LocalChannelLinuxTests
     [LinuxOnly]
     public void TheDirectoryModeIsSetEvenWhenTheDirectoryAlreadyExists()
     {
-        // Directory.CreateDirectory(percorso, modo) NON applica il modo a una directory che
-        // esiste gia': misurato, e' un no-op silenzioso. Quindi la protezione non esisterebbe
-        // dal secondo avvio in poi, ne' su una /run/observer creata da systemd col suo 0755.
+        // Directory.CreateDirectory(path, mode) does NOT apply the mode to a directory that
+        // already exists: measured, it is a silent no-op. So the protection would not exist from
+        // the second start onwards, nor on a /run/observer created by systemd with its own 0755.
         string folder = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..8]);
 
         Directory.CreateDirectory(folder);
@@ -128,8 +128,8 @@ public class LocalChannelLinuxTests
         using HttpClient client = RealKestrelBench.ClientOn(SocketHandler(path));
         string outcome = await client.GetStringAsync("chi", CancellationToken.None);
 
-        // Su un socket unix il chiamante e' SEMPRE sulla stessa macchina: non esiste la via SMB
-        // che c'e' su Windows. L'unica domanda e' se l'uid sia leggibile.
+        // On a unix socket the caller is ALWAYS on the same machine: there is no SMB route like
+        // the one Windows has. The only question is whether the uid can be read.
         string[] parts = outcome.Split('|');
 
         Assert.Equal(nameof(CallerKind.LocalIdentified), parts[0]);
@@ -139,8 +139,8 @@ public class LocalChannelLinuxTests
     [LinuxOnly]
     public async Task TheUnixSocketNoLongerNeedsTheTokenButTcpStillDoes()
     {
-        // La controparte Linux del cambiamento: sul canale locale il chiamante e' identificato
-        // dal suo uid, quindi il token non serve. Sulla rete resta obbligatorio.
+        // The Linux counterpart of the change: on the local channel the caller is identified by
+        // its uid, so the token is not needed. On the network it stays mandatory.
         string path = ShortSocketPath();
 
         await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
@@ -180,7 +180,7 @@ public class LocalChannelLinuxTests
         overTcp.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", LocalChannelWindowsTests.TestToken);
 
-        // Col token GIUSTO, e comunque 404.
+        // With the RIGHT token, it is still a 404.
         using HttpResponseMessage fromNetwork = await overTcp.GetAsync("riservato", CancellationToken.None);
         Assert.Equal(System.Net.HttpStatusCode.NotFound, fromNetwork.StatusCode);
 
@@ -190,8 +190,8 @@ public class LocalChannelLinuxTests
 
     internal static string ShortSocketPath()
     {
-        // Il limite e' 107 BYTE per l'intero percorso, e il temp di un runner di CI puo' essere
-        // lungo: il percorso viene verificato, non sperato.
+        // The limit is 107 BYTES for the whole path, and a CI runner's temp directory can be
+        // long: the path is verified, not hoped for.
         string path = Path.Combine(
             Path.GetTempPath(),
             "o-" + Guid.NewGuid().ToString("N")[..8] + ".sock");

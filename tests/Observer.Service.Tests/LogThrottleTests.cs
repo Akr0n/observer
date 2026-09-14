@@ -3,14 +3,14 @@ using Observer.Service;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Il freno che tiene un guasto ripetuto fuori dal registro eventi.
+/// The throttle that keeps a repeated fault out of the event log.
 /// </summary>
 /// <remarks>
-/// Le regole sono tre e tirano in direzioni opposte: non ripetere cio' che e' gia' stato
-/// detto, non tacere cio' che e' cambiato, e non lasciar credere che un guasto duri ancora
-/// quando e' finito. Sbagliare la prima riempie il registro di Windows in poche ore;
-/// sbagliare la seconda nasconde il guasto nuovo dietro quello vecchio; sbagliare la terza
-/// manda a cercare un guasto che non c'e' piu'.
+/// There are three rules and they pull in opposite directions: do not repeat what has already
+/// been said, do not keep quiet about what has changed, and do not let anyone believe a fault
+/// is still going on when it is over. Get the first wrong and the Windows event log fills up in
+/// a few hours; get the second wrong and the new fault hides behind the old one; get the third
+/// wrong and someone goes hunting for a fault that is no longer there.
 /// </remarks>
 public class LogThrottleTests
 {
@@ -37,9 +37,9 @@ public class LogThrottleTests
     [Fact]
     public void ADifferentReasonIsLoggedImmediately()
     {
-        // Il caso che rende il freno pericoloso se sbagliato: il disco si libera e comincia
-        // un guasto d'altra natura. Tacerlo perche' "stiamo gia' segnalando qualcosa"
-        // lascerebbe il registro a raccontare il guasto sbagliato.
+        // The case that makes the throttle dangerous if it gets this wrong: the disk frees up
+        // and a fault of a different nature begins. Keeping quiet about it because "we are
+        // already reporting something" would leave the log telling the wrong fault.
         LogThrottle throttle = Create(out _);
 
         Assert.True(throttle.ShouldLog("disco-pieno"));
@@ -50,9 +50,9 @@ public class LogThrottleTests
     [Fact]
     public void AFaultThatLastsIsLoggedAgainAfterTheWindow()
     {
-        // Senza questo, un guasto permanente lascia UNA riga e poi silenzio: chi legge il
-        // registro un'ora dopo non sa se sta ancora durando. E i numeri dentro il messaggio
-        // resterebbero quelli del primo giro.
+        // Without this, a permanent fault leaves ONE line and then silence: whoever reads the
+        // log an hour later cannot tell whether it is still going on. And the numbers inside
+        // the message would stay those of the first round.
         LogThrottle throttle = Create(out FakeClock clock);
 
         Assert.True(throttle.ShouldLog("disco-pieno"));
@@ -65,9 +65,9 @@ public class LogThrottleTests
     [Fact]
     public void AFlickeringFaultDoesNotLogOnEveryRecovery()
     {
-        // E' la ragione per cui questa classe non si accontenta di confrontare il motivo.
-        // Un collector che ondeggia intorno alla sua scadenza alterna guasto e successo a
-        // ogni giro: se ogni ritorno fosse "un motivo nuovo", resterebbe meta' del diluvio.
+        // This is why this class is not content to compare the reason. A collector wavering
+        // around its deadline alternates fault and success at every round: if every return
+        // were "a new reason", half the flood would be left.
         LogThrottle throttle = Create(out _);
 
         Assert.True(throttle.ShouldLog("scaduto"));
@@ -83,8 +83,8 @@ public class LogThrottleTests
     [Fact]
     public void TheRecoveryIsLoggedEvenIfTheFaultLastedASingleRound()
     {
-        // E' il caso piu' comune, ed e' proprio quello in cui una riga sola lascerebbe
-        // credere a un guasto ancora aperto.
+        // It is the most common case, and it is precisely the one in which a single line
+        // would let you believe a fault is still open.
         LogThrottle throttle = Create(out _);
 
         Assert.True(throttle.ShouldLog("disco-pieno"));
@@ -109,8 +109,8 @@ public class LogThrottleTests
     [Fact]
     public void WithNoFaultThereIsNoRecoveryToAnnounce()
     {
-        // Altrimenti ogni giro sano scriverebbe "e' tornato tutto a posto", che e' lo stesso
-        // diluvio di prima con parole piu' liete.
+        // Otherwise every healthy round would write "everything is back to normal", which is
+        // the same flood as before in happier words.
         LogThrottle throttle = Create(out _);
 
         Assert.False(throttle.ShouldLogRecovery(out int silenced));
@@ -120,8 +120,8 @@ public class LogThrottleTests
     [Fact]
     public void AFaultThatWasNeverLoggedHasNoRecoveryToAnnounce()
     {
-        // La fine di una storia che il registro non ha mai cominciato non si racconta: e'
-        // l'altra meta' di cio' che tiene silenzioso un guasto che lampeggia.
+        // The end of a story the log never began does not get told: it is the other half of
+        // what keeps a flickering fault silent.
         LogThrottle throttle = Create(out _);
 
         throttle.ShouldLog("scaduto");
@@ -134,8 +134,8 @@ public class LogThrottleTests
     [Fact]
     public void AfterTheWindowARecurringFaultIsLoggedOnceMore()
     {
-        // Il silenzio dell'intermittenza non e' per sempre: passata la finestra, il guasto
-        // che ancora va e viene torna a comparire una volta.
+        // The silence around an intermittent fault is not forever: once the window has
+        // passed, a fault that still comes and goes shows up once more.
         LogThrottle throttle = Create(out FakeClock clock);
 
         throttle.ShouldLog("scaduto");
@@ -158,8 +158,8 @@ public class LogThrottleTests
     [Fact]
     public void TheDefaultWindowIsNotZero()
     {
-        // Zero renderebbe il freno un pezzo di codice che non frena, e nessuno degli altri
-        // test se ne accorgerebbe: li' l'orologio non avanza mai da solo.
+        // Zero would make the throttle a piece of code that throttles nothing, and none of
+        // the other tests would notice: in those the clock never advances on its own.
         Assert.True(LogThrottle.RepeatInterval >= TimeSpan.FromMinutes(1));
     }
 

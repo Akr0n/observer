@@ -3,13 +3,13 @@ using Observer.Service.LocalChannel;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Le opzioni del canale locale si rifiutano di partire con valori inutilizzabili.
+/// The local channel options refuse to start with unusable values.
 /// </summary>
 /// <remarks>
-/// Nome della pipe e percorso del socket sono CONFIGURABILI, e non e' una comodita': un
-/// endpoint che non si binda abbatte l'INTERO host, endpoint TCP compreso. Con valori fissi,
-/// lanciare il servizio a mano su una macchina dove quello installato gira non fallirebbe piu'
-/// "solo sulla porta": non partirebbe affatto.
+/// The pipe name and the socket path are CONFIGURABLE, and that is not a convenience: an
+/// endpoint that fails to bind brings down the WHOLE host, the TCP endpoint included. With fixed
+/// values, launching the service by hand on a machine where the installed one is running would
+/// no longer fail "only on the port": it would not start at all.
 /// </remarks>
 public class LocalChannelOptionsTests
 {
@@ -28,8 +28,8 @@ public class LocalChannelOptionsTests
     [Fact]
     public void ASocketPathThatIsTooLongIsRejected()
     {
-        // Il limite e' 107 byte. La convalida deve scattare all'avvio e non a StartAsync, dove
-        // porterebbe giu' anche l'endpoint TCP.
+        // The limit is 107 bytes. Validation must fire at start-up and not in StartAsync, where
+        // it would take the TCP endpoint down with it.
         LocalChannelOptions options = new()
         {
             SocketPath = "/" + new string('a', 200) + "/observer.sock",
@@ -59,8 +59,8 @@ public class LocalChannelOptionsTests
     [Fact]
     public void NothingIsValidatedWhenTheChannelIsDisabled()
     {
-        // Una macchina che non vuole il canale locale non deve inventarsi un percorso valido
-        // per poter partire.
+        // A machine that does not want the local channel must not have to invent a valid path
+        // just to be able to start.
         LocalChannelOptions options = new()
         {
             Enabled = false,

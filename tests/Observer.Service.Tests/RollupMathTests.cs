@@ -4,10 +4,10 @@ using Observer.Service.Persistence;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// La matematica del rollup, provata SENZA database. E' il punto piu' pericoloso di tutta la
-/// persistenza: un errore qui non fa fallire nulla, non lancia e non si vede nei log —
-/// produce grafici pieni di numeri plausibili e sbagliati. L'unico modo di scoprirlo e'
-/// confrontare l'aggregato con il calcolo diretto sui campioni grezzi.
+/// The rollup arithmetic, tested WITHOUT a database. It is the most dangerous spot in the whole
+/// persistence layer: a mistake here fails nothing, throws nothing and shows up in no log — it
+/// produces charts full of plausible, wrong numbers. The only way to find it is to compare the
+/// aggregate against the direct calculation over the raw samples.
 /// </summary>
 public class RollupMathTests
 {
@@ -29,9 +29,9 @@ public class RollupMathTests
     [Fact]
     public void AlignToBucketStart_LeavesAnAlreadyAlignedInstantWhereItIs()
     {
-        // Se un istante esattamente sul bordo scivolasse al bucket precedente, ogni bucket
-        // conterrebbe un campione del bucket successivo e le medie sarebbero tutte sfalsate
-        // di un campione: sbagliate di poco, quindi invisibili.
+        // If an instant exactly on the boundary slipped into the previous bucket, every bucket
+        // would hold one sample belonging to the next one and every average would be off by a
+        // single sample: wrong by a little, and therefore invisible.
         long aligned = RollupMath.AlignToBucketStart(Ms("2026-08-26T12:05:00Z"), FiveMinutes);
 
         Assert.Equal(Ms("2026-08-26T12:05:00Z"), aligned);
@@ -40,10 +40,10 @@ public class RollupMathTests
     [Fact]
     public void AlignToBucketStart_RoundsDownEvenBeforeTheEpoch()
     {
-        // Con la divisione intera del C# -1500 / 60000 fa 0, e un istante prima del 1970
-        // finirebbe nel bucket SUCCESSIVO invece che nel precedente. Non capita in
-        // produzione, ma e' il modo piu' economico di verificare che l'arrotondamento sia un
-        // vero floor e non un troncamento verso lo zero.
+        // With C# integer division -1500 / 60000 is 0, so an instant before 1970 would land in
+        // the NEXT bucket instead of the previous one. It does not happen in production, but it
+        // is the cheapest way to check that the rounding is a real floor and not a truncation
+        // towards zero.
         long aligned = RollupMath.AlignToBucketStart(-1500L, OneMinute);
 
         Assert.Equal(-60000L, aligned);
@@ -101,10 +101,10 @@ public class RollupMathTests
     [Fact]
     public void Aggregate_LastIsTheMostRecentNotTheLastToArrive()
     {
-        // I campioni arrivano gia' ordinati dal database, ma "ultimo" deve significare
-        // "piu' recente" e non "ultimo della lista": altrimenti il giorno in cui qualcuno
-        // toglie l'ORDER BY dalla query il valore corrente mostrato in dashboard diventa un
-        // valore vecchio a caso, senza che nulla fallisca.
+        // The samples already arrive ordered from the database, but "last" has to mean "most
+        // recent" and not "last in the list": otherwise, the day someone drops the ORDER BY from
+        // the query, the current value shown on the dashboard becomes an old value picked at
+        // random, and nothing fails.
         RawSample[] samplesOutOfOrder =
         [
             new(Ms("2026-08-26T12:00:59Z"), 99d),
@@ -119,19 +119,19 @@ public class RollupMathTests
     [Fact]
     public void Aggregate_ProducesNoBucketWhenThereAreNoSamples()
     {
-        // Un bucket vuoto avrebbe conteggio zero e media 0/0 = NaN, e un NaN in JSON fa
-        // fallire l'INTERA risposta HTTP, non solo quella metrica.
+        // An empty bucket would have a count of zero and an average of 0/0 = NaN, and a NaN in
+        // JSON fails the WHOLE HTTP response, not just that one metric.
         Assert.Empty(RollupMath.Aggregate([], OneMinute));
     }
 
     [Fact]
     public void Combine_TheFiveMinuteAverageMatchesTheAverageOfTheRawSamples()
     {
-        // IL test. Cinque minuti con un numero DIVERSO di campioni ciascuno: e' il caso
-        // normale, non un caso limite — succede a ogni riavvio del servizio, a ogni timeout
-        // di un collector e ogni volta che una metrica compare a meta' minuto. Chi conserva
-        // la media invece di somma e conteggio calcola qui la media delle medie e ottiene un
-        // numero credibile e falso.
+        // THE test. Five minutes with a DIFFERENT number of samples each: that is the normal
+        // case, not an edge case — it happens at every service restart, at every collector
+        // timeout and every time a metric appears halfway through a minute. Anything that keeps
+        // the average instead of the sum and the count computes the average of the averages
+        // here, and gets a believable, false number.
         RawSample[] rawSamples =
         [
             new(Ms("2026-08-26T12:00:10Z"), 100d),
@@ -147,7 +147,7 @@ public class RollupMathTests
         IReadOnlyList<RollupBucket> minuteBuckets = RollupMath.Aggregate(rawSamples, OneMinute);
         RollupBucket fiveMinuteBucket = Assert.Single(RollupMath.Combine(minuteBuckets, FiveMinutes));
 
-        // Media vera: 100 / 8 = 12,5. Media delle medie: (100+0+0+0+0)/5 = 20.
+        // True average: 100 / 8 = 12.5. Average of the averages: (100+0+0+0+0)/5 = 20.
         Assert.Equal(100d / 8d, fiveMinuteBucket.Average);
         Assert.Equal(8, fiveMinuteBucket.Count);
         Assert.Equal(100d, fiveMinuteBucket.Sum);
@@ -202,8 +202,8 @@ public class RollupMathTests
     [Fact]
     public void Bucket_RejectsANonPositiveCount()
     {
-        // Un bucket a conteggio zero produce media NaN e fa saltare la serializzazione
-        // dell'intera risposta. Meglio non lasciarlo nascere.
+        // A bucket with a count of zero produces a NaN average and breaks the serialization of
+        // the whole response. Better not to let one exist in the first place.
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new RollupBucket(0L, 0, 0d, 0d, 0d, 0d));
     }

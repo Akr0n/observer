@@ -11,17 +11,16 @@ using Observer.Service.Credentials;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// TLS vero, su Kestrel vero, con il certificato che il servizio genera per se'.
+/// Real TLS, on real Kestrel, with the certificate the service generates for itself.
 /// </summary>
 /// <remarks>
-/// Questa classe copre il buco piu' vecchio della suite: WebApplicationFactory sostituisce
-/// Kestrel con un TestServer in memoria, quindi finora NESSUN test ha mai toccato un trasporto
-/// reale. Un certificato che non si riesce a ricaricare, una chiave privata persa nel viaggio
-/// verso il deposito, un'impronta calcolata su byte diversi da quelli che finiscono sul filo:
-/// niente di tutto cio' sarebbe stato visto.
+/// This class covers the oldest gap in the suite: WebApplicationFactory replaces Kestrel with an
+/// in-memory TestServer, so until now NO test had ever touched a real transport. A certificate
+/// that cannot be reloaded, a private key lost on the way to the store, a fingerprint computed on
+/// bytes other than the ones that end up on the wire: none of that would have been seen.
 /// <para>
-/// Il certificato non viene usato appena generato ma <b>esportato e riletto</b>, perche' quello
-/// e' il percorso del SECONDO avvio, cioe' di tutti gli avvii tranne il primo.
+/// The certificate is not used straight after being generated but <b>exported and read back</b>,
+/// because that is the path of the SECOND start, that is, of every start but the first.
 /// </para>
 /// </remarks>
 public class HttpsTransportTests
@@ -47,8 +46,9 @@ public class HttpsTransportTests
     [Fact]
     public async Task AWrongFingerprintFailsTheConnection()
     {
-        // Il caso che conta: cifrato non basta. Senza questo controllo chi si mette in mezzo
-        // presenta il PROPRIO certificato, il collegamento riesce, e il token gli arriva.
+        // The case that matters: encrypted is not enough. Without this check whoever sits in the
+        // middle presents their OWN certificate, the connection succeeds, and the token reaches
+        // them.
         using CertificateRoundTrip certificate = CertificateRoundTrip.GenerateAndReload();
         using X509Certificate2 foreign = MachineCertificate.Create("un-altra-macchina", DateTimeOffset.UtcNow);
 
@@ -63,10 +63,10 @@ public class HttpsTransportTests
     [Fact]
     public async Task WithoutFingerprintPinningTheSelfSignedCertificateIsRejected()
     {
-        // La controprova che l'impronta e' l'UNICA cosa che regge il collegamento: con la
-        // validazione ordinaria un certificato autofirmato non passa. Se un giorno questo
-        // test cominciasse a fallire vorrebbe dire che il certificato e' finito in un
-        // archivio di fiducia della macchina, cioe' che vale per molto piu' del dovuto.
+        // The converse check, that the fingerprint is the ONLY thing holding the connection up:
+        // with ordinary validation a self-signed certificate does not pass. If this test ever
+        // started failing it would mean the certificate had ended up in one of the machine's
+        // trust stores, that is, that it counts for far more than it should.
         using CertificateRoundTrip certificate = CertificateRoundTrip.GenerateAndReload();
 
         await using KestrelHost host = await KestrelHost.StartAsync(certificate.Reloaded);
@@ -80,10 +80,9 @@ public class HttpsTransportTests
     [Fact]
     public async Task TheComputedFingerprintIsTheOneThatArrivesOnTheWire()
     {
-        // Non e' una tautologia: l'impronta si calcola sui byte DER del certificato in
-        // memoria, e cio' che il client vede e' cio' che Kestrel gli ha spedito. Se i due
-        // insiemi di byte divergessero, il fissaggio non proteggerebbe niente e nessun altro
-        // test se ne accorgerebbe.
+        // Not a tautology: the fingerprint is computed on the DER bytes of the certificate in
+        // memory, and what the client sees is what Kestrel sent it. If the two sets of bytes
+        // diverged, pinning would protect nothing and no other test would notice.
         using CertificateRoundTrip certificate = CertificateRoundTrip.GenerateAndReload();
 
         await using KestrelHost host = await KestrelHost.StartAsync(certificate.Reloaded);
@@ -91,14 +90,14 @@ public class HttpsTransportTests
         string? seenByTheClient = null;
 
         using SocketsHttpHandler handler = new();
-#pragma warning disable CA5359 // Accepts di proposito QUALUNQUE certificato: questo test serve
+#pragma warning disable CA5359 // Deliberately accepts ANY certificate: this test exists to
         handler.SslOptions.RemoteCertificateValidationCallback = (_, presented, _, _) =>
-        {                      // a osservare cosa arriva sul filo, non a decidere se fidarsi.
+        {                      // watch what arrives on the wire, not to decide whether to trust it.
             seenByTheClient = presented is X509Certificate2 arrived
                 ? CertificateFingerprint.From(arrived.RawDataMemory.Span)
-                : null;        // Confrontare qui trasformerebbe una divergenza fra i byte in
-                               // memoria e quelli spediti in un errore di rete oscuro, invece
-            return true;       // che in un confronto leggibile con un messaggio chiaro.
+                : null;        // Comparing here would turn a divergence between the bytes in
+                               // memory and the ones sent into an obscure network error, instead
+            return true;       // of a readable comparison with a clear message.
         };
 #pragma warning restore CA5359
 
@@ -111,16 +110,16 @@ public class HttpsTransportTests
     [Fact]
     public async Task TheFIRSTStartCertificateCanServeTls()
     {
-        // Il gemello mancante, e l'assenza costava caro: il primo avvio NON rilegge dal
-        // deposito, usa l'oggetto appena generato. Su Windows quella chiave privata sta solo
-        // in memoria, e SChannel non la sa servire: l'handshake muore con lo stesso
-        // "unexpected EOF" gia' misurato per EphemeralKeySet.
+        // The missing twin, and its absence was expensive: the first start does NOT read back
+        // from the store, it uses the object just generated. On Windows that private key lives
+        // only in memory, and SChannel cannot serve it: the handshake dies with the same
+        // "unexpected EOF" already measured for EphemeralKeySet.
         //
-        // Il sintomo era peggiore del guasto. Lato client l'eccezione interna e' una
-        // IOException e non una AuthenticationException, quindi la dashboard diceva
-        // "Service unreachable - check that the machine is on"; e al primo riavvio del
-        // servizio spariva tutto, perche' dal secondo avvio in poi si passa dal deposito.
-        // Un guasto che sembra un problema di rete e che si ripara da solo.
+        // The symptom was worse than the fault. On the client side the inner exception is an
+        // IOException and not an AuthenticationException, so the dashboard said
+        // "Service unreachable - check that the machine is on"; and at the first restart of the
+        // service it all went away, because from the second start on the store is used.
+        // A fault that looks like a network problem and repairs itself.
         string folder = Path.Combine(
             Path.GetTempPath(),
             "observer-primo-avvio-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
@@ -169,7 +168,7 @@ public class HttpsTransportTests
         return new HttpClient(handler, disposeHandler: true);
     }
 
-    /// <summary>Il certificato generato, depositato e riletto: il percorso del secondo avvio.</summary>
+    /// <summary>The certificate generated, stored and read back: the second start's path.</summary>
     private sealed class CertificateRoundTrip : IDisposable
     {
         private CertificateRoundTrip(X509Certificate2 generated, X509Certificate2 reloaded)
@@ -199,7 +198,7 @@ public class HttpsTransportTests
         }
     }
 
-    /// <summary>Kestrel VERO, su una porta effimera di localhost.</summary>
+    /// <summary>A REAL Kestrel, on an ephemeral localhost port.</summary>
     private sealed class KestrelHost : IAsyncDisposable
     {
         private readonly WebApplication app;
@@ -216,20 +215,20 @@ public class HttpsTransportTests
         {
             WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
 
-            // Le sorgenti di configurazione si SVUOTANO, e non e' pulizia: il progetto di
-            // prova si porta in output l'appsettings.json del servizio, quindi senza
-            // questa riga il builder legge la sezione Kestrel vera e prova ad aprire
-            // 0.0.0.0:5057 - cioe' la porta del servizio installato su questa macchina.
-            // Misurato: address already in use, su tutte e quattro le prove.
+            // The configuration sources are CLEARED, and this is not tidying up: the test
+            // project copies the service's appsettings.json into its output, so without
+            // this line the builder reads the real Kestrel section and tries to open
+            // 0.0.0.0:5057 - that is, the port of the service installed on this machine.
+            // Measured: address already in use, on all four tests.
             builder.Configuration.Sources.Clear();
 
-            // Porta 0: la sceglie il sistema. Una porta fissa farebbe fallire questa classe
-            // sulla macchina di chi ha gia' qualcosa in ascolto li'.
+            // Port 0: the system picks it. A fixed port would make this class fail on the
+            // machine of anyone who already has something listening there.
             //
-            // Listen(IPAddress.Loopback) e NON ListenLocalhost: con la porta dinamica il
-            // secondo rifiuta di partire con "Dynamic port binding is not supported when
-            // binding to localhost", perche' localhost sono DUE indirizzi e il sistema ne
-            // sceglierebbe una diversa per ciascuno.
+            // Listen(IPAddress.Loopback) and NOT ListenLocalhost: with a dynamic port the
+            // latter refuses to start with "Dynamic port binding is not supported when
+            // binding to localhost", because localhost is TWO addresses and the system
+            // would pick a different port for each.
             builder.WebHost.ConfigureKestrel(kestrel =>
                 kestrel.Listen(IPAddress.Loopback, 0, port => port.UseHttps(certificate)));
 

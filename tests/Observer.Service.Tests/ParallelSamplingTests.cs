@@ -7,15 +7,15 @@ using Observer.Service.Persistence;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Che le sorgenti vengano interrogate INSIEME, non una dopo l'altra.
+/// That the sources are polled TOGETHER, not one after another.
 /// </summary>
 /// <remarks>
-/// In fila il giro dura la somma dei tempi, e il caso peggiore e' il numero di collector per
-/// la scadenza di ciascuno: con due sorgenti supera gia' il secondo di campionamento, con
-/// cinque lo quadruplica. Il guasto che ne segue non fa rumore — <c>PeriodicTimer</c> lascia
-/// cadere i tick in silenzio, i campioni spariscono, e la striscia dello storico dichiara
-/// "non misurato" un periodo in cui la macchina era accesa e sana. Nessun test fallirebbe:
-/// per questo ce ne vuole uno che guardi il TEMPO.
+/// In sequence a round takes the sum of the times, and the worst case is the number of collectors
+/// times the timeout of each: with two sources it already runs past the one-second sampling
+/// interval, with five it quadruples it. The fault that follows makes no noise —
+/// <c>PeriodicTimer</c> drops ticks silently, the samples disappear, and the history strip
+/// declares "not measured" a period in which the machine was up and healthy. No test would fail:
+/// that is why one is needed that watches the TIME.
 /// </remarks>
 public class ParallelSamplingTests
 {
@@ -24,13 +24,13 @@ public class ParallelSamplingTests
     [Fact]
     public async Task AllSourcesAreInFlightAtTheSameTime()
     {
-        // Si CONTA quante raccolte sono aperte nello stesso momento, invece di cronometrare
-        // il giro. Un tempo assoluto qui non dimostra niente: su un runner carico 1320 ms
-        // sono compatibili sia con tre raccolte in fila sia con tre raccolte insieme piu'
-        // l'avvio del servizio, e infatti la prima stesura di questo test falliva accusando
-        // il codice di una cosa che non poteva dimostrare. Il numero di raccolte
-        // contemporanee, invece, e' tre oppure uno, e non dipende da quanto va veloce la
-        // macchina.
+        // This COUNTS how many collections are in flight at the same moment, instead of timing
+        // the round. An absolute time proves nothing here: on a loaded runner 1320 ms is
+        // consistent both with three collections in sequence and with three collections together
+        // plus the service start-up, and in fact the first draft of this test failed, accusing
+        // the code of something it could not prove. The number of simultaneous collections, on
+        // the other hand, is either three or one, and it does not depend on how fast the
+        // machine runs.
         OverlapCounter counter = new();
         RecordingSink sink = new();
         MetricSnapshotCache cache = new();
@@ -62,9 +62,9 @@ public class ParallelSamplingTests
     [Fact]
     public async Task TheCollectorOrderDoesNotChangeFromOneRoundToTheNext()
     {
-        // Interrogare insieme non deve voler dire consegnare in ordine di arrivo: i riquadri
-        // a schermo si scambierebbero di posto a ogni secondo, e non ci sarebbe niente a
-        // segnalarlo se non l'occhio di chi guarda.
+        // Polling together must not mean delivering in arrival order: the tiles on screen would
+        // swap places every second, and nothing would flag it except the eye of whoever is
+        // watching.
         RecordingSink sink = new();
         MetricSnapshotCache cache = new();
 
@@ -84,8 +84,8 @@ public class ParallelSamplingTests
         {
             MachineSnapshot first = await sink.FirstSnapshot.WaitAsync(TimeSpan.FromSeconds(15));
 
-            // "secondo" finisce per primo e "primo" per ultimo: se contasse l'ordine di
-            // arrivo, l'elenco uscirebbe rovesciato.
+            // "secondo" finishes first and "primo" finishes last: if arrival order counted, the
+            // list would come out reversed.
             Assert.Equal(
                 ["primo", "secondo", "terzo"],
                 first.Collectors.Select(collector => collector.CollectorId));
@@ -96,7 +96,7 @@ public class ParallelSamplingTests
         }
     }
 
-    /// <summary>Trattiene il primo campionamento consegnato allo storico.</summary>
+    /// <summary>Holds on to the first sample delivered to history.</summary>
     private sealed class RecordingSink : IMetricSnapshotSink
     {
         private readonly TaskCompletionSource<MachineSnapshot> first =
@@ -107,7 +107,7 @@ public class ParallelSamplingTests
         public void Enqueue(MachineSnapshot snapshot) => first.TrySetResult(snapshot);
     }
 
-    /// <summary>Quante raccolte sono state aperte nello stesso momento, al massimo.</summary>
+    /// <summary>How many collections were in flight at the same moment, at most.</summary>
     private sealed class OverlapCounter
     {
         private int inFlight;
@@ -119,9 +119,9 @@ public class ParallelSamplingTests
         {
             int current = Interlocked.Increment(ref inFlight);
 
-            // Alza il massimo finche' qualcun altro non lo alza di piu': senza il ciclo, due
-            // raccolte che entrano insieme possono sovrascriversi a vicenda e il conteggio
-            // resterebbe indietro proprio nel caso che interessa.
+            // Raise the peak until somebody else raises it higher: without the loop, two
+            // collections entering together can overwrite each other and the count would lag
+            // behind in exactly the case that matters.
             int seen = Volatile.Read(ref peak);
 
             while (current > seen)

@@ -12,7 +12,9 @@ using Observer.Service.LocalChannel;
 
 namespace Observer.Service.Tests;
 
-/// <summary>Il canale locale su Windows: la pipe si apre, convive col TCP, e la DACL e' quella voluta.</summary>
+/// <summary>
+/// The local channel on Windows: the pipe opens, coexists with TCP, and the DACL is the one intended.
+/// </summary>
 [Collection(ProcessEnvironment.Name)]
 public class LocalChannelWindowsTests
 {
@@ -20,8 +22,8 @@ public class LocalChannelWindowsTests
     [SupportedOSPlatform("windows")]
     public void PipeSecurityGrantsInteractiveNotAuthenticatedUsers()
     {
-        // Authenticated Users comprende OGNI principal autenticato che raggiunga la macchina,
-        // anche via SMB sulla porta 445. INTERACTIVE comprende solo chi ha una sessione qui.
+        // Authenticated Users covers EVERY authenticated principal that reaches the machine,
+        // including over SMB on port 445. INTERACTIVE covers only those with a session here.
         string sddl = WindowsNamedPipe.SecurityDescriptor()
             .GetSecurityDescriptorSddlForm(AccessControlSections.Access);
 
@@ -33,10 +35,10 @@ public class LocalChannelWindowsTests
     [SupportedOSPlatform("windows")]
     public void CurrentUserOnlyStaysOffONLYWithAPipeSecurityDescriptor()
     {
-        // Regressione su un guasto che parte SENZA errori. Misurato: CurrentUserOnly = false da
-        // solo produce una pipe con DACL (A;;FR;;;WD)(A;;FR;;;AN), cioe' leggibile da Everyone e
-        // da ANONYMOUS LOGON, e l'host parte normalmente. Questo test esiste proprio perche'
-        // quel guasto non ha alcun sintomo visibile.
+        // Regression test for a fault that starts WITHOUT errors. Measured: CurrentUserOnly =
+        // false on its own produces a pipe with DACL (A;;FR;;;WD)(A;;FR;;;AN), that is, readable
+        // by Everyone and by ANONYMOUS LOGON, and the host starts normally. This test exists
+        // precisely because that fault has no visible symptom at all.
         NamedPipeTransportOptions options = new();
 
         WindowsNamedPipe.ConfigureTransport(options);
@@ -48,9 +50,9 @@ public class LocalChannelWindowsTests
     [WindowsOnly]
     public async Task PipeAndTcpCoexistInTheSameHostAndServeTheSameEndpoints()
     {
-        // La convivenza dei due trasporti e' la premessa dell'intero progetto: se
-        // ListenNamedPipe sostituisse il trasporto socket invece di affiancarlo servirebbero
-        // due host, e il piano cambierebbe forma.
+        // The two transports coexisting is the premise of the whole project: if ListenNamedPipe
+        // replaced the socket transport instead of sitting alongside it, two hosts would be
+        // needed, and the plan would change shape.
         string pipe = UniquePipeName();
 
         await using RealKestrelBench bench = await RealKestrelBench.StartAsync(options =>
@@ -72,9 +74,10 @@ public class LocalChannelWindowsTests
     [WindowsOnly]
     public async Task ThePipeAcceptsMoreThanOneConnection()
     {
-        // La PRIMA istanza si crea sempre: e' dalla SECONDA che serve FILE_CREATE_PIPE_INSTANCE,
-        // e Kestrel ne apre piu' d'una. Una DACL che concede troppo poco fa fallire il bind con
-        // il fuorviante "address already in use", quindi il caso da provare e' proprio questo.
+        // The FIRST instance is always created: it is from the SECOND on that
+        // FILE_CREATE_PIPE_INSTANCE is needed, and Kestrel opens more than one. A DACL that
+        // grants too little makes the bind fail with the misleading "address already in use",
+        // so this is exactly the case to test.
         string pipe = UniquePipeName();
 
         await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
@@ -109,12 +112,12 @@ public class LocalChannelWindowsTests
     [WindowsOnly]
     public async Task AnonymousImpersonationIsUnidentifiedAndDoesNotCauseA500()
     {
-        // Il livello di impersonation lo sceglie il CLIENT: con Anonymous la richiesta arriva lo
-        // stesso ma il server non riesce a leggere il token. E' il caso di ATTACCO, non un caso
-        // limite. Misurato: l'eccezione e' SecurityException con HRESULT 0x80070543, NON
-        // IOException. Una guardia che catturasse solo IOException lascerebbe uscire un 500
-        // proprio sul percorso che si sta cercando di chiudere, e un 500 e' il segnale che dice
-        // a chi sonda di aver toccato qualcosa.
+        // The impersonation level is chosen by the CLIENT: with Anonymous the request arrives all
+        // the same but the server cannot read the token. This is the ATTACK case, not an edge
+        // case. Measured: the exception is SecurityException with HRESULT 0x80070543, NOT
+        // IOException. A guard that caught only IOException would let a 500 escape on exactly
+        // the path being closed, and a 500 is the signal that tells whoever is probing that they
+        // have touched something.
         string pipe = UniquePipeName();
 
         await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
@@ -135,9 +138,9 @@ public class LocalChannelWindowsTests
     [WindowsOnly]
     public async Task LocalhostIsNotALocalRoute()
     {
-        // Misurato: con serverName "localhost" GetNamedPipeClientComputerName RIESCE e
-        // restituisce "[::1]", cioe' la connessione e' passata da SMB. Solo "." e' locale.
-        // E' la trappola che farebbe perdere ore a chi scrivera' il client.
+        // Measured: with serverName "localhost" GetNamedPipeClientComputerName SUCCEEDS and
+        // returns "[::1]", which means the connection came in over SMB. Only "." is local.
+        // This is the trap that would cost hours to whoever writes the client.
         string pipe = UniquePipeName();
 
         await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
@@ -176,8 +179,8 @@ public class LocalChannelWindowsTests
     [WindowsOnly]
     public async Task TheLocalChannelNoLongerNeedsTheToken()
     {
-        // E' l'obiettivo dell'intero progetto, e il primo cambiamento di comportamento
-        // visibile: sulla macchina il sistema operativo sa gia' chi chiama.
+        // This is the goal of the whole project, and the first visible change in behaviour:
+        // on the machine the operating system already knows who is calling.
         string pipe = UniquePipeName();
 
         await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
@@ -191,8 +194,8 @@ public class LocalChannelWindowsTests
         using HttpClient overPipe = RealKestrelBench.ClientOn(PipeHandler(pipe));
         Assert.Equal("pong", await overPipe.GetStringAsync("ping", CancellationToken.None));
 
-        // Sul TCP invece non cambia niente: rendere facoltativo il token in locale non lo
-        // rende facoltativo in rete.
+        // On TCP nothing changes: making the token optional locally does not make it
+        // optional on the network.
         string tcp = bench.Addresses.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
         using HttpClient overTcp = new() { BaseAddress = new Uri(tcp) };
         using HttpResponseMessage withoutToken = await overTcp.GetAsync("ping", CancellationToken.None);
@@ -203,10 +206,10 @@ public class LocalChannelWindowsTests
     [WindowsOnly]
     public async Task AnAnonymousCallerIsRefusedEVENWithTheRightToken()
     {
-        // La regola "l'identita' non determinabile rifiuta" non deve avere una scappatoia. Il
-        // livello di impersonation lo sceglie il CLIENT: con Anonymous un chiamante si rende
-        // unilateralmente non identificabile pur restando capace di presentare il token. Se il
-        // token bastasse, la regola sarebbe vuota.
+        // The rule "an identity that cannot be read refuses" must not have a loophole. The
+        // impersonation level is chosen by the CLIENT: with Anonymous a caller unilaterally
+        // makes itself unidentifiable while still being able to present the token. If the token
+        // were enough, the rule would mean nothing.
         string pipe = UniquePipeName();
 
         await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
@@ -227,8 +230,8 @@ public class LocalChannelWindowsTests
     [WindowsOnly]
     public async Task ALocalOnlyEndpointDoesNotExistForACallerFromTheNetwork()
     {
-        // 404 e non 403: gli endpoint di appaiamento ruoteranno le chiavi, e chi rubasse il
-        // token non deve nemmeno poter confermare che esistano.
+        // 404 and not 403: the pairing endpoints will rotate the keys, and whoever stole the
+        // token must not even be able to confirm that they exist.
         string pipe = UniquePipeName();
 
         await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
@@ -247,14 +250,14 @@ public class LocalChannelWindowsTests
 
         using HttpResponseMessage fromNetwork = await overTcp.GetAsync("riservato", CancellationToken.None);
 
-        // Col token GIUSTO, e comunque 404.
+        // With the RIGHT token, and still a 404.
         Assert.Equal(HttpStatusCode.NotFound, fromNetwork.StatusCode);
 
         using HttpClient overPipe = RealKestrelBench.ClientOn(PipeHandler(pipe));
         Assert.Equal("segreto", await overPipe.GetStringAsync("riservato", CancellationToken.None));
     }
 
-    /// <summary>Il token usato dai test di controllo d'accesso.</summary>
+    /// <summary>The token used by the access control tests.</summary>
     internal const string TestToken = "token-del-banco";
 
     internal static MachineCredentials Token =>
@@ -271,8 +274,8 @@ public class LocalChannelWindowsTests
         {
             ConnectCallback = async (_, cancel) =>
             {
-                // "." e NON "localhost": misurato, localhost passa da SMB e verrebbe
-                // classificato come chiamante remoto.
+                // "." and NOT "localhost": measured, localhost goes through SMB and would be
+                // classified as a remote caller.
                 NamedPipeClientStream stream = new(
                     server, name, PipeDirection.InOut, PipeOptions.Asynchronous, level);
 

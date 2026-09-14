@@ -4,9 +4,9 @@ using Observer.Service.Persistence;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// La scelta automatica della risoluzione. Sbagliarla non produce dati falsi, produce una
-/// richiesta che non torna piu': un mese a un punto al secondo sono due milioni e mezzo di
-/// punti da costruire in memoria per una singola risposta HTTP.
+/// The automatic choice of resolution. Getting it wrong does not produce false data, it produces
+/// a request that never comes back: a month at one point per second is two and a half million
+/// points to build in memory for a single HTTP response.
 /// </summary>
 public class HistoryResolutionTests
 {
@@ -30,8 +30,8 @@ public class HistoryResolutionTests
     [Fact]
     public void Choose_PicksMinutesWhenTheRawHasAlreadyBeenPurged()
     {
-        // La finestra e' corta e il grezzo ci starebbe: ma il grezzo di ieri non esiste
-        // piu'. Restituirlo comunque darebbe un grafico vuoto invece di uno aggregato.
+        // The window is short and the raw data would fit: but yesterday's raw data is gone.
+        // Returning it anyway would give an empty chart instead of an aggregated one.
         int resolution = HistoryResolution.Choose(
             T("2026-08-25T12:00:00Z"),
             T("2026-08-25T12:05:00Z"),
@@ -44,7 +44,7 @@ public class HistoryResolutionTests
     [Fact]
     public void Choose_PicksMinutesWhenRawWouldExceedTheLimit()
     {
-        // Due ore sono 7200 secondi: oltre il limite di 5000 punti. A un minuto sono 120.
+        // Two hours are 7200 seconds: past the 5000-point limit. At one minute they are 120.
         int resolution = HistoryResolution.Choose(
             T("2026-08-26T10:00:00Z"),
             T("2026-08-26T12:00:00Z"),
@@ -57,7 +57,7 @@ public class HistoryResolutionTests
     [Fact]
     public void Choose_PicksFiveMinutesForAWeek()
     {
-        // Sette giorni sono 10080 minuti, oltre il limite; a cinque minuti sono 2016.
+        // Seven days are 10080 minutes, past the limit; at five minutes they are 2016.
         int resolution = HistoryResolution.Choose(
             T("2026-08-19T12:00:00Z"),
             T("2026-08-26T12:00:00Z"),
@@ -70,9 +70,9 @@ public class HistoryResolutionTests
     [Fact]
     public void Choose_PicksFiveMinutesEvenWhenTheyStillExceedTheLimit()
     {
-        // Un anno a cinque minuti sono piu' di centomila punti: sfora comunque. Non esiste
-        // un livello piu' grosso, quindi si restituisce il piu' grosso che c'e' e il limite
-        // di righe della query fa il resto. Meglio un grafico troncato di un errore.
+        // A year at five minutes is more than a hundred thousand points: it goes past the limit
+        // anyway. There is no coarser level, so the coarsest one there is gets returned and the
+        // query's row limit does the rest. A truncated chart is better than an error.
         int resolution = HistoryResolution.Choose(
             T("2025-08-26T12:00:00Z"),
             T("2026-08-26T12:00:00Z"),

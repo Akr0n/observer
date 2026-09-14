@@ -2,7 +2,7 @@ using Observer.Service.Credentials;
 
 namespace Observer.Service.Tests;
 
-/// <summary>Il deposito su disco del token di macchina.</summary>
+/// <summary>The on-disk store for the machine token.</summary>
 [Collection(ProcessEnvironment.Name)]
 public class CredentialStoreTests : IDisposable
 {
@@ -19,7 +19,7 @@ public class CredentialStoreTests : IDisposable
     [Fact]
     public void AMissingStoreIsNotAnError()
     {
-        // Il primo avvio e' il caso normale, non un guasto.
+        // The first start is the normal case, not a fault.
         Assert.Null(CredentialStore.Read(StorePath));
     }
 
@@ -44,9 +44,9 @@ public class CredentialStoreTests : IDisposable
     [Fact]
     public void RewritingLeavesNoTemporaryFilesBehind()
     {
-        // Un temporaneo dimenticato contiene il segreto in chiaro, e con i permessi ereditati
-        // della cartella invece di quelli del deposito. Misurato: capita davvero quando la
-        // sostituzione fallisce.
+        // A forgotten temp file holds the secret in the clear, and with the permissions
+        // inherited from the folder instead of the store's own. Measured: it really does
+        // happen when the replacement fails.
         for (int i = 0; i < 3; i++)
         {
             CredentialStore.Write(StorePath, MachineCredentials.Create());
@@ -77,9 +77,9 @@ public class CredentialStoreTests : IDisposable
     [Fact]
     public void AnUnreadableStoreDoesNotSilentlyBecomeAMISSINGStore()
     {
-        // Distinzione portante: "non c'e'" significa generane uno nuovo, "non riesco a
-        // leggerlo" significa fermati. Confonderli farebbe rigenerare la chiave a ogni avvio,
-        // tagliando fuori ogni client remoto senza che nessuno capisca perche'.
+        // Load-bearing distinction: "it is not there" means generate a new one, "I cannot
+        // read it" means stop. Blurring the two would regenerate the key at every start,
+        // cutting off every remote client with nobody able to work out why.
         File.WriteAllText(StorePath, "questo non e' JSON {{{");
 
         Assert.Throws<InvalidOperationException>(() => CredentialStore.Read(StorePath));
@@ -88,8 +88,8 @@ public class CredentialStoreTests : IDisposable
     [Fact]
     public void TheStoreHoldsNothingButTheKeysAndTheExpiry()
     {
-        // Il file finisce sotto gli occhi di un amministratore che indaga: deve essere ovvio
-        // cosa contiene, e non deve contenere niente di piu'.
+        // The file ends up in front of an administrator who is investigating: what it holds
+        // must be obvious, and it must hold nothing more.
         CredentialStore.Write(StorePath, MachineCredentials.Create().Rotate(DateTimeOffset.UtcNow, TimeSpan.FromHours(1)));
 
         string contents = File.ReadAllText(StorePath);

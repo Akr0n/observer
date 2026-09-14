@@ -9,14 +9,13 @@ using Microsoft.Extensions.Logging;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Un host Kestrel VERO, con trasporti veri, avviato dentro il test.
+/// A REAL Kestrel host, with real transports, started inside the test.
 /// </summary>
 /// <remarks>
-/// Serve perche' WebApplicationFactory sostituisce Kestrel con un TestServer in memoria:
-/// verificato, e significa che nessuno dei test preesistenti esercita un trasporto. Una named
-/// pipe o un socket unix non esistono affatto sotto TestServer, e nemmeno la sezione Kestrel di
-/// appsettings.json viene analizzata: e' il motivo per cui un URL di endpoint sbagliato passava
-/// la CI verde.
+/// It is needed because WebApplicationFactory replaces Kestrel with an in-memory TestServer:
+/// verified, and it means that none of the pre-existing tests exercises a transport. A named
+/// pipe or a unix socket do not exist at all under TestServer, and not even the Kestrel section
+/// of appsettings.json gets parsed: it is the reason a wrong endpoint URL used to pass CI green.
 /// </remarks>
 public sealed class RealKestrelBench : IAsyncDisposable
 {
@@ -28,17 +27,17 @@ public sealed class RealKestrelBench : IAsyncDisposable
         Addresses = addresses;
     }
 
-    /// <summary>Gli indirizzi su cui l'host sta davvero ascoltando.</summary>
+    /// <summary>The addresses the host is really listening on.</summary>
     public IReadOnlyList<string> Addresses { get; }
 
-    /// <summary>Avvia l'host con gli ascolti indicati, piu' un endpoint di prova.</summary>
-    /// <param name="ascolti">Gli endpoint da aprire.</param>
-    /// <param name="mappa">Endpoint aggiuntivi, per i test che ne hanno bisogno.</param>
+    /// <summary>Starts the host with the given listeners, plus a test endpoint.</summary>
+    /// <param name="listen">The endpoints to open.</param>
+    /// <param name="map">Extra endpoints, for the tests that need them.</param>
     /// <param name="middleware">
-    /// Middleware da installare PRIMA degli endpoint. Serve a montare il controllo d'accesso
-    /// VERO del servizio, cosi' i test lo esercitano invece di verificarne una copia.
+    /// Middleware to install BEFORE the endpoints. It is there to mount the service's REAL
+    /// access control, so the tests exercise it instead of checking a copy of it.
     /// </param>
-    /// <returns>Il banco gia' avviato.</returns>
+    /// <returns>The bench, already started.</returns>
     public static async Task<RealKestrelBench> StartAsync(
         Action<KestrelServerOptions> listen,
         Action<WebApplication>? map = null,
@@ -48,10 +47,10 @@ public sealed class RealKestrelBench : IAsyncDisposable
 
         WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
 
-        // Obbligatorio. L'output dei test contiene appsettings.json, appsettings.Development.json
-        // e appsettings.Local.json COPIATI da Observer.Service. Senza questa riga il banco
-        // eredita la porta 5057 del servizio vero e il token di sviluppo, e i test si
-        // scontrerebbero con l'istanza installata sulla macchina di chi li esegue.
+        // Mandatory. The test output contains appsettings.json, appsettings.Development.json and
+        // appsettings.Local.json COPIED from Observer.Service. Without this line the bench
+        // inherits the real service's port 5057 and the development token, and the tests would
+        // collide with the instance installed on the machine running them.
         builder.Configuration.Sources.Clear();
 
         builder.WebHost.ConfigureKestrel(listen);
@@ -73,12 +72,12 @@ public sealed class RealKestrelBench : IAsyncDisposable
         return new RealKestrelBench(app, addresses);
     }
 
-    /// <summary>Un client che parla con questo host attraverso l'handler indicato.</summary>
-    /// <param name="handler">L'handler, tipicamente con un ConnectCallback.</param>
-    /// <returns>Il client, da chiudere a cura del chiamante.</returns>
+    /// <summary>A client that talks to this host through the given handler.</summary>
+    /// <param name="handler">The handler, typically with a ConnectCallback.</param>
+    /// <returns>The client, for the caller to dispose.</returns>
     public static HttpClient ClientOn(HttpMessageHandler handler) =>
-        // L'host nell'URI e' arbitrario: misurato, finisce solo nell'header Host e il DNS non
-        // viene interpellato. Un nome sotto .invalid rende esplicito che non deve risolversi.
+        // The host in the URI is arbitrary: measured, it ends up only in the Host header and DNS
+        // is never consulted. A name under .invalid makes it explicit that it must not resolve.
         new(handler, disposeHandler: true)
         {
             BaseAddress = new Uri("http://canale-locale.invalid/"),

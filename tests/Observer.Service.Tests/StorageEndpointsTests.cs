@@ -7,17 +7,16 @@ using Observer.Service.Persistence;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Gli endpoint nuovi, sul servizio VERO avviato in memoria.
+/// The new endpoints, against the REAL service started in memory.
 /// </summary>
 /// <remarks>
-/// Due cose si possono verificare solo cosi'. La prima e' l'autenticazione: un endpoint
-/// aggiunto fuori dal middleware esporrebbe lo storico della macchina a chiunque sia sulla
-/// rete, e nessun test di unita' se ne accorgerebbe. La seconda e' il container: se manca
-/// una registrazione il servizio non parte, e anche di quello nessun test di unita' si
-/// accorge.
+/// Two things can only be checked this way. The first is authentication: an endpoint added
+/// outside the middleware would expose the machine's history to anyone on the network, and
+/// no unit test would notice. The second is the container: if a registration is missing the
+/// service does not start, and no unit test notices that either.
 /// <para>
-/// Sta nella collezione <see cref="AmbienteDelProcesso"/> perche' la sua fixture scrive
-/// variabili d'ambiente e svuota i pool di SQLite: stato del PROCESSO, non della classe.
+/// It sits in the <see cref="ProcessEnvironment"/> collection because its fixture writes
+/// environment variables and clears SQLite's pools: PROCESS state, not class state.
 /// </para>
 /// </remarks>
 [Collection(ProcessEnvironment.Name)]
@@ -76,9 +75,9 @@ public class StorageEndpointsTests
 
         JsonElement point = Assert.Single(document.RootElement.GetProperty("points").EnumerateArray());
 
-        // Anche sul grezzo la forma e' quella degli aggregati: conteggio 1 e i quattro
-        // valori uguali. E' cio' che permette al client di cambiare risoluzione senza
-        // cambiare codice di disegno.
+        // Raw points have the same shape as the aggregates: count 1 and the four values
+        // all equal. That is what lets the client change resolution without changing any
+        // drawing code.
         Assert.Equal(1, point.GetProperty("count").GetInt32());
         Assert.Equal(42d, point.GetProperty("avg").GetDouble());
         Assert.Equal(42d, point.GetProperty("min").GetDouble());
@@ -95,7 +94,7 @@ public class StorageEndpointsTests
             "/metrics/history?collector=prova&metric=qualsiasi" +
             "&from=2026-08-26T00:00:00Z&to=2026-08-26T12:00:00Z");
 
-        // Dodici ore a un punto al secondo sarebbero 43200 punti in una sola risposta.
+        // Twelve hours at one point a second would be 43200 points in a single response.
         Assert.NotEqual("raw", document.RootElement.GetProperty("resolution").GetString());
     }
 
@@ -114,8 +113,8 @@ public class StorageEndpointsTests
     [Fact]
     public async Task History_RespondsWith400ForAnUnknownResolution()
     {
-        // Deve dire che la domanda e' sbagliata, non restituire zero punti: zero punti si
-        // legge come "la macchina non era monitorata".
+        // It has to say the question is wrong, not return zero points: zero points reads as
+        // "the machine was not being monitored".
         using HttpClient client = service.CreateAuthorizedClient();
         using HttpResponseMessage response = await client.GetAsync(new Uri(
             "/metrics/history?collector=cpu&metric=cpu.usage.total&resolution=ogni-tanto",
@@ -145,8 +144,8 @@ public class StorageEndpointsTests
             Path.GetFullPath(service.DatabasePath),
             document.RootElement.GetProperty("databasePath").GetString());
 
-        // Gli scarti devono essere misurabili: uno storico con buchi che non li dichiara e'
-        // indistinguibile da uno storico completo.
+        // Dropped snapshots must be measurable: a history with gaps that does not declare
+        // them is indistinguishable from a complete one.
         Assert.True(document.RootElement.GetProperty("droppedSnapshots").GetInt64() >= 0L);
 
         JsonElement retention = document.RootElement.GetProperty("retention");
@@ -158,8 +157,8 @@ public class StorageEndpointsTests
     [Fact]
     public async Task OldEndpoints_KeepAnswering()
     {
-        // La persistenza e' un'aggiunta: se rompesse cio' che c'era prima, sarebbe un
-        // peggioramento netto.
+        // Persistence is an addition: if it broke what was there before, it would be a net
+        // loss.
         using HttpClient client = service.CreateAuthorizedClient();
         using HttpResponseMessage catalog =
             await client.GetAsync(new Uri("/metrics/catalog", UriKind.Relative));

@@ -16,31 +16,31 @@ using Observer.Service.LocalChannel;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// I byte VERI sul filo, con e senza compressione, su Kestrel vero e su TLS vero.
+/// The REAL bytes on the wire, with and without compression, on a real Kestrel and over real TLS.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Deve stare qui e non fra i test con <c>TestServer</c>: <c>WebApplicationFactory</c> sostituisce
-/// Kestrel con un trasporto in memoria, e la dimensione sul filo e' l'unica cosa che questa
-/// funzione esiste per cambiare.
+/// It has to live here and not among the <c>TestServer</c> tests: <c>WebApplicationFactory</c>
+/// replaces Kestrel with an in-memory transport, and the size on the wire is the only thing this
+/// feature exists to change.
 /// </para>
 /// <para>
-/// La prova che conta e' quella su HTTPS. <c>ResponseCompressionOptions.EnableForHttps</c> vale
-/// <b>false</b> per impostazione predefinita: senza quell'unica opzione il servizio
-/// comprimerebbe soltanto il canale locale - dove i byte non attraversano niente - e lascerebbe
-/// in chiaro l'unico percorso dove costano. Un test che misurasse su HTTP resterebbe verde con
-/// quella riga cancellata, cioe' non proverebbe niente.
+/// The test that counts is the one over HTTPS. <c>ResponseCompressionOptions.EnableForHttps</c> is
+/// <b>false</b> by default: without that single option the service would compress only the local
+/// channel - where the bytes cross nothing - and would leave in the clear the one path where they
+/// cost. A test that measured on HTTP would stay green with that line deleted, which means it
+/// would prove nothing.
 /// </para>
 /// </remarks>
-// Sta nella collezione perche' costruisce un InMemoryService, che scrive variabili
-// d'ambiente del PROCESSO e cancella la propria cartella temporanea: senza questa riga
-// gira in parallelo alla collezione e cancella il database sotto al servizio condiviso.
-// Non dichiararla era un difetto che restava verde per fortuna - il nome della classe
-// decide l'ordine di xunit, e su main rinominarla E BASTA fa fallire 4 test.
+// It belongs in the collection because it builds an InMemoryService, which writes PROCESS
+// environment variables and deletes its own temp directory: without this line it runs in
+// parallel with the collection and deletes the database out from under the shared service.
+// Not declaring it was a defect that stayed green by luck - the class name decides xunit's
+// ordering, and on main renaming it ALONE makes 4 tests fail.
 [Collection(ProcessEnvironment.Name)]
 public class WireCompressionTests
 {
-    /// <summary>Un corpo della forma vera: ripetitivo come lo storico, che e' cio' che pesa.</summary>
+    /// <summary>A body with the real shape: repetitive like the history, which is the heavy one.</summary>
     private static readonly string Body = JsonSerializer.Serialize(new
     {
         resolution = "5m",
@@ -56,15 +56,15 @@ public class WireCompressionTests
         }),
     });
 
-    /// <summary>Un certificato ESPORTATO E RILETTO, che e' l'unico che sappia servire TLS.</summary>
+    /// <summary>A certificate EXPORTED AND RELOADED, which is the only one that can serve TLS.</summary>
     /// <remarks>
-    /// Non e' un giro inutile: su Windows un certificato appena uscito da
-    /// <c>CertificateRequest.CreateSelfSigned</c> ha la chiave privata solo in memoria, e Kestrel
-    /// lo accetta, dichiara <c>HasPrivateKey</c> true, e poi la stretta di mano muore con
-    /// "Received an unexpected EOF or 0 bytes from the transport stream". E' scritto nel codice
-    /// del servizio e questa classe ci e' cascata lo stesso, quindi vale la pena ripeterlo qui:
-    /// il percorso vero e' sempre esporta-e-rileggi, che e' anche quello di ogni avvio dopo il
-    /// primo.
+    /// It is not a pointless round trip: on Windows a certificate fresh out of
+    /// <c>CertificateRequest.CreateSelfSigned</c> has its private key only in memory, and Kestrel
+    /// accepts it, reports <c>HasPrivateKey</c> true, and then the handshake dies with
+    /// "Received an unexpected EOF or 0 bytes from the transport stream". It is written in the
+    /// service's code and this class fell for it all the same, so it is worth repeating here:
+    /// the real path is always export-and-reload, which is also the path of every start after the
+    /// first.
     /// </remarks>
     private static X509Certificate2 StoredCertificate()
     {
@@ -81,27 +81,27 @@ public class WireCompressionTests
 
         await using Bench bench = await Bench.StartAsync(certificate);
 
-        // Senza Accept-Encoding non si comprime: la codifica si NEGOZIA, quindi un client
-        // vecchio continua a ricevere esattamente cio' che riceveva prima.
+        // Without Accept-Encoding nothing is compressed: the encoding is NEGOTIATED, so an old
+        // client keeps receiving exactly what it received before.
         (long plainBytes, string? noEncoding, string plainBody) = await bench.ReadAsync(fingerprint, null);
 
         Assert.Null(noEncoding);
         Assert.Equal(Body, plainBody);
 
-        // Con Accept-Encoding si comprime, E SU HTTPS: e' l'asserzione che diventa rossa se
-        // qualcuno toglie EnableForHttps credendo di essere prudente.
+        // With Accept-Encoding it does compress, AND OVER HTTPS: this is the assertion that turns
+        // red if someone removes EnableForHttps thinking they are being cautious.
         (long compressedBytes, string? encoding, string compressedBody) = await bench.ReadAsync(fingerprint, "gzip");
 
         Assert.Equal("gzip", encoding);
 
-        // Byte per byte identico una volta decompresso: la compressione non deve poter cambiare
-        // un numero.
+        // Byte for byte identical once decompressed: compression must not be able to change a
+        // number.
         Assert.Equal(Body, compressedBody);
 
-        // E vale la pena: meno della meta'. La soglia e' larga di proposito, perche' la
-        // dimensione esatta dipende dalla versione della libreria; cio' che si pinna e' che la
-        // compressione sia AVVENUTA e che serva a qualcosa. Sui corpi veri di questo servizio il
-        // rapporto misurato e' fra 4x e 6x.
+        // And it is worth it: less than half. The threshold is deliberately loose, because the
+        // exact size depends on the library version; what is pinned is that the compression
+        // HAPPENED and that it buys something. On this service's real bodies the measured ratio
+        // is between 4x and 6x.
         Assert.True(
             compressedBytes * 2 < plainBytes,
             $"compressa {compressedBytes} byte contro {plainBytes} in chiaro: non vale il lavoro");
@@ -110,11 +110,12 @@ public class WireCompressionTests
     [Fact]
     public async Task OfferingEveryEncodingYieldsTheSmallestBodyOnTheWire()
     {
-        // Il client offre "gzip, deflate, br" e a parita' di preferenza il servizio sceglie il
-        // PRIMO provider registrato. Sembra un dettaglio e non lo e': il servizio SERIALIZZA,
-        // cioe' lo JSON esce dal writer a pezzi con un flush per segmento, e i flush puniscono
-        // Brotli molto piu' di Gzip. Misurato QUI, sul filo vero, non su un buffer compresso in
-        // un colpo solo - che e' esattamente l'errore che aveva fatto preferire Brotli.
+        // The client offers "gzip, deflate, br" and, at equal preference, the service picks the
+        // FIRST registered provider. It looks like a detail and it is not: the service
+        // SERIALISES, that is, the JSON leaves the writer in pieces with one flush per segment,
+        // and flushes punish Brotli far more than Gzip. Measured HERE, on the real wire, not on a
+        // buffer compressed in one go - which is exactly the mistake that had led to preferring
+        // Brotli.
         using X509Certificate2 certificate = StoredCertificate();
         string fingerprint = MachineCertificate.Fingerprint(certificate);
 
@@ -126,10 +127,10 @@ public class WireCompressionTests
 
         Assert.Equal(Body, body);
 
-        // La scelta non e' un gusto: deve essere la piu' PICCOLA fra quelle disponibili, e il
-        // test la MISURA invece di fidarsi del nome dell'encoder. Confrontare con un encoder
-        // solo non proverebbe niente - se il servizio sceglie quello, si confronta con se
-        // stesso - quindi si confronta con il minimo dei due.
+        // The choice is not a matter of taste: it must be the SMALLEST of the ones available, and
+        // the test MEASURES it instead of trusting the encoder's name. Comparing against a single
+        // encoder would prove nothing - if the service picks that one, it is comparing with
+        // itself - so it is compared against the minimum of the two.
         long best = Math.Min(gzipOnly, brotliOnly);
 
         Assert.True(
@@ -141,12 +142,12 @@ public class WireCompressionTests
     [Fact]
     public async Task TheRealPipelineCompressesNotJustTheBench()
     {
-        // Le prove qui sopra costruiscono una COPIA della registrazione di Program.cs dentro il
-        // proprio host: provano che la compressione funziona, non che il servizio la ABBIA.
-        // Cancellando le due righe da Program.cs resterebbero tutte verdi, e il ramo perderebbe
-        // la funzione in silenzio lasciando in piedi trenta righe di commento che la
-        // giustificano. Questa prova monta il servizio VERO - ServizioInMemoria e'
-        // WebApplicationFactory<Program> - e guarda due cose che solo li' si vedono.
+        // The tests above build a COPY of Program.cs's registration inside their own host: they
+        // prove that compression works, not that the service HAS it. Deleting the two lines from
+        // Program.cs would leave them all green, and the branch would lose the feature silently
+        // while leaving thirty lines of comment standing to justify it. This test mounts the REAL
+        // service - InMemoryService is WebApplicationFactory<Program> - and looks at two things
+        // that can only be seen there.
         using InMemoryService service = new();
         using HttpClient client = service.CreateAuthorizedClient();
 
@@ -157,12 +158,12 @@ public class WireCompressionTests
 
         response.EnsureSuccessStatusCode();
 
-        // Sotto TestServer la richiesta e' http, quindi passa dal compressore comunque: questa
-        // asserzione pinna la PRESENZA delle due righe e la loro posizione utile, non l'opzione.
+        // Under TestServer the request is http, so it goes through the compressor anyway: this
+        // assertion pins the PRESENCE of the two lines and their useful position, not the option.
         Assert.Equal("gzip", response.Content.Headers.ContentEncoding.FirstOrDefault());
 
-        // E l'opzione la si legge dal contenitore del servizio vero, che e' l'unico posto dove
-        // EnableForHttps si puo' osservare senza un trasporto TLS.
+        // And the option is read from the real service's container, which is the only place where
+        // EnableForHttps can be observed without a TLS transport.
         Assert.True(
             service.Services.GetRequiredService<IOptions<ResponseCompressionOptions>>().Value.EnableForHttps,
             "EnableForHttps e' tornato al predefinito: sulla rete non si comprimerebbe piu' niente");
@@ -171,12 +172,11 @@ public class WireCompressionTests
     [Fact]
     public async Task ARejectedRequestHasNothingToCompress()
     {
-        // La precondizione su cui poggia la decisione di sicurezza scritta in Program.cs: chi non
-        // ha la credenziale non ottiene alcun corpo, quindi non ottiene nemmeno un corpo
-        // COMPRESSO di cui misurare la lunghezza. E' la ragione per cui la compressione sta DOPO
-        // il controllo d'accesso nella pipeline, e per cui BREACH qui non ha da dove cominciare.
-        // Se un giorno un rifiuto imparasse a spiegarsi con un corpo, questa prova diventa rossa
-        // e la decisione va riaperta.
+        // The precondition the security decision written in Program.cs rests on: whoever does not
+        // hold the credential gets no body at all, so does not get a COMPRESSED body whose length
+        // could be measured either. It is the reason compression sits AFTER the access control in
+        // the pipeline, and why BREACH has nowhere to start here. If one day a refusal learned to
+        // explain itself with a body, this test turns red and the decision has to be reopened.
         using X509Certificate2 certificate = StoredCertificate();
         string fingerprint = MachineCertificate.Fingerprint(certificate);
 
@@ -193,7 +193,7 @@ public class WireCompressionTests
         Assert.Empty(await response.Content.ReadAsByteArrayAsync());
     }
 
-    /// <summary>Kestrel vero su porta effimera, con la stessa registrazione del servizio.</summary>
+    /// <summary>A real Kestrel on an ephemeral port, with the same registration as the service.</summary>
     private sealed class Bench : IAsyncDisposable
     {
         private readonly WebApplication app;
@@ -210,14 +210,14 @@ public class WireCompressionTests
         {
             WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
 
-            // Le sorgenti si svuotano per la ragione scritta in TrasportoHttpsTests: il progetto
-            // di prova si porta in output l'appsettings.json del servizio, e senza questa riga il
-            // banco proverebbe ad aprire la porta del servizio installato.
+            // The sources are cleared for the reason written in HttpsTransportTests: the test
+            // project copies the service's appsettings.json into its output, and without this
+            // line the bench would try to open the installed service's port.
             builder.Configuration.Sources.Clear();
             builder.WebHost.ConfigureKestrel(kestrel =>
                 kestrel.Listen(IPAddress.Loopback, 0, port => port.UseHttps(certificate)));
 
-            // La stessa identica registrazione di Program.cs, unica opzione compresa.
+            // The exact same registration as Program.cs, the one option included.
             builder.Services.AddResponseCompression(options =>
             {
                 options.EnableForHttps = true;
@@ -229,11 +229,11 @@ public class WireCompressionTests
 
             if (withAccessControl)
             {
-                // Il middleware VERO, non una copia scritta nel banco: la sua stessa classe
-                // esiste perche' i test possano montarlo invece di riscriverlo, e riscriverlo
-                // qui renderebbe la prova circolare - misurerebbe lo stub, e un 401 che un
-                // giorno imparasse a portare un corpo resterebbe verde. Le credenziali sono
-                // nuove e il test non manda alcun header: cade nel ramo di rifiuto vero.
+                // The REAL middleware, not a copy written into the bench: its own class exists
+                // so that tests can mount it instead of rewriting it, and rewriting it here
+                // would make the test circular - it would measure the stub, and a 401 that one
+                // day learned to carry a body would stay green. The credentials are new and the
+                // test sends no header: it falls into the real refusal branch.
                 application.UseObserverAccessControl(MachineCredentials.Create());
             }
 
@@ -256,11 +256,11 @@ public class WireCompressionTests
             return new HttpClient(handler, disposeHandler: true);
         }
 
-        /// <summary>Legge, e riporta i byte CONTATI SUL FILO, non quelli del corpo decompresso.</summary>
+        /// <summary>Reads, and reports the bytes COUNTED ON THE WIRE, not those of the decompressed body.</summary>
         public async Task<(long WireBytes, string? ContentEncoding, string Body)> ReadAsync(string fingerprint, string? encoding)
         {
-            // Niente AutomaticDecompression: l'handler non deve decomprimere da se', o i byte
-            // misurati sarebbero quelli gia' espansi e la prova non direbbe niente.
+            // No AutomaticDecompression: the handler must not decompress on its own, or the bytes
+            // measured would be the already expanded ones and the test would say nothing.
             using HttpClient client = PinningClient(fingerprint);
             using HttpRequestMessage request = new(HttpMethod.Get, new Uri(Address, "storia"));
 

@@ -3,18 +3,17 @@ using Observer.Service.Persistence;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// La configurazione dello storico. Ogni valore sbagliato qui dentro produce un servizio che
-/// parte, gira, non lancia e non conserva niente: e' il guasto che nessuno nota finche' non
-/// gli serve lo storico.
+/// The history configuration. Every wrong value in here produces a service that starts, runs,
+/// throws nothing and keeps nothing: the fault nobody notices until they need the history.
 /// </summary>
 public class StorageOptionsTests
 {
     [Fact]
     public void Defaults_AreTheDeclaredValues()
     {
-        // Questo test non verifica un calcolo: fissa una SCELTA, per rendere evidente il
-        // giorno in cui qualcuno la cambia senza dirlo. Sei ore di grezzo, sette giorni di
-        // minuti, novanta giorni di cinque minuti.
+        // This test checks no calculation: it pins a CHOICE, so the day someone changes it
+        // without saying so is obvious. Six hours of raw, seven days of minutes, ninety days
+        // of five-minute buckets.
         StorageOptions defaults = new();
 
         Assert.True(defaults.Enabled);
@@ -32,10 +31,10 @@ public class StorageOptionsTests
     [Fact]
     public void ResolveDatabasePath_RelativePath_BecomesAbsoluteAndIgnoresTheCurrentDirectory()
     {
-        // Un servizio di sistema non ha una cartella di lavoro prevedibile: su Windows parte
-        // da system32, con systemd da / salvo direttive. Un percorso relativo produrrebbe un
-        // database in un posto diverso a ogni modo di avvio, e in sviluppo lo pianta dentro
-        // l'albero dei sorgenti. Deve risolversi sempre allo stesso posto.
+        // A system service has no predictable working directory: on Windows it starts from
+        // system32, under systemd from / unless told otherwise. A relative path would put the
+        // database somewhere different for every way of starting it, and in development it
+        // drops it inside the source tree. It must always resolve to the same place.
         StorageOptions options = new() { DatabasePath = "observer.db" };
 
         string resolved = options.ResolveDatabasePath();
@@ -50,8 +49,8 @@ public class StorageOptionsTests
     [Fact]
     public void ResolveDatabasePath_AlreadyAbsolutePath_IsLeftAsItIs()
     {
-        // Chi indica un percorso esplicito ha le sue ragioni (un disco diverso, un volume di
-        // dati): non va reinterpretato.
+        // Whoever gives an explicit path has their reasons (a different disk, a data volume):
+        // it must not be reinterpreted.
         string explicitPath = Path.Combine(Path.GetTempPath(), "observer-esplicito.db");
         StorageOptions options = new() { DatabasePath = explicitPath };
 
@@ -61,13 +60,13 @@ public class StorageOptionsTests
     [Fact]
     public void Validate_RejectsAGracePeriodShorterThanTheWriteQueue()
     {
-        // Il buco che questo chiude: la coda puo' trattenere QueueCapacity campionamenti
-        // (a 1 Hz, altrettanti secondi) prima che finiscano su disco, ma il consolidamento
-        // considera chiuso un minuto dopo la sola grazia. Un campione che arriva dopo non
-        // entra piu' nella media del suo minuto, e poco dopo il grezzo viene cancellato:
-        // resta una media credibile calcolata su meta' dei campioni, senza eccezioni ne'
-        // log. E' esattamente il genere di errore che nessuno puo' diagnosticare guardando
-        // un grafico, quindi va impedito all'avvio.
+        // The hole this closes: the buffer can hold QueueCapacity samples (at 1 Hz, that
+        // many seconds) before they reach the disk, but consolidation treats a minute as
+        // closed after the grace period alone. A sample that arrives later no longer enters
+        // the average for its minute, and shortly afterwards the raw data is purged: what is
+        // left is a believable average computed over half the samples, with no exception and
+        // no log line. It is exactly the kind of error nobody can diagnose by looking at a
+        // graph, so it has to be stopped at start-up.
         StorageOptions inconsistent = new()
         {
             QueueCapacity = 240,

@@ -6,12 +6,12 @@ using Observer.Service.Credentials;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Il certificato di macchina: generato una volta, e da li' in poi sempre lo stesso.
+/// The machine certificate: generated once, and the same one from then on.
 /// </summary>
 /// <remarks>
-/// La proprieta' che conta e' la STABILITA' dell'impronta fra un avvio e l'altro. I client la
-/// fissano: un certificato rigenerato a ogni avvio non e' un fastidio, e' ogni dashboard remota
-/// che smette di collegarsi tutta insieme, con un messaggio che parla di un attacco.
+/// The property that matters is the STABILITY of the fingerprint from one start to the next.
+/// Clients pin it: a certificate regenerated at every start is not an annoyance, it is every
+/// remote dashboard failing to connect all at once, with a message that talks about an attack.
 /// </remarks>
 public class CertificateProvisioningTests : IDisposable
 {
@@ -38,7 +38,7 @@ public class CertificateProvisioningTests : IDisposable
         }
         catch (IOException)
         {
-            // Una cartella temporanea che resta non fa danno a nessuno.
+            // A temp folder left behind harms nobody.
         }
         catch (UnauthorizedAccessException)
         {
@@ -51,8 +51,8 @@ public class CertificateProvisioningTests : IDisposable
     [Fact]
     public void TheSecondStartREUSESTheSameCertificate()
     {
-        // Il test piu' importante del file. Se questo fallisse, ogni riavvio del servizio
-        // taglierebbe fuori tutte le dashboard remote insieme.
+        // The most important test in this file. If it failed, every restart of the service
+        // would cut off all the remote dashboards at once.
         ProvisionedCertificate first = ProvisionForTest();
         ProvisionedCertificate second = ProvisionForTest();
 
@@ -88,8 +88,8 @@ public class CertificateProvisioningTests : IDisposable
     [Fact]
     public void TheValidityIsLongEnoughNotToExpireOutFromUnderTheClients()
     {
-        // Con l'impronta fissata, una scadenza e' un guasto simultaneo di tutte le dashboard
-        // remote. Non aggiungerebbe sicurezza: qui la fiducia non viene dalla scadenza.
+        // With the fingerprint pinned, an expiry is a simultaneous failure of every remote
+        // dashboard. It would add no security: trust here does not come from the expiry.
         ProvisionedCertificate provisioned = ProvisionForTest();
 
         try
@@ -111,8 +111,8 @@ public class CertificateProvisioningTests : IDisposable
     [Fact]
     public void ADAMAGEDStoreIsNotReplacedBehindYourBack()
     {
-        // Sostituirlo sarebbe la cosa comoda, e sarebbe sbagliata: un certificato nuovo ha
-        // un'impronta nuova. Meglio fermarsi e farlo decidere a una persona.
+        // Replacing it would be the convenient thing to do, and it would be wrong: a new
+        // certificate has a new fingerprint. Better to stop and let a person decide.
         File.WriteAllText(MachineCertificate.PathNextTo(storePath), "non sono un PKCS#12");
 
         InvalidOperationException error = Assert.Throws<InvalidOperationException>(
@@ -129,7 +129,8 @@ public class CertificateProvisioningTests : IDisposable
     [Fact]
     public void TheCertificateIsStoredNEXTToTheToken()
     {
-        // Stesso perimetro, e non per comodita': la chiave privata vale quanto il token.
+        // The same perimeter, and not for convenience: the private key is worth as much as
+        // the token.
         ProvisionedCertificate provisioned = ProvisionForTest();
 
         try
@@ -147,8 +148,8 @@ public class CertificateProvisioningTests : IDisposable
     [Fact]
     public void NoTempFileIsEverLeftOnDisk()
     {
-        // Un temporaneo abbandonato conterrebbe la chiave privata, e con i permessi ereditati
-        // della cartella invece di quelli del deposito.
+        // An abandoned temp file would hold the private key, and with the permissions
+        // inherited from the folder instead of the store's own.
         ProvisionedCertificate provisioned = ProvisionForTest();
 
         try
@@ -164,10 +165,10 @@ public class CertificateProvisioningTests : IDisposable
     [Fact]
     public void ADamagedCertificateIsReportedEVENWhenTheServiceIsLaunchedByHand()
     {
-        // Il ripiego effimero vale per un deposito che non si riesce a METTERE IN SICUREZZA,
-        // non per un certificato che c'e' ed e' illeggibile. Ripiegare in silenzio mostrerebbe
-        // un servizio che parte, un'impronta nuova a ogni avvio, e nessun indizio sul file
-        // rotto che sta sul disco.
+        // The ephemeral fallback is for a store that cannot be SECURED, not for a certificate
+        // that is there and unreadable. Falling back silently would show a service that
+        // starts, a new fingerprint at every start, and no clue about the broken file sitting
+        // on disk.
         File.WriteAllText(MachineCertificate.PathNextTo(storePath), "non sono un PKCS#12");
 
         Assert.Throws<InvalidOperationException>(

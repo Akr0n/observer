@@ -6,9 +6,9 @@ using Observer.Service.Persistence;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Il campionatore consegna allo storico? Senza questo test tutto il resto puo' essere
-/// perfetto e il database restare vuoto per sempre, senza un errore, senza un log e senza
-/// nessun test rosso: la dashboard continuerebbe a funzionare mostrando solo il presente.
+/// Does the sampler deliver to history? Without this test everything else can be perfect and
+/// the database stay empty for ever, with no error, no log line and no red test: the dashboard
+/// would carry on working, showing only the present.
 /// </summary>
 public class MetricSamplingSinkTests
 {
@@ -17,11 +17,11 @@ public class MetricSamplingSinkTests
     {
         MetricSnapshotCache cache = new();
 
-        // Il sink legge la cache NEL MOMENTO in cui riceve, e non dopo. Il campionatore
-        // pubblica ogni secondo: leggendo cache.Latest a valle dell'attesa si confrontava il
-        // primo snapshot consegnato con quello che per caso era in cache in quell'istante, e
-        // bastava un giro in mezzo per far fallire un test che non aveva niente che non
-        // andasse. Succedeva davvero sul runner: quattro secondi invece di zero, e rosso.
+        // The sink reads the cache AT THE MOMENT it receives, not afterwards. The sampler
+        // publishes once a second: reading cache.Latest after the wait compared the first
+        // snapshot delivered with whatever happened to be in the cache at that instant, and a
+        // single round in between was enough to fail a test that had nothing wrong with it. It
+        // really happened on the runner: four seconds instead of zero, and red.
         RecordingSink sink = new(cache);
 
         using MetricSamplingService sampler = new(
@@ -38,9 +38,9 @@ public class MetricSamplingSinkTests
 
             Assert.Equal("finto", delivered.Collectors[0].CollectorId);
 
-            // La cache e lo storico devono ricevere lo STESSO oggetto: se divergessero, il
-            // grafico storico e la piastrella del presente mostrerebbero numeri diversi per lo
-            // stesso istante.
+            // The cache and history must receive the SAME object: if they diverged, the history
+            // chart and the tile showing the present would show different numbers for the same
+            // instant.
             Assert.Same(sink.CacheAtDelivery, delivered);
         }
         finally
@@ -71,13 +71,13 @@ public class MetricSamplingSinkTests
 
         public Task<MachineSnapshot> FirstSnapshot => first.Task;
 
-        /// <summary>Cosa c'era in cache quando e' arrivata la prima consegna.</summary>
+        /// <summary>What was in the cache when the first delivery arrived.</summary>
         public MachineSnapshot? CacheAtDelivery { get; private set; }
 
         public void Enqueue(MachineSnapshot snapshot)
         {
-            // Il campionatore pubblica in cache PRIMA di consegnare qui: leggerla adesso
-            // significa leggere lo stesso giro, qualunque cosa faccia il ciclo dopo.
+            // The sampler publishes to the cache BEFORE delivering here: reading it now means
+            // reading the same round, whatever the loop does next.
             CacheAtDelivery ??= cache.Latest;
 
             first.TrySetResult(snapshot);

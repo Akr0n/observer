@@ -5,10 +5,9 @@ namespace Observer.Core.Tests;
 
 /// <summary>A fact that is SKIPPED outside Windows instead of failing.</summary>
 /// <remarks>
-/// Twin of <c>SoloSuWindowsAttribute</c> in <c>Observer.Service.Tests/SoloSu.cs</c> (still
-/// Italian there until that project is translated): duplicated and not shared because the two
-/// test projects do not reference each other, and twenty duplicated lines are a lower price
-/// than a dependency between test assemblies.
+/// Twin of the attribute of the same name in <c>Observer.Service.Tests/PlatformOnly.cs</c>:
+/// duplicated and not shared because the two test projects do not reference each other, and
+/// twenty duplicated lines are a lower price than a dependency between test assemblies.
 /// </remarks>
 public sealed class WindowsOnlyAttribute : FactAttribute
 {
