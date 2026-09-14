@@ -4,16 +4,17 @@ using Observer.Core.Platform.Linux;
 namespace Observer.Core.Tests;
 
 /// <summary>
-/// La lettura di <c>/proc/PID/io</c>, su un lettore finto: gira su entrambi i runner.
+/// Reading <c>/proc/PID/io</c>, against a fake reader, so these tests run on both runners.
 /// </summary>
 /// <remarks>
-/// La regola che conta e' QUALI righe si sommano. <c>read_bytes</c> e <c>write_bytes</c> sono
-/// li' accanto, sembrano piu' giusti per un pannello aperto da un quadrante di disco, e sono la
-/// scelta sbagliata: Windows non ha l'equivalente, e i due sistemi devono dire la stessa cosa.
+/// The rule that matters is WHICH lines are summed. <c>read_bytes</c> and <c>write_bytes</c> are
+/// right there in the same file, they look like the better fit for a panel opened from a disk gauge, and
+/// they are the wrong choice: Windows has no equivalent, and the two systems must say the same
+/// thing.
 /// </remarks>
 public class LinuxProcessIoReaderTests
 {
-    // Un file vero, con i sette campi nell'ordine in cui il kernel li scrive.
+    // A real file, with the seven fields in the order the kernel writes them.
     private const string ProcIo =
         """
         rchar: 3000
@@ -26,67 +27,67 @@ public class LinuxProcessIoReaderTests
         """;
 
     [Fact]
-    public void SommaRcharEWcharENonIByteSuDisco()
+    public void SumsRcharAndWcharNotTheBytesOnDisk()
     {
-        LettoreFinto lettore = new();
-        lettore.Metti("/proc/42/io", ProcIo);
+        FakeFileTextReader reader = new();
+        reader.Set("/proc/42/io", ProcIo);
 
-        Assert.True(new LinuxProcessIoReader(lettore).TryRead(42, out ulong byteIo));
-        Assert.Equal(3500UL, byteIo);
+        Assert.True(new LinuxProcessIoReader(reader).TryRead(42, out ulong ioBytes));
+        Assert.Equal(3500UL, ioBytes);
     }
 
     [Fact]
-    public void UnProcessoCheNonSiPuoLeggereNonHaUnContatore()
+    public void AProcessThatCannotBeReadHasNoCounter()
     {
-        // Su Linux e' il caso normale: il processo di un altro utente, senza CAP_SYS_PTRACE.
-        // Il lettore vede un file che non si apre, e la risposta e' "non lo so", non zero.
-        LettoreFinto lettore = new();
+        // On Linux this is the normal case: another user's process, without CAP_SYS_PTRACE.
+        // The reader sees a file it cannot open, and the answer is "I don't know", not zero.
+        FakeFileTextReader reader = new();
 
-        Assert.False(new LinuxProcessIoReader(lettore).TryRead(42, out ulong byteIo));
-        Assert.Equal(0UL, byteIo);
+        Assert.False(new LinuxProcessIoReader(reader).TryRead(42, out ulong ioBytes));
+        Assert.Equal(0UL, ioBytes);
     }
 
     [Fact]
-    public void IlPercorsoUsaIlPidChiesto()
+    public void ThePathUsesTheRequestedPid()
     {
-        LettoreFinto lettore = new();
-        lettore.Metti("/proc/7/io", ProcIo);
+        FakeFileTextReader reader = new();
+        reader.Set("/proc/7/io", ProcIo);
 
-        Assert.False(new LinuxProcessIoReader(lettore).TryRead(42, out _));
-        Assert.True(new LinuxProcessIoReader(lettore).TryRead(7, out _));
+        Assert.False(new LinuxProcessIoReader(reader).TryRead(42, out _));
+        Assert.True(new LinuxProcessIoReader(reader).TryRead(7, out _));
     }
 
     [Theory]
     [InlineData("wchar: 500\nsyscr: 1")]
     [InlineData("rchar: 3000\nsyscr: 1")]
-    [InlineData("rchar: tanti\nwchar: 500")]
+    [InlineData("rchar: lots\nwchar: 500")]
     [InlineData("rchar: -1\nwchar: 500")]
     [InlineData("")]
-    public void SenzaEntrambiICampiInteriNonCEUnContatore(string contenuto)
+    public void WithoutBothIntegerFieldsThereIsNoCounter(string content)
     {
-        Assert.False(LinuxProcessIoReader.TryParse(contenuto, out ulong byteIo));
-        Assert.Equal(0UL, byteIo);
+        Assert.False(LinuxProcessIoReader.TryParse(content, out ulong ioBytes));
+        Assert.Equal(0UL, ioBytes);
     }
 
     [Fact]
-    public void UnaSommaCheFaIlGiroDeiSessantaquattroBitNonEUnTotale()
+    public void ASumThatWrapsAround64BitsIsNotATotal()
     {
-        string contenuto = "rchar: 18446744073709551615\nwchar: 1";
+        string content = "rchar: 18446744073709551615\nwchar: 1";
 
-        Assert.False(LinuxProcessIoReader.TryParse(contenuto, out _));
+        Assert.False(LinuxProcessIoReader.TryParse(content, out _));
     }
 
-    private sealed class LettoreFinto : IFileTextReader
+    private sealed class FakeFileTextReader : IFileTextReader
     {
-        private readonly Dictionary<string, string> file = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> files = new(StringComparer.Ordinal);
 
-        public void Metti(string percorso, string contenuto) => file[percorso] = contenuto;
+        public void Set(string path, string content) => files[path] = content;
 
         public bool TryReadAllText(string path, out string content)
         {
-            if (file.TryGetValue(path, out string? trovato))
+            if (files.TryGetValue(path, out string? found))
             {
-                content = trovato;
+                content = found;
 
                 return true;
             }

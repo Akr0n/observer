@@ -5,83 +5,83 @@ using Observer.Core.Security;
 namespace Observer.Core.Tests;
 
 /// <summary>
-/// Il deposito dei token delle macchine remote.
+/// The store for the remote machines' tokens.
 /// </summary>
 /// <remarks>
-/// Esiste perche' quei token stavano in chiaro dentro <c>machines.json</c>, un file scritto a
-/// mano e fatto per essere guardato. Da quando lo stesso token autorizza anche a terminare
-/// processi su un'altra macchina, quel file vale molto piu' di prima.
+/// It exists because those tokens used to sit in cleartext inside <c>machines.json</c>, a file
+/// written by hand and meant to be read. Since the same token also authorizes killing
+/// processes on another machine, that file is worth far more than it used to be.
 /// </remarks>
 public class SecretStoreTests
 {
     [Theory]
-    [InlineData("lavoro")]
-    [InlineData("PC di Federico")]
-    [InlineData("nas-01.locale")]
-    public void UnNomeNormaleVaBene(string nome) => Assert.Equal(nome, SecretName.Validate(nome));
+    [InlineData("workstation")]
+    [InlineData("Spare Laptop")]
+    [InlineData("nas-01.local")]
+    public void AnOrdinaryNameIsAcceptedUnchanged(string name) => Assert.Equal(name, SecretName.Validate(name));
 
     [Theory]
     [InlineData("../../id_rsa")]
-    [InlineData("..\\altrove")]
+    [InlineData("..\\elsewhere")]
     [InlineData("/etc/shadow")]
     [InlineData("..")]
     [InlineData(".")]
-    [InlineData("con*asterisco")]
-    public void UnNomeCheProvaAUscireDallaCartellaVieneRifiutato(string nome)
+    [InlineData("with*asterisk")]
+    public void ANameThatTriesToLeaveTheFolderIsRejected(string name)
     {
-        // Il nome arriva da machines.json, che lo scrive una persona, e finisce a comporre un
-        // percorso di file: senza questo controllo una voce chiamata "../../id_rsa" farebbe
-        // leggere - e riscrivere - un file fuori dalla cartella dei segreti.
-        Assert.Throws<SecretStoreException>(() => SecretName.Validate(nome));
+        // The name comes from machines.json, which a person writes, and it is used to build a
+        // file path: without this check an entry called "../../id_rsa" would cause a read - and a
+        // rewrite - of a file outside the secrets folder.
+        Assert.Throws<SecretStoreException>(() => SecretName.Validate(name));
     }
 
     [Fact]
-    public void GliSpaziAiBordiNonFannoDueSegretiDiversi() =>
-        Assert.Equal("lavoro", SecretName.Validate("  lavoro  "));
+    public void SurroundingSpacesDoNotMakeTwoDifferentSecrets() =>
+        Assert.Equal("workstation", SecretName.Validate("  workstation  "));
 
     [Fact]
-    public void SuUnaPiattaformaSconosciutaIlDepositoLoDice()
+    public void OnAnUnknownPlatformTheStoreSaysSo()
     {
-        // Non un deposito vuoto: un deposito vuoto farebbe concludere di essersi dimenticati
-        // di depositare il token, e manderebbe a cercare il problema dalla parte sbagliata.
-        ISecretStore deposito = SecretStores.For(HostPlatform.Unknown);
+        // Not an empty store: an empty store would make you conclude you had forgotten to store
+        // the token, and would send you looking for the problem in the wrong place.
+        ISecretStore store = SecretStores.For(HostPlatform.Unknown);
 
-        Assert.Throws<SecretStoreException>(() => deposito.TryRead("lavoro", out _));
+        Assert.Throws<SecretStoreException>(() => store.TryRead("workstation", out _));
     }
 
-    [SoloSuWindows]
-    public void SuWindowsIlSegretoVaETornaDalCredentialManager()
+    [WindowsOnly]
+    public void OnWindowsTheSecretRoundTripsThroughCredentialManager()
     {
-        // L'unica cosa che a tavolino non si puo' sapere: che advapi32 accetti la struct come
-        // l'abbiamo dichiarata e restituisca gli stessi byte. Il nome porta un guid, cosi'
-        // questa prova non puo' toccare una credenziale vera.
-        string nome = "observer-prova-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
-        const string Segreto = "un-token-che-non-serve-a-niente";
+        // The one thing that cannot be known by reasoning alone: that advapi32 accepts the struct
+        // as we declared it and gives back the same bytes. The name carries a GUID, so this test
+        // cannot touch a real credential.
+        string name = "observer-test-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
+        const string Secret = "a-token-that-is-good-for-nothing";
 
-        ISecretStore deposito = SecretStores.For(HostPlatform.Windows);
+        ISecretStore store = SecretStores.For(HostPlatform.Windows);
 
-        Assert.False(deposito.TryRead(nome, out _), "il deposito conteneva gia' un nome col guid");
+        Assert.False(store.TryRead(name, out _), "the store already held a name with that GUID");
 
         try
         {
-            deposito.Write(nome, Segreto);
+            store.Write(name, Secret);
 
-            Assert.True(deposito.TryRead(nome, out string letto));
-            Assert.Equal(Segreto, letto);
+            Assert.True(store.TryRead(name, out string readBack));
+            Assert.Equal(Secret, readBack);
         }
         finally
         {
-            deposito.Delete(nome);
+            store.Delete(name);
         }
 
-        Assert.False(deposito.TryRead(nome, out _), "il segreto e' rimasto dopo la cancellazione");
+        Assert.False(store.TryRead(name, out _), "the secret survived the delete");
     }
 
-    [SoloSuWindows]
-    public void SuWindowsCancellareUnSegretoAssenteDiceFalsoInveceDiLanciare()
+    [WindowsOnly]
+    public void OnWindowsDeletingAnAbsentSecretReturnsFalseInsteadOfThrowing()
     {
-        string nome = "observer-mai-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
+        string name = "observer-never-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
 
-        Assert.False(SecretStores.For(HostPlatform.Windows).Delete(nome));
+        Assert.False(SecretStores.For(HostPlatform.Windows).Delete(name));
     }
 }

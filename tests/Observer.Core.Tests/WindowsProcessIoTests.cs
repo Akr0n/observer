@@ -3,43 +3,43 @@ using Observer.Core.Platform.Windows;
 namespace Observer.Core.Tests;
 
 /// <summary>
-/// <c>GetProcessIoCounters</c> sul processo vero che sta eseguendo il test.
+/// <c>GetProcessIoCounters</c> on the real process that is running the test.
 /// </summary>
 /// <remarks>
-/// Non un finto: la cosa da verificare e' che il P/Invoke sia dichiarato giusto - diritto di
-/// accesso, struttura da 48 byte - e quello lo dice solo Windows. Il contatore deve CRESCERE
-/// dopo una scrittura: leggerlo una volta sola proverebbe che la chiamata non fallisce, non che
-/// legge il numero giusto.
+/// Not a fake reader: what has to be verified is that the P/Invoke is declared correctly -
+/// access right, 48-byte structure - and only Windows can tell you that. The counter must GROW
+/// after a write: reading it only once would prove that the call does not fail, not that it
+/// reads the right number.
 /// </remarks>
 public class WindowsProcessIoTests
 {
-    [SoloSuWindows]
-    public void IlProprioContatoreCresceDopoUnaScrittura()
+    [WindowsOnly]
+    public void OwnCounterGrowsAfterAWrite()
     {
-        WindowsProcessIoReader lettore = new();
+        WindowsProcessIoReader reader = new();
         int pid = Environment.ProcessId;
 
-        Assert.True(lettore.TryRead(pid, out ulong prima));
+        Assert.True(reader.TryRead(pid, out ulong before));
 
-        string percorso = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        string path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
 
         try
         {
-            File.WriteAllBytes(percorso, new byte[1 << 20]);
+            File.WriteAllBytes(path, new byte[1 << 20]);
         }
         finally
         {
-            File.Delete(percorso);
+            File.Delete(path);
         }
 
-        Assert.True(lettore.TryRead(pid, out ulong dopo));
-        Assert.True(dopo >= prima + (1UL << 20), $"prima {prima}, dopo {dopo}");
+        Assert.True(reader.TryRead(pid, out ulong after));
+        Assert.True(after >= before + (1UL << 20), $"before {before}, after {after}");
     }
 
-    [SoloSuWindows]
-    public void UnPidCheNonEsisteNonSiLegge()
+    [WindowsOnly]
+    public void APidThatDoesNotExistCannotBeRead()
     {
-        Assert.False(new WindowsProcessIoReader().TryRead(2147483646, out ulong byteIo));
-        Assert.Equal(0UL, byteIo);
+        Assert.False(new WindowsProcessIoReader().TryRead(2147483646, out ulong ioBytes));
+        Assert.Equal(0UL, ioBytes);
     }
 }

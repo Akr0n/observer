@@ -3,56 +3,56 @@ using Observer.Core.Processes;
 namespace Observer.Core.Tests;
 
 /// <summary>
-/// La giunzione fra l'elenco reale dei processi e il lettore dell'I/O.
+/// The seam between the real process list and the I/O reader.
 /// </summary>
 /// <remarks>
-/// Sul processo VERO che esegue il test, con un lettore finto: la cosa da provare e' che il
-/// contatore letto finisca nella riga giusta e che un rifiuto del lettore lasci la riga, senza
-/// I/O, invece di toglierla. E' il ramo che nessun altro test attraversa: la classifica usa un
-/// elenco finto, i lettori si provano da soli.
+/// On the REAL process running the test, with a fake reader: what has to be proved is that the
+/// counter that was read lands on the right row, and that a refusal from the reader leaves the
+/// row in place, without I/O, instead of removing it. It is the branch no other test exercises:
+/// the ranking uses a fake list, and the readers are tested on their own.
 /// </remarks>
 public class SystemProcessListerTests
 {
     [Fact]
-    public void IlContatoreFinisceNellaRigaDelProcessoGiusto()
+    public void TheCounterLandsOnTheRightProcessRow()
     {
-        int mio = Environment.ProcessId;
-        LettoreFinto lettore = new(mio, 12_345);
+        int ownPid = Environment.ProcessId;
+        FakeIoReader reader = new(ownPid, 12_345);
 
-        Assert.True(new SystemProcessLister(lettore).TryList(out IReadOnlyList<ProcessTimes> processi));
+        Assert.True(new SystemProcessLister(reader).TryList(out IReadOnlyList<ProcessTimes> processes));
 
-        ProcessTimes riga = Assert.Single(processi, processo => processo.Pid == mio);
-        Assert.Equal(12_345UL, riga.IoBytes);
+        ProcessTimes row = Assert.Single(processes, process => process.Pid == ownPid);
+        Assert.Equal(12_345UL, row.IoBytes);
 
-        // Gli altri processi il lettore li rifiuta: restano nell'elenco, senza I/O.
-        Assert.Contains(processi, processo => processo.Pid != mio && processo.IoBytes is null);
+        // The reader refuses to read the other processes: they stay in the list, without I/O.
+        Assert.Contains(processes, process => process.Pid != ownPid && process.IoBytes is null);
     }
 
     [Fact]
-    public void SenzaLettoreLeRigheCiSonoLoStessoSenzaIo()
+    public void WithoutAReaderTheRowsAreStillThereWithoutIo()
     {
-        Assert.True(new SystemProcessLister().TryList(out IReadOnlyList<ProcessTimes> processi));
+        Assert.True(new SystemProcessLister().TryList(out IReadOnlyList<ProcessTimes> processes));
 
-        Assert.Contains(processi, processo => processo.Pid == Environment.ProcessId);
-        Assert.All(processi, processo => Assert.Null(processo.IoBytes));
+        Assert.Contains(processes, process => process.Pid == Environment.ProcessId);
+        Assert.All(processes, process => Assert.Null(process.IoBytes));
     }
 
-    private sealed class LettoreFinto : IProcessIoReader
+    private sealed class FakeIoReader : IProcessIoReader
     {
-        private readonly int pidNoto;
-        private readonly ulong valore;
+        private readonly int knownPid;
+        private readonly ulong value;
 
-        public LettoreFinto(int pidNoto, ulong valore)
+        public FakeIoReader(int knownPid, ulong value)
         {
-            this.pidNoto = pidNoto;
-            this.valore = valore;
+            this.knownPid = knownPid;
+            this.value = value;
         }
 
         public bool TryRead(int pid, out ulong bytes)
         {
-            bytes = pid == pidNoto ? valore : 0;
+            bytes = pid == knownPid ? value : 0;
 
-            return pid == pidNoto;
+            return pid == knownPid;
         }
     }
 }
