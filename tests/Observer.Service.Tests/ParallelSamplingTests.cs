@@ -70,9 +70,9 @@ public class ParallelSamplingTests
 
         using MetricSamplingService sampler = new(
             [
-                new SlowCollector("first", TimeSpan.FromMilliseconds(250)),
-                new SlowCollector("second", TimeSpan.Zero),
-                new SlowCollector("third", TimeSpan.FromMilliseconds(120)),
+                new SlowCollector("zulu", TimeSpan.Zero),
+                new SlowCollector("alpha", TimeSpan.FromMilliseconds(250)),
+                new SlowCollector("mike", TimeSpan.FromMilliseconds(120)),
             ],
             cache,
             sink,
@@ -84,10 +84,14 @@ public class ParallelSamplingTests
         {
             MachineSnapshot first = await sink.FirstSnapshot.WaitAsync(TimeSpan.FromSeconds(15));
 
-            // "second" finishes first and "first" finishes last: if arrival order counted, the
-            // list would come out reversed.
+            // The three ids are deliberately NOT in alphabetical order, and the delays put
+            // arrival order in a third order again: declaration is zulu, alpha, mike; arrival is
+            // zulu, mike, alpha; alphabetical is alpha, mike, zulu. All three differ, so this
+            // assertion tells apart "kept the declaration" from "sorted by id" and from "took
+            // them as they finished". With ids that sorted the way they were declared - which is
+            // what this test had - a sampler that sorted by CollectorId would have passed it.
             Assert.Equal(
-                ["first", "second", "third"],
+                ["zulu", "alpha", "mike"],
                 first.Collectors.Select(collector => collector.CollectorId));
         }
         finally
