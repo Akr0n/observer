@@ -17,18 +17,18 @@ public class LeggerezzaTests
     [Fact]
     public void RidottaAIconaLaFinestraLeggeMenoSpesso()
     {
-        MainViewModel viewModel = new(client: null, problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(client: null, configurationProblem: null);
 
-        Assert.Equal(MainViewModel.Intervallo, viewModel.Cadenza);
+        Assert.Equal(MainViewModel.Interval, viewModel.PollInterval);
 
-        viewModel.InSecondoPiano = true;
+        viewModel.IsMinimized = true;
 
-        Assert.Equal(MainViewModel.IntervalloRidotto, viewModel.Cadenza);
+        Assert.Equal(MainViewModel.BackgroundInterval, viewModel.PollInterval);
 
         // Almeno cinque volte piu' rada, altrimenti non varrebbe la pena distinguerla; e non
         // infinita, perche' riaprendo la finestra la barra di stato deve dire subito com'e'.
-        Assert.True(MainViewModel.IntervalloRidotto >= MainViewModel.Intervallo * 5);
-        Assert.True(MainViewModel.IntervalloRidotto <= TimeSpan.FromSeconds(30));
+        Assert.True(MainViewModel.BackgroundInterval >= MainViewModel.Interval * 5);
+        Assert.True(MainViewModel.BackgroundInterval <= TimeSpan.FromSeconds(30));
     }
 
     [Fact]
@@ -38,10 +38,10 @@ public class LeggerezzaTests
         // latenze; in parallelo il massimo. Il banco misura quante richieste sono in volo
         // insieme: in fila non supera mai una.
         ClientLento cliente = new();
-        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(cliente, configurationProblem: null);
 
         using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(15));
-        Task ciclo = viewModel.EseguiAsync(arresto.Token);
+        Task ciclo = viewModel.RunAsync(arresto.Token);
 
         while (!arresto.IsCancellationRequested && cliente.Completate < 4)
         {
@@ -55,16 +55,16 @@ public class LeggerezzaTests
         // E ogni risposta deve tornare alla SUA riga: leggere in parallelo e poi abbinare per
         // posizione e' esattamente il punto in cui uno storico finirebbe sotto il quadrante
         // sbagliato. Qui la memoria risponde con un guasto e la CPU no.
-        MetricRow cpu = viewModel.Quadranti.Single(riga => riga.Key.StartsWith("cpu|", StringComparison.Ordinal));
-        MetricRow memoria = viewModel.Quadranti.Single(riga => riga.Key.StartsWith("memory|", StringComparison.Ordinal));
+        MetricRow cpu = viewModel.Gauges.Single(riga => riga.Key.StartsWith("cpu|", StringComparison.Ordinal));
+        MetricRow memoria = viewModel.Gauges.Single(riga => riga.Key.StartsWith("memory|", StringComparison.Ordinal));
 
-        while (!arresto.IsCancellationRequested && !memoria.NotaStorico.Contains("guasto", StringComparison.Ordinal))
+        while (!arresto.IsCancellationRequested && !memoria.HistoryNote.Contains("guasto", StringComparison.Ordinal))
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.Contains("storico della memoria guasto", memoria.NotaStorico, StringComparison.Ordinal);
-        Assert.DoesNotContain("guasto", cpu.NotaStorico, StringComparison.Ordinal);
+        Assert.Contains("storico della memoria guasto", memoria.HistoryNote, StringComparison.Ordinal);
+        Assert.DoesNotContain("guasto", cpu.HistoryNote, StringComparison.Ordinal);
 
         await arresto.CancelAsync();
 
@@ -89,7 +89,7 @@ public class LeggerezzaTests
 
         public int Completate => completate;
 
-        public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.CanaleLocale();
+        public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.LocalChannel();
 
         public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new SnapshotFetch(
@@ -125,7 +125,7 @@ public class LeggerezzaTests
                     ]),
                 ])));
 
-        public async Task<HistoryFetch> GetHistoryAsync(HistoryQuery richiesta, CancellationToken cancellationToken)
+        public async Task<HistoryFetch> GetHistoryAsync(HistoryQuery query, CancellationToken cancellationToken)
         {
             int adesso = Interlocked.Increment(ref inVolo);
 
@@ -147,8 +147,8 @@ public class LeggerezzaTests
             Interlocked.Decrement(ref inVolo);
             Interlocked.Increment(ref completate);
 
-            return string.Equals(richiesta.Collector, "memory", StringComparison.Ordinal)
-                ? new HistoryFetch(ServiceOutcome.NonRaggiungibile, "storico della memoria guasto", null)
+            return string.Equals(query.Collector, "memory", StringComparison.Ordinal)
+                ? new HistoryFetch(ServiceOutcome.Unreachable, "storico della memoria guasto", null)
                 : new HistoryFetch(ServiceOutcome.Ok, string.Empty, []);
         }
     }

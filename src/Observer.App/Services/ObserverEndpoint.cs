@@ -1,109 +1,111 @@
 namespace Observer.App.Services;
 
-/// <summary>Da dove il client raggiunge un servizio Observer.</summary>
+/// <summary>Where the client reaches an Observer service.</summary>
 /// <remarks>
-/// Il valore ZERO e' <see cref="Locale"/>: il canale locale non porta segreti, quindi se un
-/// campo dimenticato deve valere qualcosa, che valga quello che non puo' perdere nulla.
+/// The ZERO value is <see cref="Local"/>: the local channel carries no secrets, so if a
+/// forgotten field has to stand for something, let it stand for the one that cannot leak anything.
 /// </remarks>
 public enum EndpointKind
 {
-    /// <summary>La macchina su cui gira questa dashboard, dal canale locale. Nessun token.</summary>
-    Locale = 0,
+    /// <summary>The machine this dashboard runs on, over the local channel. No token.</summary>
+    Local = 0,
 
-    /// <summary>Un altro computer, via rete. Serve il token di quella macchina.</summary>
-    Remoto,
+    /// <summary>Another computer, over the network. That machine's token is required.</summary>
+    Remote,
 }
 
-/// <summary>Un servizio Observer da interrogare.</summary>
-/// <param name="Kind">Se e' la macchina locale o un altro computer.</param>
+/// <summary>An Observer service to query.</summary>
+/// <param name="Kind">Whether it is the local machine or another computer.</param>
 /// <param name="BaseAddress">
-/// Radice del servizio, sempre con la barra finale: senza, <see cref="Uri"/> risolverebbe
-/// "metrics/latest" cancellando l'ultimo segmento di un indirizzo tipo
-/// "http://host:5057/observer/". Per il canale locale e' un host FITTIZIO: la connessione la
-/// apre il ConnectCallback, e questo valore finisce solo nell'header Host.
+/// Root of the service, always with the trailing slash: without it, <see cref="Uri"/> would
+/// resolve "metrics/latest" by dropping the last segment of a base address like
+/// "http://host:5057/observer/". For the local channel it is a FICTITIOUS host: the connection
+/// is opened by the ConnectCallback, and this value only ends up in the Host header.
 /// </param>
-/// <param name="ApiToken">Il token, solo per i punti remoti. Null sul canale locale.</param>
-/// <param name="Origine">Da dove arriva la configurazione, senza il token dentro.</param>
+/// <param name="ApiToken">The token, only for remote endpoints. Null on the local channel.</param>
+/// <param name="Origin">Where the configuration comes from, with no token inside.</param>
 /// <param name="Fingerprint">
-/// L'impronta del certificato che quella macchina DEVE presentare. Null sul canale locale, che
-/// non attraversa la rete e non ha niente da cifrare.
+/// The fingerprint of the certificate that machine MUST present. Null on the local channel, which
+/// does not cross the network and has nothing to encrypt.
 /// </param>
-/// <param name="Nome">
-/// Come chiamarla nell'elenco, se chi ha scritto la configurazione le ha dato un nome. Null
-/// significa "usa l'indirizzo".
+/// <param name="Name">
+/// What to call it in the list, if whoever wrote the configuration gave it a name. Null means
+/// "use the address".
 /// </param>
 public sealed record ObserverEndpoint(
     EndpointKind Kind,
     Uri BaseAddress,
     string? ApiToken,
-    string Origine,
+    string Origin,
     string? Fingerprint = null,
-    string? Nome = null)
+    string? Name = null)
 {
-    /// <summary>Il nome del canale locale, uguale al valore predefinito del servizio.</summary>
-    public const string NomeCanaleLocale = "Observer";
+    /// <summary>The name of the local channel, the same as the service's default.</summary>
+    public const string LocalChannelName = "Observer";
 
-    /// <summary>Il percorso del socket unix, uguale al valore predefinito del servizio.</summary>
-    public const string PercorsoSocketLocale = "/run/observer/observer.sock";
+    /// <summary>The path of the unix socket, the same as the service's default.</summary>
+    public const string LocalSocketPath = "/run/observer/observer.sock";
 
-    /// <summary>La macchina su cui gira questa dashboard.</summary>
-    /// <returns>Il punto locale.</returns>
-    public static ObserverEndpoint CanaleLocale() =>
+    /// <summary>The machine this dashboard runs on.</summary>
+    /// <returns>The local endpoint.</returns>
+    public static ObserverEndpoint LocalChannel() =>
         new(
-            EndpointKind.Locale,
-            // Host fittizio sotto .invalid, che per definizione non risolve mai: rende
-            // esplicito che nessuno deve provare a risolverlo.
+            EndpointKind.Local,
+            // Fictitious host under .invalid, which by definition never resolves: it makes it
+            // explicit that nobody should try to resolve it.
             new Uri("http://observer-local.invalid/"),
             null,
             "the local channel on this machine");
 
-    /// <summary>Un altro computer.</summary>
-    /// <param name="indirizzo">La radice del servizio remoto.</param>
-    /// <param name="token">Il token di quella macchina.</param>
-    /// <param name="origine">Da dove arriva la configurazione.</param>
-    /// <returns>Il punto remoto.</returns>
-    public static ObserverEndpoint Remoto(
-        Uri indirizzo,
+    /// <summary>Another computer.</summary>
+    /// <param name="baseAddress">The root of the remote service.</param>
+    /// <param name="token">That machine's token.</param>
+    /// <param name="origin">Where the configuration comes from.</param>
+    /// <returns>The remote endpoint.</returns>
+    public static ObserverEndpoint Remote(
+        Uri baseAddress,
         string token,
-        string origine,
-        string? impronta = null,
-        string? nome = null) =>
-        new(EndpointKind.Remoto, indirizzo, token, origine, impronta, nome);
+        string origin,
+        string? fingerprint = null,
+        string? name = null) =>
+        new(EndpointKind.Remote, baseAddress, token, origin, fingerprint, name);
 
-    /// <summary>Come si chiama questo punto a schermo.</summary>
+    /// <summary>What this endpoint is called on screen.</summary>
     /// <remarks>
-    /// Sul canale locale non nomina alcun token, perche' li' non ne esiste uno: dirlo
-    /// manderebbe l'utente a cercare una credenziale che non serve.
+    /// On the local channel it names no token, because there is none there: saying so would
+    /// send the user looking for a credential that is not needed.
     /// </remarks>
-    public string Descrizione =>
-        Kind == EndpointKind.Locale
+    public string Description =>
+        Kind == EndpointKind.Local
             ? "this machine"
             : BaseAddress.ToString();
 
-    /// <summary>Come si chiama questo punto NELL'ELENCO delle macchine.</summary>
+    /// <summary>What this endpoint is called IN THE LIST of machines.</summary>
     /// <remarks>
-    /// Il nome scelto a mano vince sull'indirizzo, perche' in una barra laterale
-    /// "https://192.168.1.24:5058/" non dice a nessuno di quale macchina si tratti.
+    /// The hand-chosen name takes precedence over the address, because in a sidebar
+    /// "https://192.168.1.24:5058/" tells nobody which machine it is.
     /// </remarks>
     /// <remarks>
-    /// Non coincide con <see cref="Descrizione"/>, e la differenza non e' un capriccio: quella
-    /// vive DENTRO una frase ("Connected to this machine"), questo e' una voce di elenco a se'
-    /// stante e vuole l'iniziale maiuscola.
+    /// It is not the same as <see cref="Description"/>, and the difference is not a whim: that
+    /// one lives INSIDE a sentence ("Connected to this machine"), this one is a list entry
+    /// standing on its own and wants an initial capital.
     /// </remarks>
-    public string NomeVisibile =>
-        string.IsNullOrWhiteSpace(Nome)
-            ? (Kind == EndpointKind.Locale ? "This machine" : Descrizione)
-            : Nome.Trim();
-
-    /// <summary>Vero quando questo punto viaggia cifrato e con l'impronta fissata.</summary>
-    public bool ImprontaFissata => !string.IsNullOrWhiteSpace(Fingerprint);
+    public string DisplayName =>
+        string.IsNullOrWhiteSpace(Name)
+            ? (Kind == EndpointKind.Local ? "This machine" : Description)
+            : Name.Trim();
 
     /// <summary>
-    /// Nasconde il token. I record generano un ToString() con TUTTE le proprieta' dentro:
-    /// senza questo override basterebbe un binding distratto o una riga di log per stampare
-    /// il segreto sullo schermo di chi passa.
+    /// True when traffic to this endpoint is encrypted and the fingerprint is pinned.
     /// </summary>
-    /// <returns>Una descrizione senza segreti dentro.</returns>
+    public bool IsFingerprintPinned => !string.IsNullOrWhiteSpace(Fingerprint);
+
+    /// <summary>
+    /// Hides the token. Records generate a ToString() with ALL the properties in it: without
+    /// this override a careless binding or one log line would be enough to print the secret
+    /// on the screen of whoever walks past.
+    /// </summary>
+    /// <returns>A description with no secrets in it.</returns>
     public override string ToString() =>
-        FormattableString.Invariant($"ObserverEndpoint {{ {Kind}, {Descrizione}, {Origine} }}");
+        FormattableString.Invariant($"ObserverEndpoint {{ {Kind}, {Description}, {Origin} }}");
 }

@@ -135,7 +135,7 @@ public class SnapshotProjectionTests
 
         Assert.Empty(gruppo.Rows);
         Assert.Equal("primo campione: manca il precedente", gruppo.Note);
-        Assert.Equal(MetricSeverity.InAttesa, gruppo.Severity);
+        Assert.Equal(MetricSeverity.Warmup, gruppo.Severity);
     }
 
     [Fact]
@@ -148,7 +148,7 @@ public class SnapshotProjectionTests
 
         MetricGroupState gruppo = Assert.Single(SnapshotProjection.Project(snapshot, Catalogo));
 
-        Assert.Equal(MetricSeverity.NonMisurabile, gruppo.Severity);
+        Assert.Equal(MetricSeverity.Unsupported, gruppo.Severity);
         Assert.Equal("niente ntdll qui", gruppo.Note);
     }
 
@@ -165,7 +165,7 @@ public class SnapshotProjectionTests
         MetricGroupState gruppo = Assert.Single(SnapshotProjection.Project(snapshot, Catalogo));
 
         Assert.False(string.IsNullOrWhiteSpace(gruppo.Note));
-        Assert.Equal(MetricSeverity.Problema, gruppo.Severity);
+        Assert.Equal(MetricSeverity.Problem, gruppo.Severity);
     }
 
     [Fact]
@@ -192,7 +192,7 @@ public class SnapshotProjectionTests
         Assert.Equal("smart.temp (nvme1)", riga.Label);
         Assert.Equal("il bridge USB non inoltra i comandi SMART", riga.Display);
         Assert.Null(riga.Fraction);
-        Assert.Equal(MetricSeverity.Problema, riga.Severity);
+        Assert.Equal(MetricSeverity.Problem, riga.Severity);
     }
 
     [Fact]
@@ -224,7 +224,7 @@ public class SnapshotProjectionTests
 
         MetricRowState riga = Assert.Single(SnapshotProjection.Project(snapshot!, Catalogo)[0].Rows);
 
-        Assert.Equal(MetricSeverity.Problema, riga.Severity);
+        Assert.Equal(MetricSeverity.Problem, riga.Severity);
         Assert.DoesNotContain("0", riga.Display, StringComparison.Ordinal);
     }
 
@@ -245,7 +245,7 @@ public class SnapshotProjectionTests
 
         MetricRowState riga = Assert.Single(SnapshotProjection.Project(snapshot!, Catalogo)[0].Rows);
 
-        Assert.Equal(MetricSeverity.Problema, riga.Severity);
+        Assert.Equal(MetricSeverity.Problem, riga.Severity);
         Assert.Contains("unrecognized", riga.Display, StringComparison.Ordinal);
     }
 

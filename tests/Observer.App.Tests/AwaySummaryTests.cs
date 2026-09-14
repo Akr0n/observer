@@ -17,12 +17,12 @@ public class RiepilogoTests
 {
     /// <remarks>
     /// Mezzogiorno LOCALE, non UTC: la frase mostra l'ora della macchina di chi guarda (come
-    /// <c>HistoryStrip.Descrivi</c>), quindi un istante UTC renderebbe il test dipendente dal
+    /// <c>HistoryStrip.Describe</c>), quindi un istante UTC renderebbe il test dipendente dal
     /// fuso di chi lo esegue - verde qui e rosso sul runner, o viceversa.
     /// </remarks>
     private static readonly DateTimeOffset Mezzogiorno = new(new DateTime(2026, 9, 12, 12, 0, 0, DateTimeKind.Local));
 
-    private static Assenza Vuoto(int daMinuto, int aMinuto, bool dalBordo = false) =>
+    private static HistoryGap Vuoto(int daMinuto, int aMinuto, bool dalBordo = false) =>
         new(Mezzogiorno.AddMinutes(daMinuto), Mezzogiorno.AddMinutes(aMinuto), dalBordo);
 
     [Fact]
@@ -31,13 +31,13 @@ public class RiepilogoTests
         // Il silenzio e' un risultato: "ho chiesto e non c'era niente". Una riga "all good" per
         // ogni macchina sana riempirebbe il riquadro proprio nel caso in cui non serve, e lo si
         // imparerebbe a chiudere senza leggerlo.
-        Assert.Equal(string.Empty, Riepilogo.Riga("lavoro", [], colGiorno: false));
+        Assert.Equal(string.Empty, AwaySummary.LineFor("lavoro", [], withDay: false));
     }
 
     [Fact]
     public void UnaSolaInterruzioneDiceQuantoEQuando()
     {
-        string riga = Riepilogo.Riga("lavoro", [Vuoto(20, 200)], colGiorno: false);
+        string riga = AwaySummary.LineFor("lavoro", [Vuoto(20, 200)], withDay: false);
 
         Assert.Equal("lavoro: not measured for 3 h (12:20 – 15:20)", riga);
 
@@ -51,7 +51,7 @@ public class RiepilogoTests
         // Il totale da solo mentirebbe per omissione: tre ore in un colpo e tre ore in dieci
         // singhiozzi sono due macchine diverse, e la piu' lunga e' quella che decide se alzarsi
         // dalla sedia.
-        string riga = Riepilogo.Riga("lavoro", [Vuoto(10, 20), Vuoto(60, 240), Vuoto(300, 310)], colGiorno: false);
+        string riga = AwaySummary.LineFor("lavoro", [Vuoto(10, 20), Vuoto(60, 240), Vuoto(300, 310)], withDay: false);
 
         Assert.Contains("in 3 periods", riga, StringComparison.Ordinal);
         Assert.Contains("longest 13:00 – 16:00", riga, StringComparison.Ordinal);
@@ -64,14 +64,14 @@ public class RiepilogoTests
         // La ritenzione cancella un PREFISSO, indistinguibile da una macchina accesa a meta'
         // finestra: chiamarlo interruzione sarebbe inventare, e una frase inventata insegna a
         // non fidarsi delle altre.
-        string solo = Riepilogo.Riga("casa", [Vuoto(0, 45, dalBordo: true)], colGiorno: false);
+        string solo = AwaySummary.LineFor("casa", [Vuoto(0, 45, dalBordo: true)], withDay: false);
 
         Assert.Equal("casa: nothing known before 12:45", solo);
         Assert.DoesNotContain("not measured", solo, StringComparison.Ordinal);
 
         // E quando c'e' anche un'interruzione vera, il bordo resta una nota in coda e NON entra
         // nel totale: venti minuti, non sessantacinque.
-        string insieme = Riepilogo.Riga("casa", [Vuoto(0, 45, dalBordo: true), Vuoto(60, 80)], colGiorno: false);
+        string insieme = AwaySummary.LineFor("casa", [Vuoto(0, 45, dalBordo: true), Vuoto(60, 80)], withDay: false);
 
         Assert.Contains("not measured for 20 min", insieme, StringComparison.Ordinal);
         Assert.Contains("nothing known before 12:45", insieme, StringComparison.Ordinal);
@@ -81,10 +81,10 @@ public class RiepilogoTests
     [Fact]
     public void OltreLaGiornataGliIstantiPortanoIlGiorno()
     {
-        // Stessa soglia e stessa ragione di HistoryStrip.Descrivi: a sette giorni "14:20" puo'
+        // Stessa soglia e stessa ragione di HistoryStrip.Describe: a sette giorni "14:20" puo'
         // essere uno qualunque di sette pomeriggi.
-        string senza = Riepilogo.Riga("lavoro", [Vuoto(20, 200)], colGiorno: false);
-        string con = Riepilogo.Riga("lavoro", [Vuoto(20, 200)], colGiorno: true);
+        string senza = AwaySummary.LineFor("lavoro", [Vuoto(20, 200)], withDay: false);
+        string con = AwaySummary.LineFor("lavoro", [Vuoto(20, 200)], withDay: true);
 
         Assert.Matches(@"\(\d{2}:\d{2} – \d{2}:\d{2}\)", senza);
         Assert.Matches(@"\([A-Za-z]{3} \d{2}:\d{2} – [A-Za-z]{3} \d{2}:\d{2}\)", con);
@@ -99,13 +99,13 @@ public class RiepilogoTests
         // giorno accanto a un intervallo che si legge come un quarto d'ora all'indietro.
         // Succede anche a un'ora, su una macchina spenta a cavallo di mezzanotte: per questo la
         // regola guarda la COPPIA e non la soglia della finestra.
-        string riga = Riepilogo.Riga("lavoro", [Vuoto(-755, -710)], colGiorno: false);
+        string riga = AwaySummary.LineFor("lavoro", [Vuoto(-755, -710)], withDay: false);
 
         Assert.Matches(@"\([A-Za-z]{3} \d{2}:\d{2} – [A-Za-z]{3} \d{2}:\d{2}\)", riga);
 
         // E quando i due estremi stanno nella stessa giornata il giorno NON compare: aggiungerlo
         // sempre allungherebbe la frase dove non serve.
-        Assert.DoesNotMatch(@"[A-Za-z]{3} \d{2}:\d{2}", Riepilogo.Riga("lavoro", [Vuoto(10, 20)], colGiorno: false));
+        Assert.DoesNotMatch(@"[A-Za-z]{3} \d{2}:\d{2}", AwaySummary.LineFor("lavoro", [Vuoto(10, 20)], withDay: false));
     }
 
     [Fact]
@@ -114,25 +114,25 @@ public class RiepilogoTests
         // E' il punto in cui questa strada si distingue da un avviso che non compare: quando non
         // si puo' sapere, lo si scrive. Il silenzio resta riservato a "ho chiesto e va tutto
         // bene", e cosi' il silenzio significa qualcosa.
-        ObserverEndpoint locale = ObserverEndpoint.CanaleLocale();
+        ObserverEndpoint locale = ObserverEndpoint.LocalChannel();
         ClientConStoricoGuasto cliente = new();
 
         MainViewModel viewModel = new(
             cliente,
-            problemaDiConfigurazione: null,
-            elenco: new MachineListResult([locale], []));
+            configurationProblem: null,
+            machineList: new MachineListResult([locale], []));
 
         using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(25));
-        Task ciclo = viewModel.EseguiAsync(arresto.Token);
+        Task ciclo = viewModel.RunAsync(arresto.Token);
 
-        while (!arresto.IsCancellationRequested && viewModel.RiepilogoAssenze.Length == 0)
+        while (!arresto.IsCancellationRequested && viewModel.AwaySummaryText.Length == 0)
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.Contains("history could not be read", viewModel.RiepilogoAssenze, StringComparison.Ordinal);
-        Assert.Contains("persistenza spenta", viewModel.RiepilogoAssenze, StringComparison.Ordinal);
-        Assert.True(viewModel.MostraRiepilogo);
+        Assert.Contains("history could not be read", viewModel.AwaySummaryText, StringComparison.Ordinal);
+        Assert.Contains("persistenza spenta", viewModel.AwaySummaryText, StringComparison.Ordinal);
+        Assert.True(viewModel.ShowAwaySummary);
 
         // Il riepilogo chiede PIU' indietro della finestra che esamina, ed e' la correzione che
         // tiene in piedi tutto il resto: senza quel margine la griglia, ancorata all'ultimo
@@ -144,10 +144,10 @@ public class RiepilogoTests
         // Cambiando periodo cambia la domanda, quindi si ricomincia da capo.
         int aUnOra = cliente.Riepiloghi(TimeSpan.FromHours(1), DateTimeOffset.UtcNow);
 
-        viewModel.Periodo = "24h";
+        viewModel.HistoryPeriod = "24h";
 
-        Assert.Equal(string.Empty, viewModel.RiepilogoAssenze);
-        Assert.False(viewModel.MostraRiepilogo);
+        Assert.Equal(string.Empty, viewModel.AwaySummaryText);
+        Assert.False(viewModel.ShowAwaySummary);
 
         while (!arresto.IsCancellationRequested
             && cliente.Riepiloghi(TimeSpan.FromHours(24), DateTimeOffset.UtcNow) == 0)
@@ -158,7 +158,7 @@ public class RiepilogoTests
         Assert.True(
             cliente.Riepiloghi(TimeSpan.FromHours(24), DateTimeOffset.UtcNow) > 0,
             "cambiando periodo il riepilogo non e' stato rifatto sulla finestra nuova");
-        Assert.True(aUnOra > 0, "la prima richiesta non era quella del riepilogo");
+        Assert.True(aUnOra > 0, "la prima query non era quella del riepilogo");
 
         await arresto.CancelAsync();
 
@@ -185,9 +185,9 @@ public class RiepilogoTests
         /// della finestra, ed e' proprio la correzione che questo test deve inchiodare.
         /// </remarks>
         public int Riepiloghi(TimeSpan finestra, DateTimeOffset adesso) =>
-            chieste.Count(q => q.Da < adesso - finestra - TimeSpan.FromMinutes(1));
+            chieste.Count(q => q.From < adesso - finestra - TimeSpan.FromMinutes(1));
 
-        public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.CanaleLocale();
+        public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.LocalChannel();
 
         public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new SnapshotFetch(
@@ -215,11 +215,11 @@ public class RiepilogoTests
                     ]),
                 ])));
 
-        public Task<HistoryFetch> GetHistoryAsync(HistoryQuery richiesta, CancellationToken cancellationToken)
+        public Task<HistoryFetch> GetHistoryAsync(HistoryQuery query, CancellationToken cancellationToken)
         {
-            chieste.Add(richiesta);
+            chieste.Add(query);
 
-            return Task.FromResult(new HistoryFetch(ServiceOutcome.NonRaggiungibile, "persistenza spenta", null));
+            return Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "persistenza spenta", null));
         }
     }
 }

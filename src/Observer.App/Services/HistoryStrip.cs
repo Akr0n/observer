@@ -2,443 +2,446 @@ using System.Globalization;
 
 namespace Observer.App.Services;
 
-/// <summary>Che cosa si sa di un intervallo della striscia.</summary>
+/// <summary>What is known about one interval of the strip.</summary>
 public enum BarKind
 {
-    /// <summary>Nessun campione: in quell'intervallo la macchina non stava misurando.</summary>
-    Assente = 0,
+    /// <summary>No samples: in that interval the machine was not measuring.</summary>
+    Missing = 0,
 
-    /// <summary>Qualche campione, ma non tutti: coperto solo in parte.</summary>
-    Parziale = 1,
+    /// <summary>Some samples, but not all: covered only in part.</summary>
+    Partial = 1,
 
-    /// <summary>Intervallo coperto per intero.</summary>
-    Misurata = 2,
+    /// <summary>Interval covered in full.</summary>
+    Measured = 2,
 }
 
-/// <summary>Un intervallo della striscia dello storico.</summary>
-/// <param name="Inizio">L'istante da cui parte l'intervallo.</param>
-/// <param name="Genere">Quanto se ne sa.</param>
-/// <param name="Media">La media dei campioni, da 0 a 1. Zero quando non ce ne sono.</param>
-/// <param name="Massimo">Il massimo raggiunto, da 0 a 1.</param>
-/// <param name="Minimo">Il minimo toccato, da 0 a 1.</param>
-/// <param name="Campioni">Quanti campioni sono caduti nell'intervallo.</param>
-/// <param name="Attesi">Quanti ne sarebbero caduti se fosse stato coperto per intero.</param>
+/// <summary>One interval of the history strip.</summary>
+/// <param name="Start">The instant the interval starts at.</param>
+/// <param name="Kind">How much is known about it.</param>
+/// <param name="Average">The average of the samples, from 0 to 1. Zero when there are none.</param>
+/// <param name="Max">The highest value reached, from 0 to 1.</param>
+/// <param name="Min">The lowest value touched, from 0 to 1.</param>
+/// <param name="Samples">How many samples fell in the interval.</param>
+/// <param name="Expected">How many would have fallen had it been covered in full.</param>
 public sealed record HistoryBar(
-    DateTimeOffset Inizio,
-    BarKind Genere,
-    double Media,
-    double Massimo,
-    double Minimo,
-    int Campioni,
-    int Attesi);
+    DateTimeOffset Start,
+    BarKind Kind,
+    double Average,
+    double Max,
+    double Min,
+    int Samples,
+    int Expected);
 
-/// <summary>Un intervallo in cui una macchina non stava misurando.</summary>
-/// <param name="Inizio">Quando ha smesso, nell'orologio di QUELLA macchina.</param>
-/// <param name="Fine">Quando ha ripreso, nell'orologio di quella macchina.</param>
-/// <param name="DalBordo">
-/// True quando il vuoto tocca il bordo piu' vecchio della finestra esaminata, cioe' quando non
-/// si sa se e' un'interruzione o semplicemente la fine di cio' che il servizio conserva.
+/// <summary>An interval in which a machine was not measuring.</summary>
+/// <param name="Start">When it stopped, in THAT machine's clock.</param>
+/// <param name="End">When it resumed, in that machine's clock.</param>
+/// <param name="AtEdge">
+/// True when the gap touches the oldest edge of the window examined, that is, when there is no
+/// way to tell whether it is an outage or simply the end of what the service keeps.
 /// </param>
-public sealed record Assenza(DateTimeOffset Inizio, DateTimeOffset Fine, bool DalBordo)
+public sealed record HistoryGap(DateTimeOffset Start, DateTimeOffset End, bool AtEdge)
 {
-    /// <summary>Quanto e' durata.</summary>
-    public TimeSpan Durata => Fine - Inizio;
+    /// <summary>How long it lasted.</summary>
+    public TimeSpan Duration => End - Start;
 }
 
 /// <summary>
-/// Da cio' che il servizio manda a cio' che si disegna: la griglia degli intervalli.
+/// From what the service sends to what gets drawn: the grid of intervals.
 /// </summary>
 /// <remarks>
-/// <b>Il servizio non manda i buchi.</b> Un intervallo in cui non e' stato campionato niente
-/// semplicemente non compare nell'array dei punti — non arriva con zero campioni, non arriva
-/// affatto. Misurato uccidendo il servizio per 95 secondi: al livello di un minuto il bucket
-/// di quel minuto non esiste, e l'array salta direttamente al successivo.
+/// <b>The service does not send the gaps.</b> An interval in which nothing was sampled simply
+/// does not appear in the array of points — it does not arrive with zero samples, it does not
+/// arrive at all. Measured by killing the service for 95 seconds: at the one-minute level the
+/// bucket for that minute does not exist, and the array jumps straight to the next one.
 /// <para>
-/// Da qui la regola che questa classe esiste per far rispettare: <b>la griglia si costruisce
-/// dai tempi attesi, e i punti ci si cercano dentro</b>, mai il contrario. Scorrere l'array e
-/// disegnare una barretta per punto darebbe una striscia continua e piena anche su una
-/// macchina spenta meta' giornata: i buchi sparirebbero stringendosi, e chi guarda leggerebbe
-/// una macchina sempre accesa. E' il modo piu' facile di raccontare una bugia con dei dati
-/// veri.
+/// Hence the rule this class exists to enforce: <b>the grid is built from the expected times,
+/// and the points are looked up inside it</b>, never the other way round. Walking the array and
+/// drawing one small bar per point would give a continuous, full strip even for a machine that
+/// was off half the day: the gaps would close up and vanish, and whoever looks would read a
+/// machine that was always on. It is the easiest way to tell a lie with true
+/// data.
 /// </para>
 /// <para>
-/// Un intervallo coperto solo in parte esiste ed e' un terzo caso: arriva con un numero di
-/// campioni ridotto (misurati 53 e 31 su 60) e con una media calcolata solo su quelli. E' un
-/// numero plausibile su mezzo minuto, e va detto che e' mezzo minuto.
+/// An interval covered only in part exists and is a third case: it arrives with a reduced
+/// sample count (53 and 31 out of 60, measured) and with an average computed over those alone.
+/// It is a plausible number over half a minute, and the strip has to say that it is half a minute.
 /// </para>
 /// </remarks>
 public static class HistoryStrip
 {
-    /// <summary>Quanti campioni ci si aspetta in un intervallo, a un campione al secondo.</summary>
-    /// <param name="passo">La durata dell'intervallo.</param>
-    /// <returns>Il numero di campioni attesi, almeno uno.</returns>
+    /// <summary>How many samples to expect in one interval, at one sample a second.</summary>
+    /// <param name="step">How long the interval lasts.</param>
+    /// <returns>The number of expected samples, at least one.</returns>
     /// <remarks>
-    /// Il servizio campiona a 1 Hz, quindi i campioni attesi coincidono con i secondi. E'
-    /// misurato: gli intervalli pieni arrivano con 60 campioni al minuto e 300 a cinque minuti.
+    /// The service samples at 1 Hz, so the expected samples coincide with the seconds. It is
+    /// measured: full intervals arrive with 60 samples a minute and 300 at five minutes.
     /// </remarks>
-    public static int AttesiIn(TimeSpan passo) => Math.Max(1, (int)Math.Round(passo.TotalSeconds));
+    public static int ExpectedSamplesIn(TimeSpan step) => Math.Max(1, (int)Math.Round(step.TotalSeconds));
 
-    /// <summary>Costruisce la striscia, buchi compresi.</summary>
-    /// <param name="punti">I punti arrivati dal servizio, in qualsiasi ordine.</param>
-    /// <param name="fine">La fine della finestra: l'ultimo intervallo e' quello che la contiene.</param>
-    /// <param name="quanti">Quanti intervalli mostrare.</param>
-    /// <param name="passo">Quanto dura ciascun intervallo.</param>
-    /// <returns>Gli intervalli dal piu' vecchio al piu' recente, uno per posizione.</returns>
-    public static IReadOnlyList<HistoryBar> Costruisci(
-        IReadOnlyList<HistoryPoint> punti,
-        DateTimeOffset fine,
-        int quanti,
-        TimeSpan passo)
+    /// <summary>Builds the strip, gaps included.</summary>
+    /// <param name="points">The points that arrived from the service, in any order.</param>
+    /// <param name="end">The end of the window: the last interval is the one that contains it.</param>
+    /// <param name="barCount">How many intervals to show.</param>
+    /// <param name="step">How long each interval lasts.</param>
+    /// <returns>The intervals from the oldest to the most recent, one per position.</returns>
+    public static IReadOnlyList<HistoryBar> Build(
+        IReadOnlyList<HistoryPoint> points,
+        DateTimeOffset end,
+        int barCount,
+        TimeSpan step)
     {
-        ArgumentNullException.ThrowIfNull(punti);
-        ArgumentOutOfRangeException.ThrowIfLessThan(quanti, 1);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(passo, TimeSpan.Zero);
+        ArgumentNullException.ThrowIfNull(points);
+        ArgumentOutOfRangeException.ThrowIfLessThan(barCount, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(step, TimeSpan.Zero);
 
-        int attesi = AttesiIn(passo);
+        int expectedSamples = ExpectedSamplesIn(step);
 
-        // PRIMA si raggruppa, e non e' un di piu': quando il passo della barra e' piu' largo
-        // di quello dei punti - un quarto d'ora di barra su punti da cinque minuti - nello
-        // stesso intervallo ne cadono tre, e indicizzarli per istante ne terrebbe UNO,
-        // l'ultimo iterato, buttando gli altri due. La barra mostrerebbe l'ultimo campione
-        // spacciandolo per la media di tutti, e il conteggio direbbe 1 su 900. Raggruppa
-        // ricalcola la media dalla SOMMA, che e' l'unico modo di non far pesare uguale
-        // intervalli con un numero diverso di campioni.
-        punti = Raggruppa(punti, passo);
+        // Bucketing comes FIRST, and it is not an extra: when the bar's step is wider than
+        // the points' one - a quarter-hour bar over five-minute points - three of them fall in
+        // the same interval, and indexing them by timestamp would keep ONE, the last iterated,
+        // throwing the other two away. The bar would show the last sample and pass it off as
+        // the average of all of them, and the count would say 1 out of 900. Bucket recomputes
+        // the average from the SUM, which is the only way to stop intervals with a different
+        // number of samples from weighing the same.
+        points = Bucket(points, step);
 
-        // I punti si indicizzano per l'inizio del proprio intervallo, arrotondato al passo:
-        // cosi' un timestamp che arriva con qualche millisecondo di scarto cade lo stesso
-        // nella casella giusta invece di sparire.
-        Dictionary<DateTimeOffset, HistoryPoint> perIstante = [];
+        // The points are indexed by the start of their own interval, rounded to the step: that
+        // way a timestamp that arrives a few milliseconds off still falls into the right cell
+        // instead of vanishing.
+        Dictionary<DateTimeOffset, HistoryPoint> byStart = [];
 
-        foreach (HistoryPoint punto in punti)
+        foreach (HistoryPoint point in points)
         {
-            perIstante[Allinea(punto.Timestamp, passo)] = punto;
+            byStart[AlignTo(point.Timestamp, step)] = point;
         }
 
-        DateTimeOffset ultimo = Allinea(fine, passo);
-        List<HistoryBar> striscia = new(quanti);
+        DateTimeOffset newest = AlignTo(end, step);
+        List<HistoryBar> strip = new(barCount);
 
-        for (int i = quanti - 1; i >= 0; i--)
+        for (int i = barCount - 1; i >= 0; i--)
         {
-            DateTimeOffset inizio = ultimo - (passo * i);
+            DateTimeOffset start = newest - (step * i);
 
-            striscia.Add(perIstante.TryGetValue(inizio, out HistoryPoint? punto)
-                ? Da(punto, inizio, attesi)
-                : new HistoryBar(inizio, BarKind.Assente, 0d, 0d, 0d, 0, attesi));
+            strip.Add(byStart.TryGetValue(start, out HistoryPoint? point)
+                ? From(point, start, expectedSamples)
+                : new HistoryBar(start, BarKind.Missing, 0d, 0d, 0d, 0, expectedSamples));
         }
 
-        return striscia;
+        return strip;
     }
 
-    /// <summary>Quando quella macchina NON stava misurando, nella finestra data.</summary>
-    /// <param name="punti">I punti arrivati dal servizio di quella macchina.</param>
-    /// <param name="finestra">Quanto indietro guardare.</param>
-    /// <param name="passo">La risoluzione con cui cercare i vuoti.</param>
-    /// <returns>I vuoti dal piu' vecchio al piu' recente, vuoto se non ce ne sono.</returns>
+    /// <summary>When that machine was NOT measuring, within the given window.</summary>
+    /// <param name="points">The points that arrived from that machine's service.</param>
+    /// <param name="window">How far back to look.</param>
+    /// <param name="step">The resolution at which to look for the gaps.</param>
+    /// <returns>The gaps from the oldest to the most recent, empty when there are none.</returns>
     /// <remarks>
     /// <para>
-    /// Poggia sull'invariante che <see cref="Costruisci"/> esiste per far rispettare — <b>il
-    /// servizio non manda i buchi</b>, quindi la griglia si costruisce dai tempi attesi e i
-    /// punti ci si cercano dentro. Qui non si disegna: si contano le caselle rimaste vuote.
+    /// Rests on the invariant that <see cref="Build"/> exists to enforce — <b>the service does
+    /// not send the gaps</b>, so the grid is built from the expected times and the points are
+    /// looked up inside it. Nothing is drawn here: the cells left empty are counted.
     /// </para>
     /// <para>
-    /// <b>Tutto sta nell'orologio della MACCHINA, mai in quello del client.</b> La finestra si
-    /// ancora al punto piu' recente che quella macchina ha mandato, non a "adesso" di chi
-    /// guarda. E' la differenza fra un riepilogo e un generatore di falsi allarmi: due orologi
-    /// che divergono di venti minuti - una macchina virtuale, un Windows fuori dominio - non
-    /// producono nessun vuoto, perche' uno scarto trasla l'intera serie e non apre buchi in
-    /// mezzo. E il ritardo del consolidamento si esclude da se': dopo l'ultimo punto non c'e'
-    /// nessuna casella da riempire, quindi non si segnala mai un vuoto che tocca l'adesso.
+    /// <b>Everything is in the MACHINE's clock, never in the client's.</b> The window anchors
+    /// to the most recent point that machine sent, not to the "now" of whoever is looking. That
+    /// is the difference between a summary and a false-alarm generator: two clocks twenty
+    /// minutes apart - a virtual machine, a Windows box outside the domain - produce no gap at
+    /// all, because an offset shifts the whole series and opens no holes in the middle. And the
+    /// consolidation lag excludes itself: after the last point there is no cell left to fill,
+    /// so a gap running up to the present is never reported.
     /// </para>
     /// <para>
-    /// Il passo e' quello della SORGENTE e non quello della barra della striscia, ed e' la cosa
-    /// che si sbaglia per prima: a sette giorni una barra copre due ore, e un'interruzione di
-    /// quaranta minuti ci finisce dentro come intervallo <i>parziale</i>, cioe' non verrebbe
-    /// vista affatto.
+    /// The step is the SOURCE's and not that of the strip's bar, and it is the first thing to
+    /// get wrong: at seven days a bar covers two hours, and a forty-minute outage lands inside
+    /// it as a <i>partial</i> interval, which means it would not be seen at
+    /// all.
     /// </para>
     /// </remarks>
-    public static IReadOnlyList<Assenza> Assenze(
-        IReadOnlyList<HistoryPoint> punti,
-        TimeSpan finestra,
-        TimeSpan passo)
+    public static IReadOnlyList<HistoryGap> FindGaps(
+        IReadOnlyList<HistoryPoint> points,
+        TimeSpan window,
+        TimeSpan step)
     {
-        ArgumentNullException.ThrowIfNull(punti);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(passo, TimeSpan.Zero);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(finestra, passo);
+        ArgumentNullException.ThrowIfNull(points);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(step, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(window, step);
 
-        if (punti.Count == 0)
+        if (points.Count == 0)
         {
-            // Nessun punto non vuol dire "sempre assente": vuol dire che non si sa niente, e il
-            // chiamante lo dice con un'altra frase. Restituire un vuoto lungo quanto la
-            // finestra sarebbe inventare un'interruzione mai osservata.
+            // No points does not mean "absent the whole time": it means nothing is known, and
+            // the caller says so with a different sentence. Returning a gap as long as the
+            // window would be inventing an outage nobody ever observed.
             return [];
         }
 
-        DateTimeOffset ultimo = punti[0].Timestamp;
+        DateTimeOffset newest = points[0].Timestamp;
 
-        foreach (HistoryPoint punto in punti)
+        foreach (HistoryPoint point in points)
         {
-            if (punto.Timestamp > ultimo)
+            if (point.Timestamp > newest)
             {
-                ultimo = punto.Timestamp;
+                newest = point.Timestamp;
             }
         }
 
-        IReadOnlyList<HistoryBar> barre = Costruisci(punti, ultimo, (int)(finestra / passo), passo);
-        List<Assenza> assenze = [];
-        int apertura = -1;
+        IReadOnlyList<HistoryBar> bars = Build(points, newest, (int)(window / step), step);
+        List<HistoryGap> gaps = [];
+        int gapStartIndex = -1;
 
-        for (int i = 0; i < barre.Count; i++)
+        for (int i = 0; i < bars.Count; i++)
         {
-            if (barre[i].Genere == BarKind.Assente)
+            if (bars[i].Kind == BarKind.Missing)
             {
-                if (apertura < 0)
+                if (gapStartIndex < 0)
                 {
-                    apertura = i;
+                    gapStartIndex = i;
                 }
 
                 continue;
             }
 
-            if (apertura >= 0)
+            if (gapStartIndex >= 0)
             {
-                assenze.Add(new Assenza(barre[apertura].Inizio, barre[i].Inizio, DalBordo: apertura == 0));
-                apertura = -1;
+                gaps.Add(new HistoryGap(bars[gapStartIndex].Start, bars[i].Start, AtEdge: gapStartIndex == 0));
+                gapStartIndex = -1;
             }
         }
 
-        // Una corsa che arriva in fondo non puo' esistere: l'ultima barra contiene per
-        // costruzione il punto piu' recente, quindi e' misurata. Se un giorno l'ancoraggio
-        // cambiasse, questa riga la chiuderebbe lo stesso invece di perderla in silenzio.
-        if (apertura >= 0)
+        // A run that reaches the end cannot exist: by construction the last bar contains the
+        // most recent point, so it is measured. If the anchoring ever changed, this line would
+        // close it anyway instead of losing it in silence.
+        if (gapStartIndex >= 0)
         {
-            assenze.Add(new Assenza(barre[apertura].Inizio, barre[^1].Inizio + passo, DalBordo: apertura == 0));
+            gaps.Add(new HistoryGap(bars[gapStartIndex].Start, bars[^1].Start + step, AtEdge: gapStartIndex == 0));
         }
 
-        return assenze;
+        return gaps;
     }
 
-    /// <summary>Quanto e' larga davvero una barra, in proporzione a quanto ha coperto.</summary>
-    /// <param name="barra">La barra da disegnare.</param>
-    /// <param name="larghezza">La larghezza piena della colonna.</param>
-    /// <returns>La larghezza da disegnare, mai sotto un pixel.</returns>
+    /// <summary>How wide a bar really is, in proportion to how much it covered.</summary>
+    /// <param name="bar">The bar to draw.</param>
+    /// <param name="width">The full width of the column.</param>
+    /// <returns>The width to draw, never below one pixel.</returns>
     /// <remarks>
-    /// Serve per l'ULTIMA barra della striscia, che e' sempre l'intervallo <b>in corso</b>: a
-    /// passo di un minuto contiene fra zero e sessanta secondi di misure e la differenza non
-    /// si nota, ma a passo di due ore puo' contenerne cinque minuti e disegnarsi identica a
-    /// una barra piena — proprio dove l'occhio legge "adesso". Una barra che ha coperto un
-    /// dodicesimo del suo intervallo si disegna larga un dodicesimo.
+    /// It is there for the LAST bar of the strip, which is always the interval <b>in
+    /// progress</b>: at a one-minute step it holds between zero and sixty seconds of readings
+    /// and the difference does not show, but at a two-hour step it can hold five minutes of
+    /// them and draw itself identical to a full bar — exactly where the eye reads "now". A bar
+    /// that covered a twelfth of its interval is drawn a twelfth wide.
     /// <para>
-    /// Quanto la si veda crescere dipende da chi rilegge, non da qui, ed e' il motivo per cui
-    /// <c>MainViewModel.ProssimaLettura</c> non rilegge ogni passo: rileggendo al passo si
-    /// guarderebbe ogni volta una barra appena nata, sempre alla stessa frazione, e l'estremo
-    /// destro della striscia resterebbe congelato per tutta la sessione a quella larghezza li'.
+    /// How much you see it grow depends on whoever re-reads, not on this code, and it is the
+    /// reason <c>MainViewModel.HistoryReadDelay</c> does not re-read every step: re-reading at
+    /// the step would mean looking at a brand-new bar every time, always at the same fraction,
+    /// and the right edge of the strip would stay frozen at that width for the whole session.
     /// </para>
     /// <para>
-    /// Vale per ogni barra parziale, non solo per l'ultima: anche a meta' striscia, un
-    /// intervallo coperto a meta' sa meno di uno coperto per intero, e la larghezza lo dice
-    /// senza bisogno di un terzo colore. Le barre intere e i buchi non si toccano: un buco ha
-    /// gia' il suo segno, e stringere una barra piena sarebbe una bugia al contrario.
+    /// It holds for every partial bar, not only for the last one: halfway along the strip too,
+    /// an interval covered halfway knows less than one covered in full, and the width says so
+    /// without needing a third colour. Full bars and gaps are left alone: a gap already has
+    /// its own mark, and narrowing a full bar would be a lie the other way round.
     /// </para>
     /// </remarks>
-    public static double LarghezzaDi(HistoryBar barra, double larghezza)
+    public static double WidthOf(HistoryBar bar, double width)
     {
-        ArgumentNullException.ThrowIfNull(barra);
+        ArgumentNullException.ThrowIfNull(bar);
 
-        if (barra.Genere != BarKind.Parziale || barra.Attesi <= 0)
+        if (bar.Kind != BarKind.Partial || bar.Expected <= 0)
         {
-            return larghezza;
+            return width;
         }
 
-        double coperta = Math.Clamp((double)barra.Campioni / barra.Attesi, 0d, 1d);
+        double coverage = Math.Clamp((double)bar.Samples / bar.Expected, 0d, 1d);
 
-        // Almeno un pixel: una barra che esiste non deve sparire del tutto, o si leggerebbe
-        // come un buco, che vuol dire un'altra cosa.
-        return Math.Max(1d, larghezza * coperta);
+        // At least one pixel: a bar that exists must not disappear altogether, or it would
+        // read as a gap, which means something else.
+        return Math.Max(1d, width * coverage);
     }
 
-    /// <summary>Raggruppa campioni fitti in intervalli piu' larghi.</summary>
-    /// <param name="punti">I punti da raggruppare.</param>
-    /// <param name="passo">La durata dell'intervallo di destinazione.</param>
-    /// <returns>Un punto per intervallo che contiene almeno un campione.</returns>
+    /// <summary>Groups dense samples into wider intervals.</summary>
+    /// <param name="points">The points to group.</param>
+    /// <param name="step">How long the destination interval lasts.</param>
+    /// <returns>One point per interval that contains at least one sample.</returns>
     /// <remarks>
-    /// Serve per la coda della striscia, che si legge dai campioni grezzi. <b>La media si
-    /// ricalcola dalla somma, non come media delle medie</b>: intervalli con un numero diverso
-    /// di campioni peserebbero uguale, e ne uscirebbe un numero credibile e falso.
+    /// It is there for the tail of the strip, which is read from the raw samples. <b>The
+    /// average is recomputed from the sum, not as an average of averages</b>: intervals with a
+    /// different number of samples would weigh the same, and the result would be a credible,
+    /// false number.
     /// </remarks>
-    public static IReadOnlyList<HistoryPoint> Raggruppa(
-        IReadOnlyList<HistoryPoint> punti,
-        TimeSpan passo)
+    public static IReadOnlyList<HistoryPoint> Bucket(
+        IReadOnlyList<HistoryPoint> points,
+        TimeSpan step)
     {
-        ArgumentNullException.ThrowIfNull(punti);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(passo, TimeSpan.Zero);
+        ArgumentNullException.ThrowIfNull(points);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(step, TimeSpan.Zero);
 
-        Dictionary<DateTimeOffset, (double Somma, double Min, double Max, int Conta)> accumulo = [];
+        Dictionary<DateTimeOffset, (double Sum, double Min, double Max, int Count)> buckets = [];
 
-        foreach (HistoryPoint punto in punti)
+        foreach (HistoryPoint point in points)
         {
-            DateTimeOffset dove = Allinea(punto.Timestamp, passo);
-            int conta = Math.Max(1, punto.Count);
+            DateTimeOffset bucketStart = AlignTo(point.Timestamp, step);
+            int sampleCount = Math.Max(1, point.Count);
 
-            if (accumulo.TryGetValue(dove, out (double Somma, double Min, double Max, int Conta) gia))
+            if (buckets.TryGetValue(bucketStart, out (double Sum, double Min, double Max, int Count) existing))
             {
-                accumulo[dove] = (
-                    gia.Somma + (punto.Avg * conta),
-                    Math.Min(gia.Min, punto.Min),
-                    Math.Max(gia.Max, punto.Max),
-                    gia.Conta + conta);
+                buckets[bucketStart] = (
+                    existing.Sum + (point.Avg * sampleCount),
+                    Math.Min(existing.Min, point.Min),
+                    Math.Max(existing.Max, point.Max),
+                    existing.Count + sampleCount);
             }
             else
             {
-                accumulo[dove] = (punto.Avg * conta, punto.Min, punto.Max, conta);
+                buckets[bucketStart] = (point.Avg * sampleCount, point.Min, point.Max, sampleCount);
             }
         }
 
-        return [.. accumulo
-            .OrderBy(voce => voce.Key)
-            .Select(voce => new HistoryPoint(
-                voce.Key,
-                voce.Value.Conta,
-                voce.Value.Somma / voce.Value.Conta,
-                voce.Value.Min,
-                voce.Value.Max,
-                voce.Value.Somma / voce.Value.Conta))];
+        return [.. buckets
+            .OrderBy(bucket => bucket.Key)
+            .Select(bucket => new HistoryPoint(
+                bucket.Key,
+                bucket.Value.Count,
+                bucket.Value.Sum / bucket.Value.Count,
+                bucket.Value.Min,
+                bucket.Value.Max,
+                bucket.Value.Sum / bucket.Value.Count))];
     }
 
-    /// <summary>Unisce due letture della stessa serie, tenendo la piu' fresca dove si sovrappongono.</summary>
-    /// <param name="aggregato">La lettura che copre tutta la finestra, ma e' indietro.</param>
-    /// <param name="coda">La lettura fresca degli ultimi intervalli.</param>
-    /// <returns>I punti uniti.</returns>
+    /// <summary>
+    /// Merges two readings of the same series, keeping the one with MORE samples where they overlap.
+    /// </summary>
+    /// <param name="aggregates">The reading that covers the whole window, but is behind.</param>
+    /// <param name="tail">The fresh reading of the last few intervals.</param>
+    /// <returns>The merged points.</returns>
     /// <remarks>
-    /// La striscia si costruisce con DUE letture, e il motivo e' misurato: il consolidamento
-    /// degli aggregati ha una grazia di quattro minuti, quindi il livello a un minuto e'
-    /// indietro di cinque o sei minuti rispetto ad adesso. Con la sola lettura aggregata le
-    /// ultime barrette sarebbero <b>sempre</b> vuote, e la striscia direbbe "non misurato"
-    /// proprio sull'adesso — mentre i quadranti sopra mostrano valori vivi. La coda arriva dal
-    /// grezzo, che e' aggiornato al secondo.
+    /// The strip is built from TWO readings, and the reason is measured: the consolidation of
+    /// the aggregates has a four-minute grace, so the one-minute level lags the present moment
+    /// by five or six minutes. With the aggregate reading alone the last few bars would
+    /// <b>always</b> be empty, and the strip would say "not measured" right at the present
+    /// moment — while the gauges above show live values. The tail comes from the raw level,
+    /// which is up to date to the second.
     /// </remarks>
-    public static IReadOnlyList<HistoryPoint> Unisci(
-        IReadOnlyList<HistoryPoint> aggregato,
-        IReadOnlyList<HistoryPoint> coda)
+    public static IReadOnlyList<HistoryPoint> Merge(
+        IReadOnlyList<HistoryPoint> aggregates,
+        IReadOnlyList<HistoryPoint> tail)
     {
-        ArgumentNullException.ThrowIfNull(aggregato);
-        ArgumentNullException.ThrowIfNull(coda);
+        ArgumentNullException.ThrowIfNull(aggregates);
+        ArgumentNullException.ThrowIfNull(tail);
 
-        Dictionary<DateTimeOffset, HistoryPoint> uniti = [];
+        Dictionary<DateTimeOffset, HistoryPoint> merged = [];
 
-        foreach (HistoryPoint punto in aggregato)
+        foreach (HistoryPoint point in aggregates)
         {
-            uniti[punto.Timestamp] = punto;
+            merged[point.Timestamp] = point;
         }
 
-        // Dove le due si sovrappongono vince quella con PIU' campioni, non la piu' fresca.
-        // Quasi sempre e' la coda, ed e' il motivo per cui questa funzione esiste: su un
-        // intervallo consolidato a meta' l'aggregato ha meno campioni e mentirebbe. Ma c'e'
-        // un intervallo in cui perde, ed e' sempre lo stesso: il piu' VECCHIO della coda. Il
-        // grezzo si chiede da un istante qualsiasi - "dieci minuti fa" - che non cade sul
-        // confine di un intervallo, quindi quel primo intervallo arriva tagliato, con trenta
-        // campioni su sessanta, mentre l'aggregato ce li ha tutti. Lasciandolo vincere, una
-        // barra misurata per intero si disegnava larga la meta' (e' parziale), il suggerimento
-        // diceva "30 of 60 samples", e media, minimo e massimo saltavano la prima meta' del
-        // minuto: un picco li' dentro spariva. Il confine si sposta a ogni lettura, quindi la
-        // barra sbagliata era sempre la stessa posizione della striscia.
-        foreach (HistoryPoint punto in coda)
+        // Where the two overlap the one with MORE samples wins, not the fresher one. Almost
+        // always that is the tail, and it is the reason this function exists: on a half
+        // consolidated interval the aggregate has fewer samples and would lie. But there is
+        // one interval where it loses, and it is always the same one: the OLDEST of the tail.
+        // The raw level is asked for from an arbitrary timestamp - "ten minutes ago" - which
+        // does not fall on an interval boundary, so that first interval arrives truncated,
+        // with thirty samples out of sixty, while the aggregate has them all. Letting it win,
+        // a bar measured in full was drawn half as wide (it is partial), the tooltip said
+        // "30 of 60 samples", and average, minimum and maximum skipped the first half of the
+        // minute: a spike in there disappeared. The boundary moves at every reading, so the
+        // wrong bar was always at the same position in the strip.
+        foreach (HistoryPoint point in tail)
         {
-            uniti[punto.Timestamp] =
-                uniti.TryGetValue(punto.Timestamp, out HistoryPoint? gia) && gia.Count > punto.Count
-                    ? gia
-                    : punto;
+            merged[point.Timestamp] =
+                merged.TryGetValue(point.Timestamp, out HistoryPoint? existing) && existing.Count > point.Count
+                    ? existing
+                    : point;
         }
 
-        return [.. uniti.Values.OrderBy(punto => punto.Timestamp)];
+        return [.. merged.Values.OrderBy(point => point.Timestamp)];
     }
 
-    private static HistoryBar Da(HistoryPoint punto, DateTimeOffset inizio, int attesi) =>
+    private static HistoryBar From(HistoryPoint point, DateTimeOffset start, int expectedSamples) =>
         new(
-            inizio,
-            punto.Count >= attesi ? BarKind.Misurata : BarKind.Parziale,
-            punto.Avg,
-            punto.Max,
-            punto.Min,
-            punto.Count,
-            attesi);
+            start,
+            point.Count >= expectedSamples ? BarKind.Measured : BarKind.Partial,
+            point.Avg,
+            point.Max,
+            point.Min,
+            point.Count,
+            expectedSamples);
 
-    private static DateTimeOffset Allinea(DateTimeOffset istante, TimeSpan passo) =>
-        new(istante.UtcTicks - (istante.UtcTicks % passo.Ticks), TimeSpan.Zero);
+    private static DateTimeOffset AlignTo(DateTimeOffset timestamp, TimeSpan step) =>
+        new(timestamp.UtcTicks - (timestamp.UtcTicks % step.Ticks), TimeSpan.Zero);
 
-    /// <summary>Quale barra sta sotto una certa ascissa.</summary>
-    /// <param name="x">Ascissa del puntatore, in pixel dal bordo sinistro della striscia.</param>
-    /// <param name="larghezza">Larghezza dell'intera striscia.</param>
-    /// <param name="quante">Quante barre ci sono.</param>
-    /// <returns>L'indice, oppure -1 se il puntatore e' fuori.</returns>
+    /// <summary>Which bar sits under a given x coordinate.</summary>
+    /// <param name="x">X coordinate of the pointer, in pixels from the left edge of the strip.</param>
+    /// <param name="width">Width of the whole strip.</param>
+    /// <param name="barCount">How many bars there are.</param>
+    /// <returns>The index, or -1 when the pointer is outside.</returns>
     /// <remarks>
-    /// Sta qui e non nel controllo per la stessa ragione dell'aritmetica dell'arco: un errore
-    /// di un indice non fa fallire niente, mostra soltanto l'ora della barra accanto. E il
-    /// bordo destro sbaglia da solo — con x uguale alla larghezza la divisione da'
-    /// esattamente <c>quante</c>, cioe' un indice che non esiste.
+    /// It lives here and not in the control for the same reason as the arc arithmetic: an
+    /// off-by-one index breaks nothing, it only shows the time of the bar next door. And the
+    /// right edge gets it wrong all by itself — with x equal to the width the division gives
+    /// exactly <c>barCount</c>, that is, an index that does not exist.
     /// </remarks>
-    public static int IndiceSotto(double x, double larghezza, int quante)
+    public static int IndexAt(double x, double width, int barCount)
     {
-        if (quante <= 0 || larghezza <= 0d || double.IsNaN(x) || x < 0d || x >= larghezza)
+        if (barCount <= 0 || width <= 0d || double.IsNaN(x) || x < 0d || x >= width)
         {
             return -1;
         }
 
-        return Math.Clamp((int)(x / (larghezza / quante)), 0, quante - 1);
+        return Math.Clamp((int)(x / (width / barCount)), 0, barCount - 1);
     }
 
-    /// <summary>Che cosa dire di una barra a chi ci passa sopra il mouse.</summary>
-    /// <param name="barre">Le barre della striscia.</param>
-    /// <param name="indice">Quale barra.</param>
-    /// <returns>La frase da mostrare, vuota se l'indice non esiste.</returns>
+    /// <summary>What to say about a bar to whoever hovers the mouse over it.</summary>
+    /// <param name="bars">The bars of the strip.</param>
+    /// <param name="index">Which bar.</param>
+    /// <returns>The text to show, empty when the index does not exist.</returns>
     /// <remarks>
-    /// Dice l'INTERVALLO, non l'istante: una barra copre da un minuto a due ore secondo il
-    /// periodo scelto, e mostrarne solo l'inizio lascerebbe indovinare quanto e' larga. Il
-    /// passo si ricava dalle barre stesse invece di essere una costante, cosi' resta vero
-    /// qualunque periodo la striscia stia mostrando.
+    /// It says the INTERVAL, not the instant: a bar covers from one minute to two hours
+    /// depending on the period chosen, and showing only its start would leave its width to
+    /// guesswork. The step is derived from the bars themselves instead of being a constant, so
+    /// it stays true whatever period the strip is showing.
     /// <para>
-    /// Su una barra vuota lo dice: "non misurato" non e' "zero", ed e' la stessa distinzione
-    /// che il disegno gia' fa con il tratteggio.
+    /// On an empty bar it says so: "not measured" is not "zero", and it is the same distinction
+    /// the drawing already makes with the hatching.
     /// </para>
     /// </remarks>
-    public static string Descrivi(IReadOnlyList<HistoryBar> barre, int indice)
+    public static string Describe(IReadOnlyList<HistoryBar> bars, int index)
     {
-        ArgumentNullException.ThrowIfNull(barre);
+        ArgumentNullException.ThrowIfNull(bars);
 
-        if (indice < 0 || indice >= barre.Count)
+        if (index < 0 || index >= bars.Count)
         {
             return string.Empty;
         }
 
-        HistoryBar barra = barre[indice];
+        HistoryBar bar = bars[index];
 
-        if (barre.Count < 2)
+        if (bars.Count < 2)
         {
-            return Ora(barra.Inizio, colGiorno: false);
+            return FormatTime(bar.Start, includeDay: false);
         }
 
-        TimeSpan passo = barre[1].Inizio - barre[0].Inizio;
+        TimeSpan step = bars[1].Start - bars[0].Start;
 
-        // Oltre le ventiquattro ore l'ora da sola non colloca piu' niente: a sette giorni la
-        // stessa frase - "04:00 – 06:00" - compare su SETTE barre, una per giorno, e chi vede
-        // un picco (che e' il motivo per cui si guarda una settimana) non ha modo di sapere di
-        // che giorno sia. Il nome del giorno basta, la data no: fra due barre della stessa
-        // striscia passano al massimo 83 x 2 h = 166 ore, meno di una settimana, quindi la
-        // coppia (giorno, ora) non puo' ripetersi. La soglia e' stretta di proposito: a
-        // ventiquattro ore l'arco vale esattamente un giorno, gli estremi non si toccano, e la
-        // frase resta corta dove non serve allungarla.
-        bool colGiorno = (passo * barre.Count) > TimeSpan.FromHours(24);
+        // Past twenty-four hours the time alone no longer pins anything down: at seven days the
+        // same text - "04:00 – 06:00" - appears on SEVEN bars, one per day, and whoever sees a
+        // spike (which is the reason you look at a week) has no way to know which day it
+        // belongs to. The name of the day is enough, the date is not: between two bars of the
+        // same strip at most 83 x 2 h = 166 hours pass, less than a week, so the pair
+        // (day, time) cannot repeat. The threshold is strict on purpose: at twenty-four hours
+        // the span is exactly one day, the two endpoints do not coincide, and the text stays
+        // short where there is no need to lengthen it.
+        bool includeDay = (step * bars.Count) > TimeSpan.FromHours(24);
 
-        string intervallo = Ora(barra.Inizio, colGiorno) + " – " + Ora(barra.Inizio + passo, colGiorno);
+        string rangeText = FormatTime(bar.Start, includeDay) + " – " + FormatTime(bar.Start + step, includeDay);
 
-        return barra.Genere switch
+        return bar.Kind switch
         {
-            BarKind.Assente => intervallo + " · not measured",
-            BarKind.Parziale => intervallo + $" · {barra.Campioni} of {barra.Attesi} samples",
-            _ => intervallo,
+            BarKind.Missing => rangeText + " · not measured",
+            BarKind.Partial => rangeText + $" · {bar.Samples} of {bar.Expected} samples",
+            _ => rangeText,
         };
     }
 
-    private static string Ora(DateTimeOffset istante, bool colGiorno) =>
-        istante.ToLocalTime().ToString(colGiorno ? "ddd HH:mm" : "HH:mm", CultureInfo.InvariantCulture);
+    private static string FormatTime(DateTimeOffset timestamp, bool includeDay) =>
+        timestamp.ToLocalTime().ToString(includeDay ? "ddd HH:mm" : "HH:mm", CultureInfo.InvariantCulture);
 }

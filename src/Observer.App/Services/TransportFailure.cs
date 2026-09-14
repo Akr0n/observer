@@ -3,68 +3,68 @@ using System.Net.Sockets;
 namespace Observer.App.Services;
 
 /// <summary>
-/// Da che cosa e' fallito il trasporto, quando e' fallito.
+/// Why the transport failed, when it failed.
 /// </summary>
 /// <remarks>
-/// Funzione pura, e sta da sola per la stessa ragione di <see cref="StatusEscalation"/>: la
-/// regola si prova costruendo le eccezioni a mano, senza aprire un socket. Cio' che a tavolino
-/// NON si puo' sapere e' se .NET consegni davvero quello che questa tabella si aspetta, ed e'
-/// per quello che esiste anche un test su un trasporto vero.
+/// A pure function, and it stands on its own for the same reason as
+/// <see cref="StatusEscalation"/>: the rule is tested by building the exceptions by hand,
+/// without opening a socket. What CANNOT be known on paper is whether .NET really delivers what
+/// this table expects, and that is why there is also a test on a real transport.
 /// <para>
-/// La distinzione che questo tipo esiste per fare: una connessione <b>rifiutata</b> e' la
-/// risposta piu' informativa che un guasto possa dare — il pacchetto e' arrivato, la macchina
-/// ha risposto, e manca solo qualcuno in ascolto su quella porta. Un <b>tempo scaduto</b> dice
-/// l'opposto: non ha risposto nessuno. I rimedi non si somigliano affatto.
+/// The distinction this type exists to make: a <b>refused</b> connection is the most
+/// informative answer a fault can give — the packet arrived, the machine answered, and all that
+/// is missing is somebody listening on that port. A <b>timeout</b> says the opposite: nobody
+/// answered. The two fixes are nothing alike.
 /// </para>
 /// </remarks>
 public static class TransportFailure
 {
-    // La catena di eccezioni non ha una profondita' garantita: .NET incarta la SocketException
-    // dentro una IOException e quella dentro una HttpRequestException, ma e' un dettaglio di
-    // implementazione. Si scende finche' si trova, con un fondo per non restare appesi a una
-    // catena che si morde la coda.
-    private const int ProfonditaMassima = 8;
+    // The exception chain has no guaranteed depth: .NET wraps the SocketException inside an
+    // IOException and that inside an HttpRequestException, but that is an implementation
+    // detail. Walk down until it is found, with a limit so a chain that loops back on itself
+    // cannot leave us hanging.
+    private const int MaxDepth = 8;
 
-    /// <summary>Traduce un guasto di trasporto nell'esito da mostrare.</summary>
-    /// <param name="eccezione">L'eccezione arrivata dal client HTTP.</param>
-    /// <returns>L'esito corrispondente.</returns>
-    public static ServiceOutcome Classifica(Exception eccezione)
+    /// <summary>Translates a transport fault into the outcome to show.</summary>
+    /// <param name="error">The exception that came from the HTTP client.</param>
+    /// <returns>The matching outcome.</returns>
+    public static ServiceOutcome Classify(Exception error)
     {
-        ArgumentNullException.ThrowIfNull(eccezione);
+        ArgumentNullException.ThrowIfNull(error);
 
-        // Il timeout del client non passa mai per il socket: e' HttpClient ad annullare la
-        // propria richiesta, e cio' che si vede e' un annullamento. Chi cercasse soltanto
-        // SocketError.TimedOut non troverebbe mai il caso piu' frequente di tutti.
-        if (eccezione is OperationCanceledException)
+        // The client timeout never goes through the socket: it is HttpClient cancelling its own
+        // request, and what you see is a cancellation. Looking only for SocketError.TimedOut
+        // would never find the most frequent case of all.
+        if (error is OperationCanceledException)
         {
-            return ServiceOutcome.TempoScaduto;
+            return ServiceOutcome.TimedOut;
         }
 
-        return ErroreDiSocket(eccezione) switch
+        return FindSocketError(error) switch
         {
-            SocketError.ConnectionRefused => ServiceOutcome.ConnessioneRifiutata,
-            SocketError.TimedOut => ServiceOutcome.TempoScaduto,
+            SocketError.ConnectionRefused => ServiceOutcome.ConnectionRefused,
+            SocketError.TimedOut => ServiceOutcome.TimedOut,
 
-            // Tutto il resto resta generico apposta. Un nome che non si risolve, una rete
-            // irraggiungibile e un handshake TLS fallito sono guasti diversi fra loro, e
-            // inventare per ciascuno un titolo che non si sa scrivere bene sarebbe peggio di
-            // un titolo onestamente generico.
-            _ => ServiceOutcome.NonRaggiungibile,
+            // Everything else stays generic on purpose. A name that does not resolve, an
+            // unreachable network and a failed TLS handshake are different faults, and
+            // inventing a title for each one that nobody knows how to word well would be
+            // worse than an honestly generic title.
+            _ => ServiceOutcome.Unreachable,
         };
     }
 
-    private static SocketError? ErroreDiSocket(Exception eccezione)
+    private static SocketError? FindSocketError(Exception error)
     {
-        Exception? corrente = eccezione;
+        Exception? current = error;
 
-        for (int passo = 0; corrente is not null && passo < ProfonditaMassima; passo++)
+        for (int depth = 0; current is not null && depth < MaxDepth; depth++)
         {
-            if (corrente is SocketException socket)
+            if (current is SocketException socket)
             {
                 return socket.SocketErrorCode;
             }
 
-            corrente = corrente.InnerException;
+            current = current.InnerException;
         }
 
         return null;

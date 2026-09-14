@@ -21,7 +21,7 @@ public class ClientConfigurationTests
         ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null, null);
 
         Assert.Null(esito.Problem);
-        Assert.Equal(EndpointKind.Locale, esito.Endpoint!.Kind);
+        Assert.Equal(EndpointKind.Local, esito.Endpoint!.Kind);
     }
 
     [Fact]
@@ -31,7 +31,7 @@ public class ClientConfigurationTests
             ClientConfiguration.Resolve("dal-ambiente", "https://altra:5058", Impronta, null);
 
         Assert.Null(esito.Problem);
-        Assert.Equal(EndpointKind.Remoto, esito.Endpoint!.Kind);
+        Assert.Equal(EndpointKind.Remote, esito.Endpoint!.Kind);
         Assert.Equal("dal-ambiente", esito.Endpoint.ApiToken);
         Assert.Equal(new Uri("https://altra:5058/"), esito.Endpoint.BaseAddress);
     }
@@ -118,7 +118,7 @@ public class ClientConfigurationTests
         ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null, "   ");
 
         Assert.Null(esito.Problem);
-        Assert.Equal(EndpointKind.Locale, esito.Endpoint!.Kind);
+        Assert.Equal(EndpointKind.Local, esito.Endpoint!.Kind);
     }
 
     [Fact]

@@ -3,27 +3,27 @@ using Observer.Core.Metrics;
 namespace Observer.App.Services;
 
 /// <summary>
-/// Una voce di <c>/metrics/catalog</c>: un collector con i descrittori delle sue metriche.
+/// One entry of <c>/metrics/catalog</c>: a collector with the descriptors of its metrics.
 /// </summary>
-/// <param name="CollectorId">Chi produce queste metriche, per esempio "cpu".</param>
-/// <param name="Descriptors">Nome leggibile, unita' e per-istanza di ogni metrica.</param>
+/// <param name="CollectorId">Who produces these metrics, for example "cpu".</param>
+/// <param name="Descriptors">Readable name, unit and per-instance flag of each metric.</param>
 public sealed record CollectorCatalogEntry(string CollectorId, IReadOnlyList<MetricDescriptor> Descriptors);
 
 /// <summary>
-/// Il catalogo, in forma consultabile per identificatore di metrica.
+/// The catalog, in a form that can be looked up by metric identifier.
 /// </summary>
 /// <remarks>
-/// E' cio' che permette di scrivere "CPU usage 12.3 %" invece di "cpu.usage.total 12.3":
-/// il nome leggibile e l'unita' arrivano dal servizio, non da costanti compilate nel client.
-/// Una metrica assente dal catalogo non fa sparire nulla, si mostra con il suo
-/// identificatore grezzo.
+/// It is what makes it possible to write "CPU usage 12.3 %" instead of "cpu.usage.total 12.3":
+/// the readable name and the unit come from the service, not from constants compiled into the
+/// client. A metric missing from the catalog hides nothing: it is shown with its raw
+/// identifier.
 /// </remarks>
 public sealed class MetricCatalog
 {
     private readonly Dictionary<string, MetricDescriptor> byMetricId;
     private readonly Dictionary<string, IReadOnlyList<MetricDescriptor>> byCollectorId;
 
-    /// <summary>Costruisce il catalogo dalle voci restituite dal servizio.</summary>
+    /// <summary>Builds the catalog from the entries the service returned.</summary>
     public MetricCatalog(IEnumerable<CollectorCatalogEntry> entries)
     {
         ArgumentNullException.ThrowIfNull(entries);
@@ -45,18 +45,18 @@ public sealed class MetricCatalog
             {
                 if (descriptor is not null && !string.IsNullOrWhiteSpace(descriptor.MetricId))
                 {
-                    // L'ultimo vince: due collector che dichiarano lo stesso identificatore
-                    // sono un errore del servizio, non del client, e non deve far lanciare qui.
+                    // The last one wins: two collectors declaring the same identifier are a bug in
+                    // the service, not in the client, and this must not throw here.
                     byMetricId[descriptor.MetricId] = descriptor;
                 }
             }
         }
     }
 
-    /// <summary>Catalogo vuoto, usato finche' il servizio non lo ha fornito.</summary>
+    /// <summary>Empty catalog, used until the service has supplied one.</summary>
     public static MetricCatalog Empty { get; } = new([]);
 
-    /// <summary>Il descrittore della metrica, oppure null se il catalogo non la conosce.</summary>
+    /// <summary>The metric's descriptor, or null if the catalog does not know it.</summary>
     public MetricDescriptor? Find(string metricId) =>
         metricId is not null && byMetricId.TryGetValue(metricId, out MetricDescriptor? descriptor)
             ? descriptor

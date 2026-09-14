@@ -19,7 +19,7 @@ public class QuadrantiTests
     private static MetricGroupState Stato(string collector, params MetricRowState[] righe) =>
         new(collector, collector.ToUpperInvariant(), null, MetricSeverity.Ok, righe);
 
-    private static MetricRowState Frazione(string chiave, string testo, double quanto) =>
+    private static MetricRowState Fraction(string chiave, string testo, double quanto) =>
         new(chiave, chiave, testo, quanto, MetricSeverity.Ok);
 
     private static MetricRowState Scritta(string chiave, string testo) =>
@@ -31,15 +31,15 @@ public class QuadrantiTests
         // E' la precondizione della fascia: raccoglie riferimenti una volta sola e si aspetta
         // che continuino a valere. Ricostruire le righe a ogni giro non farebbe fallire niente
         // qui, ma farebbe lampeggiare ogni quadrante una volta al secondo.
-        MetricGroup riquadro = new(Stato("cpu", Frazione("cpu.usage.total", "12.0 %", 0.12d)));
+        MetricGroup riquadro = new(Stato("cpu", Fraction("cpu.usage.total", "12.0 %", 0.12d)));
 
-        MetricRow prima = riquadro.Righe[0];
+        MetricRow prima = riquadro.Rows[0];
 
-        riquadro.Aggiorna(Stato("cpu", Frazione("cpu.usage.total", "88.0 %", 0.88d)));
+        riquadro.Update(Stato("cpu", Fraction("cpu.usage.total", "88.0 %", 0.88d)));
 
-        Assert.Same(prima, riquadro.Righe[0]);
-        Assert.Equal("88.0 %", prima.Valore);
-        Assert.Equal(0.88d, prima.Frazione);
+        Assert.Same(prima, riquadro.Rows[0]);
+        Assert.Equal("88.0 %", prima.Display);
+        Assert.Equal(0.88d, prima.Fraction);
     }
 
     [Fact]
@@ -48,17 +48,17 @@ public class QuadrantiTests
         // Il gemello obbligatorio: tenere gli oggetti non deve voler dire tenerli quando non
         // sono piu' gli stessi. Una metrica che compare o sparisce deve rifare l'elenco,
         // altrimenti un quadrante mostrerebbe il valore di un'altra cosa.
-        MetricGroup riquadro = new(Stato("memory", Frazione("memory.used.percent", "40.0 %", 0.4d)));
+        MetricGroup riquadro = new(Stato("memory", Fraction("memory.used.percent", "40.0 %", 0.4d)));
 
-        MetricRow prima = riquadro.Righe[0];
+        MetricRow prima = riquadro.Rows[0];
 
-        riquadro.Aggiorna(Stato(
+        riquadro.Update(Stato(
             "memory",
-            Frazione("memory.used.percent", "41.0 %", 0.41d),
+            Fraction("memory.used.percent", "41.0 %", 0.41d),
             Scritta("memory.total.bytes", "16.0 GiB")));
 
-        Assert.Equal(2, riquadro.Righe.Count);
-        Assert.NotSame(prima, riquadro.Righe[0]);
+        Assert.Equal(2, riquadro.Rows.Count);
+        Assert.NotSame(prima, riquadro.Rows[0]);
     }
 
     [Fact]
@@ -67,16 +67,16 @@ public class QuadrantiTests
         // Le frazioni si leggono sul quadrante e non vengono ripetute sotto. Un collector che
         // emette soltanto quelle non deve comparire nella sezione scritta: ci si vedrebbe il
         // suo nome e, sotto, niente.
-        MetricGroup soloQuadranti = new(Stato("cpu", Frazione("cpu.usage.total", "12.0 %", 0.12d)));
+        MetricGroup soloQuadranti = new(Stato("cpu", Fraction("cpu.usage.total", "12.0 %", 0.12d)));
 
-        Assert.False(soloQuadranti.MostraRighe);
+        Assert.False(soloQuadranti.ShowRows);
 
         MetricGroup misto = new(Stato(
             "memory",
-            Frazione("memory.used.percent", "40.0 %", 0.4d),
+            Fraction("memory.used.percent", "40.0 %", 0.4d),
             Scritta("memory.total.bytes", "16.0 GiB")));
 
-        Assert.True(misto.MostraRighe);
+        Assert.True(misto.ShowRows);
     }
 
     [Fact]
@@ -85,21 +85,21 @@ public class QuadrantiTests
         // Il caso che decide se la fascia si aggiorna da sola: la sorgente si degrada, la
         // percentuale non c'e' piu', e quella riga deve smettere di avere un quadrante. Se
         // restasse, mostrerebbe l'ultimo valore buono come se fosse una misura di adesso.
-        MetricGroup riquadro = new(Stato("cpu", Frazione("cpu.usage.total", "12.0 %", 0.12d)));
+        MetricGroup riquadro = new(Stato("cpu", Fraction("cpu.usage.total", "12.0 %", 0.12d)));
 
-        Assert.True(riquadro.Righe[0].HaQuadrante);
-        Assert.False(riquadro.MostraRighe);
+        Assert.True(riquadro.Rows[0].HasGauge);
+        Assert.False(riquadro.ShowRows);
 
-        riquadro.Aggiorna(Stato("cpu", Scritta("cpu.usage.total", "not measurable")));
+        riquadro.Update(Stato("cpu", Scritta("cpu.usage.total", "not measurable")));
 
-        Assert.False(riquadro.Righe[0].HaQuadrante);
-        Assert.True(riquadro.MostraRighe);
+        Assert.False(riquadro.Rows[0].HasGauge);
+        Assert.True(riquadro.ShowRows);
 
         // E la frazione resta l'ultima misurata invece di azzerarsi. Non serve a conservarla
         // - il quadrante sparisce comunque - ma la lancetta si anima: uno zero le darebbe un
         // bersaglio, e per qualche decimo di secondo si vedrebbe correre a fondo scala prima
         // di sparire, come se la macchina si fosse svuotata invece che smettere di rispondere.
-        Assert.Equal(0.12d, riquadro.Righe[0].Frazione);
+        Assert.Equal(0.12d, riquadro.Rows[0].Fraction);
     }
 
     [Fact]
@@ -110,12 +110,12 @@ public class QuadrantiTests
         // una posizione interpolata, e il quadrante non starebbe fermo su un valore misurato
         // nemmeno per un istante - mostrerebbe sempre e solo qualcosa di mezzo.
         Assert.True(
-            Gauge.Corsa < MainViewModel.Intervallo,
-            $"La corsa della lancetta ({Gauge.Corsa.TotalMilliseconds} ms) deve restare piu' "
-                + $"breve dell'intervallo di campionamento ({MainViewModel.Intervallo.TotalMilliseconds} ms).");
+            Gauge.NeedleTravelTime < MainViewModel.Interval,
+            $"La corsa della lancetta ({Gauge.NeedleTravelTime.TotalMilliseconds} ms) deve restare piu' "
+                + $"breve dell'intervallo di campionamento ({MainViewModel.Interval.TotalMilliseconds} ms).");
 
         // E con un margine vero: a filo, la lancetta arriverebbe giusto mentre parte il
         // campione dopo, e resterebbe ferma zero tempo.
-        Assert.True(Gauge.Corsa <= MainViewModel.Intervallo / 2d);
+        Assert.True(Gauge.NeedleTravelTime <= MainViewModel.Interval / 2d);
     }
 }

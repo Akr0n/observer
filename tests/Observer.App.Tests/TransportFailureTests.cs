@@ -31,8 +31,8 @@ public class TransportFailureTests
         Assert.Equal(SocketError.ConnectionRefused, socket.SocketErrorCode);
 
         Assert.Equal(
-            ServiceOutcome.ConnessioneRifiutata,
-            TransportFailure.Classifica(new HttpRequestException("rifiutata", socket)));
+            ServiceOutcome.ConnectionRefused,
+            TransportFailure.Classify(new HttpRequestException("rifiutata", socket)));
     }
 
     [Fact]
@@ -40,7 +40,7 @@ public class TransportFailureTests
     {
         HttpRequestException guasto = new("scaduta", new SocketException((int)SocketError.TimedOut));
 
-        Assert.Equal(ServiceOutcome.TempoScaduto, TransportFailure.Classifica(guasto));
+        Assert.Equal(ServiceOutcome.TimedOut, TransportFailure.Classify(guasto));
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public class TransportFailureTests
         // con dentro un TimeoutException. Chi cercasse solo nel socket non lo troverebbe mai.
         TaskCanceledException scaduto = new("annullata", new TimeoutException());
 
-        Assert.Equal(ServiceOutcome.TempoScaduto, TransportFailure.Classifica(scaduto));
+        Assert.Equal(ServiceOutcome.TimedOut, TransportFailure.Classify(scaduto));
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public class TransportFailureTests
                 "connessione interrotta",
                 new SocketException((int)SocketError.ConnectionRefused)));
 
-        Assert.Equal(ServiceOutcome.ConnessioneRifiutata, TransportFailure.Classifica(profonda));
+        Assert.Equal(ServiceOutcome.ConnectionRefused, TransportFailure.Classify(profonda));
     }
 
     [Fact]
@@ -76,7 +76,7 @@ public class TransportFailureTests
         // non e' in esecuzione" manderebbe a cercare su una macchina che non esiste.
         HttpRequestException nome = new("nome ignoto", new SocketException((int)SocketError.HostNotFound));
 
-        Assert.Equal(ServiceOutcome.NonRaggiungibile, TransportFailure.Classifica(nome));
+        Assert.Equal(ServiceOutcome.Unreachable, TransportFailure.Classify(nome));
     }
 
     [Fact]
@@ -87,15 +87,15 @@ public class TransportFailureTests
         // reinstallazione oppure qualcuno in mezzo — si leggerebbe come "servizio spento".
         HttpRequestException tls = new("handshake", new AuthenticationException("certificato"));
 
-        Assert.Equal(ServiceOutcome.NonRaggiungibile, TransportFailure.Classifica(tls));
+        Assert.Equal(ServiceOutcome.Unreachable, TransportFailure.Classify(tls));
     }
 
     [Fact]
     public void UnGuastoSenzaSocketRestaGenerico()
     {
         Assert.Equal(
-            ServiceOutcome.NonRaggiungibile,
-            TransportFailure.Classifica(new HttpRequestException("qualcosa e' andato storto")));
+            ServiceOutcome.Unreachable,
+            TransportFailure.Classify(new HttpRequestException("qualcosa e' andato storto")));
     }
 
     [Fact]
@@ -106,6 +106,6 @@ public class TransportFailureTests
         InvalidOperationException dentro = new("dentro");
         HttpRequestException fuori = new("fuori", dentro);
 
-        Assert.Equal(ServiceOutcome.NonRaggiungibile, TransportFailure.Classifica(fuori));
+        Assert.Equal(ServiceOutcome.Unreachable, TransportFailure.Classify(fuori));
     }
 }

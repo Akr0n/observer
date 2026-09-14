@@ -21,7 +21,7 @@ public class ObserverEndpointTests
 
         Assert.Null(esito.Problem);
         Assert.NotNull(esito.Endpoint);
-        Assert.Equal(EndpointKind.Locale, esito.Endpoint.Kind);
+        Assert.Equal(EndpointKind.Local, esito.Endpoint.Kind);
         Assert.Null(esito.Endpoint.ApiToken);
     }
 
@@ -30,7 +30,7 @@ public class ObserverEndpointTests
     {
         // Il canale locale non porta segreti: se un campo dimenticato deve valere qualcosa, che
         // valga quello che non puo' perdere nulla.
-        Assert.Equal(EndpointKind.Locale, default(EndpointKind));
+        Assert.Equal(EndpointKind.Local, default(EndpointKind));
     }
 
     [Fact]
@@ -40,7 +40,7 @@ public class ObserverEndpointTests
 
         Assert.Null(esito.Problem);
         Assert.NotNull(esito.Endpoint);
-        Assert.Equal(EndpointKind.Remoto, esito.Endpoint.Kind);
+        Assert.Equal(EndpointKind.Remote, esito.Endpoint.Kind);
         Assert.Equal("un-token", esito.Endpoint.ApiToken);
     }
 
@@ -62,14 +62,14 @@ public class ObserverEndpointTests
         ClientConfigurationResult esito = ClientConfiguration.Resolve("un-token", null, null, null);
 
         Assert.NotNull(esito.Endpoint);
-        Assert.Equal(EndpointKind.Locale, esito.Endpoint.Kind);
+        Assert.Equal(EndpointKind.Local, esito.Endpoint.Kind);
         Assert.Null(esito.Endpoint.ApiToken);
     }
 
     [Fact]
     public void IlPuntoLocaleNonHaUnIndirizzoDiRETE()
     {
-        ObserverEndpoint locale = ObserverEndpoint.CanaleLocale();
+        ObserverEndpoint locale = ObserverEndpoint.LocalChannel();
 
         // L'host e' fittizio e non deve risolversi: la connessione la fa il ConnectCallback,
         // e l'host finisce solo nell'header Host.
@@ -81,7 +81,7 @@ public class ObserverEndpointTests
     {
         // I record generano un ToString con TUTTE le proprieta' dentro: senza un override,
         // basterebbe un binding distratto o una riga di log per mostrare il segreto a schermo.
-        ObserverEndpoint remoto = ObserverEndpoint.Remoto(
+        ObserverEndpoint remoto = ObserverEndpoint.Remote(
             new Uri("http://altra:5057/"), "SEGRETISSIMO", "dalla prova");
 
         Assert.DoesNotContain("SEGRETISSIMO", remoto.ToString(), StringComparison.Ordinal);
@@ -92,7 +92,7 @@ public class ObserverEndpointTests
     {
         // Finisce nell'intestazione della finestra: deve dire dove si sta guardando, non
         // menzionare una credenziale che li' non esiste.
-        string descrizione = ObserverEndpoint.CanaleLocale().Descrizione;
+        string descrizione = ObserverEndpoint.LocalChannel().Description;
 
         Assert.False(string.IsNullOrWhiteSpace(descrizione));
         Assert.DoesNotContain("token", descrizione, StringComparison.OrdinalIgnoreCase);

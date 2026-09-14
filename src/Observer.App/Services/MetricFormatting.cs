@@ -4,35 +4,35 @@ using Observer.Core.Metrics;
 namespace Observer.App.Services;
 
 /// <summary>
-/// Trasforma un valore misurato nella stringa che finisce a schermo.
+/// Turns a measured value into the string that ends up on screen.
 /// </summary>
 /// <remarks>
-/// Tutto in <see cref="CultureInfo.InvariantCulture"/>, quindi con il PUNTO come separatore
-/// decimale anche in italiano. Non e' una svista: gli eseguibili del progetto girano con
-/// <c>System.Globalization.Invariant</c> attivo (vedi runtimeconfig.template.json), che su
-/// Linux evita di dover installare ICU; in quella modalita' una cultura italiana non
-/// esisterebbe comunque e il risultato sarebbe identico, ma con CA1305 a lamentarsi.
+/// Everything in <see cref="CultureInfo.InvariantCulture"/>, so with the DOT as the decimal
+/// separator in Italian too. This is not an oversight: the project's executables run with
+/// <c>System.Globalization.Invariant</c> on (see runtimeconfig.template.json), which on Linux
+/// avoids having to install ICU; in that mode an Italian culture would not exist anyway and the
+/// result would be identical, but with CA1305 complaining.
 /// </remarks>
 public static class MetricFormatting
 {
-    /// <summary>Come si scrive un s&#236; a schermo.</summary>
+    /// <summary>How a yes is written on screen.</summary>
     /// <remarks>
-    /// Costante e non letterale perche' <c>SnapshotProjection</c> la confronta: le due parole
-    /// devono restare le stesse, e se un giorno cambiano deve cambiarle il compilatore e non
-    /// la memoria di chi modifica.
+    /// A constant and not a literal because <c>SnapshotProjection</c> compares against it: the
+    /// two words have to stay the same, and if one day they change it must be the compiler that
+    /// changes them, not whoever happens to remember.
     /// </remarks>
-    public const string Si = "Yes";
+    public const string Yes = "Yes";
 
-    /// <summary>Come si scrive un no a schermo.</summary>
+    /// <summary>How a no is written on screen.</summary>
     public const string No = "No";
 
-    private static readonly string[] PrefissiBinari = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+    private static readonly string[] BinaryPrefixes = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
 
     /// <summary>
-    /// Descrive un valore, usando l'unita' del catalogo quando c'e'.
+    /// Describes a value, using the catalog's unit when there is one.
     /// </summary>
-    /// <param name="value">Il valore misurato.</param>
-    /// <param name="unit">L'unita' dichiarata dal catalogo, oppure null se sconosciuta.</param>
+    /// <param name="value">The measured value.</param>
+    /// <param name="unit">The unit the catalog declares, or null when it is unknown.</param>
     public static string Describe(MetricValue value, MetricUnit? unit)
     {
         switch (value.Kind)
@@ -44,18 +44,18 @@ public static class MetricFormatting
                 return value.Text ?? string.Empty;
 
             case MetricValueKind.Flag:
-                return value.Flag ? Si : No;
+                return value.Flag ? Yes : No;
 
             default:
-                // Kind sconosciuto significa quasi sempre che la deserializzazione non ha
-                // agganciato il costruttore: il numero sarebbe zero e sembrerebbe una misura
-                // valida. Meglio dirlo che mostrare uno zero inventato.
+                // An unknown Kind almost always means deserialization did not hook up the
+                // constructor: the value would be zero and would look like a valid measurement.
+                // Better to say so than to show an invented zero.
                 return "unrecognized value type: service and client disagree on the data format";
         }
     }
 
     /// <summary>
-    /// La frazione 0..1 da dare a una barra, oppure null se la metrica non e' una percentuale.
+    /// The 0..1 fraction to hand to a bar, or null if the metric is not a percentage.
     /// </summary>
     public static double? Fraction(MetricValue value, MetricUnit? unit)
     {
@@ -67,7 +67,7 @@ public static class MetricFormatting
         return Math.Clamp(value.Number / 100d, 0d, 1d);
     }
 
-    /// <summary>Formatta una quantita' di byte con i prefissi binari.</summary>
+    /// <summary>Formats a quantity of bytes with the binary prefixes.</summary>
     public static string DescribeBytes(double bytes)
     {
         if (!double.IsFinite(bytes))
@@ -75,49 +75,49 @@ public static class MetricFormatting
             return "value isn't a finite number";
         }
 
-        double segno = bytes < 0d ? -1d : 1d;
-        double resto = Math.Abs(bytes);
-        int prefisso = 0;
+        double sign = bytes < 0d ? -1d : 1d;
+        double remainder = Math.Abs(bytes);
+        int prefixIndex = 0;
 
-        while (resto >= 1024d && prefisso < PrefissiBinari.Length - 1)
+        while (remainder >= 1024d && prefixIndex < BinaryPrefixes.Length - 1)
         {
-            resto /= 1024d;
-            prefisso++;
+            remainder /= 1024d;
+            prefixIndex++;
         }
 
-        string numero = prefisso == 0
-            ? (segno * resto).ToString("F0", CultureInfo.InvariantCulture)
-            : (segno * resto).ToString("F1", CultureInfo.InvariantCulture);
+        string formatted = prefixIndex == 0
+            ? (sign * remainder).ToString("F0", CultureInfo.InvariantCulture)
+            : (sign * remainder).ToString("F1", CultureInfo.InvariantCulture);
 
-        return numero + " " + PrefissiBinari[prefisso];
+        return formatted + " " + BinaryPrefixes[prefixIndex];
     }
 
-    private static string DescribeNumber(double numero, MetricUnit? unit)
+    private static string DescribeNumber(double number, MetricUnit? unit)
     {
-        string? simbolo = unit?.Symbol;
+        string? symbol = unit?.Symbol;
 
-        if (simbolo == "%")
+        if (symbol == "%")
         {
-            return numero.ToString("F1", CultureInfo.InvariantCulture) + " %";
+            return number.ToString("F1", CultureInfo.InvariantCulture) + " %";
         }
 
-        if (simbolo == "B")
+        if (symbol == "B")
         {
-            return DescribeBytes(numero);
+            return DescribeBytes(number);
         }
 
-        // Una velocita' e' pur sempre una quantita' di byte: senza questo ramo finirebbe nel
-        // formato generico e si leggerebbe "449852 B/s", con i prefissi binari gia' scritti
-        // due righe piu' su.
-        if (simbolo == "B/s")
+        // A rate is still a quantity of bytes: without this branch it would fall into the generic
+        // format and would read "449852 B/s", with the binary prefixes already written two lines
+        // above.
+        if (symbol == "B/s")
         {
-            return DescribeBytes(numero) + "/s";
+            return DescribeBytes(number) + "/s";
         }
 
-        string testo = numero == Math.Floor(numero) && Math.Abs(numero) < 1e15d
-            ? numero.ToString("F0", CultureInfo.InvariantCulture)
-            : numero.ToString("F2", CultureInfo.InvariantCulture);
+        string text = number == Math.Floor(number) && Math.Abs(number) < 1e15d
+            ? number.ToString("F0", CultureInfo.InvariantCulture)
+            : number.ToString("F2", CultureInfo.InvariantCulture);
 
-        return string.IsNullOrEmpty(simbolo) ? testo : testo + " " + simbolo;
+        return string.IsNullOrEmpty(symbol) ? text : text + " " + symbol;
     }
 }

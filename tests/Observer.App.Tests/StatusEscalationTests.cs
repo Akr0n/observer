@@ -19,23 +19,23 @@ namespace Observer.App.Tests;
 /// </remarks>
 public class StatusEscalationTests
 {
-    private static readonly ObserverEndpoint Locale = ObserverEndpoint.CanaleLocale();
+    private static readonly ObserverEndpoint Locale = ObserverEndpoint.LocalChannel();
 
-    private static readonly ObserverEndpoint Remoto =
-        ObserverEndpoint.Remoto(new Uri("http://altra:5057/"), "t", "dalla prova");
+    private static readonly ObserverEndpoint Remote =
+        ObserverEndpoint.Remote(new Uri("http://altra:5057/"), "t", "dalla prova");
 
-    private static StatusMessage Per(
+    private static StatusMessage MessageFor(
         ServiceOutcome esito,
         TimeSpan durata,
         ObserverEndpoint punto,
         bool valoriGiaMostrati = false) =>
-        StatusEscalation.Per(esito, "dettaglio tecnico dalla prova", durata, punto, valoriGiaMostrati);
+        StatusEscalation.MessageFor(esito, "dettaglio tecnico dalla prova", durata, punto, valoriGiaMostrati);
 
     [Fact]
     public void PrimoTentativoAndatoAVuoto_NonEUnErrore()
     {
         // Il caso misurato: la finestra si apre mentre il servizio sta ancora partendo.
-        StatusMessage messaggio = Per(ServiceOutcome.NonRaggiungibile, TimeSpan.Zero, Locale);
+        StatusMessage messaggio = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Locale);
 
         Assert.Equal(StatusTone.Informational, messaggio.Tone);
     }
@@ -46,7 +46,7 @@ public class StatusEscalationTests
     [InlineData(9)]
     public void ServizioIrraggiungibileDaPocoEUnServizioCheSiStaAvviando(int secondi)
     {
-        StatusMessage messaggio = Per(ServiceOutcome.NonRaggiungibile, TimeSpan.FromSeconds(secondi), Locale);
+        StatusMessage messaggio = MessageFor(ServiceOutcome.Unreachable, TimeSpan.FromSeconds(secondi), Locale);
 
         Assert.Equal(StatusTone.Informational, messaggio.Tone);
         Assert.Equal("Connecting", messaggio.Title);
@@ -58,7 +58,7 @@ public class StatusEscalationTests
     [InlineData(3600)]
     public void ServizioIrraggiungibileDaUnPezzoEUnGuasto(int secondi)
     {
-        StatusMessage messaggio = Per(ServiceOutcome.NonRaggiungibile, TimeSpan.FromSeconds(secondi), Locale);
+        StatusMessage messaggio = MessageFor(ServiceOutcome.Unreachable, TimeSpan.FromSeconds(secondi), Locale);
 
         Assert.Equal(StatusTone.Error, messaggio.Tone);
         Assert.Equal("Service unreachable", messaggio.Title);
@@ -69,8 +69,8 @@ public class StatusEscalationTests
     {
         // Durante l'attesa il dettaglio si tace perche' e' rumore. Quando il guasto diventa
         // vero il dettaglio serve, ed e' l'unica cosa con cui si diagnostica.
-        StatusMessage attesa = Per(ServiceOutcome.NonRaggiungibile, TimeSpan.Zero, Locale);
-        StatusMessage guasto = Per(ServiceOutcome.NonRaggiungibile, StatusEscalation.Tolleranza, Locale);
+        StatusMessage attesa = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Locale);
+        StatusMessage guasto = MessageFor(ServiceOutcome.Unreachable, StatusEscalation.GracePeriod, Locale);
 
         Assert.DoesNotContain("dettaglio tecnico", attesa.Text, StringComparison.Ordinal);
         Assert.Contains("dettaglio tecnico", guasto.Text, StringComparison.Ordinal);
@@ -81,7 +81,7 @@ public class StatusEscalationTests
     {
         // Di una macchina altrui non si sa se stia partendo: e' un'affermazione che non si
         // puo' fare. Si dice cio' che si sta facendo — contattarla — e basta.
-        StatusMessage messaggio = Per(ServiceOutcome.NonRaggiungibile, TimeSpan.Zero, Remoto);
+        StatusMessage messaggio = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Remote);
 
         Assert.Equal(StatusTone.Informational, messaggio.Tone);
         Assert.Contains("altra:5057", messaggio.Text, StringComparison.Ordinal);
@@ -91,7 +91,7 @@ public class StatusEscalationTests
     [Fact]
     public void ServizioCheAscoltaMaNonHaAncoraCampionato_AllInizioENormale()
     {
-        StatusMessage messaggio = Per(ServiceOutcome.NonAncoraPronto, TimeSpan.Zero, Locale);
+        StatusMessage messaggio = MessageFor(ServiceOutcome.NotReadyYet, TimeSpan.Zero, Locale);
 
         Assert.Equal(StatusTone.Informational, messaggio.Tone);
     }
@@ -103,24 +103,24 @@ public class StatusEscalationTests
         // che non produce un campione restava "Service is starting" PER SEMPRE, con un testo
         // che promette "questo di solito si risolve da solo in un secondo o due". Se non si
         // risolve, quella frase e' una bugia che nessuno smentisce mai.
-        StatusMessage messaggio = Per(ServiceOutcome.NonAncoraPronto, TimeSpan.FromMinutes(5), Locale);
+        StatusMessage messaggio = MessageFor(ServiceOutcome.NotReadyYet, TimeSpan.FromMinutes(5), Locale);
 
         Assert.Equal(StatusTone.Warning, messaggio.Tone);
         Assert.DoesNotContain("second or two", messaggio.Text, StringComparison.Ordinal);
     }
 
     [Theory]
-    [InlineData(ServiceOutcome.TokenRifiutato)]
-    [InlineData(ServiceOutcome.VersioneIncompatibile)]
-    [InlineData(ServiceOutcome.RispostaIncomprensibile)]
-    [InlineData(ServiceOutcome.RispostaInattesa)]
+    [InlineData(ServiceOutcome.TokenRejected)]
+    [InlineData(ServiceOutcome.IncompatibleVersion)]
+    [InlineData(ServiceOutcome.UnreadableResponse)]
+    [InlineData(ServiceOutcome.UnexpectedResponse)]
     [InlineData(ServiceOutcome.Unknown)]
     public void CioCheNonSiRisolveAspettando_ERossoSubito(ServiceOutcome esito)
     {
         // Aspettare aiuta solo dove aspettare puo' cambiare l'esito. Un token sbagliato, una
         // versione incompatibile o una risposta illeggibile saranno identici fra un minuto:
         // rimandare l'allarme rimanderebbe solo il momento in cui l'utente puo' agire.
-        StatusMessage subito = Per(esito, TimeSpan.Zero, Remoto);
+        StatusMessage subito = MessageFor(esito, TimeSpan.Zero, Remote);
 
         Assert.Equal(StatusTone.Error, subito.Tone);
         Assert.Contains("dettaglio tecnico", subito.Text, StringComparison.Ordinal);
@@ -129,8 +129,8 @@ public class StatusEscalationTests
     [Fact]
     public void SenzaValoriASchermo_LaRigaSottoIlTitoloNonNeInventa()
     {
-        StatusMessage attesa = Per(ServiceOutcome.NonRaggiungibile, TimeSpan.Zero, Locale);
-        StatusMessage guasto = Per(ServiceOutcome.NonRaggiungibile, TimeSpan.FromMinutes(1), Locale);
+        StatusMessage attesa = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Locale);
+        StatusMessage guasto = MessageFor(ServiceOutcome.Unreachable, TimeSpan.FromMinutes(1), Locale);
 
         Assert.DoesNotContain("last successful reading", attesa.Subheading, StringComparison.Ordinal);
         Assert.DoesNotContain("last successful reading", guasto.Subheading, StringComparison.Ordinal);
@@ -142,8 +142,8 @@ public class StatusEscalationTests
     {
         // Lasciare i valori a schermo senza dirlo li farebbe leggere come attuali: e' il modo
         // piu' facile di far credere che una macchina stia bene mentre e' spenta.
-        StatusMessage guasto = Per(
-            ServiceOutcome.NonRaggiungibile,
+        StatusMessage guasto = MessageFor(
+            ServiceOutcome.Unreachable,
             TimeSpan.FromMinutes(1),
             Locale,
             valoriGiaMostrati: true);
@@ -165,7 +165,7 @@ public class StatusEscalationTests
 
             foreach (TimeSpan durata in new[] { TimeSpan.Zero, TimeSpan.FromHours(1) })
             {
-                StatusMessage messaggio = Per(esito, durata, Locale);
+                StatusMessage messaggio = MessageFor(esito, durata, Locale);
 
                 Assert.False(string.IsNullOrWhiteSpace(messaggio.Title), $"{esito} a {durata}: titolo vuoto");
                 Assert.False(string.IsNullOrWhiteSpace(messaggio.Text), $"{esito} a {durata}: testo vuoto");
@@ -177,15 +177,15 @@ public class StatusEscalationTests
     }
 
     [Theory]
-    [InlineData(ServiceOutcome.ConnessioneRifiutata)]
-    [InlineData(ServiceOutcome.TempoScaduto)]
+    [InlineData(ServiceOutcome.ConnectionRefused)]
+    [InlineData(ServiceOutcome.TimedOut)]
     public void AncheIDueModiDiNonRispondereMeritanoLaTolleranza(ServiceOutcome esito)
     {
         // Appena avviata, una macchina rifiuta la connessione perche' la porta non e' ancora
         // aperta, e piu' avanti nell'avvio la accetta. Togliere la tolleranza a questi due
         // rimetterebbe la barra rossa all'apertura della finestra, che e' il difetto che
         // questa classe esiste per chiudere.
-        StatusMessage messaggio = Per(esito, TimeSpan.Zero, Remoto);
+        StatusMessage messaggio = MessageFor(esito, TimeSpan.Zero, Remote);
 
         Assert.Equal(StatusTone.Informational, messaggio.Tone);
         Assert.Equal("Connecting", messaggio.Title);
@@ -197,8 +197,8 @@ public class StatusEscalationTests
         // Il cuore di questa correzione. I due guasti hanno rimedi opposti: uno si risolve
         // avviando un servizio, l'altro aprendo una porta. Se il titolo e' lo stesso, chi
         // guarda la finestra non ha nient'altro da cui capirlo.
-        StatusMessage rifiuto = Per(ServiceOutcome.ConnessioneRifiutata, TimeSpan.FromMinutes(1), Remoto);
-        StatusMessage scaduto = Per(ServiceOutcome.TempoScaduto, TimeSpan.FromMinutes(1), Remoto);
+        StatusMessage rifiuto = MessageFor(ServiceOutcome.ConnectionRefused, TimeSpan.FromMinutes(1), Remote);
+        StatusMessage scaduto = MessageFor(ServiceOutcome.TimedOut, TimeSpan.FromMinutes(1), Remote);
 
         Assert.Equal(StatusTone.Error, rifiuto.Tone);
         Assert.Equal(StatusTone.Error, scaduto.Tone);
@@ -223,7 +223,7 @@ public class StatusEscalationTests
                 continue;
             }
 
-            if (Per(esito, TimeSpan.FromHours(1), Remoto).Title == "Reading failed")
+            if (MessageFor(esito, TimeSpan.FromHours(1), Remote).Title == "Reading failed")
             {
                 generici.Add(esito.ToString());
             }

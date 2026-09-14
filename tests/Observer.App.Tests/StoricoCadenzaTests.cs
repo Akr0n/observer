@@ -16,23 +16,23 @@ namespace Observer.App.Tests;
 public class StoricoCadenzaTests
 {
     /// <summary>I tre periodi del selettore, come chiavi.</summary>
-    public static TheoryData<string> Periodi() => [.. Preferenze.PeriodiAmmessi];
+    public static TheoryData<string> Periodi() => [.. Preferences.AllowedPeriods];
 
     [Theory]
     [MemberData(nameof(Periodi))]
     public void UnaLetturaFallitaSiRiprovaPrestoENonAlPassoSuccessivo(string chiave)
     {
-        OpzionePeriodo periodo = new(chiave);
+        HistoryPeriodOption periodo = new(chiave);
 
-        TimeSpan riprova = MainViewModel.ProssimaLettura(periodo, riuscita: false);
+        TimeSpan riprova = MainViewModel.HistoryReadDelay(periodo, succeeded: false);
 
         // Il difetto era esattamente questo: la lettura dichiarava "andata bene" anche quando
         // OGNI striscia era fallita, quindi un timeout rimandava di un passo intero. A sette
         // giorni sono due ore di "No history" accanto a quadranti che si aggiornano ogni
         // secondo, su dati che il servizio ha ripreso a dare dopo un secondo.
         Assert.True(
-            riprova < periodo.Passo,
-            $"{chiave}: dopo un guasto si aspetta {riprova}, cioe' quanto un passo ({periodo.Passo})");
+            riprova < periodo.Step,
+            $"{chiave}: dopo un guasto si aspetta {riprova}, cioe' quanto un passo ({periodo.Step})");
 
         // E presto vuol dire presto, non "un po' meno": mezzo minuto e' il tetto.
         Assert.True(riprova <= TimeSpan.FromSeconds(30), $"{chiave}: si riprova dopo {riprova}");
@@ -50,9 +50,9 @@ public class StoricoCadenzaTests
     [MemberData(nameof(Cadenze))]
     public void LaBarraInCorsoHaIlTempoDiCrescere(string chiave, double secondi)
     {
-        OpzionePeriodo periodo = new(chiave);
+        HistoryPeriodOption periodo = new(chiave);
 
-        TimeSpan cadenza = MainViewModel.ProssimaLettura(periodo, riuscita: true);
+        TimeSpan cadenza = MainViewModel.HistoryReadDelay(periodo, succeeded: true);
 
         // I valori esatti e non solo la regola, come per le scale: un quarto di passo col
         // pavimento al minuto da' {1 min, 3 min 45 s, 30 min}, e chi li cambia deve vederli.
@@ -68,12 +68,12 @@ public class StoricoCadenzaTests
         // cresce, ed e' una rinuncia dichiarata (dodici richieste ogni quindici secondi per
         // animare tredici pixel non si pagano).
         Assert.True(
-            cadenza <= periodo.Passo,
-            $"{chiave}: si rilegge ogni {cadenza}, cioe' MENO spesso del passo ({periodo.Passo})");
+            cadenza <= periodo.Step,
+            $"{chiave}: si rilegge ogni {cadenza}, cioe' MENO spesso del passo ({periodo.Step})");
 
         Assert.True(
-            chiave == "1h" || cadenza <= periodo.Passo / 2,
-            $"{chiave}: si rilegge ogni {cadenza} su barre da {periodo.Passo}: la barra in corso non cresce");
+            chiave == "1h" || cadenza <= periodo.Step / 2,
+            $"{chiave}: si rilegge ogni {cadenza} su barre da {periodo.Step}: la barra in corso non cresce");
 
         // E nemmeno di continuo: questa e' una finestra che misura la macchina che sta
         // interrogando, e cio' che spende per aggiornarsi rientra nel numero che mostra.
@@ -86,16 +86,16 @@ public class StoricoCadenzaTests
         // A sette giorni il passo e' due ore: se la scadenza si spostasse lo stesso dopo un
         // guasto, la seconda lettura non partirebbe per mezz'ora di orologio. Qui l'orologio
         // avanza di venti secondi e la seconda lettura deve esserci gia'.
-        OrologioFinto orologio = new();
+        OrologioFinto clock = new();
         ClientSenzaStorico cliente = new();
 
-        MainViewModel viewModel = new(cliente, problemaDiConfigurazione: null, orologio: orologio.Adesso)
+        MainViewModel viewModel = new(cliente, configurationProblem: null, clock: clock.Adesso)
         {
-            Periodo = "7d",
+            HistoryPeriod = "7d",
         };
 
         using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(20));
-        Task ciclo = viewModel.EseguiAsync(arresto.Token);
+        Task ciclo = viewModel.RunAsync(arresto.Token);
 
         while (!arresto.IsCancellationRequested && cliente.Letture == 0)
         {
@@ -106,7 +106,7 @@ public class StoricoCadenzaTests
 
         Assert.True(dopoIlPrimoGiro > 0, "la prima lettura di storico non e' mai partita");
 
-        orologio.Avanza(TimeSpan.FromSeconds(20));
+        clock.Avanza(TimeSpan.FromSeconds(20));
 
         while (!arresto.IsCancellationRequested && cliente.Letture <= dopoIlPrimoGiro)
         {
@@ -117,7 +117,7 @@ public class StoricoCadenzaTests
             cliente.Letture > dopoIlPrimoGiro,
             "venti secondi dopo un guasto nessuno ha riprovato: la striscia resta ferma un passo intero");
 
-        await Fine(arresto, ciclo);
+        await End(arresto, ciclo);
     }
 
     [Fact]
@@ -127,47 +127,47 @@ public class StoricoCadenzaTests
         // il catalogo. Senza azzerarla, le righe della macchina nuova nascono senza striscia E
         // senza nota - ne' barre ne' il motivo per cui non ci sono - e restano cosi' fino alla
         // scadenza ereditata: mezz'ora a sette giorni, con i quadranti sopra gia' vivi.
-        ObserverEndpoint locale = ObserverEndpoint.CanaleLocale();
-        ObserverEndpoint altra = ObserverEndpoint.Remoto(
+        ObserverEndpoint locale = ObserverEndpoint.LocalChannel();
+        ObserverEndpoint altra = ObserverEndpoint.Remote(
             new Uri("https://altra:5058/"), "token", "altra", new string('a', 64));
 
-        OrologioFinto orologio = new();
+        OrologioFinto clock = new();
         ClientConStorico seconda = new(altra);
 
         MainViewModel viewModel = new(
             client: new ClientConStorico(locale),
-            problemaDiConfigurazione: null,
-            orologio: orologio.Adesso,
-            elenco: new MachineListResult([locale, altra], []),
-            apriMacchina: _ => seconda)
+            configurationProblem: null,
+            clock: clock.Adesso,
+            machineList: new MachineListResult([locale, altra], []),
+            openMachine: _ => seconda)
         {
-            Periodo = "7d",
+            HistoryPeriod = "7d",
         };
 
         using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(20));
-        Task ciclo = viewModel.EseguiAsync(arresto.Token);
+        Task ciclo = viewModel.RunAsync(arresto.Token);
 
-        while (!arresto.IsCancellationRequested && !viewModel.Quadranti.Any(riga => riga.MostraStorico))
+        while (!arresto.IsCancellationRequested && !viewModel.Gauges.Any(riga => riga.ShowHistory))
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.Contains(viewModel.Quadranti, riga => riga.MostraStorico);
+        Assert.Contains(viewModel.Gauges, riga => riga.ShowHistory);
 
-        viewModel.MacchinaSelezionata = viewModel.Macchine.Single(voce => voce.Punto == altra);
+        viewModel.SelectedMachine = viewModel.Machines.Single(voce => voce.Endpoint == altra);
 
-        Assert.Empty(viewModel.Quadranti);
+        Assert.Empty(viewModel.Gauges);
 
         // Senza avanzare l'orologio: la striscia della macchina nuova deve tornare nei secondi
         // del ciclo, non fra mezz'ora.
-        while (!arresto.IsCancellationRequested && !viewModel.Quadranti.Any(riga => riga.MostraStorico))
+        while (!arresto.IsCancellationRequested && !viewModel.Gauges.Any(riga => riga.ShowHistory))
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.Contains(viewModel.Quadranti, riga => riga.MostraStorico);
+        Assert.Contains(viewModel.Gauges, riga => riga.ShowHistory);
 
-        await Fine(arresto, ciclo);
+        await End(arresto, ciclo);
     }
 
     [Fact]
@@ -177,30 +177,30 @@ public class StoricoCadenzaTests
         // seguisse il selettore, resterebbe per sempre "Last 7 days" sopra le barre da un
         // minuto lette prima del guasto, e una macchina a riposo da un'ora si leggerebbe come
         // a riposo da una settimana.
-        MainViewModel viewModel = new(new ClientMuto(), problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(new ClientMuto(), configurationProblem: null);
 
-        string primaDiTutto = viewModel.TitoloStorico;
+        string primaDiTutto = viewModel.HistoryTitle;
 
-        viewModel.Periodo = "7d";
+        viewModel.HistoryPeriod = "7d";
 
         // Niente di disegnato, quindi il titolo segue il selettore: non c'e' striscia da
         // contraddire, e all'avvio con "7d" nel file dire "Last hour" sarebbe sbagliato e basta.
-        Assert.Equal(new OpzionePeriodo("7d").Titolo, viewModel.TitoloStorico);
-        Assert.NotEqual(primaDiTutto, viewModel.TitoloStorico);
+        Assert.Equal(new HistoryPeriodOption("7d").Title, viewModel.HistoryTitle);
+        Assert.NotEqual(primaDiTutto, viewModel.HistoryTitle);
 
         using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(15));
-        Task ciclo = viewModel.EseguiAsync(arresto.Token);
+        Task ciclo = viewModel.RunAsync(arresto.Token);
 
         await Task.Delay(1500, CancellationToken.None);
 
         // Nessuna lettura e' andata a buon fine, quindi non c'e' niente da rinominare.
-        Assert.Empty(viewModel.Quadranti);
-        Assert.Equal(new OpzionePeriodo("7d").Titolo, viewModel.TitoloStorico);
+        Assert.Empty(viewModel.Gauges);
+        Assert.Equal(new HistoryPeriodOption("7d").Title, viewModel.HistoryTitle);
 
-        await Fine(arresto, ciclo);
+        await End(arresto, ciclo);
     }
 
-    private static async Task Fine(CancellationTokenSource arresto, Task ciclo)
+    private static async Task End(CancellationTokenSource arresto, Task ciclo)
     {
         await arresto.CancelAsync();
 
@@ -221,7 +221,7 @@ public class StoricoCadenzaTests
 
         public int Letture => Volatile.Read(ref letture);
 
-        public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.CanaleLocale();
+        public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.LocalChannel();
 
         public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) =>
             Task.FromResult(Banco.Istantanea());
@@ -229,11 +229,11 @@ public class StoricoCadenzaTests
         public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
             Task.FromResult(Banco.Catalogo());
 
-        public Task<HistoryFetch> GetHistoryAsync(HistoryQuery richiesta, CancellationToken cancellationToken)
+        public Task<HistoryFetch> GetHistoryAsync(HistoryQuery query, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref letture);
 
-            return Task.FromResult(new HistoryFetch(ServiceOutcome.NonRaggiungibile, "persistenza spenta", null));
+            return Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "persistenza spenta", null));
         }
     }
 
@@ -248,23 +248,23 @@ public class StoricoCadenzaTests
         public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
             Task.FromResult(Banco.Catalogo());
 
-        public Task<HistoryFetch> GetHistoryAsync(HistoryQuery richiesta, CancellationToken cancellationToken) =>
+        public Task<HistoryFetch> GetHistoryAsync(HistoryQuery query, CancellationToken cancellationToken) =>
             Task.FromResult(new HistoryFetch(ServiceOutcome.Ok, string.Empty, []));
     }
 
     /// <summary>Non risponde mai: la macchina spenta.</summary>
     private sealed class ClientMuto : IMetricsClient
     {
-        public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.CanaleLocale();
+        public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.LocalChannel();
 
         public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new SnapshotFetch(ServiceOutcome.NonRaggiungibile, "spenta", null));
+            Task.FromResult(new SnapshotFetch(ServiceOutcome.Unreachable, "spenta", null));
 
         public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new CatalogFetch(ServiceOutcome.NonRaggiungibile, "spenta", null));
+            Task.FromResult(new CatalogFetch(ServiceOutcome.Unreachable, "spenta", null));
 
-        public Task<HistoryFetch> GetHistoryAsync(HistoryQuery richiesta, CancellationToken cancellationToken) =>
-            Task.FromResult(new HistoryFetch(ServiceOutcome.NonRaggiungibile, "spenta", null));
+        public Task<HistoryFetch> GetHistoryAsync(HistoryQuery query, CancellationToken cancellationToken) =>
+            Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "spenta", null));
     }
 
     /// <summary>Una CPU, che e' quanto basta per avere un quadrante.</summary>

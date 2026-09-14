@@ -18,14 +18,14 @@ public class AppVersionTests
     [InlineData("", "")]
     [InlineData(null, "")]
     public void LaVersioneCortaTieneCioCheStaPrimaDelPiu(string? informativa, string attesa) =>
-        Assert.Equal(attesa, AppVersion.Corta(informativa));
+        Assert.Equal(attesa, AppVersion.Shorten(informativa));
 
     [Fact]
     public void QuestoProgrammaHaUnaVersioneCheSembraUnaVersione()
     {
         // I metadati arrivano da Directory.Build.props attraverso l'SDK: se questo test
         // fallisce, il titolo della finestra dira' "Observer" e basta, e nessuno se ne accorge.
-        string versione = AppVersion.DiQuestoProgramma();
+        string versione = AppVersion.OfThisProgram();
 
         Assert.Matches(@"^\d+\.\d+\.\d+", versione);
         Assert.DoesNotContain("+", versione, StringComparison.Ordinal);
@@ -34,13 +34,13 @@ public class AppVersionTests
     [Fact]
     public void IlTitoloDellaFinestraPortaNomeEVersione()
     {
-        MainViewModel viewModel = new(client: null, problemaDiConfigurazione: null);
+        MainViewModel viewModel = new(client: null, configurationProblem: null);
 
-        Assert.StartsWith("Observer ", viewModel.TitoloFinestra, StringComparison.Ordinal);
-        Assert.EndsWith(AppVersion.DiQuestoProgramma(), viewModel.TitoloFinestra, StringComparison.Ordinal);
+        Assert.StartsWith("Observer ", viewModel.WindowTitle, StringComparison.Ordinal);
+        Assert.EndsWith(AppVersion.OfThisProgram(), viewModel.WindowTitle, StringComparison.Ordinal);
     }
 
     [Fact]
     public void SenzaVersioneIlTitoloEIlSoloNome() =>
-        Assert.Equal("Observer", MainViewModel.Titolo(string.Empty));
+        Assert.Equal("Observer", MainViewModel.Title(string.Empty));
 }

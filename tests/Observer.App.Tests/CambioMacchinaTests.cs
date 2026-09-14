@@ -24,37 +24,37 @@ public class CambioMacchinaTests
     [Fact]
     public async Task CambiandoMacchinaINumeriDellaPrecedenteSpariscono()
     {
-        ObserverEndpoint locale = ObserverEndpoint.CanaleLocale();
-        ObserverEndpoint altra = ObserverEndpoint.Remoto(
+        ObserverEndpoint locale = ObserverEndpoint.LocalChannel();
+        ObserverEndpoint altra = ObserverEndpoint.Remote(
             new Uri("https://altra:5058/"), "token", "altra", new string('a', 64));
 
         MainViewModel viewModel = new(
             client: new ClientConDati(locale),
-            problemaDiConfigurazione: null,
-            elenco: new MachineListResult([locale, altra], []),
+            configurationProblem: null,
+            machineList: new MachineListResult([locale, altra], []),
 
             // La seconda macchina non risponde: e' proprio il caso in cui i numeri vecchi
             // resterebbero a schermo, perche' non arriva niente che li sostituisca.
-            apriMacchina: punto => new ClientMuto(punto));
+            openMachine: punto => new ClientMuto(punto));
 
         using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(15));
-        Task ciclo = viewModel.EseguiAsync(arresto.Token);
+        Task ciclo = viewModel.RunAsync(arresto.Token);
 
-        while (!arresto.IsCancellationRequested && viewModel.Quadranti.Count == 0)
+        while (!arresto.IsCancellationRequested && viewModel.Gauges.Count == 0)
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.NotEmpty(viewModel.Quadranti);
-        Assert.True(viewModel.MostraQuadranti);
+        Assert.NotEmpty(viewModel.Gauges);
+        Assert.True(viewModel.HasGauges);
 
-        viewModel.MacchinaSelezionata = viewModel.Macchine.Single(voce => voce.Punto == altra);
+        viewModel.SelectedMachine = viewModel.Machines.Single(voce => voce.Endpoint == altra);
 
         // Subito, senza aspettare un giro: fra la scelta e la prima risposta della macchina
         // nuova passa almeno un secondo, e in quel secondo non deve esserci niente da leggere.
-        Assert.Empty(viewModel.Quadranti);
-        Assert.False(viewModel.MostraQuadranti);
-        Assert.Empty(viewModel.Gruppi);
+        Assert.Empty(viewModel.Gauges);
+        Assert.False(viewModel.HasGauges);
+        Assert.Empty(viewModel.Groups);
 
         await arresto.CancelAsync();
 
@@ -104,7 +104,7 @@ public class CambioMacchinaTests
                 ])));
 
         public Task<HistoryFetch> GetHistoryAsync(
-            HistoryQuery richiesta,
+            HistoryQuery query,
             CancellationToken cancellationToken) =>
             Task.FromResult(new HistoryFetch(ServiceOutcome.Ok, string.Empty, []));
     }
@@ -115,14 +115,14 @@ public class CambioMacchinaTests
         public ObserverEndpoint Endpoint { get; } = endpoint;
 
         public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new SnapshotFetch(ServiceOutcome.NonRaggiungibile, "spenta", null));
+            Task.FromResult(new SnapshotFetch(ServiceOutcome.Unreachable, "spenta", null));
 
         public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new CatalogFetch(ServiceOutcome.NonRaggiungibile, "spenta", null));
+            Task.FromResult(new CatalogFetch(ServiceOutcome.Unreachable, "spenta", null));
 
         public Task<HistoryFetch> GetHistoryAsync(
-            HistoryQuery richiesta,
+            HistoryQuery query,
             CancellationToken cancellationToken) =>
-            Task.FromResult(new HistoryFetch(ServiceOutcome.NonRaggiungibile, "spenta", null));
+            Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "spenta", null));
     }
 }

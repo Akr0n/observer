@@ -5,21 +5,21 @@ using System.Text.Json.Serialization;
 namespace Observer.App.Services;
 
 /// <summary>
-/// Esito della lettura della configurazione: o il punto da interrogare, o la frase da
-/// mostrare a schermo. Mai entrambi nulli.
+/// Outcome of reading the configuration: either the endpoint to query, or the sentence to
+/// show on screen. Never both null.
 /// </summary>
-/// <param name="Endpoint">Il servizio da interrogare, oppure null.</param>
-/// <param name="Problem">La spiegazione quando <paramref name="Endpoint"/> e' null.</param>
+/// <param name="Endpoint">The service to query, or null.</param>
+/// <param name="Problem">The explanation when <paramref name="Endpoint"/> is null.</param>
 public sealed record ClientConfigurationResult(ObserverEndpoint? Endpoint, string? Problem);
 
 /// <summary>
-/// Contenuto del file di configurazione locale del client.
+/// Contents of the client's local configuration file.
 /// </summary>
-/// <param name="BaseAddress">Indirizzo del servizio. Facoltativo.</param>
-/// <param name="ApiToken">Token di accesso. Facoltativo se presente nell'ambiente.</param>
+/// <param name="BaseAddress">The service address. Optional.</param>
+/// <param name="ApiToken">Access token. Optional if it is present in the environment.</param>
 /// <param name="Fingerprint">
-/// L'impronta del certificato di quella macchina. Obbligatoria per un punto remoto: senza,
-/// il collegamento sarebbe cifrato ma non saprebbe con CHI.
+/// That machine's certificate fingerprint. Required for a remote endpoint: without it, the
+/// connection would be encrypted but with no idea WHO is on the other end.
 /// </param>
 public sealed record ObserverClientFile(
     [property: JsonPropertyName("baseAddress")] string? BaseAddress,
@@ -27,49 +27,49 @@ public sealed record ObserverClientFile(
     [property: JsonPropertyName("fingerprint")] string? Fingerprint);
 
 /// <summary>
-/// Decide da dove il client prende indirizzo e token.
+/// Decides where the client gets its address and token from.
 /// </summary>
 /// <remarks>
-/// La parte che decide (<see cref="Resolve"/>) e' una funzione pura sui suoi ingressi:
-/// non legge ne' ambiente ne' disco, quindi e' verificabile con un test invece che
-/// avviando l'applicazione e guardandola.
+/// The part that decides (<see cref="Resolve"/>) is a pure function of its inputs:
+/// it reads neither the environment nor the disk, so it can be checked with a test instead
+/// of by starting the application and looking at it.
 /// </remarks>
 public static class ClientConfiguration
 {
-    /// <summary>Variabile d'ambiente con il token. Stesso nome usato dal servizio.</summary>
+    /// <summary>Environment variable holding the token. Same name the service uses.</summary>
     public const string TokenVariable = "Observer__ApiToken";
 
-    /// <summary>Variabile d'ambiente con l'indirizzo del servizio.</summary>
+    /// <summary>Environment variable holding the service address.</summary>
     public const string BaseAddressVariable = "Observer__BaseAddress";
 
-    /// <summary>Variabile d'ambiente con l'impronta del certificato di quella macchina.</summary>
+    /// <summary>Environment variable holding that machine's certificate fingerprint.</summary>
     /// <remarks>
-    /// Esiste per simmetria con le altre due, e non e' una comodita': senza, rendere obbligatoria
-    /// l'impronta avrebbe reso inutilizzabile l'intera via delle variabili d'ambiente, che e'
-    /// l'unica praticabile dove il file di configurazione non si puo' scrivere.
+    /// It exists for symmetry with the other two, and it is not a convenience: without it, making
+    /// the fingerprint mandatory would have made the whole environment-variable route unusable,
+    /// which is the only practicable one where the configuration file cannot be written.
     /// </remarks>
     public const string FingerprintVariable = "Observer__Fingerprint";
 
-    /// <summary>Un indirizzo di esempio, per i messaggi. NON e' piu' un valore predefinito.</summary>
+    /// <summary>An example address, for the messages. It is NOT a default value any more.</summary>
     /// <remarks>
-    /// Senza indirizzo configurato il client va sul canale LOCALE, che non ha ne' porta ne'
-    /// token. Un indirizzo si mette solo per guardare un ALTRO computer.
+    /// With no address configured the client uses the LOCAL channel, which has neither a port nor
+    /// a token. An address is set only to watch ANOTHER computer.
     /// </remarks>
-    public const string EsempioIndirizzo = "https://another-machine:5058/";
+    public const string ExampleAddress = "https://another-machine:5058/";
 
     private static readonly JsonSerializerOptions FileOptions = new(JsonSerializerDefaults.Web);
 
     /// <summary>
-    /// Percorso del file di configurazione del client: su Windows
-    /// <c>%LOCALAPPDATA%\Observer\client.json</c>, su Linux
+    /// Path of the client's configuration file: on Windows
+    /// <c>%LOCALAPPDATA%\Observer\client.json</c>, on Linux
     /// <c>~/.local/share/Observer/client.json</c>.
-    /// Sta FUORI dal repository apposta, cosi' il token non puo' finire in un commit.
+    /// It sits OUTSIDE the repository on purpose, so the token cannot end up in a commit.
     /// </summary>
     /// <remarks>
-    /// LocalApplicationData e non ApplicationData, cioe' Local e non Roaming: su una macchina
-    /// aggiunta a un dominio la cartella Roaming viene sincronizzata con un file server, quindi
-    /// il token attraverserebbe la rete e resterebbe depositato altrove. Un segreto legato a
-    /// UNA macchina non deve seguire l'utente da un computer all'altro.
+    /// LocalApplicationData and not ApplicationData, that is Local and not Roaming: on a
+    /// domain-joined machine the Roaming folder is synchronised with a file server, so the token
+    /// would cross the network and be left sitting somewhere else. A secret tied to ONE machine
+    /// must not follow the user from one computer to another.
     /// </remarks>
     public static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -77,26 +77,26 @@ public static class ClientConfiguration
         "client.json");
 
     /// <summary>
-    /// Legge davvero ambiente e disco e produce la configurazione.
+    /// Actually reads the environment and the disk and produces the configuration.
     /// </summary>
     public static ClientConfigurationResult Read() =>
         Resolve(
             Environment.GetEnvironmentVariable(TokenVariable),
             Environment.GetEnvironmentVariable(BaseAddressVariable),
             Environment.GetEnvironmentVariable(FingerprintVariable),
-            LeggiFile(FilePath));
+            ReadFile(FilePath));
 
     /// <summary>
-    /// Combina ambiente e file secondo la precedenza stabilita, senza toccare il disco.
+    /// Combines the environment and the file by the established precedence, without touching the disk.
     /// </summary>
-    /// <param name="tokenFromEnvironment">Valore di <see cref="TokenVariable"/>, se presente.</param>
-    /// <param name="baseAddressFromEnvironment">Valore di <see cref="BaseAddressVariable"/>, se presente.</param>
-    /// <param name="fingerprintFromEnvironment">Valore di <see cref="FingerprintVariable"/>, se presente.</param>
-    /// <param name="fileContent">Contenuto grezzo del file di configurazione, se esiste.</param>
+    /// <param name="tokenFromEnvironment">Value of <see cref="TokenVariable"/>, if present.</param>
+    /// <param name="baseAddressFromEnvironment">Value of <see cref="BaseAddressVariable"/>, if present.</param>
+    /// <param name="fingerprintFromEnvironment">Value of <see cref="FingerprintVariable"/>, if present.</param>
+    /// <param name="fileContent">Raw contents of the configuration file, if it exists.</param>
     /// <remarks>
-    /// L'ambiente VINCE sul file, per lo stesso motivo per cui vince nel servizio: un token
-    /// vecchio dimenticato nel file sovrascriverebbe in silenzio quello nuovo appena
-    /// esportato, e il sintomo sarebbe un 401 inspiegabile.
+    /// The environment WINS over the file, for the same reason it wins in the service: an old
+    /// token forgotten in the file would silently override the newly exported one, and the
+    /// symptom would be an unexplained 401.
     /// </remarks>
     public static ClientConfigurationResult Resolve(
         string? tokenFromEnvironment,
@@ -117,31 +117,31 @@ public static class ClientConfiguration
             return new ClientConfigurationResult(
                 null,
                 $"The configuration file {FilePath} isn't valid JSON ({ex.Message}). " +
-                $"It must contain exactly: {{ \"baseAddress\": \"{EsempioIndirizzo}\", \"apiToken\": \"the other machine's token\" }}");
+                $"It must contain exactly: {{ \"baseAddress\": \"{ExampleAddress}\", \"apiToken\": \"the other machine's token\" }}");
         }
 
-        string? indirizzo = Primo(baseAddressFromEnvironment, file?.BaseAddress);
+        string? address = FirstNonEmpty(baseAddressFromEnvironment, file?.BaseAddress);
 
-        if (indirizzo is null)
+        if (address is null)
         {
-            // NESSUN indirizzo configurato significa "guarda la macchina su cui stai", e su
-            // quella il servizio non chiede alcun token. E' cio' che rende installabile la
-            // dashboard: dopo l'installazione non c'e' niente da configurare.
-            // Un token esportato per errore NON dirotta il client: qui viene ignorato.
-            return new ClientConfigurationResult(ObserverEndpoint.CanaleLocale(), null);
+            // NO address configured means "watch the machine you are sitting at", and there the
+            // service asks for no token at all. That is what makes the dashboard installable:
+            // after the install there is nothing to configure.
+            // A token exported by mistake does NOT divert the client: it is ignored here.
+            return new ClientConfigurationResult(ObserverEndpoint.LocalChannel(), null);
         }
 
-        if (!Uri.TryCreate(ConBarraFinale(indirizzo), UriKind.Absolute, out Uri? baseAddress)
+        if (!Uri.TryCreate(WithTrailingSlash(address), UriKind.Absolute, out Uri? baseAddress)
             || baseAddress.Scheme != Uri.UriSchemeHttps)
         {
-            // http:// NON e' piu' accettato, e non e' un irrigidimento gratuito: il servizio
-            // non risponde piu' in chiaro sulla rete. Accettarlo qui vorrebbe dire spedire il
-            // token una volta al secondo verso una porta che non c'e', oppure - peggio - verso
-            // qualcosa che risponde al posto suo.
+            // http:// is NOT accepted any more, and that is not gratuitous hardening: the
+            // service no longer answers in the clear over the network. Accepting it here would
+            // mean sending the token once a second to a port that is not there, or - worse - to
+            // something answering in its place.
             return new ClientConfigurationResult(
                 null,
-                $"The service address \"{indirizzo}\" can't be used. " +
-                $"It must be a full https address, for example {EsempioIndirizzo}. " +
+                $"The service address \"{address}\" can't be used. " +
+                $"It must be a full https address, for example {ExampleAddress}. " +
                 "Observer no longer answers in the clear over the network: the token used to " +
                 "cross it once a second. " +
                 $"Set it in the {BaseAddressVariable} environment variable, or in the " +
@@ -149,49 +149,50 @@ public static class ClientConfiguration
                 "Remove it entirely to watch the machine you are sitting at.");
         }
 
-        string? token = Primo(tokenFromEnvironment, file?.ApiToken);
+        string? token = FirstNonEmpty(tokenFromEnvironment, file?.ApiToken);
 
         if (token is null)
         {
-            // Un indirizzo remoto senza credenziale non e' un caso da indovinare: quel
-            // servizio rifiutera' ogni richiesta, e dirlo subito e' meglio che mostrare 401
-            // a raffica una volta al secondo.
-            return new ClientConfigurationResult(null, TestoTokenMancante(indirizzo));
+            // A remote address with no credential is not a case to guess at: that service
+            // will reject every request, and saying so at once is better than showing a burst
+            // of 401s once a second.
+            return new ClientConfigurationResult(null, DescribeMissingToken(address));
         }
 
-        string? impronta = Primo(fingerprintFromEnvironment, file?.Fingerprint);
+        string? fingerprint = FirstNonEmpty(fingerprintFromEnvironment, file?.Fingerprint);
 
-        if (CertificateFingerprint.Normalize(impronta) is null)
+        if (CertificateFingerprint.Normalize(fingerprint) is null)
         {
-            // Cifrato non basta. Senza impronta il collegamento e' protetto da chi ascolta ma
-            // non da chi si mette in mezzo, e quello e' il caso peggiore perche' sembra sicuro.
-            return new ClientConfigurationResult(null, TestoImprontaMancante(indirizzo));
+            // Encrypted is not enough. Without a fingerprint the connection is protected against
+            // whoever listens but not against whoever stands in the middle, and that is the worst
+            // case because it looks secure.
+            return new ClientConfigurationResult(null, DescribeMissingFingerprint(address));
         }
 
-        string origine = string.IsNullOrWhiteSpace(tokenFromEnvironment)
+        string origin = string.IsNullOrWhiteSpace(tokenFromEnvironment)
             ? $"from the file {FilePath}"
             : $"from the {TokenVariable} environment variable";
 
         return new ClientConfigurationResult(
-            ObserverEndpoint.Remoto(baseAddress, token, origine, impronta),
+            ObserverEndpoint.Remote(baseAddress, token, origin, fingerprint),
             null);
     }
 
-    /// <summary>Il testo mostrato quando manca l'impronta per un servizio REMOTO.</summary>
-    /// <param name="indirizzo">L'indirizzo configurato.</param>
-    /// <returns>La frase da mostrare.</returns>
-    public static string TestoImprontaMancante(string indirizzo) =>
-        $"No certificate fingerprint is configured for {indirizzo}. Observer's certificate is " +
+    /// <summary>The text shown when the fingerprint is missing for a REMOTE service.</summary>
+    /// <param name="address">The configured address.</param>
+    /// <returns>The sentence to show.</returns>
+    public static string DescribeMissingFingerprint(string address) =>
+        $"No certificate fingerprint is configured for {address}. Observer's certificate is " +
         "self-signed, so without a fingerprint there is nothing to tell that machine apart from " +
         "anyone able to stand in the middle of the connection: the traffic would be encrypted, " +
         "but not to a known machine. Run \"observer share\" on THAT machine and put the value it " +
         $"prints in the \"fingerprint\" field of {FilePath}, next to the token.";
 
-    /// <summary>Il testo mostrato quando manca il token per un servizio REMOTO.</summary>
-    /// <param name="indirizzo">L'indirizzo configurato.</param>
-    /// <returns>La frase da mostrare.</returns>
-    public static string TestoTokenMancante(string indirizzo) =>
-        $"No token is configured for {indirizzo}, so there is no point in trying to connect: " +
+    /// <summary>The text shown when the token is missing for a REMOTE service.</summary>
+    /// <param name="address">The configured address.</param>
+    /// <returns>The sentence to show.</returns>
+    public static string DescribeMissingToken(string address) =>
+        $"No token is configured for {address}, so there is no point in trying to connect: " +
         "another machine's Observer rejects every request that isn't authenticated. Get its " +
         "token by running \"observer share\" on THAT machine, from an elevated terminal, then " +
         $"put it in the {TokenVariable} environment variable, or in the \"apiToken\" field of " +
@@ -199,7 +200,7 @@ public static class ClientConfiguration
         "To watch the machine you are sitting at instead, remove the address entirely: no token " +
         "is needed for that.";
 
-    private static string? LeggiFile(string path)
+    private static string? ReadFile(string path)
     {
         try
         {
@@ -207,8 +208,8 @@ public static class ClientConfiguration
         }
         catch (IOException)
         {
-            // Un file illeggibile equivale a un file assente: la diagnosi utile e' quella
-            // sul token mancante, non lo stack trace di un accesso al disco.
+            // An unreadable file is the same as a missing file: the useful diagnosis is the one
+            // about the missing token, not the stack trace of a disk access.
             return null;
         }
         catch (UnauthorizedAccessException)
@@ -217,11 +218,11 @@ public static class ClientConfiguration
         }
     }
 
-    private static string? Primo(string? preferito, string? alternativa) =>
-        string.IsNullOrWhiteSpace(preferito)
-            ? (string.IsNullOrWhiteSpace(alternativa) ? null : alternativa.Trim())
-            : preferito.Trim();
+    private static string? FirstNonEmpty(string? preferred, string? fallback) =>
+        string.IsNullOrWhiteSpace(preferred)
+            ? (string.IsNullOrWhiteSpace(fallback) ? null : fallback.Trim())
+            : preferred.Trim();
 
-    private static string ConBarraFinale(string indirizzo) =>
-        indirizzo.EndsWith('/') ? indirizzo : indirizzo + "/";
+    private static string WithTrailingSlash(string address) =>
+        address.EndsWith('/') ? address : address + "/";
 }

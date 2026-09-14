@@ -9,78 +9,78 @@ using Observer.Core.Metrics;
 namespace Observer.App.Services;
 
 /// <summary>
-/// Legge le metriche dal servizio. Interfaccia separata dall'implementazione HTTP solo
-/// perche' il view model possa essere costruito anche con un finto client.
+/// Reads the metrics from the service. The interface is separate from the HTTP implementation
+/// only so that the view model can also be built with a fake client.
 /// </summary>
 public interface IMetricsClient
 {
-    /// <summary>Il punto interrogato, da mostrare a schermo. Non stampa mai il token.</summary>
+    /// <summary>The endpoint being queried, to show on screen. It never prints the token.</summary>
     ObserverEndpoint Endpoint { get; }
 
-    /// <summary>Legge l'ultimo campionamento.</summary>
+    /// <summary>Reads the latest sample.</summary>
     Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken);
 
-    /// <summary>Legge il catalogo delle metriche.</summary>
+    /// <summary>Reads the metric catalog.</summary>
     Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken);
 
-    /// <summary>Legge lo storico di una serie.</summary>
-    /// <param name="richiesta">Quale serie, da quando, con che risoluzione.</param>
-    /// <param name="cancellationToken">Annullato alla chiusura.</param>
-    /// <returns>I punti, oppure il motivo per cui non ci sono.</returns>
-    Task<HistoryFetch> GetHistoryAsync(HistoryQuery richiesta, CancellationToken cancellationToken);
+    /// <summary>Reads the history of one series.</summary>
+    /// <param name="query">Which series, from when, at what resolution.</param>
+    /// <param name="cancellationToken">Cancelled on shutdown.</param>
+    /// <returns>The points, or the reason why there are none.</returns>
+    Task<HistoryFetch> GetHistoryAsync(HistoryQuery query, CancellationToken cancellationToken);
 
-    /// <summary>Chi sta consumando una risorsa su quella macchina.</summary>
-    /// <param name="per">Quale risorsa: <c>cpu</c> oppure <c>memory</c>.</param>
-    /// <param name="quanti">Quante righe al massimo.</param>
-    /// <param name="cancellationToken">Annullato alla chiusura.</param>
-    /// <returns>Le righe, oppure il motivo per cui non ci sono.</returns>
+    /// <summary>Who is consuming a resource on that machine.</summary>
+    /// <param name="by">Which resource: <c>cpu</c> or <c>memory</c>.</param>
+    /// <param name="top">How many rows at most.</param>
+    /// <param name="cancellationToken">Cancelled on shutdown.</param>
+    /// <returns>The rows, or the reason why there are none.</returns>
     /// <remarks>
-    /// Ha un'implementazione predefinita perche' i doppi di prova che esistono per altro non
-    /// devono essere costretti a fingere anche questa: una finta che non sa elencare processi
-    /// lo dichiara, invece di restituire un elenco vuoto che somiglia a una risposta.
+    /// It has a default implementation so that the test doubles that exist for other reasons are
+    /// not forced to fake this one too: a fake that cannot list processes says so, instead of
+    /// returning an empty list that looks like an answer.
     /// </remarks>
-    Task<ProcessFetch> GetProcessesAsync(string per, int quanti, CancellationToken cancellationToken) =>
+    Task<ProcessFetch> GetProcessesAsync(string by, int top, CancellationToken cancellationToken) =>
         Task.FromResult(new ProcessFetch(
             ServiceOutcome.Unknown, "this client cannot list processes", []));
 
-    /// <summary>Termina un processo su quella macchina.</summary>
-    /// <param name="pid">Identificatore del processo.</param>
-    /// <param name="cancellationToken">Annullato alla chiusura.</param>
-    /// <returns>Come e' andata.</returns>
+    /// <summary>Terminates a process on that machine.</summary>
+    /// <param name="pid">The process identifier.</param>
+    /// <param name="cancellationToken">Cancelled on shutdown.</param>
+    /// <returns>How it went.</returns>
     Task<KillFetch> KillProcessAsync(int pid, CancellationToken cancellationToken) =>
         Task.FromResult(new KillFetch(
             ServiceOutcome.Unknown, "this client cannot terminate processes"));
 }
 
-/// <summary>Che pezzo di storico si vuole.</summary>
-/// <param name="Collector">Identificatore del collector.</param>
-/// <param name="Metric">Identificatore della metrica.</param>
-/// <param name="Instance">L'istanza, quando la metrica ne ha piu' d'una.</param>
-/// <param name="Da">L'inizio della finestra.</param>
-/// <param name="Risoluzione">"raw", "1m", "5m". <b>Mai "auto"</b>: vedi le note.</param>
+/// <summary>Which piece of the history is wanted.</summary>
+/// <param name="Collector">The collector identifier.</param>
+/// <param name="Metric">The metric identifier.</param>
+/// <param name="Instance">The instance, when the metric has more than one.</param>
+/// <param name="From">The start of the window.</param>
+/// <param name="Resolution">"raw", "1m", "5m". <b>Never "auto"</b>: see the remarks.</param>
 /// <remarks>
-/// La risoluzione va sempre dichiarata. Con "auto" il servizio sceglie in base all'ampiezza
-/// della finestra, e su un'ora sceglie il grezzo: tremilaseicento punti per disegnarne
-/// sessanta, cioe' mezzo megabyte sul filo a ogni ricarica per buttarne via il 98 per cento.
+/// The resolution must always be stated. With "auto" the service picks by the width of the
+/// window, and over an hour it picks raw: three thousand six hundred points to draw sixty,
+/// that is half a megabyte on the wire at every refresh to throw 98 per cent of it away.
 /// </remarks>
 public sealed record HistoryQuery(
     string Collector,
     string Metric,
     string? Instance,
-    DateTimeOffset Da,
-    string Risoluzione);
+    DateTimeOffset From,
+    string Resolution);
 
-/// <summary>Un intervallo dello storico, come arriva dal servizio.</summary>
-/// <param name="Timestamp">L'inizio dell'intervallo.</param>
-/// <param name="Count">Quanti campioni ci sono caduti dentro.</param>
-/// <param name="Avg">La media dei campioni presenti.</param>
-/// <param name="Min">Il minimo.</param>
-/// <param name="Max">Il massimo.</param>
-/// <param name="Last">L'ultimo campione dell'intervallo.</param>
+/// <summary>One interval of the history, as it arrives from the service.</summary>
+/// <param name="Timestamp">The start of the interval.</param>
+/// <param name="Count">How many samples fell inside it.</param>
+/// <param name="Avg">The average of the samples present.</param>
+/// <param name="Min">The minimum.</param>
+/// <param name="Max">The maximum.</param>
+/// <param name="Last">The last sample of the interval.</param>
 /// <remarks>
-/// <b>Gli intervalli senza campioni non arrivano affatto</b>: non esiste un punto con
-/// <c>Count</c> a zero. Chi disegna deve costruire la propria griglia dei tempi e cercarci
-/// dentro questi punti — vedi <see cref="HistoryStrip"/>.
+/// <b>Intervals with no samples do not arrive at all</b>: there is no point with <c>Count</c>
+/// at zero. Whoever draws has to build their own time grid and look these points up inside
+/// it — see <see cref="HistoryStrip"/>.
 /// </remarks>
 public sealed record HistoryPoint(
     DateTimeOffset Timestamp,
@@ -90,58 +90,58 @@ public sealed record HistoryPoint(
     double Max,
     double Last);
 
-/// <summary>La risposta di /metrics/history, come arriva sul filo.</summary>
-/// <param name="Resolution">La risoluzione effettivamente usata.</param>
-/// <param name="BucketSeconds">Quanti secondi copre un intervallo.</param>
-/// <param name="Truncated">Vero quando il servizio ha tagliato i punti piu' vecchi.</param>
-/// <param name="Points">Gli intervalli che hanno almeno un campione.</param>
+/// <summary>The /metrics/history response, as it arrives on the wire.</summary>
+/// <param name="Resolution">The resolution actually used.</param>
+/// <param name="BucketSeconds">How many seconds one interval covers.</param>
+/// <param name="Truncated">True when the service has cut off the oldest points.</param>
+/// <param name="Points">The intervals that have at least one sample.</param>
 public sealed record HistoryResponse(
     string Resolution,
     int BucketSeconds,
     bool Truncated,
     IReadOnlyList<HistoryPoint> Points);
 
-/// <summary>L'esito di una lettura dello storico.</summary>
-/// <param name="Outcome">Com'e' andata.</param>
-/// <param name="Problem">Che cosa dire a chi guarda, quando e' andata male.</param>
-/// <param name="Points">I punti, quando e' andata bene.</param>
+/// <summary>The outcome of a history read.</summary>
+/// <param name="Outcome">How it went.</param>
+/// <param name="Problem">What to tell whoever is watching, when it went badly.</param>
+/// <param name="Points">The points, when it went well.</param>
 public sealed record HistoryFetch(
     ServiceOutcome Outcome,
     string Problem,
     IReadOnlyList<HistoryPoint>? Points);
 
 /// <summary>
-/// Client HTTP verso Observer.Service.
+/// HTTP client towards Observer.Service.
 /// </summary>
 /// <remarks>
-/// Sta in Observer.App e non in Observer.Core di proposito: un secondo consumatore non
-/// esiste ancora, e spostarlo il giorno in cui esistera' costa poco.
+/// It lives in Observer.App and not in Observer.Core on purpose: a second consumer does not
+/// exist yet, and moving it the day a second one appears costs little.
 /// <para>
-/// Non lancia MAI per un guasto del servizio. Ogni modo di fallire diventa un
-/// <see cref="ServiceOutcome"/> con la sua frase in italiano, perche' chi guarda la
-/// finestra deve leggere cosa non va, non trovarla vuota.
+/// It NEVER throws because of a service fault. Every way of failing becomes a
+/// <see cref="ServiceOutcome"/> with its own sentence for the screen, because whoever is
+/// looking at the window has to read what is wrong, not find it empty.
 /// </para>
 /// </remarks>
 public sealed class MetricsClient : IMetricsClient, IDisposable
 {
-    // Otto secondi, e il numero e' misurato, non scelto. I 100 predefiniti di HttpClient
-    // lascerebbero la finestra ferma senza spiegazione per un minuto e mezzo; ma il limite
-    // dal basso non e' il periodo di campionamento, e' QUANTO COSTA UN RIFIUTO.
+    // Eight seconds, and the number is measured, not chosen. HttpClient's default 100 would
+    // leave the window frozen with no explanation for a minute and a half; but the lower bound
+    // is not the sampling period, it is HOW MUCH A REFUSAL COSTS.
     //
-    // Su Windows, .NET 10, sei giri per indirizzo: una connessione rifiutata impiega
-    // 2018-2104 ms su 127.0.0.1, su [::1] e sull'indirizzo di rete di questa macchina — non
-    // e' una stranezza del loopback, e' il costo di un rifiuto. Un NOME a doppia pila li
-    // paga due volte, perche' .NET prova un indirizzo dopo l'altro: con i 3 secondi di prima,
-    // "localhost" su porta chiusa dava 3007-3034 ms e il rifiuto non arrivava mai — la
-    // finestra diceva "nessuna risposta, controlla il firewall" di un servizio spento, che e'
-    // esattamente il consiglio sbagliato.
+    // On Windows, .NET 10, six runs per address: a refused connection takes
+    // 2018-2104 ms on 127.0.0.1, on [::1] and on this machine's LAN address — it is not
+    // a loopback quirk, it is what a refusal costs. A dual-stack NAME pays it
+    // twice, because .NET tries one address after another: with the earlier 3 seconds,
+    // "localhost" on a closed port gave 3007-3034 ms and the refusal never arrived — the
+    // window said "no answer, check the firewall" about a stopped service, which is
+    // exactly the wrong advice.
     //
-    // Sei secondi erano il primo tentativo e non bastavano. Rimisurato senza tappo, un
-    // rifiuto a doppia pila costa 4035-4121 ms: meno di due secondi di margine, e su una
-    // macchina occupata il test su socket vero ha sforato davvero. Otto danno quasi il doppio
-    // del costo misurato e restano sotto i 10 secondi di StatusEscalation.Tolleranza, che e'
-    // il vincolo dall'alto: un budget piu' lungo della tolleranza farebbe saltare del tutto
-    // la fase "Connecting" e aprirebbe la finestra in rosso.
+    // Six seconds were the first attempt and were not enough. Re-measured with no cap, a
+    // dual-stack refusal costs 4035-4121 ms: less than two seconds of margin, and on a
+    // busy machine the test over a real socket really did overrun. Eight gives almost twice
+    // the measured cost and stays under the 10 seconds of StatusEscalation.GracePeriod, which is
+    // the upper constraint: a budget longer than the grace period would skip the "Connecting"
+    // phase entirely and open the window red.
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(8);
 
     private static readonly JsonSerializerOptions WireOptions = new(JsonSerializerDefaults.Web);
@@ -149,28 +149,28 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
     private readonly HttpClient http;
     private readonly AuthenticationHeaderValue? authorization;
 
-    /// <summary>Il confronto sull'impronta, oppure null se questo punto non ne ha una.</summary>
-    private readonly CertificatePinning? fissaggio;
+    /// <summary>The fingerprint comparison, or null if this endpoint has none.</summary>
+    private readonly CertificatePinning? pinning;
 
-    /// <summary>Costruisce il client sul punto letto dalla configurazione.</summary>
-    /// <param name="endpoint">Il servizio da interrogare.</param>
+    /// <summary>Builds the client on the endpoint read from the configuration.</summary>
+    /// <param name="endpoint">The service to query.</param>
     public MetricsClient(ObserverEndpoint endpoint)
-        : this(endpoint, FissaggioPer(endpoint))
+        : this(endpoint, PinningFor(endpoint))
     {
     }
 
-    private MetricsClient(ObserverEndpoint endpoint, CertificatePinning? fissaggio)
-        : this(endpoint, fissaggio?.Handler() ?? HandlerPer(endpoint), disposeHandler: true)
+    private MetricsClient(ObserverEndpoint endpoint, CertificatePinning? pinning)
+        : this(endpoint, pinning?.Handler() ?? HandlerFor(endpoint), disposeHandler: true)
     {
-        this.fissaggio = fissaggio;
+        this.pinning = pinning;
     }
 
-    private static CertificatePinning? FissaggioPer(ObserverEndpoint endpoint) =>
-        endpoint.Fingerprint is { Length: > 0 } impronta ? new CertificatePinning(impronta) : null;
+    private static CertificatePinning? PinningFor(ObserverEndpoint endpoint) =>
+        endpoint.Fingerprint is { Length: > 0 } fingerprint ? new CertificatePinning(fingerprint) : null;
 
-    /// <summary>Costruisce il client su un handler fornito da fuori. Serve ai test.</summary>
-    /// <param name="endpoint">Il servizio da interrogare.</param>
-    /// <param name="handler">L'handler da usare.</param>
+    /// <summary>Builds the client on a handler supplied from outside. The tests need it.</summary>
+    /// <param name="endpoint">The service to query.</param>
+    /// <param name="handler">The handler to use.</param>
     public MetricsClient(ObserverEndpoint endpoint, HttpMessageHandler handler)
         : this(endpoint, handler, disposeHandler: false)
     {
@@ -183,8 +183,8 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
 
         Endpoint = endpoint;
 
-        // Nessun header Authorization sul canale locale, e non e' una svista: mandare il token
-        // dove non serve significa continuare a esporlo senza guadagnarci niente.
+        // No Authorization header on the local channel, and that is not an oversight: sending the
+        // token where it is not needed means keeping it exposed and gaining nothing.
         authorization = endpoint.ApiToken is { Length: > 0 } token
             ? new AuthenticationHeaderValue("Bearer", token)
             : null;
@@ -198,22 +198,22 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
     private Uri BaseAddress => Endpoint.BaseAddress;
 
     /// <remarks>
-    /// Il ramo di rete qui e' un RIPIEGO che oggi non si esegue: ci si arriva solo con un punto
-    /// remoto senza impronta, e non ne esistono - MachineDirectory scarta la voce e
-    /// ClientConfiguration non produce un Remoto senza. Chi cerca dove la decompressione si
-    /// accende davvero la trova in <see cref="CertificatePinning.Handler"/>, che e' il percorso
-    /// vero, ed e' li' che sta scritto perche' il canale locale ne resti fuori.
+    /// The network branch here is a FALLBACK that never runs today: you only get to it with a
+    /// remote endpoint with no fingerprint, and none exist - MachineDirectory drops the entry and
+    /// ClientConfiguration never produces a Remote one without it. Whoever is looking for where
+    /// decompression is really turned on will find it in <see cref="CertificatePinning.Handler"/>,
+    /// which is the real path, and that is where it is written down why the local channel stays out.
     /// </remarks>
-    private static SocketsHttpHandler HandlerPer(ObserverEndpoint endpoint) =>
-        endpoint.Kind == EndpointKind.Locale
-            ? LocalChannelHandler.Crea()
+    private static SocketsHttpHandler HandlerFor(ObserverEndpoint endpoint) =>
+        endpoint.Kind == EndpointKind.Local
+            ? LocalChannelHandler.Create()
             : new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All };
 
     /// <inheritdoc />
     public async Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken)
     {
         (ServiceOutcome outcome, string problem, MachineSnapshot? snapshot) =
-            await LeggiAsync<MachineSnapshot>("metrics/latest", cancellationToken).ConfigureAwait(false);
+            await ReadAsync<MachineSnapshot>("metrics/latest", cancellationToken).ConfigureAwait(false);
 
         if (outcome != ServiceOutcome.Ok || snapshot is null)
         {
@@ -222,11 +222,11 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
 
         if (snapshot.SchemaVersion != MachineSnapshot.CurrentSchemaVersion)
         {
-            // Senza questo controllo un servizio piu' recente riempirebbe la finestra di
-            // campi a zero marcati "Ok", che e' peggio di un messaggio d'errore.
+            // Without this check a newer service would fill the window with zeroed fields
+            // marked "Ok", which is worse than an error message.
             return new SnapshotFetch(
-                ServiceOutcome.VersioneIncompatibile,
-                $"The service on {Endpoint.Descrizione} uses data format version " +
+                ServiceOutcome.IncompatibleVersion,
+                $"The service on {Endpoint.Description} uses data format version " +
                 snapshot.SchemaVersion.ToString(CultureInfo.InvariantCulture) +
                 ", but this application only understands version " +
                 MachineSnapshot.CurrentSchemaVersion.ToString(CultureInfo.InvariantCulture) +
@@ -241,7 +241,7 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
     public async Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken)
     {
         (ServiceOutcome outcome, string problem, List<CollectorCatalogEntry>? entries) =
-            await LeggiAsync<List<CollectorCatalogEntry>>("metrics/catalog", cancellationToken).ConfigureAwait(false);
+            await ReadAsync<List<CollectorCatalogEntry>>("metrics/catalog", cancellationToken).ConfigureAwait(false);
 
         return outcome == ServiceOutcome.Ok && entries is not null
             ? new CatalogFetch(ServiceOutcome.Ok, string.Empty, new MetricCatalog(entries))
@@ -250,338 +250,338 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
 
     /// <inheritdoc />
     public async Task<HistoryFetch> GetHistoryAsync(
-        HistoryQuery richiesta,
+        HistoryQuery query,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(richiesta);
+        ArgumentNullException.ThrowIfNull(query);
 
-        // Passa dallo stesso LeggiAsync di latest e catalog, e non e' pigrizia: token,
-        // fissaggio dell'impronta, scadenze e traduzione degli errori restano un pezzo di
-        // codice solo. Una seconda strada verso il servizio sarebbe una seconda strada da
-        // sbagliare, e sbagliarla qui vorrebbe dire spedire il token senza controllare a chi.
-        // Tutte le parti sono gia' stringhe, e l'istante e' formattato con "O" e la cultura
-        // invariante: qui non passa nessun numero che una cultura possa scrivere diverso.
-        string percorso = "metrics/history?collector=" + Uri.EscapeDataString(richiesta.Collector)
-            + "&metric=" + Uri.EscapeDataString(richiesta.Metric)
-            + "&from=" + Uri.EscapeDataString(richiesta.Da.UtcDateTime.ToString("O", CultureInfo.InvariantCulture))
-            + "&resolution=" + Uri.EscapeDataString(richiesta.Risoluzione);
+        // It goes through the same ReadAsync as latest and catalog, and that is not laziness:
+        // the token, fingerprint pinning, deadlines and error translation stay one single piece
+        // of code. A second route to the service would be a second route to get wrong, and
+        // getting it wrong here would mean sending the token without checking who it goes to.
+        // Every part is already a string, and the instant is formatted with "O" and the
+        // invariant culture: no number goes through here that a culture could write differently.
+        string path = "metrics/history?collector=" + Uri.EscapeDataString(query.Collector)
+            + "&metric=" + Uri.EscapeDataString(query.Metric)
+            + "&from=" + Uri.EscapeDataString(query.From.UtcDateTime.ToString("O", CultureInfo.InvariantCulture))
+            + "&resolution=" + Uri.EscapeDataString(query.Resolution);
 
-        if (!string.IsNullOrEmpty(richiesta.Instance))
+        if (!string.IsNullOrEmpty(query.Instance))
         {
-            percorso += "&instance=" + Uri.EscapeDataString(richiesta.Instance);
+            path += "&instance=" + Uri.EscapeDataString(query.Instance);
         }
 
-        (ServiceOutcome outcome, string problem, HistoryResponse? risposta) =
-            await LeggiAsync<HistoryResponse>(percorso, cancellationToken).ConfigureAwait(false);
+        (ServiceOutcome outcome, string problem, HistoryResponse? response) =
+            await ReadAsync<HistoryResponse>(path, cancellationToken).ConfigureAwait(false);
 
-        return outcome == ServiceOutcome.Ok && risposta is not null
-            ? new HistoryFetch(ServiceOutcome.Ok, string.Empty, risposta.Points)
+        return outcome == ServiceOutcome.Ok && response is not null
+            ? new HistoryFetch(ServiceOutcome.Ok, string.Empty, response.Points)
             : new HistoryFetch(outcome, problem, null);
     }
 
     /// <inheritdoc />
     public async Task<ProcessFetch> GetProcessesAsync(
-        string per, int quanti, CancellationToken cancellationToken)
+        string by, int top, CancellationToken cancellationToken)
     {
-        string percorso = "processes?by=" + Uri.EscapeDataString(per ?? "cpu")
-            + "&top=" + quanti.ToString(CultureInfo.InvariantCulture);
+        string path = "processes?by=" + Uri.EscapeDataString(by ?? "cpu")
+            + "&top=" + top.ToString(CultureInfo.InvariantCulture);
 
-        (ServiceOutcome esito, string problema, ProcessListWire? risposta) =
-            await LeggiAsync<ProcessListWire>(
-                percorso,
+        (ServiceOutcome outcome, string problem, ProcessListWire? response) =
+            await ReadAsync<ProcessListWire>(
+                path,
                 cancellationToken,
-                $"The service on {Endpoint.Descrizione} doesn't know how to list processes: it " +
+                $"The service on {Endpoint.Description} doesn't know how to list processes: it " +
                 "is older than this dashboard. Update Observer on that machine.")
             .ConfigureAwait(false);
 
-        // Un servizio piu' vecchio non conosce "io": risponde con l'elenco della CPU e senza il
-        // campo "by". Mostrarlo sotto il titolo dell'I/O sarebbe una bugia, e il rimedio e' lo
-        // stesso del 404: aggiornare Observer su quella macchina.
-        if (esito == ServiceOutcome.Ok
-            && risposta is { By: null }
-            && string.Equals(per, "io", StringComparison.Ordinal))
+        // An older service does not know "io": it answers with the CPU list and without the
+        // "by" field. Showing it under the I/O title would be a lie, and the remedy is the
+        // same as for the 404: update Observer on that machine.
+        if (outcome == ServiceOutcome.Ok
+            && response is { By: null }
+            && string.Equals(by, "io", StringComparison.Ordinal))
         {
             return new ProcessFetch(
-                ServiceOutcome.VersioneIncompatibile,
-                $"The service on {Endpoint.Descrizione} cannot rank processes by I/O: it is " +
+                ServiceOutcome.IncompatibleVersion,
+                $"The service on {Endpoint.Description} cannot rank processes by I/O: it is " +
                 "older than this dashboard. Update Observer on that machine.",
                 []);
         }
 
-        return esito == ServiceOutcome.Ok && risposta is not null
+        return outcome == ServiceOutcome.Ok && response is not null
             ? new ProcessFetch(
                 ServiceOutcome.Ok,
                 string.Empty,
-                [.. risposta.Processes.Select(ProcessoMostrato.Da)])
-            : new ProcessFetch(esito, problema, []);
+                [.. response.Processes.Select(ProcessRowState.From)])
+            : new ProcessFetch(outcome, problem, []);
     }
 
     /// <inheritdoc />
     public async Task<KillFetch> KillProcessAsync(int pid, CancellationToken cancellationToken)
     {
-        Uri indirizzo = new(
+        Uri address = new(
             BaseAddress, "processes/" + pid.ToString(CultureInfo.InvariantCulture) + "/kill");
 
         try
         {
-            using HttpRequestMessage richiesta = new(HttpMethod.Post, indirizzo);
+            using HttpRequestMessage request = new(HttpMethod.Post, address);
 
             if (authorization is not null)
             {
-                richiesta.Headers.Authorization = authorization;
+                request.Headers.Authorization = authorization;
             }
 
-            using HttpResponseMessage risposta =
-                await http.SendAsync(richiesta, cancellationToken).ConfigureAwait(false);
+            using HttpResponseMessage response =
+                await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
-            if (risposta.IsSuccessStatusCode)
+            if (response.IsSuccessStatusCode)
             {
                 return new KillFetch(ServiceOutcome.Ok, string.Empty);
             }
 
-            return risposta.StatusCode switch
+            return response.StatusCode switch
             {
-                // Il servizio risponde 404 quando quel PID non c'e' piu'. Lo stesso codice
-                // arriverebbe da un servizio troppo vecchio per avere questo endpoint: e' una
-                // ambiguita' accettata, perche' client e servizio si aggiornano insieme e il
-                // caso frequente e' di gran lunga il primo — un processo puo' finire da solo
-                // fra il momento in cui compare nell'elenco e il clic.
+                // The service answers 404 when that PID is gone. The same code would come
+                // from a service too old to have this endpoint: that ambiguity is accepted,
+                // because client and service are updated together and the frequent case is by
+                // far the first one — a process can end on its own between the moment it
+                // appears in the list and the click.
                 HttpStatusCode.NotFound => new KillFetch(
-                    ServiceOutcome.RispostaInattesa,
+                    ServiceOutcome.UnexpectedResponse,
                     "That process is no longer running."),
 
                 HttpStatusCode.Forbidden => new KillFetch(
-                    ServiceOutcome.RispostaInattesa,
-                    $"{Endpoint.Descrizione} refused to terminate it: the operating system " +
+                    ServiceOutcome.UnexpectedResponse,
+                    $"{Endpoint.Description} refused to terminate it: the operating system " +
                     "protects that process."),
 
                 HttpStatusCode.Unauthorized => new KillFetch(
-                    ServiceOutcome.TokenRifiutato,
-                    $"{Endpoint.Descrizione} rejected the token."),
+                    ServiceOutcome.TokenRejected,
+                    $"{Endpoint.Description} rejected the token."),
 
                 _ => new KillFetch(
-                    ServiceOutcome.RispostaInattesa,
-                    $"{Endpoint.Descrizione} replied " +
-                    ((int)risposta.StatusCode).ToString(CultureInfo.InvariantCulture) +
+                    ServiceOutcome.UnexpectedResponse,
+                    $"{Endpoint.Description} replied " +
+                    ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture) +
                     ", which this application doesn't know how to interpret."),
             };
         }
         catch (HttpRequestException ex)
         {
-            ServiceOutcome esito = TransportFailure.Classifica(ex);
+            ServiceOutcome outcome = TransportFailure.Classify(ex);
 
-            return new KillFetch(esito, TestoDiTrasporto(esito, ex.Message));
+            return new KillFetch(outcome, DescribeTransportFailure(outcome, ex.Message));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return new KillFetch(ServiceOutcome.TempoScaduto, TestoTempoScaduto());
+            return new KillFetch(ServiceOutcome.TimedOut, DescribeTimeout());
         }
     }
 
     /// <inheritdoc />
     public void Dispose() => http.Dispose();
 
-    /// <summary>Legge un endpoint e traduce ogni modo di fallire in un esito con la sua frase.</summary>
-    /// <param name="percorsoRelativo">Il percorso da leggere.</param>
-    /// <param name="cancellationToken">Annullato alla chiusura.</param>
-    /// <param name="quandoNonTrovato">
-    /// Che cosa significa un 404 su QUESTO endpoint, quando significa qualcosa. Su un endpoint
-    /// aggiunto di recente vuol dire che il servizio e' piu' vecchio della dashboard: e' una
-    /// diagnosi precisa con un rimedio preciso, e senza, chi guarda legge "non so come
-    /// interpretarlo" e va a cercare un difetto che non c'e'.
+    /// <summary>Reads an endpoint and turns every way of failing into an outcome with its sentence.</summary>
+    /// <param name="relativePath">The path to read.</param>
+    /// <param name="cancellationToken">Cancelled on shutdown.</param>
+    /// <param name="notFoundExplanation">
+    /// What a 404 means on THIS endpoint, when it means anything. On a recently added endpoint
+    /// it means the service is older than the dashboard: that is a precise diagnosis with a
+    /// precise remedy, and without it whoever is watching reads "I don't know how to interpret
+    /// it" and goes looking for a defect that is not there.
     /// </param>
-    private async Task<(ServiceOutcome Outcome, string Problem, T? Value)> LeggiAsync<T>(
-        string percorsoRelativo,
+    private async Task<(ServiceOutcome Outcome, string Problem, T? Value)> ReadAsync<T>(
+        string relativePath,
         CancellationToken cancellationToken,
-        string? quandoNonTrovato = null)
+        string? notFoundExplanation = null)
         where T : class
     {
-        Uri indirizzo = new(BaseAddress, percorsoRelativo);
+        Uri address = new(BaseAddress, relativePath);
 
         try
         {
-            using HttpRequestMessage richiesta = new(HttpMethod.Get, indirizzo);
+            using HttpRequestMessage request = new(HttpMethod.Get, address);
             if (authorization is not null)
             {
-                richiesta.Headers.Authorization = authorization;
+                request.Headers.Authorization = authorization;
             }
 
-            // Una scadenza che copre anche la LETTURA, non solo gli header. Il Timeout di
-            // HttpClient si ferma agli header quando si legge con ResponseHeadersRead: misurato,
-            // un servizio che manda gli header e poi smette di scrivere teneva il giro fermo
-            // venticinque secondi senza che nessuno annullasse niente, e la finestra non diceva
-            // "Timed out" - smetteva di aggiornarsi in silenzio. Con la compressione quella fase
-            // si allunga ancora: il corpo arriva a pezzi e si decomprime li' dentro.
-            using CancellationTokenSource scadenza =
+            // A deadline that covers the READ as well, not only the headers. HttpClient's
+            // Timeout stops at the headers when you read with ResponseHeadersRead: measured,
+            // a service that sends the headers and then stops writing held the loop frozen for
+            // twenty-five seconds with nobody cancelling anything, and the window did not say
+            // "Timed out" - it silently stopped updating. With compression that phase stretches
+            // further still: the body arrives in pieces and is decompressed in there.
+            using CancellationTokenSource deadline =
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-            scadenza.CancelAfter(RequestTimeout);
+            deadline.CancelAfter(RequestTimeout);
 
-            using HttpResponseMessage risposta =
-                await http.SendAsync(richiesta, HttpCompletionOption.ResponseHeadersRead, scadenza.Token)
+            using HttpResponseMessage response =
+                await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token)
                     .ConfigureAwait(false);
 
-            string codice = ((int)risposta.StatusCode).ToString(CultureInfo.InvariantCulture);
+            string code = ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture);
 
-            if (risposta.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             {
                 return (
-                    ServiceOutcome.TokenRifiutato,
-                    Endpoint.Kind == EndpointKind.Locale
-                        ? TestoRifiutoLocale(codice)
-                        : TestoTokenRifiutato(codice),
+                    ServiceOutcome.TokenRejected,
+                    Endpoint.Kind == EndpointKind.Local
+                        ? DescribeLocalRejection(code)
+                        : DescribeRejectedToken(code),
                     null);
             }
 
-            if (risposta.StatusCode == HttpStatusCode.ServiceUnavailable)
+            if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
             {
                 return (
-                    ServiceOutcome.NonAncoraPronto,
-                    $"The service on {Endpoint.Descrizione} is listening but hasn't produced its first " +
+                    ServiceOutcome.NotReadyYet,
+                    $"The service on {Endpoint.Description} is listening but hasn't produced its first " +
                     "reading yet. This usually clears on its own after a second or two.",
                     null);
             }
 
-            // Un 404 su un endpoint che questa versione del client conosce e quel servizio no
-            // NON e' una risposta inattesa: e' un servizio piu' vecchio, e aspettare non lo
-            // aggiorna. Percio' l'esito e' VersioneIncompatibile, che la barra di stato mostra
-            // rossa subito invece di lasciarla in "Connecting".
-            if (risposta.StatusCode == HttpStatusCode.NotFound && quandoNonTrovato is { } spiegazione)
+            // A 404 on an endpoint this version of the client knows and that service does not
+            // is NOT an unexpected answer: it is an older service, and waiting does not update
+            // it. So the outcome is IncompatibleVersion, which the status bar shows red right
+            // away instead of leaving it on "Connecting".
+            if (response.StatusCode == HttpStatusCode.NotFound && notFoundExplanation is { } explanation)
             {
-                return (ServiceOutcome.VersioneIncompatibile, spiegazione, null);
+                return (ServiceOutcome.IncompatibleVersion, explanation, null);
             }
 
-            if (!risposta.IsSuccessStatusCode)
+            if (!response.IsSuccessStatusCode)
             {
                 return (
-                    ServiceOutcome.RispostaInattesa,
-                    $"The service on {Endpoint.Descrizione} replied {codice} ({risposta.ReasonPhrase}), " +
+                    ServiceOutcome.UnexpectedResponse,
+                    $"The service on {Endpoint.Description} replied {code} ({response.ReasonPhrase}), " +
                     "which this application doesn't know how to interpret.",
                     null);
             }
 
-            T? valore = await risposta.Content
-                .ReadFromJsonAsync<T>(WireOptions, scadenza.Token)
+            T? value = await response.Content
+                .ReadFromJsonAsync<T>(WireOptions, deadline.Token)
                 .ConfigureAwait(false);
 
-            return valore is null
-                ? (ServiceOutcome.RispostaIncomprensibile, TestoRispostaIlleggibile("the response was empty"), null)
-                : (ServiceOutcome.Ok, string.Empty, valore);
+            return value is null
+                ? (ServiceOutcome.UnreadableResponse, DescribeUnreadableResponse("the response was empty"), null)
+                : (ServiceOutcome.Ok, string.Empty, value);
         }
         catch (JsonException ex)
         {
-            return (ServiceOutcome.RispostaIncomprensibile, TestoRispostaIlleggibile(ex.Message), null);
+            return (ServiceOutcome.UnreadableResponse, DescribeUnreadableResponse(ex.Message), null);
         }
         catch (NotSupportedException ex)
         {
-            // Content-Type diverso da JSON: capita puntando per sbaglio a un altro servizio.
-            return (ServiceOutcome.RispostaIncomprensibile, TestoRispostaIlleggibile(ex.Message), null);
+            // A Content-Type other than JSON: it happens when you point at another service by mistake.
+            return (ServiceOutcome.UnreadableResponse, DescribeUnreadableResponse(ex.Message), null);
         }
         catch (HttpRequestException ex)
         {
-            // Un fallimento di TLS su un punto con impronta fissata NON e' "non raggiungibile",
-            // e confonderli sarebbe il peggiore dei due errori: il primo si aspetta, questo no.
-            // La macchina risponde eccome - e' l'identita' a non tornare.
-            // HaRifiutato e non solo "c'e' un fissaggio": una AuthenticationException puo'
-            // arrivare da molti guasti TLS che col certificato non c'entrano, e raccontarli
-            // all'utente come "qualcuno si sta mettendo in mezzo" sarebbe un'accusa pesante
-            // fatta senza prove.
-            if (fissaggio is { HaRifiutato: true } && ex.InnerException is AuthenticationException)
+            // A TLS failure on an endpoint with a pinned fingerprint is NOT "unreachable",
+            // and confusing the two would be the worse of the two errors: the first one is
+            // expected, this one is not. The machine answers all right - it is the identity
+            // that does not match. HasRejected and not just "a fingerprint is pinned": an
+            // AuthenticationException can come from many TLS faults that have nothing to do
+            // with the certificate, and telling the user about those as "somebody is in the
+            // middle" would be a serious accusation made without evidence.
+            if (pinning is { HasRejected: true } && ex.InnerException is AuthenticationException)
             {
                 return (
-                    ServiceOutcome.ImprontaNonCorrisponde,
-                    fissaggio.Spiegazione(Endpoint.Descrizione),
+                    ServiceOutcome.FingerprintMismatch,
+                    pinning.DescribeMismatch(Endpoint.Description),
                     null);
             }
 
-            ServiceOutcome esito = TransportFailure.Classifica(ex);
+            ServiceOutcome outcome = TransportFailure.Classify(ex);
 
-            return (esito, TestoDiTrasporto(esito, ex.Message), null);
+            return (outcome, DescribeTransportFailure(outcome, ex.Message), null);
         }
         catch (IOException ex)
         {
-            // La connessione caduta MENTRE il corpo arriva - la macchina remota che si riavvia,
-            // un servizio aggiornato, un singhiozzo del Wi-Fi - lancia IOException, che non e'
-            // una HttpRequestException. Senza questo ramo risaliva fino al catch generale del
-            // ciclo, che NON riprova: la finestra diceva "Updates stopped, close and reopen" e
-            // restava morta per tutta la sessione, per un guasto che si sarebbe risolto da solo
-            // al giro dopo. Classifica scende lungo le InnerException a caccia della
-            // SocketException, quindi un reset diventa NonRaggiungibile e un timeout del socket
-            // TempoScaduto, invece di una diagnosi sola e sbagliata per tutti.
-            ServiceOutcome esito = TransportFailure.Classifica(ex);
+            // A connection dropped WHILE the body is arriving - the remote machine rebooting,
+            // a service update, a Wi-Fi hiccup - throws IOException, which is not an
+            // HttpRequestException. Without this branch it climbed up to the loop's general
+            // catch, which does NOT retry: the window said "Updates stopped, close and reopen"
+            // and stayed dead for the whole session, over a fault that would have cleared
+            // itself on the next round. Classify walks down the InnerExceptions hunting for
+            // the SocketException, so a reset becomes Unreachable and a socket timeout
+            // TimedOut, instead of one single diagnosis, wrong for all of them.
+            ServiceOutcome outcome = TransportFailure.Classify(ex);
 
-            return (esito, TestoDiTrasporto(esito, ex.Message), null);
+            return (outcome, DescribeTransportFailure(outcome, ex.Message), null);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            // Scaduto il timeout della richiesta, non una chiusura dell'applicazione: qui
-            // distinguere i due casi e' cio' che evita di mostrare un errore mentre si esce.
-            return (ServiceOutcome.TempoScaduto, TestoTempoScaduto(), null);
+            // The request timeout expired, not an application shutdown: telling the two cases
+            // apart here is what keeps an error from being shown while quitting.
+            return (ServiceOutcome.TimedOut, DescribeTimeout(), null);
         }
     }
 
-    /// <summary>Sceglie la frase in base a COME il collegamento e' fallito.</summary>
-    private string TestoDiTrasporto(ServiceOutcome esito, string dettaglio) => esito switch
+    /// <summary>Picks the sentence according to HOW the connection failed.</summary>
+    private string DescribeTransportFailure(ServiceOutcome outcome, string detail) => outcome switch
     {
-        ServiceOutcome.ConnessioneRifiutata => TestoRifiutato(dettaglio),
-        ServiceOutcome.TempoScaduto => TestoTempoScaduto(),
-        _ => TestoNonRaggiungibile(dettaglio),
+        ServiceOutcome.ConnectionRefused => DescribeConnectionRefused(detail),
+        ServiceOutcome.TimedOut => DescribeTimeout(),
+        _ => DescribeUnreachable(detail),
     };
 
-    // Un rifiuto e' la risposta piu' informativa che un guasto possa dare: il pacchetto e'
-    // arrivato, la macchina ha risposto, e cio' che manca e' soltanto qualcuno in ascolto su
-    // quella porta. Dirlo evita di mandare a cercare il firewall, che e' dove porterebbe la
-    // frase generica.
-    private string TestoRifiutato(string dettaglio) =>
-        Endpoint.Kind == EndpointKind.Locale
+    // A refusal is the most informative answer a fault can give: the packet arrived, the
+    // machine replied, and all that is missing is somebody listening on that port. Saying so
+    // avoids sending people off to look at the firewall, which is where the generic sentence
+    // would lead.
+    private string DescribeConnectionRefused(string detail) =>
+        Endpoint.Kind == EndpointKind.Local
             ? "The Observer service isn't running on this machine: the local channel refused the " +
-              "connection. Start the service, or run \"observer doctor\". Technical detail: " + dettaglio
-            : $"{Endpoint.Descrizione} answered, but nothing is listening on port " +
+              "connection. Start the service, or run \"observer doctor\". Technical detail: " + detail
+            : $"{Endpoint.Description} answered, but nothing is listening on port " +
               Endpoint.BaseAddress.Port.ToString(CultureInfo.InvariantCulture) +
               ". The machine is reachable, so Observer is stopped there or it is on another port. " +
-              $"Technical detail: {dettaglio}";
+              $"Technical detail: {detail}";
 
-    // Il gemello opposto, ed e' il caso che e' costato un pomeriggio. Un servizio spento
-    // RIFIUTA, quindi il silenzio parla d'altro: una macchina spenta, oppure qualcosa che
-    // scarta i pacchetti. Su Windows la regola del firewall vale su un profilo per volta, e
-    // una macchina in dominio su una rete di casa la classifica come pubblica.
-    private string TestoTempoScaduto() =>
-        Endpoint.Kind == EndpointKind.Locale
+    // The opposite twin, and it is the case that cost an afternoon. A stopped service
+    // REFUSES, so silence is saying something else: a machine that is off, or something
+    // dropping the packets. On Windows a firewall rule applies to one profile at a time, and
+    // a domain-joined machine on a home network classifies it as public.
+    private string DescribeTimeout() =>
+        Endpoint.Kind == EndpointKind.Local
             ? "The Observer service on this machine didn't answer within " +
               RequestTimeout.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture) +
               " seconds. It is listening but not replying: run \"observer doctor\"."
-            : $"{Endpoint.Descrizione} didn't answer within " +
+            : $"{Endpoint.Description} didn't answer within " +
               RequestTimeout.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture) +
               " seconds, and nothing refused the connection either. Either that machine is off, " +
               "or something is dropping the packets: check that inbound TCP " +
               Endpoint.BaseAddress.Port.ToString(CultureInfo.InvariantCulture) +
               " is allowed there, on the profile that network is classified as.";
 
-    private string TestoNonRaggiungibile(string dettaglio) =>
-        Endpoint.Kind == EndpointKind.Locale
+    private string DescribeUnreachable(string detail) =>
+        Endpoint.Kind == EndpointKind.Local
             ? "The Observer service isn't answering on this machine. Check that it is running, " +
-              "or start it by hand. Technical detail: " + dettaglio
-            : $"Can't reach the service on {Endpoint.Descrizione}. Check that the machine is on, " +
+              "or start it by hand. Technical detail: " + detail
+            : $"Can't reach the service on {Endpoint.Description}. Check that the machine is on, " +
               "that Observer is running there, and that the address is correct. " +
-              $"Technical detail: {dettaglio}";
+              $"Technical detail: {detail}";
 
-    private string TestoRispostaIlleggibile(string dettaglio) =>
-        $"{Endpoint.Descrizione} responded, but not with a sample this application can read. " +
-        $"It probably isn't Observer. Technical detail: {dettaglio}";
+    private string DescribeUnreadableResponse(string detail) =>
+        $"{Endpoint.Description} responded, but not with a sample this application can read. " +
+        $"It probably isn't Observer. Technical detail: {detail}";
 
-    /// <summary>Il 401 sul canale locale: non c'e' alcun token da correggere.</summary>
+    /// <summary>The 401 on the local channel: there is no token to correct.</summary>
     /// <remarks>
-    /// Il testo del percorso remoto manderebbe l'utente a cercare un token che sulla propria
-    /// macchina non esiste. Questo caso non dovrebbe accadere: quando accade, il posto giusto
-    /// dove guardare e' la diagnosi del servizio, non un file di configurazione.
+    /// The text for the remote path would send the user looking for a token that does not exist
+    /// on their own machine. This case should not happen: when it does, the right place to look
+    /// is the service's diagnostics, not a configuration file.
     /// </remarks>
-    private static string TestoRifiutoLocale(string codice) =>
-        $"The Observer service on this machine refused the request ({codice}), even though it " +
+    private static string DescribeLocalRejection(string code) =>
+        $"The Observer service on this machine refused the request ({code}), even though it " +
         "came in on the local channel. It should not: the service serves local, identified " +
         "callers without any credential. Run \"observer doctor\" to see what it reports.";
 
-    private string TestoTokenRifiutato(string codice) =>
-        $"The service on {Endpoint.Descrizione} rejected the token ({codice}). The token in use " +
-        $"comes {Endpoint.Origine}, and it has to be the one that machine reports when you run " +
+    private string DescribeRejectedToken(string code) =>
+        $"The service on {Endpoint.Description} rejected the token ({code}). The token in use " +
+        $"comes {Endpoint.Origin}, and it has to be the one that machine reports when you run " +
         "\"observer share\" on it.";
 }

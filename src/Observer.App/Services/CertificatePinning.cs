@@ -6,113 +6,114 @@ using Observer.Core.Security;
 namespace Observer.App.Services;
 
 /// <summary>
-/// Decide se il certificato che arriva dalla rete e' quello della macchina giusta.
+/// Decides whether the certificate arriving from the network is the right machine's.
 /// </summary>
 /// <remarks>
-/// Il certificato di Observer e' <b>autofirmato</b>: nessuna autorita' lo garantisce, e la
-/// validazione ordinaria di TLS lo rifiuterebbe sempre. Al suo posto c'e' un confronto con
-/// l'impronta presa a mano dalla macchina stessa, con <c>observer share</c>.
+/// Observer's certificate is <b>self-signed</b>: no authority vouches for it, and ordinary TLS
+/// validation would always reject it. In its place there is a comparison against the
+/// fingerprint taken by hand from the machine itself, with <c>observer share</c>.
 /// <para>
-/// Gli errori di catena vengono ignorati <b>di proposito</b>, e non e' una scorciatoia: una
-/// catena che non porta a nessuna autorita' e' esattamente cio' che ci si aspetta qui. Cio' che
-/// NON viene ignorato e' l'identita', ed e' l'unica cosa che conta: senza questo confronto, chi
-/// riesce a mettersi in mezzo presenta il proprio certificato, il collegamento riesce, e il
-/// token gli arriva addosso.
+/// Chain errors are ignored <b>deliberately</b>, and it is not a shortcut: a chain that leads
+/// to no authority is exactly what is expected here. What is NOT ignored is the identity, and
+/// that is the only thing that matters: without this comparison, whoever manages to sit in the
+/// middle presents their own certificate, the connection succeeds, and the token lands
+/// straight in their hands.
 /// </para>
 /// <para>
-/// L'ultima impronta vista viene conservata per poterla <b>mostrare</b>. Dopo una
-/// reinstallazione del servizio l'impronta cambia per un motivo legittimo, e senza vedere
-/// quella nuova l'utente non ha modo di aggiornare la propria configurazione.
+/// The last fingerprint seen is kept so that it can be <b>shown</b>. After the service is
+/// reinstalled the fingerprint changes for a legitimate reason, and without seeing the new one
+/// the user has no way to update their own configuration.
 /// </para>
 /// </remarks>
 public sealed class CertificatePinning
 {
-    private string? ultimaVista;
-    private int rifiutato;
+    private string? lastSeenFingerprint;
+    private int rejected;
 
-    /// <summary>Costruisce il confronto su un'impronta attesa.</summary>
-    /// <param name="impronta">L'impronta che quella macchina deve presentare.</param>
-    public CertificatePinning(string impronta)
+    /// <summary>Builds the comparison against an expected fingerprint.</summary>
+    /// <param name="fingerprint">The fingerprint that machine must present.</param>
+    public CertificatePinning(string fingerprint)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(impronta);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fingerprint);
 
-        Attesa = impronta;
+        ExpectedFingerprint = fingerprint;
     }
 
-    /// <summary>L'impronta che ci si aspetta.</summary>
-    public string Attesa { get; }
+    /// <summary>The fingerprint that is expected.</summary>
+    public string ExpectedFingerprint { get; }
 
-    /// <summary>L'ultima impronta arrivata dalla rete, oppure null se non ne e' arrivata.</summary>
-    public string? UltimaVista => Volatile.Read(ref ultimaVista);
+    /// <summary>The last fingerprint that arrived from the network, or null if none has.</summary>
+    public string? LastSeenFingerprint => Volatile.Read(ref lastSeenFingerprint);
 
-    /// <summary>Vero se l'ultima volta che un certificato e' stato esaminato e' stato respinto.</summary>
+    /// <summary>True if the last time a certificate was examined it was rejected.</summary>
     /// <remarks>
-    /// Serve a non attribuire al fissaggio guasti che non sono suoi. Una connessione TLS puo'
-    /// fallire per molte ragioni - protocolli incompatibili, un intermediario che chiude, un
-    /// server che non parla TLS affatto - e tutte arrivano come la stessa eccezione. Senza
-    /// questo, un guasto qualunque verrebbe raccontato all'utente come "qualcuno si sta
-    /// mettendo in mezzo", che e' un'accusa pesante da fare senza prove.
+    /// It is there so that faults which are not the pinning's do not get blamed on it. A TLS
+    /// connection can fail for many reasons - incompatible protocols, an intermediary that
+    /// closes it, a server that does not speak TLS at all - and they all arrive as the same
+    /// exception. Without this, any fault whatsoever would be reported to the user as "someone is
+    /// standing in the middle", which is a serious accusation to make without evidence.
     /// <para>
-    /// Il callback NON viene invocato quando la connessione viene riusata, quindi la sola
-    /// <see cref="UltimaVista"/> potrebbe essere vecchia: e' questo indicatore, azzerato a ogni
-    /// esame riuscito, a dire se il rifiuto e' di adesso.
+    /// The callback is NOT invoked when the connection is reused, so
+    /// <see cref="LastSeenFingerprint"/> on its own could be stale: it is this flag, cleared on every
+    /// successful examination, that says whether the rejection is the current one.
     /// </para>
     /// </remarks>
-    public bool HaRifiutato => Volatile.Read(ref rifiutato) != 0;
+    public bool HasRejected => Volatile.Read(ref rejected) != 0;
 
-    /// <summary>Un handler che accetta solo quella macchina.</summary>
-    /// <returns>L'handler, gia' configurato.</returns>
+    /// <summary>A handler that accepts only that machine.</summary>
+    /// <returns>The handler, already configured.</returns>
     public SocketsHttpHandler Handler()
     {
-        // Questo e' il percorso di RETE, quindi e' qui che i byte costano: senza questa riga il
-        // servizio non comprimerebbe niente, perche' la compressione si negozia per richiesta e
-        // un client che non manda Accept-Encoding riceve il chiaro. Le due meta' stanno insieme
-        // o non stanno. Il canale locale NON la mette, di proposito: li' i byte non attraversano
-        // niente, e comprimerli sarebbe CPU spesa dalla macchina che questo programma misura.
+        // This is the NETWORK path, so this is where the bytes cost: without this line the
+        // service would compress nothing, because compression is negotiated per request and a
+        // client that does not send Accept-Encoding gets it in the clear. The two halves go
+        // together or not at all. The local channel does NOT set it, deliberately: there the
+        // bytes cross nothing, and compressing them would be CPU spent by the very machine
+        // this program measures.
         SocketsHttpHandler handler = new() { AutomaticDecompression = DecompressionMethods.All };
 
-        handler.SslOptions.RemoteCertificateValidationCallback = (_, presentato, _, _) =>
+        handler.SslOptions.RemoteCertificateValidationCallback = (_, presentedCertificate, _, _) =>
         {
-            if (presentato is not X509Certificate2 certificato)
+            if (presentedCertificate is not X509Certificate2 certificate)
             {
-                Volatile.Write(ref ultimaVista, null);
-                Volatile.Write(ref rifiutato, 1);
+                Volatile.Write(ref lastSeenFingerprint, null);
+                Volatile.Write(ref rejected, 1);
 
                 return false;
             }
 
-            string vista = CertificateFingerprint.From(certificato.RawDataMemory.Span);
-            bool corrisponde = CertificateFingerprint.Match(Attesa, vista);
+            string seenFingerprint = CertificateFingerprint.From(certificate.RawDataMemory.Span);
+            bool matches = CertificateFingerprint.Match(ExpectedFingerprint, seenFingerprint);
 
-            Volatile.Write(ref ultimaVista, vista);
-            Volatile.Write(ref rifiutato, corrisponde ? 0 : 1);
+            Volatile.Write(ref lastSeenFingerprint, seenFingerprint);
+            Volatile.Write(ref rejected, matches ? 0 : 1);
 
-            return corrisponde;
+            return matches;
         };
 
         return handler;
     }
 
-    /// <summary>La frase da mostrare quando il certificato non e' quello atteso.</summary>
-    /// <param name="descrizione">Come si chiama la macchina interrogata.</param>
-    /// <returns>Il testo per la barra di stato.</returns>
+    /// <summary>The sentence to show when the certificate is not the expected one.</summary>
+    /// <param name="description">What the machine being queried is called.</param>
+    /// <returns>The text for the status bar.</returns>
     /// <remarks>
-    /// Dice tutte e due le impronte. Un messaggio che si limita a "non corrisponde" lascia
-    /// l'utente senza il valore nuovo, cioe' senza il modo di distinguere una reinstallazione
-    /// da un attacco e senza il dato da incollare per rimettere le cose a posto.
+    /// It gives both fingerprints. A message that goes no further than "does not match" leaves
+    /// the user without the new value, that is, without any way to tell a reinstall from an
+    /// attack and without the value to paste to put things right.
     /// </remarks>
-    public string Spiegazione(string descrizione)
+    public string DescribeMismatch(string description)
     {
-        string vista = UltimaVista is { } arrivata
-            ? CertificateFingerprint.ForHumans(arrivata)
+        string seenFingerprint = LastSeenFingerprint is { } received
+            ? CertificateFingerprint.ForHumans(received)
             : "none - the machine presented no certificate at all";
 
         return
-            $"{descrizione} presented a certificate that is not the one pinned for it, so the " +
+            $"{description} presented a certificate that is not the one pinned for it, so the " +
             "connection was refused before anything was sent. Nothing was disclosed: the token " +
             "never left this machine." + Environment.NewLine +
-            "Expected: " + CertificateFingerprint.ForHumans(Attesa) + Environment.NewLine +
-            "Received: " + vista + Environment.NewLine +
+            "Expected: " + CertificateFingerprint.ForHumans(ExpectedFingerprint) + Environment.NewLine +
+            "Received: " + seenFingerprint + Environment.NewLine +
             "If Observer was reinstalled on that machine this is expected, and the fix is to run " +
             "\"observer share\" there and copy the new fingerprint into this machine's " +
             "machines.json. If it was not reinstalled, do NOT copy the new value: this is what a " +

@@ -24,10 +24,10 @@ public class MachineDirectoryTests
         CertificateFingerprint.From(SHA256.HashData("una macchina"u8.ToArray()));
 
     private static ClientConfigurationResult NienteAltro() =>
-        new(ObserverEndpoint.CanaleLocale(), null);
+        new(ObserverEndpoint.LocalChannel(), null);
 
-    private static MachineListResult Leggi(string json, ISecretStore? deposito = null) =>
-        MachineDirectory.Resolve(json, NienteAltro(), deposito ?? DepositoFinto.Con("laptop", "il-token"));
+    private static MachineListResult Leggi(string json, ISecretStore? store = null) =>
+        MachineDirectory.Resolve(json, NienteAltro(), store ?? DepositoFinto.Con("laptop", "il-token"));
 
     /// <summary>Una voce del file. Il token si passa solo per provare che viene rifiutato.</summary>
     private static string Voce(
@@ -50,7 +50,7 @@ public class MachineDirectoryTests
 
         ObserverEndpoint prima = Assert.Single(elenco.Machines);
 
-        Assert.Equal(EndpointKind.Locale, prima.Kind);
+        Assert.Equal(EndpointKind.Local, prima.Kind);
         Assert.Empty(elenco.Problems);
     }
 
@@ -64,9 +64,9 @@ public class MachineDirectoryTests
 
         ObserverEndpoint remota = elenco.Machines[1];
 
-        Assert.Equal(EndpointKind.Remoto, remota.Kind);
-        Assert.Equal("laptop", remota.NomeVisibile);
-        Assert.True(remota.ImprontaFissata);
+        Assert.Equal(EndpointKind.Remote, remota.Kind);
+        Assert.Equal("laptop", remota.DisplayName);
+        Assert.True(remota.IsFingerprintPinned);
         Assert.EndsWith("/", remota.BaseAddress.ToString(), StringComparison.Ordinal);
     }
 
@@ -172,7 +172,7 @@ public class MachineDirectoryTests
         MachineListResult elenco = Leggi("{ non sono json");
 
         Assert.Single(elenco.Machines);
-        Assert.Equal(EndpointKind.Locale, elenco.Machines[0].Kind);
+        Assert.Equal(EndpointKind.Local, elenco.Machines[0].Kind);
         Assert.Single(elenco.Problems);
     }
 
@@ -181,7 +181,7 @@ public class MachineDirectoryTests
     {
         // Chi aveva gia' configurato una macchina non deve rifare niente solo perche' adesso
         // se ne possono elencare tante.
-        ObserverEndpoint vecchia = ObserverEndpoint.Remoto(
+        ObserverEndpoint vecchia = ObserverEndpoint.Remote(
             new Uri("https://altra:5058/"), "token", "dal vecchio client.json", Impronta);
 
         MachineListResult elenco = MachineDirectory.Resolve(
@@ -199,7 +199,7 @@ public class MachineDirectoryTests
         // da incollare per rimettere le cose a posto.
         CertificatePinning fissaggio = new(Impronta);
 
-        string spiegazione = fissaggio.Spiegazione("laptop");
+        string spiegazione = fissaggio.DescribeMismatch("laptop");
 
         Assert.Contains("Expected:", spiegazione, StringComparison.Ordinal);
         Assert.Contains("Received:", spiegazione, StringComparison.Ordinal);
@@ -216,7 +216,7 @@ public class MachineDirectoryTests
         // collegamento viene rifiutato durante l'handshake, prima di spedire qualsiasi cosa.
         CertificatePinning fissaggio = new(Impronta);
 
-        Assert.Contains("never left this machine", fissaggio.Spiegazione("laptop"), StringComparison.Ordinal);
+        Assert.Contains("never left this machine", fissaggio.DescribeMismatch("laptop"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -226,7 +226,7 @@ public class MachineDirectoryTests
         // ripiego a macchina singola entrava senza passare da alcun controllo. Il risultato
         // sarebbe stato il token spedito in chiaro una volta al secondo, cioe' esattamente cio'
         // che la chiusura della porta doveva impedire.
-        ObserverEndpoint inChiaro = ObserverEndpoint.Remoto(
+        ObserverEndpoint inChiaro = ObserverEndpoint.Remote(
             new Uri("http://vecchia:5057/"), "token", "dal vecchio client.json", Impronta);
 
         MachineListResult elenco = MachineDirectory.Resolve(
@@ -240,7 +240,7 @@ public class MachineDirectoryTests
     public void IlVecchioClientJsonSenzaImprontaNonEntra()
     {
         // Stesso buco, altra meta': cifrato ma verso nessuno in particolare.
-        ObserverEndpoint senzaImpronta = ObserverEndpoint.Remoto(
+        ObserverEndpoint senzaImpronta = ObserverEndpoint.Remote(
             new Uri("https://vecchia:5058/"), "token", "dal vecchio client.json");
 
         MachineListResult elenco = MachineDirectory.Resolve(
@@ -256,7 +256,7 @@ public class MachineDirectoryTests
         // JSON valido ma senza "machines": non e' un file vuoto che va bene, e' un file che
         // qualcuno credeva di aver scritto. Azzerare tutto in silenzio farebbe sparire anche la
         // configurazione precedente, e chi guarda vedrebbe una macchina sparire senza motivo.
-        ObserverEndpoint vecchia = ObserverEndpoint.Remoto(
+        ObserverEndpoint vecchia = ObserverEndpoint.Remote(
             new Uri("https://altra:5058/"), "token", "dal vecchio client.json", Impronta);
 
         MachineListResult elenco = MachineDirectory.Resolve(
@@ -279,10 +279,10 @@ public class MachineDirectoryTests
 
         public static DepositoFinto Con(string nome, string segreto)
         {
-            DepositoFinto deposito = new(protesta: null);
-            deposito.segreti[nome] = segreto;
+            DepositoFinto store = new(protesta: null);
+            store.segreti[nome] = segreto;
 
-            return deposito;
+            return store;
         }
 
         public static DepositoFinto CheProtesta(string motivo) => new(motivo);

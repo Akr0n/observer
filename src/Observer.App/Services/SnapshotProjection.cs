@@ -4,31 +4,31 @@ using Observer.Core.Metrics.Memory;
 namespace Observer.App.Services;
 
 /// <summary>
-/// Quanto e' grave cio' che una riga o un gruppo sta dicendo. Governa solo il colore.
+/// How serious a row's or a group's message is. It governs the colour only.
 /// </summary>
 public enum MetricSeverity
 {
-    /// <summary>Valore valido.</summary>
+    /// <summary>Valid value.</summary>
     Ok = 0,
 
-    /// <summary>In avvio: manca il secondo campione. Normale, non un guasto.</summary>
-    InAttesa = 1,
+    /// <summary>Starting up: the second sample is missing. Normal, not a fault.</summary>
+    Warmup = 1,
 
-    /// <summary>Non misurabile su questa piattaforma. E' un'informazione, non un errore.</summary>
-    NonMisurabile = 2,
+    /// <summary>Not measurable on this platform. That is information, not an error.</summary>
+    Unsupported = 2,
 
-    /// <summary>Doveva esserci un valore e non c'e'.</summary>
-    Problema = 3,
+    /// <summary>There should have been a value and there isn't.</summary>
+    Problem = 3,
 }
 
 /// <summary>
-/// Una riga della schermata.
+/// A row on the screen.
 /// </summary>
-/// <param name="Key">Identita' stabile della riga, per aggiornarla senza ricrearla.</param>
-/// <param name="Label">Nome leggibile, con l'istanza fra parentesi quando c'e'.</param>
-/// <param name="Display">Il valore formattato, oppure il motivo per cui manca.</param>
-/// <param name="Fraction">Frazione 0..1 per la barra, null quando non e' una percentuale.</param>
-/// <param name="Severity">Gravita' di cio' che la riga sta dicendo.</param>
+/// <param name="Key">Stable identity of the row, so it can be updated without recreating it.</param>
+/// <param name="Label">Readable name, with the instance in parentheses when there is one.</param>
+/// <param name="Display">The formatted value, or the reason it is missing.</param>
+/// <param name="Fraction">Fraction 0..1 for the bar, null when it is not a percentage.</param>
+/// <param name="Severity">Severity of what the row is saying.</param>
 public sealed record MetricRowState(
     string Key,
     string Label,
@@ -37,16 +37,16 @@ public sealed record MetricRowState(
     MetricSeverity Severity);
 
 /// <summary>
-/// Un riquadro della schermata: un collector con le sue righe.
+/// A panel on the screen: a collector with its rows.
 /// </summary>
-/// <param name="CollectorId">Identificatore del collector.</param>
-/// <param name="Title">Titolo leggibile del riquadro.</param>
+/// <param name="CollectorId">Identifier of the collector.</param>
+/// <param name="Title">Readable title of the panel.</param>
 /// <param name="Note">
-/// Motivo per cui il collector e' degradato, oppure null. E' cio' che riempie il riquadro
-/// quando <paramref name="Rows"/> e' vuoto, perche' un riquadro vuoto non si diagnostica.
+/// Reason the collector is degraded, or null. It is what fills the panel when
+/// <paramref name="Rows"/> is empty, because an empty panel cannot be diagnosed.
 /// </param>
-/// <param name="Severity">Gravita' dello stato del collector.</param>
-/// <param name="Rows">Le righe misurate.</param>
+/// <param name="Severity">Severity of the collector's status.</param>
+/// <param name="Rows">The measured rows.</param>
 public sealed record MetricGroupState(
     string CollectorId,
     string Title,
@@ -55,36 +55,36 @@ public sealed record MetricGroupState(
     IReadOnlyList<MetricRowState> Rows);
 
 /// <summary>
-/// Traduce un campionamento nelle righe da disegnare.
+/// Translates a snapshot into the rows to draw.
 /// </summary>
 /// <remarks>
-/// E' una funzione pura: campionamento e catalogo entrano, righe escono. E' il pezzo
-/// dell'applicazione che si puo' verificare con dei test invece che a occhio, ed e' anche
-/// quello dove i difetti sono silenziosi — uno stato degradato tradotto in uno zero
-/// somiglia troppo a una misura vera.
+/// It is a pure function: a snapshot and a catalog go in, rows come out. It is the part of
+/// the application that can be checked with tests instead of by eye, and it is also the one
+/// where defects are silent — a degraded status turned into a zero looks too much like a
+/// real measurement.
 /// </remarks>
 public static class SnapshotProjection
 {
-    // Il servizio non dichiara un nome leggibile per il COLLECTOR, solo per le metriche.
-    // Questa tabellina serve a non intitolare un riquadro "memory": chi non programma legge
-    // "Memory". Un collector sconosciuto tiene il proprio identificatore, quindi
-    // aggiungerne uno nuovo al servizio non richiede di toccare questo file.
-    private static readonly Dictionary<string, string> TitoliNoti = new(StringComparer.Ordinal)
+    // The service declares no readable name for the COLLECTOR, only for the metrics. This
+    // little table is here so a panel is not titled "memory": someone who does not program
+    // reads "Memory". An unknown collector keeps its own identifier, so adding a new one to
+    // the service does not require touching this file.
+    private static readonly Dictionary<string, string> KnownTitles = new(StringComparer.Ordinal)
     {
         ["cpu"] = "CPU",
         ["memory"] = "Memory",
         ["disk"] = "Disks",
     };
 
-    /// <summary>Costruisce i riquadri da mostrare.</summary>
-    /// <param name="snapshot">L'ultimo campionamento ricevuto.</param>
-    /// <param name="catalog">Il catalogo, oppure <see cref="MetricCatalog.Empty"/>.</param>
+    /// <summary>Builds the panels to show.</summary>
+    /// <param name="snapshot">The last snapshot received.</param>
+    /// <param name="catalog">The catalog, or <see cref="MetricCatalog.Empty"/>.</param>
     public static IReadOnlyList<MetricGroupState> Project(MachineSnapshot snapshot, MetricCatalog catalog)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(catalog);
 
-        List<MetricGroupState> gruppi = new(snapshot.Collectors?.Count ?? 0);
+        List<MetricGroupState> groups = new(snapshot.Collectors?.Count ?? 0);
 
         foreach (MetricSnapshot collector in snapshot.Collectors ?? [])
         {
@@ -93,134 +93,133 @@ public static class SnapshotProjection
                 continue;
             }
 
-            List<MetricRowState> righe = [];
+            List<MetricRowState> rows = [];
 
-            foreach (MetricPoint punto in collector.Points ?? [])
+            foreach (MetricPoint point in collector.Points ?? [])
             {
-                if (punto is not null)
+                if (point is not null)
                 {
-                    righe.Add(Riga(collector.CollectorId, punto, catalog));
+                    rows.Add(RowFor(collector.CollectorId, point, catalog));
                 }
             }
 
-            Disambigua(righe, catalog);
-            RipiegaLaStima(righe);
+            Disambiguate(rows, catalog);
+            FoldEstimateIntoValue(rows);
 
-            gruppi.Add(new MetricGroupState(
+            groups.Add(new MetricGroupState(
                 collector.CollectorId,
-                Titolo(collector.CollectorId),
-                Nota(collector),
-                Gravita(collector.Status),
-                righe));
+                TitleFor(collector.CollectorId),
+                NoteFor(collector),
+                SeverityFor(collector.Status),
+                rows));
         }
 
-        return gruppi;
+        return groups;
     }
 
     /// <summary>
-    /// Toglie la riga "Available memory is an estimate" e, quando la risposta e' si', la
-    /// attacca al numero che qualifica.
+    /// Removes the "Available memory is an estimate" row and, when the answer is yes, attaches
+    /// it to the number it qualifies.
     /// </summary>
     /// <remarks>
-    /// Quella riga rispondeva a una domanda che nessuno aveva fatto, e su Windows rispondeva
-    /// sempre "No": la memoria disponibile la' e' esposta dal sistema, quindi il flag e'
-    /// cablato a falso e quella riga non avrebbe mai detto altro. Una riga che ripete
-    /// all'infinito la stessa risposta insegna a saltarla, e la salterebbe anche il giorno in
-    /// cui dicesse qualcosa.
+    /// That row answered a question nobody had asked, and on Windows it always answered "No":
+    /// available memory there is exposed by the system, so the flag is hard-wired to false and
+    /// that row would never have said anything else. A row that repeats the same answer for
+    /// ever teaches you to skip it, and you would skip it on the day it did say something too.
     /// <para>
-    /// L'intenzione era giusta e resta: una memoria disponibile RICOSTRUITA - su Linux, quando
-    /// il kernel non espone MemAvailable e la si somma da memoria libera, buffer, cache e
-    /// memoria recuperabile - non e' una misura, e spacciarla per tale sarebbe una bugia
-    /// silenziosa. Ma si dichiara dove serve: attaccata al valore, e solo quando c'e'
-    /// qualcosa da dichiarare.
+    /// The intention was right and it stands: an available memory that is RECONSTRUCTED - on
+    /// Linux, when the kernel does not expose MemAvailable and it is summed from free memory,
+    /// buffers, cache and reclaimable memory - is not a measurement, and passing it off as one
+    /// would be a silent lie. But it is declared where that matters: attached to the value, and
+    /// only when there is something to declare.
     /// </para>
     /// <para>
-    /// Se il punto NON e' ne' si' ne' no, la riga resta dov'e': vuol dire che quella lettura
-    /// e' fallita, e un guasto che sparisce dallo schermo e' peggio di una riga di troppo.
+    /// If the point is NEITHER yes nor no, the row stays where it is: it means that reading
+    /// failed, and a fault that disappears from the screen is worse than one row too many.
     /// </para>
     /// </remarks>
-    private static void RipiegaLaStima(List<MetricRowState> righe)
+    private static void FoldEstimateIntoValue(List<MetricRowState> rows)
     {
-        int quale = righe.FindIndex(riga => MetricaDi(riga) == MemoryCollector.AvailableEstimatedMetricId);
+        int flagIndex = rows.FindIndex(row => MetricIdOf(row) == MemoryCollector.AvailableEstimatedMetricId);
 
-        if (quale < 0)
+        if (flagIndex < 0)
         {
             return;
         }
 
-        string risposta = righe[quale].Display;
+        string answer = rows[flagIndex].Display;
 
-        if (!string.Equals(risposta, MetricFormatting.Si, StringComparison.Ordinal)
-            && !string.Equals(risposta, MetricFormatting.No, StringComparison.Ordinal))
+        if (!string.Equals(answer, MetricFormatting.Yes, StringComparison.Ordinal)
+            && !string.Equals(answer, MetricFormatting.No, StringComparison.Ordinal))
         {
             return;
         }
 
-        righe.RemoveAt(quale);
+        rows.RemoveAt(flagIndex);
 
-        if (!string.Equals(risposta, MetricFormatting.Si, StringComparison.Ordinal))
+        if (!string.Equals(answer, MetricFormatting.Yes, StringComparison.Ordinal))
         {
             return;
         }
 
-        int valore = righe.FindIndex(riga => MetricaDi(riga) == MemoryCollector.AvailableBytesMetricId);
+        int valueIndex = rows.FindIndex(row => MetricIdOf(row) == MemoryCollector.AvailableBytesMetricId);
 
-        if (valore >= 0)
+        if (valueIndex >= 0)
         {
-            righe[valore] = righe[valore] with { Display = righe[valore].Display + " (estimated)" };
+            rows[valueIndex] = rows[valueIndex] with { Display = rows[valueIndex].Display + " (estimated)" };
         }
     }
 
-    private static string MetricaDi(MetricRowState riga) =>
-        riga.Key.Split('|').ElementAtOrDefault(1) ?? string.Empty;
+    private static string MetricIdOf(MetricRowState row) =>
+        row.Key.Split('|').ElementAtOrDefault(1) ?? string.Empty;
 
     /// <summary>
-    /// Aggiunge l'unita' fra parentesi alle righe che, dentro lo stesso riquadro, finirebbero
-    /// con lo stesso nome.
+    /// Adds the unit in parentheses to the rows that, inside the same panel, would end up with
+    /// the same name.
     /// </summary>
     /// <remarks>
-    /// Serve davvero: il collector della memoria dichiara "Used memory" sia per i byte sia
-    /// per la percentuale, e due righe con lo stesso nome e numeri diversi sembrano una
-    /// contraddizione. La regola e' generica, quindi vale anche per un collector futuro che
-    /// commetta lo stesso battesimo doppio.
+    /// It is genuinely needed: the memory collector declares "Used memory" both for the bytes
+    /// and for the percentage, and two rows with the same name and different numbers look like
+    /// a contradiction. The rule is generic, so it also covers a future collector that gives
+    /// two things the same name.
     /// </remarks>
-    private static void Disambigua(List<MetricRowState> righe, MetricCatalog catalog)
+    private static void Disambiguate(List<MetricRowState> rows, MetricCatalog catalog)
     {
-        Dictionary<string, int> quante = new(StringComparer.Ordinal);
+        Dictionary<string, int> counts = new(StringComparer.Ordinal);
 
-        foreach (MetricRowState riga in righe)
+        foreach (MetricRowState row in rows)
         {
-            quante[riga.Label] = quante.TryGetValue(riga.Label, out int n) ? n + 1 : 1;
+            counts[row.Label] = counts.TryGetValue(row.Label, out int n) ? n + 1 : 1;
         }
 
-        for (int i = 0; i < righe.Count; i++)
+        for (int i = 0; i < rows.Count; i++)
         {
-            if (quante[righe[i].Label] < 2)
+            if (counts[rows[i].Label] < 2)
             {
                 continue;
             }
 
-            // La chiave contiene collectorId|metricId|istanza: il pezzo centrale e' cio' che
-            // serve per ritrovare il descrittore e quindi l'unita'.
-            string[] pezzi = righe[i].Key.Split('|');
-            string simbolo = pezzi.Length > 1 ? catalog.Find(pezzi[1])?.Unit.Symbol ?? string.Empty : string.Empty;
-            string distinzione = string.IsNullOrEmpty(simbolo) ? pezzi.ElementAtOrDefault(1) ?? "?" : simbolo;
+            // The key holds collectorId|metricId|instance: the middle piece is what is needed
+            // to find the descriptor again, and so the unit.
+            string[] parts = rows[i].Key.Split('|');
+            string symbol = parts.Length > 1 ? catalog.Find(parts[1])?.Unit.Symbol ?? string.Empty : string.Empty;
+            string qualifier = string.IsNullOrEmpty(symbol) ? parts.ElementAtOrDefault(1) ?? "?" : symbol;
 
-            righe[i] = righe[i] with { Label = righe[i].Label + " (" + distinzione + ")" };
+            rows[i] = rows[i] with { Label = rows[i].Label + " (" + qualifier + ")" };
         }
     }
 
-    private static string Titolo(string collectorId) =>
-        collectorId is not null && TitoliNoti.TryGetValue(collectorId, out string? titolo)
-            ? titolo
+    private static string TitleFor(string collectorId) =>
+        collectorId is not null && KnownTitles.TryGetValue(collectorId, out string? title)
+            ? title
             : collectorId ?? "unnamed source";
 
-    private static string? Nota(MetricSnapshot collector)
+    private static string? NoteFor(MetricSnapshot collector)
     {
         if (collector.Status == CollectorStatus.Ok)
         {
-            // Un collector Ok che non ha prodotto nulla non e' un caso normale: senza questa
-            // riga il riquadro resterebbe vuoto e muto.
+            // An Ok collector that produced nothing is not a normal case: without this row the
+            // panel would stay empty and silent.
             return collector.Points is null || collector.Points.Count == 0
                 ? "The service reports this source as working but sent no values."
                 : null;
@@ -229,55 +228,55 @@ public static class SnapshotProjection
         return collector.Message ?? "The service didn't say why this source produced no values.";
     }
 
-    private static MetricRowState Riga(string collectorId, MetricPoint punto, MetricCatalog catalog)
+    private static MetricRowState RowFor(string collectorId, MetricPoint point, MetricCatalog catalog)
     {
-        MetricDescriptor? descrittore = catalog.Find(punto.MetricId);
-        MetricUnit? unita = descrittore?.Unit;
+        MetricDescriptor? descriptor = catalog.Find(point.MetricId);
+        MetricUnit? unit = descriptor?.Unit;
 
-        string etichetta = descrittore?.DisplayName ?? punto.MetricId;
+        string label = descriptor?.DisplayName ?? point.MetricId;
 
-        if (!string.IsNullOrWhiteSpace(punto.Instance))
+        if (!string.IsNullOrWhiteSpace(point.Instance))
         {
-            etichetta = etichetta + " (" + punto.Instance + ")";
+            label = label + " (" + point.Instance + ")";
         }
 
-        string chiave = collectorId + "|" + punto.MetricId + "|" + (punto.Instance ?? string.Empty);
+        string key = collectorId + "|" + point.MetricId + "|" + (point.Instance ?? string.Empty);
 
-        if (punto.Status != CollectorStatus.Ok)
+        if (point.Status != CollectorStatus.Ok)
         {
             return new MetricRowState(
-                chiave,
-                etichetta,
-                punto.Message ?? "no value available, no reason given",
+                key,
+                label,
+                point.Message ?? "no value available, no reason given",
                 null,
-                Gravita(punto.Status));
+                SeverityFor(point.Status));
         }
 
-        if (punto.Value is not MetricValue valore)
+        if (point.Value is not MetricValue value)
         {
-            // Ok senza valore e' esattamente il caso che il commento in MetricPoint teme:
-            // mostrare zero qui darebbe una macchina piena di zeri marcati "Ok".
+            // Ok with no value is exactly the case the comment in MetricPoint fears: showing
+            // zero here would give a machine full of zeros marked "Ok".
             return new MetricRowState(
-                chiave,
-                etichetta,
+                key,
+                label,
                 "the service reported the reading succeeded but sent no value",
                 null,
-                MetricSeverity.Problema);
+                MetricSeverity.Problem);
         }
 
         return new MetricRowState(
-            chiave,
-            etichetta,
-            MetricFormatting.Describe(valore, unita),
-            MetricFormatting.Fraction(valore, unita),
-            valore.Kind == MetricValueKind.Unknown ? MetricSeverity.Problema : MetricSeverity.Ok);
+            key,
+            label,
+            MetricFormatting.Describe(value, unit),
+            MetricFormatting.Fraction(value, unit),
+            value.Kind == MetricValueKind.Unknown ? MetricSeverity.Problem : MetricSeverity.Ok);
     }
 
-    private static MetricSeverity Gravita(CollectorStatus stato) => stato switch
+    private static MetricSeverity SeverityFor(CollectorStatus status) => status switch
     {
         CollectorStatus.Ok => MetricSeverity.Ok,
-        CollectorStatus.Warmup => MetricSeverity.InAttesa,
-        CollectorStatus.Unsupported => MetricSeverity.NonMisurabile,
-        _ => MetricSeverity.Problema,
+        CollectorStatus.Warmup => MetricSeverity.Warmup,
+        CollectorStatus.Unsupported => MetricSeverity.Unsupported,
+        _ => MetricSeverity.Problem,
     };
 }

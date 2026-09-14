@@ -70,7 +70,7 @@ public class MetricsClientTests
 
         SnapshotFetch esito = await client.GetLatestAsync(CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.TokenRifiutato, esito.Outcome);
+        Assert.Equal(ServiceOutcome.TokenRejected, esito.Outcome);
         Assert.Null(esito.Snapshot);
         Assert.Contains("dai test", esito.Problem, StringComparison.Ordinal);
         Assert.DoesNotContain("il-token", esito.Problem, StringComparison.Ordinal);
@@ -85,7 +85,7 @@ public class MetricsClientTests
 
         SnapshotFetch esito = await client.GetLatestAsync(CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.NonAncoraPronto, esito.Outcome);
+        Assert.Equal(ServiceOutcome.NotReadyYet, esito.Outcome);
         Assert.NotEmpty(esito.Problem);
     }
 
@@ -101,11 +101,11 @@ public class MetricsClientTests
 
         ProcessFetch esito = await client.GetProcessesAsync("cpu", 15, CancellationToken.None);
 
-        // VersioneIncompatibile e non RispostaInattesa: aspettare non aggiorna un servizio, e
+        // IncompatibleVersion e non UnexpectedResponse: aspettare non aggiorna un servizio, e
         // la barra di stato deve dirlo subito invece di restare in attesa.
-        Assert.Equal(ServiceOutcome.VersioneIncompatibile, esito.Outcome);
+        Assert.Equal(ServiceOutcome.IncompatibleVersion, esito.Outcome);
         Assert.Contains("older than this dashboard", esito.Problem, StringComparison.Ordinal);
-        Assert.Empty(esito.Processi);
+        Assert.Empty(esito.Processes);
     }
 
     [Fact]
@@ -118,9 +118,9 @@ public class MetricsClientTests
 
         ProcessFetch esito = await client.GetProcessesAsync("io", 15, CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.VersioneIncompatibile, esito.Outcome);
+        Assert.Equal(ServiceOutcome.IncompatibleVersion, esito.Outcome);
         Assert.Contains("older than this dashboard", esito.Problem, StringComparison.Ordinal);
-        Assert.Empty(esito.Processi);
+        Assert.Empty(esito.Processes);
     }
 
     [Fact]
@@ -134,8 +134,8 @@ public class MetricsClientTests
         ProcessFetch esito = await client.GetProcessesAsync("cpu", 15, CancellationToken.None);
 
         Assert.Equal(ServiceOutcome.Ok, esito.Outcome);
-        Assert.Single(esito.Processi);
-        Assert.Equal("—", esito.Processi[0].Io);
+        Assert.Single(esito.Processes);
+        Assert.Equal("—", esito.Processes[0].Io);
     }
 
     [Fact]
@@ -147,7 +147,7 @@ public class MetricsClientTests
         ProcessFetch esito = await client.GetProcessesAsync("io", 15, CancellationToken.None);
 
         Assert.Equal(ServiceOutcome.Ok, esito.Outcome);
-        Assert.Equal(["1.5 MiB/s", "—"], esito.Processi.Select(riga => riga.Io));
+        Assert.Equal(["1.5 MiB/s", "—"], esito.Processes.Select(riga => riga.Io));
     }
 
     [Fact]
@@ -158,7 +158,7 @@ public class MetricsClientTests
 
         SnapshotFetch esito = await client.GetLatestAsync(CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.NonRaggiungibile, esito.Outcome);
+        Assert.Equal(ServiceOutcome.Unreachable, esito.Outcome);
         Assert.Contains("altra-macchina:5057", esito.Problem, StringComparison.Ordinal);
     }
 
@@ -170,7 +170,7 @@ public class MetricsClientTests
 
         SnapshotFetch esito = await client.GetLatestAsync(CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.RispostaIncomprensibile, esito.Outcome);
+        Assert.Equal(ServiceOutcome.UnreadableResponse, esito.Outcome);
         Assert.Null(esito.Snapshot);
     }
 
@@ -184,7 +184,7 @@ public class MetricsClientTests
 
         SnapshotFetch esito = await client.GetLatestAsync(CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.VersioneIncompatibile, esito.Outcome);
+        Assert.Equal(ServiceOutcome.IncompatibleVersion, esito.Outcome);
         Assert.Null(esito.Snapshot);
         Assert.Contains("99", esito.Problem, StringComparison.Ordinal);
     }
@@ -219,7 +219,7 @@ public class MetricsClientTests
 
         CatalogFetch esito = await client.GetCatalogAsync(CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.TokenRifiutato, esito.Outcome);
+        Assert.Equal(ServiceOutcome.TokenRejected, esito.Outcome);
         Assert.Null(esito.Catalog);
     }
 
@@ -245,12 +245,12 @@ public class MetricsClientTests
 
     private static MetricsClient Crea(HttpMessageHandler handler) =>
         new(
-            ObserverEndpoint.Remoto(new Uri("http://altra-macchina:5057/"), "il-token", "dai test"),
+            ObserverEndpoint.Remote(new Uri("http://altra-macchina:5057/"), "il-token", "dai test"),
             handler);
 
     /// <summary>Un client sul canale locale, che NON deve mandare alcuna credenziale.</summary>
     private static MetricsClient CreaLocale(HttpMessageHandler handler) =>
-        new(ObserverEndpoint.CanaleLocale(), handler);
+        new(ObserverEndpoint.LocalChannel(), handler);
 
     private static HttpResponseMessage Json(HttpStatusCode codice, string corpo) =>
         new(codice)

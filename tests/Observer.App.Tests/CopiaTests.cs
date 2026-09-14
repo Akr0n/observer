@@ -23,13 +23,13 @@ public class CopiaTests
         Appunti appunti = new();
         MainViewModel viewModel = new(
             client: null,
-            problemaDiConfigurazione: "client.json is missing",
-            copiaNegliAppunti: appunti.Scrivi);
+            configurationProblem: "client.json is missing",
+            copyToClipboard: appunti.Write);
 
-        await viewModel.CopiaStatoCommand.ExecuteAsync(null);
+        await viewModel.CopyStatusCommand.ExecuteAsync(null);
 
         Assert.Equal(
-            viewModel.StatoTitolo + Environment.NewLine + viewModel.StatoMessaggio,
+            viewModel.StatusTitle + Environment.NewLine + viewModel.StatusText,
             appunti.Ultimo);
         Assert.Contains("client.json", appunti.Ultimo, StringComparison.Ordinal);
     }
@@ -40,13 +40,13 @@ public class CopiaTests
         Appunti appunti = new();
         MainViewModel viewModel = new(
             client: null,
-            problemaDiConfigurazione: null,
-            copiaNegliAppunti: appunti.Scrivi)
+            configurationProblem: null,
+            copyToClipboard: appunti.Write)
         {
-            ProcessoSelezionato = new ProcessoMostrato(22, "tranquillo", "1.0 %", "10 MiB"),
+            SelectedProcess = new ProcessRowState(22, "tranquillo", "1.0 %", "10 MiB"),
         };
 
-        await viewModel.CopiaProcessoCommand.ExecuteAsync(null);
+        await viewModel.CopyProcessRowCommand.ExecuteAsync(null);
 
         // La stringa intera, non un Contains: con "22" il numero potrebbe arrivare da una
         // percentuale o da un conteggio di megabyte, e la prova resterebbe verde col PID fuori.
@@ -59,11 +59,11 @@ public class CopiaTests
         // Cio' che un lettore di schermo pronuncia a OGNI freccia sull'elenco: un numero di
         // cinque cifre letto cifra per cifra a ogni riga e' rumore fra chi scorre e cio' che
         // sta cercando. Due frasi quasi identiche, e la differenza e' voluta.
-        ProcessoMostrato riga = new(31337, "claude", "15.1 %", "228.5 MiB", "1.1 MiB/s");
+        ProcessRowState riga = new(31337, "claude", "15.1 %", "228.5 MiB", "1.1 MiB/s");
 
-        Assert.DoesNotContain("pid", riga.Descrizione, StringComparison.Ordinal);
-        Assert.DoesNotContain("31337", riga.Descrizione, StringComparison.Ordinal);
-        Assert.Contains("31337", riga.PerGliAppunti, StringComparison.Ordinal);
+        Assert.DoesNotContain("pid", riga.AccessibleName, StringComparison.Ordinal);
+        Assert.DoesNotContain("31337", riga.AccessibleName, StringComparison.Ordinal);
+        Assert.Contains("31337", riga.ForClipboard, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -74,12 +74,12 @@ public class CopiaTests
         Appunti appunti = new();
         MainViewModel viewModel = new(
             client: null,
-            problemaDiConfigurazione: null,
-            copiaNegliAppunti: appunti.Scrivi);
+            configurationProblem: null,
+            copyToClipboard: appunti.Write);
 
-        Assert.False(viewModel.CopiaProcessoCommand.CanExecute(null));
+        Assert.False(viewModel.CopyProcessRowCommand.CanExecute(null));
 
-        await viewModel.CopiaProcessoCommand.ExecuteAsync(null);
+        await viewModel.CopyProcessRowCommand.ExecuteAsync(null);
 
         Assert.Equal(0, appunti.Quante);
     }
@@ -91,14 +91,14 @@ public class CopiaTests
         // sparisse dalla radice di composizione, un comando che esce da se' sul null
         // lascerebbe un pulsante muto che nessun test vedrebbe, perche' i test il finto ce
         // l'hanno. Spento si vede al primo avvio.
-        MainViewModel viewModel = new(client: null, problemaDiConfigurazione: "qualcosa")
+        MainViewModel viewModel = new(client: null, configurationProblem: "qualcosa")
         {
-            ProcessoSelezionato = new ProcessoMostrato(1, "x", "0 %", "1 MiB"),
+            SelectedProcess = new ProcessRowState(1, "x", "0 %", "1 MiB"),
         };
 
-        Assert.False(viewModel.PuoCopiare);
-        Assert.False(viewModel.CopiaStatoCommand.CanExecute(null));
-        Assert.False(viewModel.CopiaProcessoCommand.CanExecute(null));
+        Assert.False(viewModel.CanCopy);
+        Assert.False(viewModel.CopyStatusCommand.CanExecute(null));
+        Assert.False(viewModel.CopyProcessRowCommand.CanExecute(null));
     }
 
     [Fact]
@@ -109,16 +109,16 @@ public class CopiaTests
         // guasto vorrebbe dire perdere il testo per cui si e' premuto il pulsante.
         MainViewModel viewModel = new(
             client: null,
-            problemaDiConfigurazione: "client.json is missing",
-            copiaNegliAppunti: _ => throw new InvalidOperationException("appunti occupati"));
+            configurationProblem: "client.json is missing",
+            copyToClipboard: _ => throw new InvalidOperationException("appunti occupati"));
 
-        string titolo = viewModel.StatoTitolo;
-        string messaggio = viewModel.StatoMessaggio;
+        string titolo = viewModel.StatusTitle;
+        string messaggio = viewModel.StatusText;
 
-        await viewModel.CopiaStatoCommand.ExecuteAsync(null);
+        await viewModel.CopyStatusCommand.ExecuteAsync(null);
 
-        Assert.Equal(titolo, viewModel.StatoTitolo);
-        Assert.Equal(messaggio, viewModel.StatoMessaggio);
+        Assert.Equal(titolo, viewModel.StatusTitle);
+        Assert.Equal(messaggio, viewModel.StatusText);
     }
 
     [Fact]
@@ -131,18 +131,18 @@ public class CopiaTests
         Appunti appunti = new();
         MainViewModel viewModel = new(
             client: null,
-            problemaDiConfigurazione: "qualcosa",
-            copiaNegliAppunti: async testo =>
+            configurationProblem: "qualcosa",
+            copyToClipboard: async testo =>
             {
                 await appeso.Task;
-                await appunti.Scrivi(testo);
+                await appunti.Write(testo);
             });
 
-        Task primo = viewModel.CopiaStatoCommand.ExecuteAsync(null);
+        Task primo = viewModel.CopyStatusCommand.ExecuteAsync(null);
 
-        Assert.True(viewModel.CopiaStatoCommand.CanExecute(null));
+        Assert.True(viewModel.CopyStatusCommand.CanExecute(null));
 
-        Task secondo = viewModel.CopiaStatoCommand.ExecuteAsync(null);
+        Task secondo = viewModel.CopyStatusCommand.ExecuteAsync(null);
 
         appeso.SetResult();
         await primo;
@@ -157,7 +157,7 @@ public class CopiaTests
 
         public int Quante { get; private set; }
 
-        public Task Scrivi(string testo)
+        public Task Write(string testo)
         {
             Ultimo = testo;
             Quante++;
