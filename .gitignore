@@ -520,3 +520,6 @@ docs/
 
 # L'indice locale di CodeGraph: un database SQLite ricostruibile, mai da versionare.
 .codegraph/
+
+# graphify: grafo della conoscenza, output locale
+graphify-out/
