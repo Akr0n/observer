@@ -32,14 +32,26 @@ namespace Observer.Service.Tests;
 /// would prove nothing.
 /// </para>
 /// </remarks>
-// It belongs in the collection because it builds an InMemoryService, which writes PROCESS
-// environment variables and deletes its own temp directory: without this line it runs in
-// parallel with the collection and deletes the database out from under the shared service.
-// Not declaring it was a defect that stayed green by luck - the class name decides xunit's
-// ordering, and on main renaming it ALONE makes 4 tests fail.
+// It TAKES the collection's InMemoryService instead of building one of its own, and that is not
+// tidiness. A second instance writes the same PROCESS environment variables, and on Linux its
+// host creates /run/user/N/observer/ at start-up and removes it at shutdown - so disposing it
+// takes the socket directory away from the shared service, which then fails with
+// "Could not find file ... observer.sock" and, with no host, never calls MetricStore.Initialize():
+// the history tests die with "no such table". Measured on the Linux runner, and it is the same
+// trap InMemoryServiceTests already documents for a fixture-per-class.
+//
+// Declaring neither the collection nor the injection was a defect that stayed green by luck: the
+// class name decides xunit's ordering, and on main renaming this class ALONE makes 4 tests fail.
 [Collection(ProcessEnvironment.Name)]
 public class WireCompressionTests
 {
+    private readonly InMemoryService service;
+
+    public WireCompressionTests(InMemoryService service)
+    {
+        this.service = service;
+    }
+
     /// <summary>A body with the real shape: repetitive like the history, which is the heavy one.</summary>
     private static readonly string Body = JsonSerializer.Serialize(new
     {
@@ -147,8 +159,8 @@ public class WireCompressionTests
         // Program.cs would leave them all green, and the branch would lose the feature silently
         // while leaving thirty lines of comment standing to justify it. This test mounts the REAL
         // service - InMemoryService is WebApplicationFactory<Program> - and looks at two things
-        // that can only be seen there.
-        using InMemoryService service = new();
+        // that can only be seen there. The instance is the collection's, not a fresh one: see the
+        // comment on the class.
         using HttpClient client = service.CreateAuthorizedClient();
 
         using HttpRequestMessage request = new(HttpMethod.Get, "metrics/catalog");

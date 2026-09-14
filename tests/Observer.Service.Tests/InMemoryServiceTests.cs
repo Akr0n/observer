@@ -45,6 +45,11 @@ public class InMemoryServiceTests
         string? databaseBefore = Environment.GetEnvironmentVariable("Observer__Storage__DatabasePath");
         string? maintenanceBefore = Environment.GetEnvironmentVariable("Observer__Storage__MaintenanceInterval");
 
+        // Building a SECOND instance is safe here, and only here, because this block never calls
+        // CreateClient() or touches Services: WebApplicationFactory builds its host lazily, so no
+        // host exists, no local channel is opened and no /run/user/N/observer/ is created or
+        // removed. A test that does start the host must take the collection's instance instead -
+        // WireCompressionTests learned that on the Linux runner.
         using (InMemoryService service = new())
         {
             Assert.Equal(InMemoryService.Token, Environment.GetEnvironmentVariable("Observer__ApiToken"));
