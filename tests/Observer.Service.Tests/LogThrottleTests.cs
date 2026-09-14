@@ -39,7 +39,7 @@ public class LogThrottleTests
     {
         // The case that makes the throttle dangerous if it gets this wrong: the disk frees up
         // and a fault of a different nature begins. Keeping quiet about it because "we are
-        // already reporting something" would leave the log telling the wrong fault.
+        // already reporting something" would leave the log reporting the wrong fault.
         LogThrottle throttle = Create(out _);
 
         Assert.True(throttle.ShouldLog("disk-full"));
@@ -156,7 +156,7 @@ public class LogThrottleTests
     }
 
     [Fact]
-    public void TheDefaultWindowIsNotZero()
+    public void TheDefaultWindowIsAtLeastAMinute()
     {
         // Zero would make the throttle a piece of code that throttles nothing, and none of
         // the other tests would notice: in those the clock never advances on its own.

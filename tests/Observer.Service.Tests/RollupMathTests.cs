@@ -5,7 +5,7 @@ namespace Observer.Service.Tests;
 
 /// <summary>
 /// The rollup arithmetic, tested WITHOUT a database. It is the most dangerous spot in the whole
-/// persistence layer: a mistake here fails nothing, throws nothing and shows up in no log — it
+/// persistence layer: a mistake here fails no test, throws nothing and shows up in no log — it
 /// produces charts full of plausible, wrong numbers. The only way to find it is to compare the
 /// aggregate against the direct calculation over the raw samples.
 /// </summary>
@@ -31,7 +31,7 @@ public class RollupMathTests
     {
         // If an instant exactly on the boundary slipped into the previous bucket, every bucket
         // would hold one sample belonging to the next one and every average would be off by a
-        // single sample: wrong by a little, and therefore invisible.
+        // single sample: slightly wrong, and therefore invisible.
         long aligned = RollupMath.AlignToBucketStart(Ms("2026-08-26T12:05:00Z"), FiveMinutes);
 
         Assert.Equal(Ms("2026-08-26T12:05:00Z"), aligned);
@@ -89,13 +89,13 @@ public class RollupMathTests
             new(Ms("2026-08-26T12:00:31Z"), 3d),
         ];
 
-        IReadOnlyList<RollupBucket> bucket = RollupMath.Aggregate(samples, OneMinute);
+        IReadOnlyList<RollupBucket> buckets = RollupMath.Aggregate(samples, OneMinute);
 
-        Assert.Equal(2, bucket.Count);
-        Assert.Equal(Ms("2026-08-26T12:00:00Z"), bucket[0].BucketStartMs);
-        Assert.Equal(2, bucket[0].Count);
-        Assert.Equal(Ms("2026-08-26T12:01:00Z"), bucket[1].BucketStartMs);
-        Assert.Equal(1, bucket[1].Count);
+        Assert.Equal(2, buckets.Count);
+        Assert.Equal(Ms("2026-08-26T12:00:00Z"), buckets[0].BucketStartMs);
+        Assert.Equal(2, buckets[0].Count);
+        Assert.Equal(Ms("2026-08-26T12:01:00Z"), buckets[1].BucketStartMs);
+        Assert.Equal(1, buckets[1].Count);
     }
 
     [Fact]

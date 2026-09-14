@@ -237,12 +237,12 @@ public class MetricStoreTests
         temp.Store.WriteSamples([CpuSample("2026-08-26T12:02:10Z", 2d)]);
         Assert.Equal(1, temp.Store.ConsolidateMinutes(T("2026-08-26T12:04:00Z"), NoGrace, OneHourPerPass));
 
-        IReadOnlyList<HistoryPoint> bucket = temp.Store.ReadHistory(
+        IReadOnlyList<HistoryPoint> buckets = temp.Store.ReadHistory(
             CpuSeries(), BucketWidths.MinuteSeconds, T("2026-08-26T12:00:00Z"), T("2026-08-26T12:05:00Z"), 100);
 
-        Assert.Equal(2, bucket.Count);
-        Assert.Equal(T("2026-08-26T12:00:00Z"), bucket[0].Timestamp);
-        Assert.Equal(T("2026-08-26T12:02:00Z"), bucket[1].Timestamp);
+        Assert.Equal(2, buckets.Count);
+        Assert.Equal(T("2026-08-26T12:00:00Z"), buckets[0].Timestamp);
+        Assert.Equal(T("2026-08-26T12:02:00Z"), buckets[1].Timestamp);
     }
 
     [Fact]
@@ -252,7 +252,7 @@ public class MetricStoreTests
 
         temp.Store.WriteSamples(SevenMinutesOfSamples());
 
-        // The minute level has only reached 12:03. A five-minute bucket built now would hold
+        // The minute level has only reached 12:03. A five-minute buckets built now would hold
         // three minutes out of five: a plausible number, a false average, and since the rollup
         // moves its marker forward it would never be corrected again.
         temp.Store.ConsolidateMinutes(T("2026-08-26T12:03:10Z"), NoGrace, OneHourPerPass);

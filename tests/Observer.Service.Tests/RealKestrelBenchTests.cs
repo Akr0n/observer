@@ -23,8 +23,8 @@ public class RealKestrelBenchTests
     public async Task TheBenchDoesNotInheritTheRealServiceConfiguration()
     {
         // The test output carries Observer.Service's appsettings.json, copied there by the
-        // project reference. Without Configuration.Sources.Clear() the bench reads it and is
-        // born with the real service's storage path, pipe name and port.
+        // project reference. Without Configuration.Sources.Clear() the bench reads it and
+        // starts up with the real service's storage path, pipe name and port.
         //
         // This used to assert that no address contained "5057", and that assertion had stopped
         // guarding anything: the cleartext Kestrel endpoint was removed from appsettings.json

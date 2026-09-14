@@ -27,7 +27,7 @@ public class CredentialProvisioningTests : IDisposable
     public void ATokenInCONFIGURATIONTakesPrecedence()
     {
         // Backward compatibility, and it is what keeps the tests and CI working: anyone who
-        // already has a token in appsettings.Local.json must not notice a thing.
+        // already has a token in appsettings.Local.json should not notice any difference.
         ProvisionedCredentials result = CredentialProvisioning.Provision(
             "hand-picked-token", StorePath, runningAsService: false);
 

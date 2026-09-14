@@ -4,7 +4,7 @@ using Observer.Service.LocalChannel;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// An endpoint URL written wrong does not fail: it fails WORSE.
+/// A badly written endpoint URL does not simply fail: it fails WORSE.
 /// </summary>
 /// <remarks>
 /// Measured: with "http://unix:C:\path\x.sock" Kestrel neither throws nor warns, it binds

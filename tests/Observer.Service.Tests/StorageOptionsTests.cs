@@ -60,7 +60,7 @@ public class StorageOptionsTests
     [Fact]
     public void Validate_RejectsAGracePeriodShorterThanTheWriteQueue()
     {
-        // The hole this closes: the buffer can hold QueueCapacity samples (at 1 Hz, that
+        // The gap this closes: the buffer can hold QueueCapacity samples (at 1 Hz, that
         // many seconds) before they reach the disk, but consolidation treats a minute as
         // closed after the grace period alone. A sample that arrives later no longer enters
         // the average for its minute, and shortly afterwards the raw data is purged: what is

@@ -4,7 +4,7 @@ using Observer.Service.Persistence;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// The two decisions that make no noise when they are wrong: consolidating a bucket that is
+/// The two decisions that fail silently when they are wrong: consolidating a bucket that is
 /// still open (false averages for ever, because the raw data disappears afterwards) and deleting
 /// raw data that nothing has aggregated yet (a hole in the history nobody can rebuild).
 /// </summary>
@@ -71,7 +71,7 @@ public class RetentionPolicyTests
     [Fact]
     public void Cutoff_WithNothingConsolidatedDeletesNothing()
     {
-        // If the rollup has never run, every deletion is a dead loss: no aggregate holds those
+        // If the rollup has never run, every deletion is pure loss: no aggregate holds those
         // numbers. A file that grows is better than a hole in the history.
         long? cutoff = RetentionPolicy.PurgeCutoff(
             Ms("2026-08-26T12:00:00Z"), TimeSpan.FromHours(6), consolidatedThroughMs: null);

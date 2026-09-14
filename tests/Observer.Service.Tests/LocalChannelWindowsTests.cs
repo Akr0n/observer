@@ -140,7 +140,7 @@ public class LocalChannelWindowsTests
     {
         // Measured: with serverName "localhost" GetNamedPipeClientComputerName SUCCEEDS and
         // returns "[::1]", which means the connection came in over SMB. Only "." is local.
-        // This is the trap that would cost hours to whoever writes the client.
+        // This is the trap that would cost whoever writes the client hours.
         string pipe = UniquePipeName();
 
         await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
@@ -206,7 +206,7 @@ public class LocalChannelWindowsTests
     [WindowsOnly]
     public async Task AnAnonymousCallerIsRefusedEVENWithTheRightToken()
     {
-        // The rule "an identity that cannot be read refuses" must not have a loophole. The
+        // The rule "an unreadable identity is denied" must not have a loophole. The
         // impersonation level is chosen by the CLIENT: with Anonymous a caller unilaterally
         // makes itself unidentifiable while still being able to present the token. If the token
         // were enough, the rule would mean nothing.
@@ -220,7 +220,7 @@ public class LocalChannelWindowsTests
             PipeHandler(pipe, TokenImpersonationLevel.Anonymous));
 
         client.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TestToken);
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenText);
 
         using HttpResponseMessage response = await client.GetAsync("ping", CancellationToken.None);
 
@@ -246,22 +246,23 @@ public class LocalChannelWindowsTests
         string tcp = bench.Addresses.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
         using HttpClient overTcp = new() { BaseAddress = new Uri(tcp) };
         overTcp.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TestToken);
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenText);
 
         using HttpResponseMessage fromNetwork = await overTcp.GetAsync("restricted", CancellationToken.None);
 
-        // With the RIGHT token, and still a 404.
+        // With the RIGHT token, it is still a 404.
         Assert.Equal(HttpStatusCode.NotFound, fromNetwork.StatusCode);
 
         using HttpClient overPipe = RealKestrelBench.ClientOn(PipeHandler(pipe));
         Assert.Equal("secret", await overPipe.GetStringAsync("restricted", CancellationToken.None));
     }
 
-    /// <summary>The token used by the access control tests.</summary>
-    internal const string TestToken = "bench-token";
+    /// <summary>The bench's token as TEXT, the shape a caller puts in an Authorization header.</summary>
+    internal const string TokenText = "bench-token";
 
+    /// <summary>The same token as CREDENTIALS, the shape the service's access control takes.</summary>
     internal static MachineCredentials Token =>
-        new(TestToken, null, null);
+        new(TokenText, null, null);
 
     internal static string UniquePipeName() =>
         "observer-test-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);

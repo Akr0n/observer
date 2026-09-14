@@ -17,7 +17,7 @@ public class MetricSamplingSinkTests
     {
         MetricSnapshotCache cache = new();
 
-        // The sink reads the cache AT THE MOMENT it receives, not afterwards. The sampler
+        // The sink reads the cache AT THE MOMENT the snapshot arrives, not afterwards. The sampler
         // publishes once a second: reading cache.Latest after the wait compared the first
         // snapshot delivered with whatever happened to be in the cache at that instant, and a
         // single round in between was enough to fail a test that had nothing wrong with it. It

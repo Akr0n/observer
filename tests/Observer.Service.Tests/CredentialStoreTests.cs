@@ -24,7 +24,7 @@ public class CredentialStoreTests : IDisposable
     }
 
     [Fact]
-    public void WhatIsWrittenReadsBackUnchanged()
+    public void WhatIsWrittenReadsBackToTheSecond()
     {
         MachineCredentials written = MachineCredentials.Create()
             .Rotate(DateTimeOffset.UtcNow, TimeSpan.FromHours(24));
@@ -86,7 +86,7 @@ public class CredentialStoreTests : IDisposable
     }
 
     [Fact]
-    public void TheStoreHoldsNothingButTheKeysAndTheExpiry()
+    public void TheStoreTextNamesTheKeysAndNoPassword()
     {
         // The file ends up in front of an administrator who is investigating: what it holds
         // must be obvious, and it must hold nothing more.

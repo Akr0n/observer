@@ -42,7 +42,7 @@ public class AccessPolicyTests
     {
         // The impersonation level is chosen by the CLIENT: with Anonymous a caller unilaterally
         // makes itself unidentifiable while still being able to present a token. If the token
-        // were enough, the rule "an identity that cannot be read refuses" would mean nothing.
+        // were enough, the rule "an unreadable identity is denied" would mean nothing.
         Assert.Equal(
             AccessDecision.Denied,
             AccessPolicy.Decide(CallerKind.Unidentified, EndpointScope.Anywhere, tokenIsValid: true));
@@ -53,7 +53,7 @@ public class AccessPolicyTests
     {
         // A forgotten field, an uninitialized struct or a branch added by mistake must DENY. An
         // endpoint whose scope was forgotten becomes unreachable from the network, which is the
-        // right direction to break in.
+        // safe way for it to break.
         Assert.Equal(AccessDecision.Denied, default(AccessDecision));
         Assert.Equal(EndpointScope.LocalOnly, default(EndpointScope));
         Assert.Equal(CallerKind.Unidentified, default(CallerKind));

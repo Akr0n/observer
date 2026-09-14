@@ -11,7 +11,7 @@ namespace Observer.Service.Tests;
 /// <remarks>
 /// The property that matters is the STABILITY of the fingerprint from one start to the next.
 /// Clients pin it: a certificate regenerated at every start is not an annoyance, it is every
-/// remote dashboard failing to connect all at once, with a message that talks about an attack.
+/// remote dashboard failing to connect all at once, with a message about an attack.
 /// </remarks>
 public class CertificateProvisioningTests : IDisposable
 {
@@ -63,7 +63,7 @@ public class CertificateProvisioningTests : IDisposable
     }
 
     [Fact]
-    public void TheCertificateWorksAsASERVERAndKeepsThePrivateKey()
+    public void TheCertificateDeclaresServerAuthAndKeepsThePrivateKey()
     {
         ProvisionedCertificate provisioned = ProvisionForTest();
 
@@ -109,7 +109,7 @@ public class CertificateProvisioningTests : IDisposable
     }
 
     [Fact]
-    public void ADAMAGEDStoreIsNotReplacedBehindYourBack()
+    public void ADAMAGEDCertificateFileIsNotReplacedBehindYourBack()
     {
         // Replacing it would be the convenient thing to do, and it would be wrong: a new
         // certificate has a new fingerprint. Better to stop and let a person decide.
@@ -146,7 +146,7 @@ public class CertificateProvisioningTests : IDisposable
     }
 
     [Fact]
-    public void NoTempFileIsEverLeftOnDisk()
+    public void ProvisioningLeavesNoTempFileBehind()
     {
         // An abandoned temp file would hold the private key, and with the permissions
         // inherited from the folder instead of the store's own.

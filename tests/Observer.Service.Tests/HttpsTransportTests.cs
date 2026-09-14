@@ -17,7 +17,7 @@ namespace Observer.Service.Tests;
 /// This class covers the oldest gap in the suite: WebApplicationFactory replaces Kestrel with an
 /// in-memory TestServer, so until now NO test had ever touched a real transport. A certificate
 /// that cannot be reloaded, a private key lost on the way to the store, a fingerprint computed on
-/// bytes other than the ones that end up on the wire: none of that would have been seen.
+/// bytes other than the ones that end up on the wire: none of that would have been caught.
 /// <para>
 /// The certificate is not used straight after being generated but <b>exported and read back</b>,
 /// because that is the path of the SECOND start, that is, of every start but the first.
@@ -63,10 +63,10 @@ public class HttpsTransportTests
     [Fact]
     public async Task WithoutFingerprintPinningTheSelfSignedCertificateIsRejected()
     {
-        // The converse check, that the fingerprint is the ONLY thing holding the connection up:
+        // The converse check, that the fingerprint is the ONLY thing the connection rests on:
         // with ordinary validation a self-signed certificate does not pass. If this test ever
         // started failing it would mean the certificate had ended up in one of the machine's
-        // trust stores, that is, that it counts for far more than it should.
+        // trust stores, that is, that it is now trusted far more widely than it should be.
         using CertificateRoundTrip certificate = CertificateRoundTrip.GenerateAndReload();
 
         await using KestrelHost host = await KestrelHost.StartAsync(certificate.Reloaded);
@@ -216,10 +216,14 @@ public class HttpsTransportTests
             WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
 
             // The configuration sources are CLEARED, and this is not tidying up: the test
-            // project copies the service's appsettings.json into its output, so without
-            // this line the builder reads the real Kestrel section and tries to open
-            // 0.0.0.0:5057 - that is, the port of the service installed on this machine.
-            // Measured: address already in use, on all four tests.
+            // project copies the service's appsettings.json into its output, so without this
+            // line the builder is born with the installed service's settings - HttpsPort,
+            // PipeName, DatabasePath - instead of the ephemeral port this class asks for.
+            // Measured back when that file still carried a cleartext endpoint on 5057:
+            // address already in use, on every test in the class. The cleartext endpoint went
+            // away with 0.21.0, so that particular collision cannot happen again; the line
+            // still has to be here for the settings that remain, and RealKestrelBenchTests is
+            // where that is pinned by an assertion.
             builder.Configuration.Sources.Clear();
 
             // Port 0: the system picks it. A fixed port would make this class fail on the

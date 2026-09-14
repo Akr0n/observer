@@ -18,7 +18,7 @@ namespace Observer.Service.Tests;
 /// at start-up and removes it at shutdown, so the first bench to finish took the folder away
 /// from the second, which failed with "Could not find file ... observer.sock". With no host
 /// nobody called <c>MetricStore.Initialize()</c>, and the history tests died with
-/// "no such table: series" — a message that does not name the cause even distantly.
+/// "no such table: series" — a message that does not come close to naming the cause.
 /// On Windows it was invisible: a named pipe has no folder to remove.
 /// </para>
 [CollectionDefinition(Name)]

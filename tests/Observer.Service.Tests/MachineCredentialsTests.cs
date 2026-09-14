@@ -100,7 +100,7 @@ public class MachineCredentialsTests
     }
 
     [Fact]
-    public void WithNoPreviousKeyNothingIsAccepted_NotEvenAnEmptyString()
+    public void WithNoPreviousKeyAnEmptyStringIsNotAccepted()
     {
         // The case where Previous is null must not degenerate into "accept anything": it is
         // the branch a badly written comparison turns into a free pass.

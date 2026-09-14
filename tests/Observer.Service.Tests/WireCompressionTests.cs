@@ -27,8 +27,8 @@ namespace Observer.Service.Tests;
 /// <para>
 /// The test that counts is the one over HTTPS. <c>ResponseCompressionOptions.EnableForHttps</c> is
 /// <b>false</b> by default: without that single option the service would compress only the local
-/// channel - where the bytes cross nothing - and would leave in the clear the one path where they
-/// cost. A test that measured on HTTP would stay green with that line deleted, which means it
+/// channel - where the bytes cross nothing - and would leave uncompressed the one path where they
+/// actually cost. A test that measured on HTTP would stay green with that line deleted, which means it
 /// would prove nothing.
 /// </para>
 /// </remarks>
@@ -112,7 +112,7 @@ public class WireCompressionTests
     {
         // The client offers "gzip, deflate, br" and, at equal preference, the service picks the
         // FIRST registered provider. It looks like a detail and it is not: the service
-        // SERIALISES, that is, the JSON leaves the writer in pieces with one flush per segment,
+        // SERIALISES, that is, the JSON leaves the writer in chunks, one flush per segment,
         // and flushes punish Brotli far more than Gzip. Measured HERE, on the real wire, not on a
         // buffer compressed in one go - which is exactly the mistake that had led to preferring
         // Brotli.
@@ -212,7 +212,8 @@ public class WireCompressionTests
 
             // The sources are cleared for the reason written in HttpsTransportTests: the test
             // project copies the service's appsettings.json into its output, and without this
-            // line the bench would try to open the installed service's port.
+            // line the bench would be born with the installed service's settings instead of
+            // the ephemeral port it asks for.
             builder.Configuration.Sources.Clear();
             builder.WebHost.ConfigureKestrel(kestrel =>
                 kestrel.Listen(IPAddress.Loopback, 0, port => port.UseHttps(certificate)));

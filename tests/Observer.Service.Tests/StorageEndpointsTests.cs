@@ -86,7 +86,7 @@ public class StorageEndpointsTests
     }
 
     [Fact]
-    public async Task History_AutomaticResolutionDropsToMinutesOverALongWindow()
+    public async Task History_AutomaticResolutionIsNotRawOverALongWindow()
     {
         using HttpClient client = service.CreateAuthorizedClient();
         using JsonDocument document = await ReadJson(

@@ -12,10 +12,10 @@ namespace Observer.Service.Tests;
 /// <remarks>
 /// In sequence a round takes the sum of the times, and the worst case is the number of collectors
 /// times the timeout of each: with two sources it already runs past the one-second sampling
-/// interval, with five it quadruples it. The fault that follows makes no noise —
+/// interval, with five it quadruples it. The failure that follows is silent —
 /// <c>PeriodicTimer</c> drops ticks silently, the samples disappear, and the history strip
 /// declares "not measured" a period in which the machine was up and healthy. No test would fail:
-/// that is why one is needed that watches the TIME.
+/// that is why this one watches the TIME instead.
 /// </remarks>
 public class ParallelSamplingTests
 {
@@ -25,7 +25,7 @@ public class ParallelSamplingTests
     public async Task AllSourcesAreInFlightAtTheSameTime()
     {
         // This COUNTS how many collections are in flight at the same moment, instead of timing
-        // the round. An absolute time proves nothing here: on a loaded runner 1320 ms is
+        // the round. An absolute timing proves nothing here: on a loaded runner 1320 ms is
         // consistent both with three collections in sequence and with three collections together
         // plus the service start-up, and in fact the first draft of this test failed, accusing
         // the code of something it could not prove. The number of simultaneous collections, on
@@ -60,7 +60,7 @@ public class ParallelSamplingTests
     }
 
     [Fact]
-    public async Task TheCollectorOrderDoesNotChangeFromOneRoundToTheNext()
+    public async Task TheCollectorOrderFollowsTheDeclarationNotArrival()
     {
         // Polling together must not mean delivering in arrival order: the tiles on screen would
         // swap places every second, and nothing would flag it except the eye of whoever is

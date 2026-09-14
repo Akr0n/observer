@@ -41,7 +41,7 @@ public class DirectoryTrustTests
     }
 
     [Fact]
-    public void AnUnreadableDescriptorMeansUnsafeNotJustUnknown()
+    public void AnUnreadableDescriptorIsVerdictUnknown()
     {
         Assert.Equal(
             DirectoryVerdict.Unknown,
@@ -65,7 +65,7 @@ public class DirectoryTrustTests
     [Theory]
     [InlineData(SystemSid)]
     [InlineData(AdministratorsSid)]
-    public void TheOnlyTwoOwnersAllowed(string owner)
+    public void SystemAndAdministratorsAreSafeOwners(string owner)
     {
         Assert.Equal(
             DirectoryVerdict.Safe,

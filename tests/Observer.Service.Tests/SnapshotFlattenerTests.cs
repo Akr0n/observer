@@ -116,7 +116,7 @@ public class SnapshotFlattenerTests
     {
         // MetricValue.FromNumber rejects non-finite numbers, but a value that ARRIVED from
         // JSON does not. A NaN that got into the rollup would make the writing service throw
-        // on every round, and the history would stop in silence while the endpoints keep
+        // on every round, and the history would stop silently while the endpoints keep
         // answering.
         MetricValue brokenValue = JsonSerializer.Deserialize<MetricValue>(
             """{"kind":1,"number":"NaN","text":null,"flag":false}""", OptionsAllowingNaN);

@@ -178,7 +178,7 @@ public class LocalChannelLinuxTests
         string tcp = bench.Addresses.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
         using HttpClient overTcp = new() { BaseAddress = new Uri(tcp) };
         overTcp.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", LocalChannelWindowsTests.TestToken);
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", LocalChannelWindowsTests.TokenText);
 
         // With the RIGHT token, it is still a 404.
         using HttpResponseMessage fromNetwork = await overTcp.GetAsync("restricted", CancellationToken.None);
@@ -191,7 +191,7 @@ public class LocalChannelLinuxTests
     internal static string ShortSocketPath()
     {
         // The limit is 107 BYTES for the whole path, and a CI runner's temp directory can be
-        // long: the path is verified, not hoped for.
+        // long: the path is checked, not assumed.
         string path = Path.Combine(
             Path.GetTempPath(),
             "o-" + Guid.NewGuid().ToString("N")[..8] + ".sock");
