@@ -4,30 +4,30 @@
              xmlns:local="using:Observer.App"
              xmlns:sty="using:FluentAvalonia.Styling"
              RequestedThemeVariant="Default">
-             <!-- Valore iniziale: segue il sistema. Quello vero lo imposta App.ApplyTheme
-                  dalle preferenze, prima che la finestra esista. -->
+             <!-- Initial value: follows the system. The real one is set by App.ApplyTheme
+                  from the preferences, before the window exists. -->
 
     <Application.DataTemplates>
         <local:ViewLocator />
     </Application.DataTemplates>
 
     <Application.Styles>
-        <!-- FluentAvaloniaTheme SOSTITUISCE FluentTheme: mettere entrambi caricherebbe due
-             volte le stesse risorse. Serve perche' i controlli FA (qui FAInfoBar) prendono
-             il proprio template da qui e senza resterebbero senza aspetto.
+        <!-- FluentAvaloniaTheme REPLACES FluentTheme: loading both would pull the same
+             resources in twice. It is needed because the FA controls (here FAInfoBar) take
+             their own template from here and without it they would be left unstyled.
 
-             PreferUserAccentColor: senza, l'accento e' un viola fisso (SlateBlue), uguale su
-             ogni PC e che somigliava all'accento di questa macchina per coincidenza. Con,
-             i quadranti, la striscia e la riga selezionata prendono l'accento del PC, letto
-             all'avvio: su Windows (UISettings) segue anche un cambio a finestra aperta; su
-             Linux si legge solo su KDE, LXQt e LXDE, e li' UNA volta sola, perche' la
-             libreria tiene kdeglobals in un campo statico. Altrove resta SlateBlue.
+             PreferUserAccentColor: without it the accent is a fixed violet (SlateBlue), the
+             same on every PC, which happened to resemble this machine's accent by coincidence.
+             With it, the gauges, the strip and the selected row take the PC's accent, read at
+             start-up: on Windows (UISettings) it also follows a change made while the window
+             is open; on Linux it is read only on KDE, LXQt and LXDE, and there ONCE only,
+             because the library keeps kdeglobals in a static field. Elsewhere it stays SlateBlue.
 
-             PreferSystemTheme invece NON va mai acceso: a ogni cambio di colori del sistema
-             FluentAvalonia riscriverebbe RequestedThemeVariant con un Light/Dark esplicito,
-             cancellando la scelta fatta nel selettore, e System non potrebbe mai valere
-             Default; in Alto contrasto passerebbe inoltre al dizionario in cui i tre colori
-             di stato sono tutti rossi. Il tema chiaro/scuro lo governa App.ApplyTheme. -->
+             PreferSystemTheme, on the other hand, must NEVER be turned on: at every system
+             colour change FluentAvalonia would rewrite RequestedThemeVariant with an explicit
+             Light/Dark, wiping out the choice made in the selector, and System could never mean
+             Default; in High Contrast it would also switch to the dictionary in which the three
+             status colours are all red. The light/dark theme is governed by App.ApplyTheme. -->
         <sty:FluentAvaloniaTheme PreferUserAccentColor="True" />
     </Application.Styles>
 </Application>

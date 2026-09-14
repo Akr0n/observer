@@ -4,24 +4,24 @@ using System.Security.Principal;
 
 namespace Observer.App.Services;
 
-/// <summary>Apre il canale locale verso il servizio su questa macchina.</summary>
+/// <summary>Opens the local channel to the service on this machine.</summary>
 /// <remarks>
-/// Non nasce un secondo protocollo: sopra questo trasporto viaggia lo stesso HTTP/1.1 del
-/// percorso di rete, e il resto del client non sa nemmeno quale dei due sta usando.
+/// No second protocol appears here: this transport carries the same HTTP/1.1 as the network
+/// path, and the rest of the client does not even know which of the two it is using.
 /// </remarks>
 public static class LocalChannelHandler
 {
-    /// <summary>Quanto si aspetta la connessione al canale locale.</summary>
+    /// <summary>How long to wait for the connection to the local channel.</summary>
     /// <remarks>
-    /// Corto e SEPARATO dal timeout della richiesta, per una ragione misurata: su TCP un
-    /// servizio spento fallisce in millisecondi, ma su una pipe assente la connect consuma
-    /// l'intero timeout della richiesta. Con i tre secondi della richiesta, la finestra
-    /// passerebbe da un aggiornamento al secondo a uno ogni quattro appena il servizio si ferma.
+    /// Short and SEPARATE from the request timeout, for a measured reason: over TCP a stopped
+    /// service fails in milliseconds, but on a missing pipe the connect burns the whole
+    /// request timeout. With the request's three seconds, the window would go from one update
+    /// a second to one every four as soon as the service stops.
     /// </remarks>
     public static readonly TimeSpan ConnectTimeout = TimeSpan.FromMilliseconds(500);
 
-    /// <summary>Costruisce l'handler per il canale locale di questa macchina.</summary>
-    /// <returns>L'handler, da consegnare a un client HTTP.</returns>
+    /// <summary>Builds the handler for this machine's local channel.</summary>
+    /// <returns>The handler, to pass to an HTTP client.</returns>
     public static SocketsHttpHandler Create() =>
         new()
         {
@@ -39,16 +39,16 @@ public static class LocalChannelHandler
 
     private static async Task<Stream> OpenPipeAsync(CancellationToken cancellationToken)
     {
-        // Il punto, e NON "localhost". Misurato: con "localhost" la connessione passa da SMB e
-        // il servizio la classifica come proveniente dalla RETE, quindi pretenderebbe il token
-        // che qui non abbiamo. Solo il punto e' la via locale.
+        // The dot, and NOT "localhost". Measured: with "localhost" the connection goes through
+        // SMB and the service classifies it as coming from the NETWORK, so it would demand the
+        // token we do not have here. Only the dot is the local route.
         NamedPipeClientStream pipe = new(
             ".",
             ObserverEndpoint.LocalChannelName,
             PipeDirection.InOut,
             PipeOptions.Asynchronous,
-            // Identification e non Impersonation: al servizio basta SAPERE chi siamo, non gli
-            // serve poter agire per conto nostro. Si concede il minimo che funziona.
+            // Identification and not Impersonation: the service only needs to KNOW who we are,
+            // it does not need to be able to act on our behalf. Grant the minimum that works.
             TokenImpersonationLevel.Identification);
 
         await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);

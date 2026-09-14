@@ -4,69 +4,69 @@ using Observer.Core.Security;
 
 namespace Observer.App.Services;
 
-/// <summary>Una macchina come sta scritta nel file.</summary>
-/// <param name="Name">Come chiamarla a schermo. Facoltativo.</param>
-/// <param name="BaseAddress">Indirizzo del servizio, in HTTPS.</param>
-/// <param name="ApiToken">Il token di QUELLA macchina.</param>
-/// <param name="Fingerprint">L'impronta del certificato di QUELLA macchina.</param>
+/// <summary>A machine as it is written in the file.</summary>
+/// <param name="Name">What to call it on screen. Optional.</param>
+/// <param name="BaseAddress">The service's address, over HTTPS.</param>
+/// <param name="ApiToken">THAT machine's token.</param>
+/// <param name="Fingerprint">THAT machine's certificate fingerprint.</param>
 public sealed record MachineEntry(
     [property: JsonPropertyName("name")] string? Name,
     [property: JsonPropertyName("baseAddress")] string? BaseAddress,
     [property: JsonPropertyName("apiToken")] string? ApiToken,
     [property: JsonPropertyName("fingerprint")] string? Fingerprint);
 
-/// <summary>Il content di <c>machines.json</c>.</summary>
-/// <param name="Machines">Le machines remote. Quella locale non si elenca: c'e' sempre.</param>
+/// <summary>The contents of <c>machines.json</c>.</summary>
+/// <param name="Machines">The remote machines. The local one is not listed: it is always there.</param>
 public sealed record MachinesFile(
     [property: JsonPropertyName("machines")] IReadOnlyList<MachineEntry>? Machines);
 
-/// <summary>L'elenco risolto, con i motivi di cio' che non ci e' entrato.</summary>
-/// <param name="Machines">Le machines utilizzabili. La prima e' sempre questa.</param>
-/// <param name="Problems">Una frase per ogni entry scartata, gia' pronta per lo schermo.</param>
+/// <summary>The resolved list, with the reasons for whatever did not make it in.</summary>
+/// <param name="Machines">The usable machines. The first one is always this machine.</param>
+/// <param name="Problems">One sentence per rejected entry, ready to put on screen.</param>
 public sealed record MachineListResult(
     IReadOnlyList<ObserverEndpoint> Machines,
     IReadOnlyList<string> Problems);
 
 /// <summary>
-/// Da dove arriva l'elenco delle machines da guardare.
+/// Where the list of machines to watch comes from.
 /// </summary>
 /// <remarks>
-/// Il file e' l'unica verita' e la dashboard lo <b>legge soltanto</b>. Non ha una finestra per
-/// aggiungere machines, e non e' una mancanza: significa nessuna validazione di campi da
-/// mantenere, nessuna finestra di modifica, e soprattutto nessun programma con interfaccia
-/// grafica che scrive un file pieno di credenziali di altre machines.
+/// The file is the single source of truth and the dashboard <b>only reads it</b>. There is no
+/// window for adding machines, and that is not a gap: it means no field validation to maintain,
+/// no edit window, and above all no program with a graphical interface writing a file full of
+/// other machines' credentials.
 /// <para>
-/// La macchina locale <b>non si elenca</b> e non si puo' togliere: e' sempre la prima entry, e
-/// non ha ne' address ne' token ne' impronta, perche' passa dal canale locale.
+/// The local machine <b>is not listed</b> and cannot be removed: it is always the first entry,
+/// and it has no address, no token and no fingerprint, because it goes through the local channel.
 /// </para>
 /// </remarks>
 public static class MachineDirectory
 {
-    /// <summary>Il nome del file, accanto al vecchio <c>client.json</c>.</summary>
+    /// <summary>The file name, next to the older <c>client.json</c>.</summary>
     public const string FileName = "machines.json";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    /// <summary>Dove sta l'elenco: accanto alla configurazione a macchina singleMachine.</summary>
+    /// <summary>Where the list lives: next to the single-machine configuration.</summary>
     public static string FilePath => Path.Combine(
         Path.GetDirectoryName(ClientConfiguration.FilePath) ?? ".",
         FileName);
 
-    /// <summary>Legge davvero il disco e l'ambiente.</summary>
-    /// <returns>L'elenco e i problems.</returns>
+    /// <summary>Actually reads the disk and the environment.</summary>
+    /// <returns>The list and the problems.</returns>
     public static MachineListResult Read() =>
         Resolve(ReadFile(FilePath), ClientConfiguration.Read(), SecretStores.ForThisMachine());
 
-    /// <summary>Compone l'elenco senza toccare il disco.</summary>
-    /// <param name="content">Il content grezzo di <c>machines.json</c>, se esiste.</param>
+    /// <summary>Builds the list without touching the disk.</summary>
+    /// <param name="content">The raw contents of <c>machines.json</c>, if it exists.</param>
     /// <param name="fallback">
-    /// Cio' che dice la configurazione a macchina singleMachine, usata quando l'elenco non c'e'.
+    /// What the single-machine configuration says, used when the list is not there.
     /// </param>
-    /// <returns>L'elenco e i problems.</returns>
+    /// <returns>The list and the problems.</returns>
     /// <remarks>
-    /// Se <c>machines.json</c> non esiste vale ancora il vecchio <c>client.json</c> con la sua
-    /// variabile d'ambiente. Chi aveva gia' configurato una macchina non deve rifare niente solo
-    /// perche' adesso se ne possono elencare tante.
+    /// If <c>machines.json</c> does not exist the older <c>client.json</c> still applies, with its
+    /// environment variable. Anyone who had already configured one machine has nothing to redo
+    /// just because several can be listed now.
     /// </remarks>
     public static MachineListResult Resolve(
         string? content, ClientConfigurationResult fallback, ISecretStore store)
@@ -74,8 +74,8 @@ public static class MachineDirectory
         ArgumentNullException.ThrowIfNull(fallback);
         ArgumentNullException.ThrowIfNull(store);
 
-        // La macchina su cui si sta seduti c'e' SEMPRE, e sta per prima. Non ha bisogno di
-        // niente per funzionare, quindi non c'e' modo di sbagliarne la configurazione.
+        // The machine you are sitting at is ALWAYS there, and it comes first. It needs nothing
+        // to work, so there is no way to get its configuration wrong.
         List<ObserverEndpoint> machines = [ObserverEndpoint.LocalChannel()];
         List<string> problems = [];
 
@@ -103,10 +103,10 @@ public static class MachineDirectory
 
         if (file?.Machines is null)
         {
-            // JSON valido ma senza l'elenco: non e' un file "vuoto e va bene", e' un file che
-            // qualcuno credeva di aver scritto. Azzerare l'elenco in silenzio farebbe sparire
-            // anche la vecchia configurazione a macchina singleMachine, e label guarda vedrebbe solo
-            // sparire una macchina senza sapere perche'.
+            // Valid JSON but with no list: this is not an "empty and that's fine" file, it is a
+            // file someone thought they had written. Silently emptying the list would also make
+            // the older single-machine configuration disappear, and whoever is watching would
+            // just see a machine vanish without knowing why.
             problems.Add(
                 $"{FilePath} has no \"machines\" list, so nothing in it can be used. " + DescribeExample());
 
@@ -130,8 +130,8 @@ public static class MachineDirectory
             }
             catch (SecretStoreException error)
             {
-                // Un store di cui non ci si puo' fidare fa saltare QUELLA entry e lo dice,
-                // invece di far cadere l'intero elenco: le altre machines non c'entrano.
+                // A store that cannot be trusted drops THAT entry and says so, instead of
+                // bringing down the whole list: the other machines have nothing to do with it.
                 problems.Add(error.Message);
             }
         }
@@ -140,12 +140,13 @@ public static class MachineDirectory
     }
 
     /// <summary>
-    /// Aggiunge la vecchia configurazione a macchina singleMachine, se e' utilizzabile.
+    /// Adds the older single-machine configuration, if it is usable.
     /// </summary>
     /// <remarks>
-    /// Passa dagli STESSI requisiti delle voci elencate, e non e' ridondanza: senza questo
-    /// controllo il vecchio <c>client.json</c> sarebbe una porta di servizio che riammette
-    /// <c>http://</c> e i punti senza impronta, cioe' esattamente cio' che l'elenco rifiuta.
+    /// It goes through the SAME requirements as the listed entries, and that is not redundancy:
+    /// without this check the older <c>client.json</c> would be a back door letting
+    /// <c>http://</c> and endpoints with no fingerprint back in, which is exactly what the list
+    /// refuses.
     /// </remarks>
     private static void AddFallback(
         ClientConfigurationResult fallback,
@@ -175,8 +176,8 @@ public static class MachineDirectory
         machines.Add(singleMachine);
     }
 
-    /// <summary>Un esempio di file corretto, per i messaggi.</summary>
-    /// <returns>Il testo dell'esempio.</returns>
+    /// <summary>An example of a correct file, for use in the problem messages.</summary>
+    /// <returns>The example text.</returns>
     public static string DescribeExample() =>
         "A machine looks like this: { \"name\": \"laptop\", \"baseAddress\": " +
         "\"https://laptop:5058/\", \"fingerprint\": \"sha256:...\" }. Run \"observer share\" " +
@@ -194,9 +195,9 @@ public static class MachineDirectory
             return null;
         }
 
-        // Un token scritto nel file NON viene usato, nemmeno se e' quello giusto. Accettarlo
-        // "solo per compatibilita'" vorrebbe dire che il segreto puo' restare li' per sempre,
-        // e che questa modifica non ha tolto niente a nessuno.
+        // A token written in the file is NOT used, not even when it is the right one. Accepting
+        // it "just for compatibility" would mean the secret can stay there for ever, and that
+        // this change took nothing away from anyone.
         if (!string.IsNullOrWhiteSpace(entry.ApiToken))
         {
             return null;
@@ -212,12 +213,12 @@ public static class MachineDirectory
             : null;
     }
 
-    /// <summary>Perche' una entry e' stata scartata, detto in modo che si possa correggere.</summary>
+    /// <summary>Why an entry was rejected, phrased so that it can be fixed.</summary>
     /// <remarks>
-    /// Il caso di gran lunga piu' probabile e' <c>http://</c> al posto di <c>https://</c>, e
-    /// merita una frase sua: da quando il servizio ha un certificato di macchina non risponde
-    /// piu' in chiaro sulla rete, quindi un address vecchio non e' un error di battitura ma
-    /// una configurazione che era giusta ieri.
+    /// By far the most likely case is <c>http://</c> instead of <c>https://</c>, and it deserves
+    /// a sentence of its own: since the service has a machine certificate it no longer answers
+    /// in the clear over the network, so an old address is not a typo but a configuration that
+    /// was right yesterday.
     /// </remarks>
     private static string ExplainRejection(MachineEntry entry, ISecretStore store)
     {
@@ -262,9 +263,9 @@ public static class MachineDirectory
                 store.Description + ". " + DescribeExample();
         }
 
-        // L'address si controlla PRIMA del token mancante: con un address malformato quella
-        // macchina non e' raggiungibile comunque, e mandare a depositare un token sarebbe
-        // mandare a fare la cosa giusta nell'ordine sbagliato.
+        // The address is checked BEFORE the missing token: with a malformed address that
+        // machine is unreachable anyway, and sending someone off to store a token would be
+        // sending them to do the right thing in the wrong order.
         if (string.IsNullOrWhiteSpace(entry.BaseAddress)
             || !Uri.TryCreate(WithTrailingSlash(entry.BaseAddress.Trim()), UriKind.Absolute, out Uri? address)
             || address.Scheme != Uri.UriSchemeHttps)

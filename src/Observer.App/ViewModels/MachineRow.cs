@@ -4,73 +4,73 @@ using Observer.Core.Metrics;
 
 namespace Observer.App.ViewModels;
 
-/// <summary>Come sta una macchina dell'elenco, per il pallino accanto al nome.</summary>
+/// <summary>How a machine in the list is doing, for the dot next to the name.</summary>
 public enum MachineStatus
 {
-    /// <summary>Non e' ancora stata interrogata. Grigio.</summary>
+    /// <summary>It has not been probed yet. Grey.</summary>
     Unknown = 0,
 
-    /// <summary>L'ultima lettura e' andata. Verde.</summary>
+    /// <summary>The last reading went through. Green.</summary>
     Reachable = 1,
 
-    /// <summary>Non risponde da poco, o risponde con un avviso. Giallo.</summary>
+    /// <summary>It has not answered for a short while, or it answers with a warning. Yellow.</summary>
     Warning = 2,
 
-    /// <summary>Faulted vero, secondo la stessa regola della barra di stato. Rosso.</summary>
+    /// <summary>A real fault, by the same rule as the status bar. Red.</summary>
     Faulted = 3,
 }
 
 /// <summary>
-/// Una voce della barra laterale: la macchina, e come sta.
+/// An entry in the sidebar: the machine, and how it is doing.
 /// </summary>
 /// <remarks>
-/// Deriva da <see cref="ObservableObject"/> e NON da <see cref="ViewModelBase"/>, per la stessa
-/// ragione di <see cref="MetricRow"/>: ViewLocator aggancia qualunque ViewModelBase e
-/// disegnerebbe un "Not Found" al posto della riga.
+/// Derives from <see cref="ObservableObject"/> and NOT from <see cref="ViewModelBase"/>, for the
+/// same reason as <see cref="MetricRow"/>: ViewLocator picks up any ViewModelBase and
+/// would draw a "Not Found" in place of the row.
 /// <para>
-/// Lo stato segue la regola della barra di stato - <see cref="StatusEscalation"/>, con la sua
-/// grazia di dieci secondi - cosi' un pallino rosso vuol dire la stessa cosa di una barra
-/// rossa. Prima della barra laterale con i pallini, per sapere come stava una macchina
-/// bisognava cliccarci sopra.
+/// The state follows the status bar's rule - <see cref="StatusEscalation"/>, with its
+/// ten-second grace - so a red dot means the same thing as a red bar.
+/// Before the sidebar with the dots, finding out how a machine was doing meant
+/// clicking on it.
 /// </para>
 /// </remarks>
 public sealed partial class MachineRow : ObservableObject
 {
-    /// <summary>Costruisce la voce, ancora senza stato.</summary>
-    /// <param name="punto">La macchina.</param>
-    public MachineRow(ObserverEndpoint punto)
+    /// <summary>Builds the entry, still without a state.</summary>
+    /// <param name="endpoint">The machine.</param>
+    public MachineRow(ObserverEndpoint endpoint)
     {
-        ArgumentNullException.ThrowIfNull(punto);
+        ArgumentNullException.ThrowIfNull(endpoint);
 
-        Endpoint = punto;
+        Endpoint = endpoint;
     }
 
-    /// <summary>La macchina. Cambia solo con <see cref="Update"/>, a credenziale ruotata.</summary>
+    /// <summary>The machine. Changes only through <see cref="Update"/>, on a rotated credential.</summary>
     public ObserverEndpoint Endpoint { get; private set; }
 
-    /// <summary>Sostituisce il punto: stesso indirizzo, credenziale nuova.</summary>
-    /// <param name="punto">La voce riletta da disco.</param>
+    /// <summary>Replaces the endpoint: same address, new credential.</summary>
+    /// <param name="endpoint">The entry re-read from disk.</param>
     /// <remarks>
-    /// Senza, una macchina non guardata verrebbe sondata per sempre con il token letto
-    /// all'avvio, e dopo <c>observer token set</c> il suo pallino resterebbe "Token rejected"
-    /// fino al riavvio: lo stesso incidente gia' chiuso tre volte per la macchina guardata.
+    /// Without it, a machine that is not being watched would be probed for ever with the token
+    /// read at start-up, and after <c>observer token set</c> its dot would stay on "Token rejected"
+    /// until a restart: the same incident already closed three times for the watched machine.
     /// </remarks>
-    internal void Update(ObserverEndpoint punto)
+    internal void Update(ObserverEndpoint endpoint)
     {
-        ArgumentNullException.ThrowIfNull(punto);
+        ArgumentNullException.ThrowIfNull(endpoint);
 
-        Endpoint = punto;
+        Endpoint = endpoint;
 
-        // La misura ricomincia: da qui in poi e' un'altra macchina, o la stessa raggiunta in
-        // un altro modo, e "giu' da due giorni" riferito alla precedente sarebbe una bugia.
-        // Sta QUI e non nel chiamante perche' i chiamanti sono due, e uno dei due si
-        // dimenticherebbe.
+        // The measurement starts over: from here on it is another machine, or the same one
+        // reached another way, and "down for two days" said of the previous one would be a lie.
+        // It lives HERE and not in the caller because there are two callers, and one of the two
+        // would forget.
         FailingSince = null;
         DowntimeText = string.Empty;
 
-        // E il carico con loro: era di quell'altro endpoint. Un numero vero riferito a una
-        // macchina che non e' piu' quella si legge come se fosse di questa. Vale identico per
-        // il riepilogo, che racconta la storia di un'altra macchina: va rifatto, non tradotto.
+        // And the load with them: it belonged to that other endpoint. A real number that refers
+        // to a machine which is no longer this one reads as if it were this one's. The same holds
+        // for the summary, which tells another machine's story: it must be redone, not adapted.
         MachineLoad = MachineLoad.None;
         SummaryLine = string.Empty;
         SummaryPeriodKey = null;
@@ -79,130 +79,130 @@ public sealed partial class MachineRow : ObservableObject
         OnPropertyChanged(nameof(AccessibleName));
     }
 
-    /// <summary>Il nome scritto nell'elenco.</summary>
+    /// <summary>The name written in the list.</summary>
     public string Name => Endpoint.DisplayName;
 
-    /// <summary>From quando le letture falliscono di fila, oppure null se l'ultima e' andata.</summary>
+    /// <summary>Since when the readings have been failing in a row, or null if the last one went through.</summary>
     /// <remarks>
-    /// La stessa misura che la barra di stato tiene per la macchina guardata. Il setter e'
-    /// privato: l'orologio e il testo che ne deriva devono muoversi insieme, e da fuori si
-    /// azzerano solo cambiando la macchina della voce, cioe' da <see cref="Update"/>.
+    /// The same measurement the status bar keeps for the watched machine. The setter is
+    /// private: the clock and the text derived from it have to move together, and from outside
+    /// they are cleared only by changing the entry's machine, that is from <see cref="Update"/>.
     /// <para>
-    /// E' il primo fallimento che QUESTA finestra ha visto, non l'istante in cui la macchina
-    /// e' andata giu': una dashboard appena aperta su una macchina spenta da tre giorni dira'
-    /// "under 1 min". Il dato per saperlo davvero non c'e' — la macchina che dovrebbe dirlo
-    /// e' proprio quella che non risponde. MessageFor la stessa ragione e' tempo di calendario e non
-    /// tempo osservato: attraverso una sospensione del PC, o un intervallo in cui la finestra
-    /// era chiusa, la durata rivendica una continuita' che nessuno ha guardato.
+    /// It is the first failure THIS window has seen, not the instant the machine
+    /// went down: a dashboard just opened on a machine that has been off for three days will say
+    /// "under 1 min". The data to really know it is not there — the machine that should say so
+    /// is precisely the one that is not answering. For the same reason it is calendar time and not
+    /// observed time: across a PC suspend, or an interval in which the window
+    /// was closed, the duration claims a continuity nobody was watching.
     /// </para>
     /// </remarks>
     internal DateTimeOffset? FailingSince { get; private set; }
 
-    /// <summary>True mentre una sonda e' in volo: la prossima non le parte sopra.</summary>
-    /// <remarks>Leggibile da fuori perche' un test lo osserva; lo scrive solo il view model.</remarks>
+    /// <summary>True while a probe is in flight: the next one does not start on top of it.</summary>
+    /// <remarks>Readable from outside because a test observes it; only the view model writes it.</remarks>
     public bool IsProbing { get; internal set; }
 
-    /// <summary>True mentre si legge lo storico per il riepilogo. Gemella di <see cref="IsProbing"/>.</summary>
+    /// <summary>True while the history is read for the summary. Twin of <see cref="IsProbing"/>.</summary>
     public bool IsSummarizing { get; internal set; }
 
-    /// <summary>MessageFor quale periodo il riepilogo e' stato calcolato, o null se mai.</summary>
+    /// <summary>For which period the summary was computed, or null if never.</summary>
     /// <remarks>
-    /// La chiave e non la voce, come ovunque: e' cio' che si confronta per sapere se va rifatto.
-    /// Cambiando periodo cambia la domanda - "cosa mi sono perso nell'ultima ora" non e' "negli
-    /// ultimi sette giorni" - quindi la risposta vecchia non vale piu'.
+    /// The key and not the entry, as everywhere: it is what gets compared to know whether it must
+    /// be redone. Changing period changes the question - "what did I miss in the last hour" is not
+    /// "in the last seven days" - so the old answer no longer holds.
     /// </remarks>
     public string? SummaryPeriodKey { get; internal set; }
 
-    /// <summary>Cosa e' successo a questa macchina mentre nessuno guardava. Vuota se niente.</summary>
+    /// <summary>What happened to this machine while nobody was watching. Empty if nothing.</summary>
     public string SummaryLine { get; internal set; } = string.Empty;
 
-    /// <summary>Come sta.</summary>
+    /// <summary>How it is doing.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsUnknown), nameof(IsReachable), nameof(IsWarning), nameof(IsFaulted), nameof(AccessibleName))]
     public partial MachineStatus Status { get; set; }
 
-    /// <summary>Perche' sta cosi', in una frase corta: il titolo che avrebbe la barra di stato.</summary>
+    /// <summary>Why it is that way, in one short sentence: the title the status bar would have.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AccessibleName), nameof(ToolTipText))]
     public partial string Detail { get; set; } = "Not checked yet";
 
-    /// <summary>From quanto dura il guasto, gia' scritto: <c>for 2 h 10 min</c>. Vuoto se non c'e'.</summary>
+    /// <summary>How long the fault has lasted, already written out: <c>for 2 h 10 min</c>. Empty if there is none.</summary>
     /// <remarks>
-    /// Una proprieta' MEMORIZZATA, scritta quando arriva una lettura, e non un getter che
-    /// legge l'orologio: cosi' non serve alcun timer, e la riga non puo' cambiare mentre
-    /// nessuno guarda. Il prezzo e' che il testo puo' restare indietro fino alla lettura
-    /// successiva, ed e' per questo che <see cref="Downtime.Describe"/> tronca.
+    /// A STORED property, written when a reading arrives, and not a getter that
+    /// reads the clock: this way no timer is needed, and the row cannot change while
+    /// nobody is watching. The price is that the text can lag behind until the next
+    /// reading, and that is why <see cref="Downtime.Describe"/> truncates.
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Subtitle), nameof(ToolTipText), nameof(AccessibleName))]
     public partial string DowntimeText { get; set; } = string.Empty;
 
-    /// <summary>Quanto sta lavorando questa macchina, quando si sa.</summary>
+    /// <summary>How hard this machine is working, when that is known.</summary>
     /// <remarks>
-    /// Lo scrive <see cref="Record"/> dal snapshot che la sonda ha gia' in mano, e resta
-    /// <see cref="MachineLoad.None"/> per la macchina GUARDATA: li' i numeri sono nei quadranti,
-    /// grandi, a due centimetri di distanza, e ripeterli piccoli accanto al nome vorrebbe dire
-    /// due letture della stessa macchina che possono contraddirsi a vista - la sonda gira ogni
-    /// quindici secondi, il giro principale ogni secondo. La barra laterale risponde a "devo
-    /// cambiare macchina?", e per quella su cui si e' gia' la risposta e' gia' a schermo.
+    /// <see cref="Record"/> writes it from the snapshot the probe already holds, and it stays
+    /// <see cref="MachineLoad.None"/> for the WATCHED machine: there the numbers are in the gauges,
+    /// big, two centimetres away, and repeating them small next to the name would mean
+    /// two readings of the same machine that can contradict each other in plain sight - the probe
+    /// runs every fifteen seconds, the main loop every second. The sidebar answers "do I have to
+    /// switch machine?", and for the one you are already on the answer is already on screen.
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Subtitle), nameof(ToolTipText), nameof(AccessibleName))]
     public partial MachineLoad MachineLoad { get; set; } = MachineLoad.None;
 
-    /// <summary>La riga sotto il nome: o da quanto e' giu', o quanto sta lavorando.</summary>
+    /// <summary>The line under the name: either how long it has been down, or how hard it is working.</summary>
     /// <remarks>
-    /// Una riga sola e non due, perche' i due contenuti si escludono per costruzione: il carico
-    /// esiste solo quando la lettura e' andata, e <see cref="DowntimeText"/> si scrive solo quando
-    /// NON e' andata. La durata vince comunque, esplicitamente: se un giorno le due potessero
-    /// coesistere, "giu' da tre minuti" e' cio' che si deve leggere.
+    /// One line and not two, because the two contents exclude each other by construction: the load
+    /// exists only when the reading went through, and <see cref="DowntimeText"/> is written only when
+    /// it did NOT. The duration wins anyway, explicitly: if one day the two could
+    /// coexist, "down for three minutes" is what has to be read.
     /// </remarks>
     public string Subtitle => DowntimeText.Length > 0 ? DowntimeText : MachineLoad.Caption;
 
-    /// <summary>Cio' che dice il suggerimento del mouse: il motivo, e da quanto dura.</summary>
+    /// <summary>What the mouse tooltip says: the reason, and how long it has lasted.</summary>
     /// <remarks>
-    /// Separati da un punto medio e non da uno spazio: il prefisso e' uno solo per dieci
-    /// titoli diversi, e attaccato ad alcuni cambia il senso della frase. "Token rejected for
-    /// 3 min" in inglese si legge "respinto PER tre minuti", cioe' un blocco a tempo, che e'
-    /// il contrario di cio' che sta succedendo. Il punto medio spezza la frase e lascia due
-    /// fatti accostati, che e' quello che sono.
+    /// Separated by a middle dot and not by a space: there is one prefix for ten
+    /// different titles, and attached to some of them it changes the sense of the sentence. "Token
+    /// rejected for 3 min" reads in English as "rejected FOR three minutes", that is a timed ban,
+    /// which is the opposite of what is happening. The middle dot breaks the sentence and leaves
+    /// two facts side by side, which is what they are.
     /// </remarks>
     /// <remarks>
-    /// Dice cio' che dice la riga, non <see cref="DowntimeText"/>: cosi' il carico di una macchina
-    /// arriva anche a chi la riga non la vede. Non cambia di continuo, e non e' un caso - la
-    /// sonda gira ogni quindici secondi e la macchina guardata non ha carico, quindi la voce
-    /// SELEZIONATA, che e' l'unica che un lettore di schermo riannuncia, ha esattamente il
-    /// testo che aveva prima di questa aggiunta.
+    /// It says what the line says, not <see cref="DowntimeText"/>: this way a machine's load
+    /// reaches whoever does not see the line as well. It does not change constantly, and that is
+    /// no accident - the probe runs every fifteen seconds and the watched machine has no load, so
+    /// the SELECTED entry, which is the only one a screen reader re-announces, has exactly the
+    /// text it had before this addition.
     /// </remarks>
     public string ToolTipText => Subtitle.Length == 0 ? Detail : $"{Detail} · {Subtitle}";
 
-    /// <summary>True finche' nessuno l'ha interrogata.</summary>
+    /// <summary>True until someone has probed it.</summary>
     public bool IsUnknown => Status == MachineStatus.Unknown;
 
-    /// <summary>True quando l'ultima lettura e' andata.</summary>
+    /// <summary>True when the last reading went through.</summary>
     public bool IsReachable => Status == MachineStatus.Reachable;
 
-    /// <summary>True quando c'e' un reason che potrebbe ancora passare da solo.</summary>
+    /// <summary>True when there is a problem that might still clear by itself.</summary>
     public bool IsWarning => Status == MachineStatus.Warning;
 
-    /// <summary>True su un guasto vero.</summary>
+    /// <summary>True on a real fault.</summary>
     public bool IsFaulted => Status == MachineStatus.Faulted;
 
-    /// <summary>Name e stato insieme, per chi non vede il pallino.</summary>
+    /// <summary>Name and state together, for whoever does not see the dot.</summary>
     /// <remarks>
-    /// Passa da <see cref="ToolTipText"/> e non da <see cref="Detail"/>: cosi' il
-    /// suggerimento del mouse e cio' che annuncia un lettore di schermo non possono divergere,
-    /// e la durata la sente anche chi la riga non la vede.
+    /// It goes through <see cref="ToolTipText"/> and not through <see cref="Detail"/>: this way the
+    /// mouse tooltip and what a screen reader announces cannot diverge,
+    /// and the duration is heard by whoever does not see the line too.
     /// </remarks>
     public string AccessibleName => $"{Name}: {ToolTipText}";
 
-    /// <summary>Record l'outcome di una lettura, dalla sonda o dal giro principale.</summary>
-    /// <param name="outcome">Com'e' andata.</param>
-    /// <param name="reason">La frase del client, quando non e' andata.</param>
-    /// <param name="now">L'ora, per misurare da quanto dura un guasto.</param>
+    /// <summary>Records the outcome of a reading, from the probe or from the main loop.</summary>
+    /// <param name="outcome">How it went.</param>
+    /// <param name="reason">The client's sentence, when it did not go through.</param>
+    /// <param name="now">The time, to measure how long a fault has lasted.</param>
     /// <param name="snapshot">
-    /// Cio' che la lettura ha riportato, da cui si ricava il carico. Null - ed e' il valore
-    /// predefinito - per la macchina GUARDATA: vedi <see cref="MachineLoad"/>.
+    /// What the reading brought back, from which the load is derived. Null - and that is the
+    /// default - for the WATCHED machine: see <see cref="MachineLoad"/>.
     /// </param>
     public void Record(
         ServiceOutcome outcome,
@@ -210,9 +210,9 @@ public sealed partial class MachineRow : ObservableObject
         DateTimeOffset now,
         MachineSnapshot? snapshot = null)
     {
-        // Sta QUI e non nei chiamanti per la stessa ragione scritta in Update: i chiamanti
-        // sono tre, e uno si dimenticherebbe di azzerarlo - lasciando sotto il nome di una
-        // macchina che non risponde il carico che aveva l'ultima volta che rispondeva.
+        // It lives HERE and not in the callers for the same reason written in Update: there are
+        // three callers, and one would forget to clear it - leaving the load it had the last
+        // time it answered under the name of a machine that is not answering.
         MachineLoad = outcome == ServiceOutcome.Ok ? MachineLoad.From(snapshot) : MachineLoad.None;
 
         if (outcome == ServiceOutcome.Ok)
@@ -233,12 +233,12 @@ public sealed partial class MachineRow : ObservableObject
         Status = message.Tone == StatusTone.Error ? MachineStatus.Faulted : MachineStatus.Warning;
         Detail = message.Title;
 
-        // Il cancello e' il TONO, non lo stato: dentro i dieci secondi di tolleranza il tono
-        // e' neutro e non si dice ancora niente, perche' un contatore che parte su ogni
-        // singhiozzo insegna a ignorarlo - che e' cio' che StatusEscalation esiste per
-        // impedire. E' il tono e non lo stato IsFaulted perche' un "No readings yet" arriva DOPO
-        // la tolleranza ma resta un avviso, non un rosso, e puo' durare giorni: filtrare sul
-        // rosso lo lascerebbe fuori proprio mentre e' la cosa che dura di piu'.
+        // The gate is the TONE, not the state: within the ten seconds of tolerance the tone
+        // is neutral and nothing is said yet, because a counter that starts on every
+        // blip teaches you to ignore it - which is what StatusEscalation exists to
+        // prevent. It is the tone and not the Faulted state because a "No readings yet" arrives
+        // AFTER the tolerance but stays a warning, not a red, and can last days: filtering on
+        // red would leave it out precisely while it is the thing that lasts longest.
         DowntimeText = message.Tone == StatusTone.Informational
             ? string.Empty
             : "for " + Downtime.Describe(now - FailingSince.Value);

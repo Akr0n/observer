@@ -5,17 +5,17 @@ using Avalonia.Styling;
 
 namespace Observer.App.Services;
 
-/// <summary>Dove stava la finestra l'ultima volta.</summary>
-/// <param name="X">Bordo sinistro, in pixel fisici dello screen.</param>
-/// <param name="Y">Bordo superiore, in pixel fisici dello screen.</param>
-/// <param name="Width">Larghezza, in pixel logici (quelli con cui la finestra si misura).</param>
-/// <param name="Height">Altezza, in pixel logici.</param>
-/// <param name="Maximized">True se era a tutto screen: allora X, Y e le misure sono quelle di prima.</param>
+/// <summary>Where the window was last time.</summary>
+/// <param name="X">Left edge, in physical screen pixels.</param>
+/// <param name="Y">Top edge, in physical screen pixels.</param>
+/// <param name="Width">Width, in logical pixels (the ones the window measures itself in).</param>
+/// <param name="Height">Height, in logical pixels.</param>
+/// <param name="Maximized">True if it was maximized: then X, Y and the sizes are the earlier ones.</param>
 /// <remarks>
-/// Posizione fisica e misure logiche, e non e' un'incoerenza: e' come Avalonia le espone
-/// (<c>Position</c> e' un <c>PixelPoint</c>, <c>Width</c> e' in unita' indipendenti dal DPI),
-/// e convertire da una parte all'altra con la zoom dello screen di ieri darebbe una finestra
-/// di misura diversa il giorno in cui la zoom cambia.
+/// Physical position and logical sizes, and that is not an inconsistency: it is how Avalonia
+/// exposes them (<c>Position</c> is a <c>PixelPoint</c>, <c>Width</c> is in DPI-independent
+/// units), and converting one into the other with yesterday's screen scale would give a window
+/// of a different size the day the scale changes.
 /// </remarks>
 public sealed record WindowPlacement(
     [property: JsonPropertyName("x")] int X,
@@ -24,37 +24,37 @@ public sealed record WindowPlacement(
     [property: JsonPropertyName("height")] int Height,
     [property: JsonPropertyName("maximized")] bool Maximized)
 {
-    /// <summary>Quanto della finestra deve stare dentro uno screen perche' la si possa afferrare.</summary>
+    /// <summary>How much of the window must sit inside a screen for it to be grabbable.</summary>
     /// <remarks>
-    /// Un quadrato di 120 pixel fisici a partire dall'angolo in alto a sinistra: ci sta dentro
-    /// l'icona e un pezzo di barra del titolo, cioe' il minimo per trascinarla via se il resto
-    /// e' fuori. Il caso che questo evita e' un monitor scollegato: senza controllo la finestra
-    /// riaprirebbe su uno screen che non c'e' piu', invisibile e senza modo di raggiungerla.
+    /// A square of 120 physical pixels from the top left corner: it holds the icon and a piece
+    /// of the title bar, that is, the minimum needed to drag the window away if the rest is
+    /// outside. The case this avoids is a disconnected monitor: with no check the window would
+    /// reopen on a screen that is no longer there, invisible and with no way to reach it.
     /// </remarks>
     public const int MinimumGrabbableSize = 120;
 
-    /// <summary>Di quanto il bordo sinistro puo' sporgere fuori dallo screen.</summary>
+    /// <summary>How far the left edge may stick out of the screen.</summary>
     /// <remarks>
-    /// Windows disegna attorno a ogni finestra un bordo invisibile di 7-8 pixel, e una
-    /// finestra agganciata al bordo sinistro (Win+Freccia) sta a X = -8: senza questa
-    /// tolleranza non verrebbe mai ricordata. In alto no: il bordo invisibile in alto non
-    /// c'e', e una finestra maximized sta a (-8, -8), che cosi' resta esclusa.
+    /// Windows draws an invisible border of 7-8 pixels around every window, and a window
+    /// snapped to the left edge (Win+Arrow) sits at X = -8: without this tolerance it would
+    /// never be remembered. Not at the top: there is no invisible border at the top, and a
+    /// maximized window sits at (-8, -8), which is therefore left out.
     /// </remarks>
     public const int LeftEdgeTolerance = 16;
 
-    /// <summary>Una posizione che porta solo lo stato: non passa <see cref="WithinAnyOf"/>.</summary>
+    /// <summary>A placement carrying only the state: it does not pass <see cref="WithinAnyOf"/>.</summary>
     private static WindowPlacement StateOnlyPlacement => new(0, 0, 0, 0, Maximized: false);
 
-    /// <summary>Un'area di lavoro, in pixel fisici.</summary>
-    /// <param name="X">Bordo sinistro.</param>
-    /// <param name="Y">Bordo superiore.</param>
-    /// <param name="Width">Larghezza.</param>
-    /// <param name="Height">Altezza.</param>
+    /// <summary>A work area, in physical pixels.</summary>
+    /// <param name="X">Left edge.</param>
+    /// <param name="Y">Top edge.</param>
+    /// <param name="Width">Width.</param>
+    /// <param name="Height">Height.</param>
     public readonly record struct WorkArea(int X, int Y, int Width, int Height);
 
-    /// <summary>Questa posizione, se sta su uno degli screens di adesso; altrimenti null.</summary>
-    /// <param name="screens">Le aree di lavoro degli screens collegati.</param>
-    /// <returns>Se stessa, oppure null quando la finestra riaprirebbe fuori da tutto.</returns>
+    /// <summary>This placement, if it sits on one of the screens there are now; otherwise null.</summary>
+    /// <param name="screens">The work areas of the connected screens.</param>
+    /// <returns>Itself, or null when the window would reopen off every screen.</returns>
     public WindowPlacement? WithinAnyOf(IReadOnlyList<WorkArea> screens)
     {
         ArgumentNullException.ThrowIfNull(screens);
@@ -66,10 +66,10 @@ public sealed record WindowPlacement(
 
         foreach (WorkArea screen in screens)
         {
-            // Le costanti si sommano e sottraggono dal lato dello screen, MAI da X o Y:
-            // con un file scritto a mano che dice x = 2147483647 la somma traboccava, il
-            // confronto passava, e la finestra si apriva invisibile - e si risalvava
-            // identica a ogni chiusura.
+            // The constants are added to and subtracted from the screen's edge, NEVER from
+            // X or Y: with a hand-written file saying x = 2147483647 the sum overflowed, the
+            // comparison passed, and the window opened invisible - and saved itself back
+            // identical at every close.
             if (X >= screen.X - LeftEdgeTolerance
                 && Y >= screen.Y
                 && X <= screen.X + screen.Width - MinimumGrabbableSize
@@ -82,25 +82,25 @@ public sealed record WindowPlacement(
         return null;
     }
 
-    /// <summary>Cosa ricordare alla chiusura, a seconda di com'e' la finestra.</summary>
-    /// <param name="minimized">True se la finestra e' ridotta a icona.</param>
+    /// <summary>What to remember at close, depending on the state of the window.</summary>
+    /// <param name="minimized">True if the window is minimized.</param>
     /// <param name="maximized">
-    /// True se e' a tutto screen, oppure se lo era prima di essere ridotta a icona.
+    /// True if it is maximized, or if it was before being minimized.
     /// </param>
     /// <param name="lastNormal">
-    /// L'ultima geometria vista in stato normal durante questa sessione, se c'e' stata.
+    /// The last geometry seen in the normal state during this session, if there was one.
     /// </param>
-    /// <param name="saved">La geometria letta dal file all'avvio, se c'era.</param>
-    /// <param name="current">La geometria di adesso, che vale solo a finestra normal.</param>
-    /// <returns>La posizione da scrivere, oppure null se non c'e' niente di sensato da dire.</returns>
+    /// <param name="saved">The geometry read from the file at start-up, if there was one.</param>
+    /// <param name="current">The current geometry, which only holds for a normal window.</param>
+    /// <returns>The placement to write, or null if there is nothing sensible to say.</returns>
     /// <remarks>
-    /// Le misure di una finestra a tutto screen sono quelle dello screen, e la posizione di
-    /// una ridotta a icona e' fuori da ogni screen: in quei due stati si ricorda l'ultima
-    /// geometria normal di QUESTA sessione, non quella letta dal file all'avvio - che e'
-    /// cio' che si faceva prima, e uno spostamento fatto prima di massimizzare andava
-    /// perso: su due monitor la finestra riapriva su quello sbagliato. Se nessuna geometria
-    /// normal e' nota, lo stato a tutto screen si ricorda da solo, con una posizione che
-    /// <see cref="WithinAnyOf"/> scarta: la finestra si apre dove decide il sistema, ma piena.
+    /// The size of a maximized window is the screen's, and the position of a minimized one
+    /// is outside every screen: in those two states what is remembered is the last normal
+    /// geometry of THIS session, not the one read from the file at start-up - which is what
+    /// was done before, and a move made before maximizing was lost: on two monitors the
+    /// window reopened on the wrong one. If no normal geometry is known, the maximized
+    /// state is remembered on its own, with a placement that
+    /// <see cref="WithinAnyOf"/> rejects: the window opens where the system decides, but maximized.
     /// </remarks>
     public static WindowPlacement? AtClose(
         bool minimized,
@@ -127,12 +127,12 @@ public sealed record WindowPlacement(
     }
 }
 
-/// <summary>Una voce del selettore dello zoom.</summary>
-/// <param name="Factor">La zoom: 1 e' la misura normal.</param>
+/// <summary>An entry of the zoom selector.</summary>
+/// <param name="Factor">The zoom: 1 is the normal size.</param>
 /// <remarks>
-/// Il testo della voce E' il suo <see cref="ToString"/>: un lettore di screen annuncia
-/// quello, e con un double nudo annunciava "1,15" al posto di "115 %". L'uguaglianza per
-/// valore del record e' cio' che fa ritrovare la voce a partire dal numero.
+/// The entry's text IS its <see cref="ToString"/>: a screen reader announces that, and with
+/// a bare double it announced "1,15" instead of "115 %". The record's value equality is what
+/// makes the entry findable again from the number.
 /// </remarks>
 public sealed record ZoomOption(double Factor)
 {
@@ -140,20 +140,20 @@ public sealed record ZoomOption(double Factor)
     public override string ToString() => Factor.ToString("P0", CultureInfo.CurrentCulture);
 }
 
-/// <summary>Una voce del selettore del period dello storico.</summary>
-/// <param name="Key">Cio' che va nel file: <c>1h</c>, <c>24h</c> o <c>7d</c>.</param>
+/// <summary>An entry of the history period selector.</summary>
+/// <param name="Key">What goes in the file: <c>1h</c>, <c>24h</c> or <c>7d</c>.</param>
 /// <remarks>
-/// Il passo della barra non e' quello della sorgente, e i due numeri rispondono a domande
-/// diverse. La SORGENTE e' cio' che il servizio conserva: campioni al minuto per sette giorni,
-/// a cinque minuti per novanta. Il PASSO della barra e' quanto largo dev'essere un intervallo
-/// perche' la striscia ci stia: circa novanta barre su ottocento pixel danno barrette da nove,
-/// che e' il minimo per vederle separate. From qui la tabella: un'ora a un minuto fa sessanta
-/// barre, un giorno a un quarto d'ora ne fa novantasei, una settimana a due ore ottantaquattro.
+/// The bar step is not the source's, and the two numbers answer different questions. The
+/// SOURCE is what the service keeps: samples every minute for seven days, every five minutes
+/// for ninety. The bar STEP is how wide an interval has to be for the strip to hold it: about
+/// ninety bars over eight hundred pixels give bars of nine, which is the minimum for seeing
+/// them apart. Hence the table: one hour at one minute makes sixty bars, one day at a quarter
+/// of an hour makes ninety-six, one week at two hours makes eighty-four.
 /// <para>
-/// Novanta giorni NON c'e', anche se il servizio li conserva: a cinque minuti sarebbero 25 920
-/// punti, oltre il tetto che il servizio impone a una risposta, e allargando la barra fino a
-/// farceli stare la striscia direbbe una cosa sola per ogni giorno e mezzo. Un grafico che
-/// mente e' peggio di un grafico che manca.
+/// Ninety days is NOT there, even though the service keeps them: at five minutes that would be
+/// 25 920 points, over the cap the service puts on a response, and widening the bar until they
+/// fit would leave the strip saying one single thing for every day and a half. A chart that
+/// lies is worse than a chart that is missing.
 /// </para>
 /// </remarks>
 public sealed record HistoryPeriodOption(string Key)
@@ -166,7 +166,7 @@ public sealed record HistoryPeriodOption(string Key)
         _ => "1 hour",
     };
 
-    /// <summary>Quanto storico mostra la striscia.</summary>
+    /// <summary>How much history the strip shows.</summary>
     public TimeSpan Duration => Key switch
     {
         "24h" => TimeSpan.FromHours(24),
@@ -174,7 +174,7 @@ public sealed record HistoryPeriodOption(string Key)
         _ => TimeSpan.FromHours(1),
     };
 
-    /// <summary>Quanto dura un intervallo della striscia.</summary>
+    /// <summary>How long one interval of the strip lasts.</summary>
     public TimeSpan Step => Key switch
     {
         "24h" => TimeSpan.FromMinutes(15),
@@ -182,21 +182,21 @@ public sealed record HistoryPeriodOption(string Key)
         _ => TimeSpan.FromMinutes(1),
     };
 
-    /// <summary>La risoluzione da chiedere al servizio.</summary>
+    /// <summary>The resolution to ask the service for.</summary>
     public string Resolution => Key switch
     {
         "1h" => "1m",
         _ => "5m",
     };
 
-    /// <summary>Quanto dura un endpoint della sorgente, per allineare la coda grezza.</summary>
+    /// <summary>How long one source point lasts, in order to align the raw tail.</summary>
     public TimeSpan SourceStep => Key switch
     {
         "1h" => TimeSpan.FromMinutes(1),
         _ => TimeSpan.FromMinutes(5),
     };
 
-    /// <summary>Il titolo sopra la striscia.</summary>
+    /// <summary>The title above the strip.</summary>
     public string Title => Key switch
     {
         "24h" => "Last 24 hours",
@@ -204,15 +204,15 @@ public sealed record HistoryPeriodOption(string Key)
         _ => "Last hour",
     };
 
-    /// <summary>Quante barre ha la striscia.</summary>
+    /// <summary>How many bars the strip has.</summary>
     public int BarCount => (int)(Duration / Step);
 }
 
-/// <summary>Una voce del selettore del theme: quello del sistema, chiaro o scuro.</summary>
-/// <param name="Key">Cio' che va nel file: <c>system</c>, <c>light</c> o <c>dark</c>.</param>
+/// <summary>An entry of the theme selector: the system's, light or dark.</summary>
+/// <param name="Key">What goes in the file: <c>system</c>, <c>light</c> or <c>dark</c>.</param>
 /// <remarks>
-/// Come <see cref="ZoomOption"/>: il testo della voce e' il suo <see cref="ToString"/>, ed e'
-/// cio' che la tendina mostra e che un lettore di screen annuncia.
+/// Like <see cref="ZoomOption"/>: the entry's text is its <see cref="ToString"/>, and it is
+/// what the drop-down shows and what a screen reader announces.
 /// </remarks>
 public sealed record ThemeOption(string Key)
 {
@@ -224,12 +224,13 @@ public sealed record ThemeOption(string Key)
         _ => "System",
     };
 
-    /// <summary>La variante di theme per una key: quella predefinita segue il sistema.</summary>
-    /// <param name="key">La key, gia' ammessa o no.</param>
-    /// <returns>La variante da chiedere all'applicazione.</returns>
+    /// <summary>The theme variant for a key: the default one follows the system.</summary>
+    /// <param name="key">The key, whether already allowed or not.</param>
+    /// <returns>The variant to ask the application for.</returns>
     /// <remarks>
-    /// E' l'unico ramo con una decisione vera: un refuso qui non farebbe rumore, lascerebbe
-    /// solo una finestra chiara a chi ha chiesto quella scura. Per questo e' provato a parte.
+    /// It is the only branch with a real decision: a typo here would make no noise, it would
+    /// only leave a light window to whoever asked for the dark one. That is why it is tested
+    /// on its own.
     /// </remarks>
     public static ThemeVariant VariantFor(string key) => key switch
     {
@@ -239,79 +240,79 @@ public sealed record ThemeOption(string Key)
     };
 }
 
-/// <summary>Cio' che la dashboard ricorda di se' fra un avvio e l'altro.</summary>
-/// <param name="Placement">Dove stava la finestra, oppure null se non lo sa ancora.</param>
-/// <param name="Zoom">Quanto e' scalata la finestra: 1 e' la misura normal, sotto 1 e'
-/// piu' piccola.</param>
-/// <param name="Theme">Il theme scelto: <c>system</c>, <c>light</c> o <c>dark</c>.</param>
+/// <summary>What the dashboard remembers about itself between one start and the next.</summary>
+/// <param name="Placement">Where the window was, or null if it does not know yet.</param>
+/// <param name="Zoom">How much the window is scaled: 1 is the normal size, below 1 it is
+/// smaller.</param>
+/// <param name="Theme">The chosen theme: <c>system</c>, <c>light</c> or <c>dark</c>.</param>
 /// <param name="MachineName">
-/// Il name della macchina che si stava guardando, o null per questo computer.
+/// The name of the machine that was being watched, or null for this computer.
 /// </param>
-/// <param name="HistoryPeriod">Quanto storico mostra la striscia: <c>1h</c>, <c>24h</c> o <c>7d</c>.</param>
+/// <param name="HistoryPeriod">How much history the strip shows: <c>1h</c>, <c>24h</c> or <c>7d</c>.</param>
 /// <remarks>
-/// Un file a parte e non <c>client.json</c>: quello porta una credenziale, e un programma che lo
-/// riscrivesse a ogni chiusura per salvare qualche preferenza sarebbe un programma che riscrive una
-/// credenziale a ogni chiusura. Sono TUTTI parametri posizionali senza valore predefinito, di
-/// proposito: chi costruisce le preferences deve dirli tutti, e un
-/// <c>new Preferences(posizione, zoom)</c> che ne dimentica uno non compila — che e' come si
-/// scopre, il giorno che se ne aggiunge un altro, ogni endpoint da aggiornare.
+/// A separate file and not <c>client.json</c>: that one carries a credential, and a program that
+/// rewrote it at every close to save a few preferences would be a program that rewrites a
+/// credential at every close. They are ALL positional parameters with no default value, on
+/// purpose: whoever builds the preferences has to state them all, and a
+/// <c>new Preferences(placement, zoom)</c> that forgets one does not compile — which is how,
+/// the day another one is added, every call site that needs updating gets found.
 /// </remarks>
 public sealed record Preferences(
     [property: JsonPropertyName("window")] WindowPlacement? Placement,
-    // La key resta textScale anche se l'interfaccia dice Zoom: rinominarla farebbe perdere
-    // lo zoom salvato a tutti, e una versione precedente non la leggerebbe piu'.
+    // The key stays textScale even though the interface says Zoom: renaming it would lose
+    // everyone's saved zoom, and an earlier version would no longer read it.
     [property: JsonPropertyName("textScale")] double Zoom,
     [property: JsonPropertyName("theme")] string Theme,
-    // Il NOME della macchina, non il suo indirizzo e tanto meno il suo token: e' gia' la
-    // key con cui il client trova la credenziale, ed e' l'unica cosa che machines.json non
-    // puo' cambiare sotto senza che sia un'altra macchina. Null vuol dire "questo computer",
-    // che e' anche cio' che si legge in un file scritto da una versione precedente.
+    // The machine's NAME, not its address and much less its token: it is already the key
+    // the client finds the credential with, and it is the only thing machines.json cannot
+    // change underneath without it being a different machine. Null means "this computer",
+    // which is also what a file written by an earlier version reads as.
     [property: JsonPropertyName("machine")] string? MachineName,
     [property: JsonPropertyName("historyWindow")] string HistoryPeriod)
 {
-    /// <summary>La misura normal: 1.</summary>
+    /// <summary>The normal size: 1.</summary>
     public const double NormalZoom = 1.0d;
 
-    /// <summary>Le scale che si possono scegliere, in ordine crescente.</summary>
+    /// <summary>The scales that can be chosen, in increasing order.</summary>
     /// <remarks>
-    /// Gradini e non un cursore continuo: la finestra si ridisegna a ogni scatto. Sopra la
-    /// normal sono quelli che Windows stesso offre per il testo (115, 130, 150). Sotto, due
-    /// gradini per vedere di piu' senza scorrere: in una finestra 900x700 con sei quadranti
-    /// le righe di storico in vista passano da una a tre (85) e quattro (75), e le colonne di
-    /// quadranti da quattro a cinque; su uno screen grande i sei stanno gia' su una riga a
-    /// 100, quindi il guadagno e' verticale. Il pavimento e' 75 e NON scende: i controlli
-    /// Fluent da 32 px diventano 24 logici, e l'anello di stato, catturato a 75 % in entrambi
-    /// gli stati, tiene un buco di 5 px fisici a DPI 125 (4 simulati a DPI 100). A 67 i
-    /// controlli sarebbero 21 px e il corpo del testo 9 px fisici su uno screen a 100 %,
-    /// sotto ogni testo di sistema. Il prezzo del 75 sono le didascalie: 9 px logici.
+    /// Steps and not a continuous slider: the window redraws at every notch. Above normal they
+    /// are the ones Windows itself offers for text (115, 130, 150). Below, two steps for
+    /// seeing more without scrolling: in a 900x700 window with six gauges the history rows in
+    /// view go from one to three (85) and four (75), and the columns of gauges from four to
+    /// five; on a big screen the six already fit on one row at 100, so the gain is vertical.
+    /// The floor is 75 and it goes NO lower: Fluent controls of 32 px become 24 logical, and
+    /// the status ring, captured at 75 % in both states, keeps a hole of 5 physical px at
+    /// 125 DPI (4 simulated at 100 DPI). At 67 the controls would be 21 px and the text body
+    /// 9 physical px on a screen at 100 %, below any system text size. The price of 75 is the
+    /// captions: 9 logical px.
     /// </remarks>
     public static readonly IReadOnlyList<double> AllowedZoomLevels = [0.75d, 0.85d, 1.0d, 1.15d, 1.3d, 1.5d];
 
-    /// <summary>I temi che si possono scegliere. Il primo e' quello del sistema.</summary>
+    /// <summary>The themes that can be chosen. The first is the system's.</summary>
     public static readonly IReadOnlyList<string> AllowedThemes = ["system", "light", "dark"];
 
-    /// <summary>I periodi dello storico fra cui si sceglie. Il primo e' quello di sempre.</summary>
+    /// <summary>The history periods to choose between. The first is the one that was always there.</summary>
     public static readonly IReadOnlyList<string> AllowedPeriods = ["1h", "24h", "7d"];
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    /// <summary>Le preferences di chi non ne ha ancora salvate.</summary>
+    /// <summary>The preferences of someone who has not saved any yet.</summary>
     public static Preferences Defaults =>
         new(null, NormalZoom, AllowedThemes[0], null, AllowedPeriods[0]);
 
-    /// <summary>La macchina da riaprire: quella ricordata se c'e' ancora, altrimenti la prima.</summary>
-    /// <param name="machines">L'elenco letto adesso, in ordine: la prima e' questo computer.</param>
-    /// <param name="name">Il name ricordato, o null.</param>
-    /// <returns>La voce su cui aprirsi, o null se l'elenco e' vuoto.</returns>
+    /// <summary>The machine to reopen on: the remembered one if it is still there, otherwise the first.</summary>
+    /// <param name="machines">The list read just now, in order: the first is this computer.</param>
+    /// <param name="name">The remembered name, or null.</param>
+    /// <returns>The entry to open on, or null if the list is empty.</returns>
     /// <remarks>
-    /// Il name e non l'indice: basta riordinare <c>machines.json</c> e un indice aprirebbe
-    /// un'altra macchina, con un'altra credenziale, senza che niente lo dica. Un name che non
-    /// c'e' piu' — voce tolta, rinominata — non e' un errore da segnalare: si riparte da questo
-    /// computer, che e' il posto da cui si era partiti la prima volta.
+    /// The name and not the index: just reorder <c>machines.json</c> and an index would open
+    /// a different machine, with a different credential, and nothing would say so. A name that is
+    /// no longer there — entry removed, renamed — is not an error to report: it starts again
+    /// from this computer, which is where it started from the first time.
     /// <para>
-    /// Il confronto e' ordinale e ripulito dagli spazi da entrambe le parti: dentro
-    /// <c>machines.json</c> il name arriva grezzo, e su Linux due nomi che differiscono solo
-    /// per le maiuscole sono due credenziali diverse.
+    /// The comparison is ordinal and trimmed of spaces on both sides: inside
+    /// <c>machines.json</c> the name arrives raw, and on Linux two names that differ only
+    /// in case are two different credentials.
     /// </para>
     /// </remarks>
     public static ObserverEndpoint? RememberedMachine(IReadOnlyList<ObserverEndpoint> machines, string? name)
@@ -341,18 +342,18 @@ public sealed record Preferences(
         return machines[0];
     }
 
-    /// <summary>La zoom richiesta se e' una di quelle ammesse, altrimenti quella normal.</summary>
-    /// <param name="zoom">La zoom letta dal file, o scelta.</param>
-    /// <returns>Una zoom ammessa.</returns>
+    /// <summary>The requested zoom if it is one of the allowed ones, otherwise the normal one.</summary>
+    /// <param name="zoom">The zoom read from the file, or chosen.</param>
+    /// <returns>An allowed zoom.</returns>
     public static double NormalizeZoom(double zoom) =>
         AllowedZoomLevels.Contains(zoom) ? zoom : NormalZoom;
 
-    /// <summary>Il theme richiesto se e' uno di quelli ammessi, altrimenti quello del sistema.</summary>
-    /// <param name="theme">Il theme letto dal file, o scelto; anche null.</param>
-    /// <returns>Una key ammessa, in minuscolo.</returns>
+    /// <summary>The requested theme if it is one of the allowed ones, otherwise the system's.</summary>
+    /// <param name="theme">The theme read from the file, or chosen; may also be null.</param>
+    /// <returns>An allowed key, in lower case.</returns>
     /// <remarks>
-    /// Le maiuscole si perdonano: un file scritto a mano con <c>"Dark"</c> vuol dire scuro.
-    /// Tutto il resto - null, campo assente, una parola inventata - vale il sistema.
+    /// Case does not matter: a hand-written file with <c>"Dark"</c> means dark. Everything else -
+    /// null, a missing field, a made-up word - counts as the system.
     /// </remarks>
     public static string NormalizeTheme(string? theme)
     {
@@ -367,12 +368,12 @@ public sealed record Preferences(
         return AllowedThemes[0];
     }
 
-    /// <summary>Il period richiesto se e' uno di quelli ammessi, altrimenti l'ora.</summary>
-    /// <param name="period">Il period letto dal file, o scelto; anche null.</param>
-    /// <returns>Una key ammessa.</returns>
+    /// <summary>The requested period if it is one of the allowed ones, otherwise one hour.</summary>
+    /// <param name="period">The period read from the file, or chosen; may also be null.</param>
+    /// <returns>An allowed key.</returns>
     /// <remarks>
-    /// Un file scritto da una versione precedente non ha il campo, quindi qui arriva null e si
-    /// torna all'ora, che e' cio' che quella versione mostrava: nessuna migrazione da fare.
+    /// A file written by an earlier version does not have the field, so null arrives here and
+    /// it falls back to one hour, which is what that version showed: no migration to do.
     /// </remarks>
     public static string NormalizePeriod(string? period)
     {
@@ -387,9 +388,9 @@ public sealed record Preferences(
         return AllowedPeriods[0];
     }
 
-    /// <summary>Legge le preferences da un file, tollerando tutto cio' che puo' andare storto.</summary>
-    /// <param name="json">Il contenuto del file, oppure null se non c'e'.</param>
-    /// <returns>Le preferences, oppure quelle predefinite: un file rotto non ferma la finestra.</returns>
+    /// <summary>Reads the preferences from a file, tolerating everything that can go wrong.</summary>
+    /// <param name="json">The file's content, or null if there is none.</param>
+    /// <returns>The preferences, or the default ones: a broken file does not stop the window.</returns>
     public static Preferences From(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -416,21 +417,21 @@ public sealed record Preferences(
         }
     }
 
-    /// <summary>Le preferences come si scrivono nel file.</summary>
+    /// <summary>The preferences as they are written into the file.</summary>
     /// <returns>JSON.</returns>
     public string ToJson() => JsonSerializer.Serialize(this, JsonOptions);
 }
 
-/// <summary>Il file delle preferences, accanto a quello della configurazione.</summary>
+/// <summary>The preferences file, next to the configuration one.</summary>
 public static class PreferencesStore
 {
-    /// <summary>Percorso del file: <c>preferences.json</c> nella cartella di <c>client.json</c>.</summary>
+    /// <summary>Path of the file: <c>preferences.json</c> in <c>client.json</c>'s folder.</summary>
     public static string FilePath => Path.Combine(
         Path.GetDirectoryName(ClientConfiguration.FilePath) ?? ".",
         "preferences.json");
 
-    /// <summary>Legge il file. Un file assente o illeggibile vale come preferences predefinite.</summary>
-    /// <returns>Le preferences.</returns>
+    /// <summary>Reads the file. A missing or unreadable file counts as the default preferences.</summary>
+    /// <returns>The preferences.</returns>
     public static Preferences Read()
     {
         try
@@ -447,8 +448,8 @@ public static class PreferencesStore
         }
     }
 
-    /// <summary>Scrive il file. Se non ci riesce, non lo dice: una preferenza persa non e' un guasto.</summary>
-    /// <param name="preferences">Cosa ricordare.</param>
+    /// <summary>Writes the file. If it fails, it does not say so: a lost preference is not a fault.</summary>
+    /// <param name="preferences">What to remember.</param>
     public static void Write(Preferences preferences)
     {
         ArgumentNullException.ThrowIfNull(preferences);
@@ -457,20 +458,20 @@ public static class PreferencesStore
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath) ?? ".");
 
-            // Prima su un file tempPath, poi al posto di quello vero: una chiusura
-            // interrotta a meta' scrittura non lascia un file troncato, che al prossimo avvio
-            // varrebbe come "nessuna preferenza" e farebbe dimenticare tutto insieme.
+            // First to a temporary file, then in place of the real one: a close interrupted
+            // half-way through the write does not leave a truncated file, which at the next
+            // start-up would count as "no preferences" and forget everything at once.
             string tempPath = FilePath + ".tmp";
             File.WriteAllText(tempPath, preferences.ToJson());
             File.Move(tempPath, FilePath, overwrite: true);
         }
         catch (IOException)
         {
-            // La finestra si apre lo stesso, dove capita: e' cio' che faceva prima.
+            // The window opens all the same, wherever it lands: that is what it did before.
         }
         catch (UnauthorizedAccessException)
         {
-            // Idem.
+            // Same.
         }
     }
 }

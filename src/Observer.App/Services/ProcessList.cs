@@ -2,63 +2,64 @@ using System.Globalization;
 
 namespace Observer.App.Services;
 
-/// <summary>Una row dell'elenco dei processi, come arriva dal servizio.</summary>
-/// <param name="Pid">Identificatore del processo.</param>
-/// <param name="Name">Name dell'eseguibile.</param>
-/// <param name="CpuPercent">Percentuale sull'intera macchina, oppure null se non ancora nota.</param>
-/// <param name="WorkingSetBytes">Memory fisica occupata.</param>
+/// <summary>One row of the process list, as it arrives from the service.</summary>
+/// <param name="Pid">The process identifier.</param>
+/// <param name="Name">The executable's name.</param>
+/// <param name="CpuPercent">Percentage of the whole machine, or null if not known yet.</param>
+/// <param name="WorkingSetBytes">Physical memory in use.</param>
 /// <param name="IoBytesPerSecond">
-/// Byte al secondo letti e scritti, oppure null se non noto. Manca del tutto nelle risposte di
-/// un servizio piu' vecchio, e allora vale null lo stesso.
+/// Bytes read and written per second, or null if not known. It is missing altogether from the
+/// responses of an older service, and so it is null all the same.
 /// </param>
 public sealed record ProcessWire(
     int Pid, string Name, double? CpuPercent, long WorkingSetBytes, double? IoBytesPerSecond = null);
 
-/// <summary>La risposta di <c>/processes</c>.</summary>
-/// <param name="CapturedAt">Quando e' stato letto l'elenco.</param>
+/// <summary>The response of <c>/processes</c>.</summary>
+/// <param name="CapturedAt">When the list was read.</param>
 /// <param name="By">
-/// Il criterio che il servizio ha applicato davvero. Null da un servizio piu' vecchio, che non
-/// lo ripete: e' cosi' che il client si accorge di aver chiesto un criterio che quello non
-/// conosce.
+/// The criterion the service actually applied. Null from an older service, which does not echo
+/// it back: that is how the client notices it asked for a criterion the service does not
+/// know.
 /// </param>
-/// <param name="Processes">I processi, gia' ordinati dal servizio.</param>
+/// <param name="Processes">The processes, already sorted by the service.</param>
 public sealed record ProcessListWire(
     DateTimeOffset CapturedAt, string? By, IReadOnlyList<ProcessWire> Processes);
 
-/// <summary>Una row pronta per lo schermo.</summary>
-/// <param name="Pid">Identificatore del processo, che serve per terminarlo.</param>
-/// <param name="Name">Name dell'eseguibile.</param>
-/// <param name="Cpu">La CPU gia' formattata, oppure un trattino se non si sa ancora.</param>
-/// <param name="Memory">La memoria gia' formattata coi prefissi binari.</param>
-/// <param name="Io">I byte al secondo gia' formattati, oppure un trattino se non si sa.</param>
+/// <summary>A row ready for the screen.</summary>
+/// <param name="Pid">The process identifier, needed to kill it.</param>
+/// <param name="Name">The executable's name.</param>
+/// <param name="Cpu">The CPU already formatted, or a dash if it is not known yet.</param>
+/// <param name="Memory">The memory already formatted with the binary prefixes.</param>
+/// <param name="Io">The bytes per second already formatted, or a dash if not known.</param>
 public sealed record ProcessRowState(int Pid, string Name, string Cpu, string Memory, string Io = "—")
 {
-    /// <summary>La row letta per intero, per chi non la vede: nome e le tre colonne col loro titolo.</summary>
+    /// <summary>The whole row read out, for whoever cannot see it: the name and the three
+    /// columns with their heading.</summary>
     /// <remarks>
-    /// Un lettore di schermo che legge quattro TextBlock separati dice "claude, 15.1 %, 228.5
-    /// MiB, 1.1 MiB/s" senza dire cosa siano: le intestazioni di colonna, che l'occhio tiene a
-    /// mente, per l'orecchio non esistono.
+    /// A screen reader reading four separate TextBlocks says "claude, 15.1 %, 228.5 MiB, 1.1
+    /// MiB/s" without saying what they are: the column headings, which the eye keeps in mind,
+    /// do not exist for the ear.
     /// </remarks>
     public string AccessibleName => $"{Name}, CPU {Cpu}, memory {Memory}, I/O {Io}";
 
-    /// <summary>La row per gli appunti: come <see cref="AccessibleName"/>, ma col PID.</summary>
+    /// <summary>The row for the clipboard: like <see cref="AccessibleName"/>, but with the PID.</summary>
     /// <remarks>
-    /// Due frasi quasi identiche, e la differenza e' voluta. Il PID serve a chi incolla la
-    /// row da qualche parte — in una ricerca, in un messaggio, accanto a un comando — perche'
-    /// e' l'unica cosa che identifica il processo senza ambiguita': di "chrome" ce ne sono
-    /// dodici. In <see cref="AccessibleName"/> invece non ci va, perche' quella la pronuncia un
-    /// lettore di schermo a OGNI freccia sull'elenco, e un numero di cinque cifre letto cifra
-    /// per cifra a ogni row e' rumore fra chi scorre e cio' che sta cercando.
+    /// Two almost identical sentences, and the difference is deliberate. The PID is for whoever
+    /// pastes the row somewhere — into a search, into a message, next to a command — because
+    /// it is the only thing that identifies the process unambiguously: there are a dozen
+    /// "chrome"s. It does not belong in <see cref="AccessibleName"/>, because a screen reader
+    /// pronounces that one at EVERY arrow key down the list, and a five-digit number read digit
+    /// by digit on every row is noise between whoever is scrolling and what they are after.
     /// </remarks>
     public string ForClipboard =>
         $"{Name} (pid {Pid.ToString(CultureInfo.InvariantCulture)}), CPU {Cpu}, memory {Memory}, I/O {Io}";
-    /// <summary>Traduce una row arrivata dal filo in una row da mostrare.</summary>
-    /// <param name="row">La row arrivata.</param>
-    /// <returns>La row da mostrare.</returns>
+    /// <summary>Turns a row that came off the wire into a row to show.</summary>
+    /// <param name="row">The row that arrived.</param>
+    /// <returns>The row to show.</returns>
     /// <remarks>
-    /// Una CPU sconosciuta diventa un TRATTINO e non uno zero. Sono due affermazioni diverse -
-    /// "non lo so ancora" contro "questo processo e' fermo" - e la seconda, su un elenco
-    /// ordinato per consumo, sposterebbe l'attenzione sul programma sbagliato.
+    /// An unknown CPU becomes a DASH and not a zero. They are two different statements -
+    /// "I do not know yet" versus "this process is idle" - and the second, on a list sorted
+    /// by consumption, would move attention to the wrong program.
     /// </remarks>
     public static ProcessRowState From(ProcessWire row)
     {
@@ -77,41 +78,41 @@ public sealed record ProcessRowState(int Pid, string Name, string Cpu, string Me
     }
 }
 
-/// <summary>Esito della lettura dell'elenco dei processi.</summary>
-/// <param name="Outcome">Come e' andata.</param>
-/// <param name="Problem">Frase pronta per lo schermo, vuota quando l'esito e' Ok.</param>
-/// <param name="Processes">Le righe, vuote quando l'esito non e' Ok.</param>
+/// <summary>Outcome of reading the process list.</summary>
+/// <param name="Outcome">How it went.</param>
+/// <param name="Problem">Sentence ready for the screen, empty when the outcome is Ok.</param>
+/// <param name="Processes">The rows, empty when the outcome is not Ok.</param>
 public sealed record ProcessFetch(
     ServiceOutcome Outcome,
     string Problem,
     IReadOnlyList<ProcessRowState> Processes);
 
-/// <summary>Esito di un tentativo di terminare un processo.</summary>
-/// <param name="Outcome">Come e' andata.</param>
-/// <param name="Problem">Frase pronta per lo schermo, vuota quando ha funzionato.</param>
+/// <summary>Outcome of an attempt to kill a process.</summary>
+/// <param name="Outcome">How it went.</param>
+/// <param name="Problem">Sentence ready for the screen, empty when it worked.</param>
 /// <remarks>
-/// Un esito proprio e non un semplice booleano: "il processo non c'e' piu'" e "il sistema si
-/// e' rifiutato di terminarlo" chiedono due frasi diverse. Il primo capita spesso e non e' un
-/// guasto — un processo puo' finire da solo fra l'elenco e il clic — mentre il secondo vuol
-/// dire che quel programma non si tocca da qui.
+/// An outcome of its own and not a plain boolean: "the process is gone" and "the system
+/// refused to kill it" call for two different sentences. The first happens often and is not a
+/// fault — a process can end on its own between the list and the click — while the second
+/// means that program cannot be touched from here.
 /// </remarks>
 public sealed record KillFetch(ServiceOutcome Outcome, string Problem);
 
-/// <summary>Quale risorsa sta dietro un quadrante.</summary>
+/// <summary>Which resource sits behind a gauge.</summary>
 public static class ProcessResource
 {
-    /// <summary>La risorsa da chiedere al servizio per la row indicata, oppure null.</summary>
-    /// <param name="key">La key della row, nella forma <c>collector|metrica|istanza</c>.</param>
-    /// <returns><c>cpu</c>, <c>memory</c>, <c>io</c>, oppure null se per quella risorsa non si sa rispondere.</returns>
+    /// <summary>The resource to ask the service for, for the given row, or null.</summary>
+    /// <param name="key">The row's key, in the form <c>collector|metric|instance</c>.</param>
+    /// <returns><c>cpu</c>, <c>memory</c>, <c>io</c>, or null when there is no answer for that resource.</returns>
     /// <remarks>
-    /// Null per lo SPAZIO dei dischi, e non e' una dimenticanza: lo spazio occupato su un
-    /// volume non e' attribuibile a un processo <i>in esecuzione</i> — chi ha scritto quei file
-    /// magari non c'e' piu' da mesi. Un pannello che si aprisse con l'elenco della CPU sotto
-    /// il titolo di un volume direbbe una cosa falsa: meglio che quel quadrante non si apra.
+    /// Null for disk SPACE, and it is not an oversight: the space used on a volume is not
+    /// attributable to a <i>running</i> process — whoever wrote those files may have been gone
+    /// for months. A panel that opened with the CPU list under a volume's title would say
+    /// something false: better that gauge does not open at all.
     /// <para>
-    /// L'ATTIVITA' dei dischi invece si apre, sull'elenco per I/O. E' un elenco dell'intera
-    /// macchina, non di quel disco: i contatori sono per processo, e nessuno dei due sistemi
-    /// dice su quale dispositivo sono finiti i byte. Il titolo del pannello lo dichiara.
+    /// Disk ACTIVITY, on the other hand, does open, on the list by I/O. It is a list for the
+    /// whole machine, not for that disk: the counters are per process, and neither of the two
+    /// systems says which device the bytes ended up on. The panel's title says so.
     /// </para>
     /// </remarks>
     public static string? From(string? key)

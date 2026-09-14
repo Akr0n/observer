@@ -4,31 +4,31 @@ using Observer.Core.Metrics.Memory;
 namespace Observer.App.Services;
 
 /// <summary>
-/// Quanto e' grave cio' che una row o un gruppo sta dicendo. Governa solo il colore.
+/// How serious a row's or a group's message is. It governs the colour only.
 /// </summary>
 public enum MetricSeverity
 {
-    /// <summary>Valore valido.</summary>
+    /// <summary>Valid value.</summary>
     Ok = 0,
 
-    /// <summary>In avvio: manca il secondo campione. Normale, non un guasto.</summary>
+    /// <summary>Starting up: the second sample is missing. Normal, not a fault.</summary>
     Warmup = 1,
 
-    /// <summary>Non misurabile su questa piattaforma. E' un'informazione, non un errore.</summary>
+    /// <summary>Not measurable on this platform. That is information, not an error.</summary>
     Unsupported = 2,
 
-    /// <summary>Doveva esserci un valueIndex e non c'e'.</summary>
+    /// <summary>There should have been a value and there isn't.</summary>
     Problem = 3,
 }
 
 /// <summary>
-/// Una row della schermata.
+/// A row on the screen.
 /// </summary>
-/// <param name="Key">Identita' stabile della row, per aggiornarla senza ricrearla.</param>
-/// <param name="Label">Nome leggibile, con l'istanza fra parentesi quando c'e'.</param>
-/// <param name="Display">Il valueIndex formattato, oppure il motivo per cui manca.</param>
-/// <param name="Fraction">Frazione 0..1 per la barra, null quando non e' una percentuale.</param>
-/// <param name="Severity">SeverityFor' di cio' che la row sta dicendo.</param>
+/// <param name="Key">Stable identity of the row, so it can be updated without recreating it.</param>
+/// <param name="Label">Readable name, with the instance in parentheses when there is one.</param>
+/// <param name="Display">The formatted value, or the reason it is missing.</param>
+/// <param name="Fraction">Fraction 0..1 for the bar, null when it is not a percentage.</param>
+/// <param name="Severity">Severity of what the row is saying.</param>
 public sealed record MetricRowState(
     string Key,
     string Label,
@@ -37,16 +37,16 @@ public sealed record MetricRowState(
     MetricSeverity Severity);
 
 /// <summary>
-/// Un riquadro della schermata: un collector con le sue rows.
+/// A panel on the screen: a collector with its rows.
 /// </summary>
-/// <param name="CollectorId">Identificatore del collector.</param>
-/// <param name="Title">TitleFor leggibile del riquadro.</param>
+/// <param name="CollectorId">Identifier of the collector.</param>
+/// <param name="Title">Readable title of the panel.</param>
 /// <param name="Note">
-/// Motivo per cui il collector e' degradato, oppure null. E' cio' che riempie il riquadro
-/// quando <paramref name="Rows"/> e' vuoto, perche' un riquadro vuoto non si diagnostica.
+/// Reason the collector is degraded, or null. It is what fills the panel when
+/// <paramref name="Rows"/> is empty, because an empty panel cannot be diagnosed.
 /// </param>
-/// <param name="Severity">SeverityFor' dello status del collector.</param>
-/// <param name="Rows">Le rows misurate.</param>
+/// <param name="Severity">Severity of the collector's status.</param>
+/// <param name="Rows">The measured rows.</param>
 public sealed record MetricGroupState(
     string CollectorId,
     string Title,
@@ -55,20 +55,20 @@ public sealed record MetricGroupState(
     IReadOnlyList<MetricRowState> Rows);
 
 /// <summary>
-/// Traduce un campionamento nelle rows da disegnare.
+/// Translates a snapshot into the rows to draw.
 /// </summary>
 /// <remarks>
-/// E' una funzione pura: campionamento e catalogo entrano, rows escono. E' il pezzo
-/// dell'applicazione che si puo' verificare con dei test invece che a occhio, ed e' anche
-/// quello dove i difetti sono silenziosi — uno status degradato tradotto in uno zero
-/// somiglia troppo a una misura vera.
+/// It is a pure function: a snapshot and a catalog go in, rows come out. It is the part of
+/// the application that can be checked with tests instead of by eye, and it is also the one
+/// where defects are silent — a degraded status turned into a zero looks too much like a
+/// real measurement.
 /// </remarks>
 public static class SnapshotProjection
 {
-    // Il servizio non dichiara un nome leggibile per il COLLECTOR, solo per le metriche.
-    // Questa tabellina serve a non intitolare un riquadro "memory": chi non programma legge
-    // "Memory". Un collector sconosciuto tiene il proprio identificatore, quindi
-    // aggiungerne uno nuovo al servizio non richiede di toccare questo file.
+    // The service declares no readable name for the COLLECTOR, only for the metrics. This
+    // little table is here so a panel is not titled "memory": someone who does not program
+    // reads "Memory". An unknown collector keeps its own identifier, so adding a new one to
+    // the service does not require touching this file.
     private static readonly Dictionary<string, string> KnownTitles = new(StringComparer.Ordinal)
     {
         ["cpu"] = "CPU",
@@ -76,9 +76,9 @@ public static class SnapshotProjection
         ["disk"] = "Disks",
     };
 
-    /// <summary>Costruisce i riquadri da mostrare.</summary>
-    /// <param name="snapshot">L'ultimo campionamento ricevuto.</param>
-    /// <param name="catalog">Il catalogo, oppure <see cref="MetricCatalog.Empty"/>.</param>
+    /// <summary>Builds the panels to show.</summary>
+    /// <param name="snapshot">The last snapshot received.</param>
+    /// <param name="catalog">The catalog, or <see cref="MetricCatalog.Empty"/>.</param>
     public static IReadOnlyList<MetricGroupState> Project(MachineSnapshot snapshot, MetricCatalog catalog)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -118,25 +118,24 @@ public static class SnapshotProjection
     }
 
     /// <summary>
-    /// Toglie la row "Available memory is an estimate" e, quando la answer e' si', la
-    /// attacca al numero che qualifica.
+    /// Removes the "Available memory is an estimate" row and, when the answer is yes, attaches
+    /// it to the number it qualifies.
     /// </summary>
     /// <remarks>
-    /// Quella row rispondeva a una domanda che nessuno aveva fatto, e su Windows rispondeva
-    /// sempre "No": la memoria disponibile la' e' esposta dal sistema, quindi il flag e'
-    /// cablato a falso e quella row non avrebbe mai detto altro. Una row che ripete
-    /// all'infinito la stessa answer insegna a saltarla, e la salterebbe anche il giorno in
-    /// cui dicesse qualcosa.
+    /// That row answered a question nobody had asked, and on Windows it always answered "No":
+    /// available memory there is exposed by the system, so the flag is hard-wired to false and
+    /// that row would never have said anything else. A row that repeats the same answer for
+    /// ever teaches you to skip it, and you would skip it on the day it did say something too.
     /// <para>
-    /// L'intenzione era giusta e resta: una memoria disponibile RICOSTRUITA - su Linux, quando
-    /// il kernel non espone MemAvailable e la si somma da memoria libera, buffer, cache e
-    /// memoria recuperabile - non e' una misura, e spacciarla per tale sarebbe una bugia
-    /// silenziosa. Ma si dichiara dove serve: attaccata al valueIndex, e solo quando c'e'
-    /// qualcosa da dichiarare.
+    /// The intention was right and it stands: an available memory that is RECONSTRUCTED - on
+    /// Linux, when the kernel does not expose MemAvailable and it is summed from free memory,
+    /// buffers, cache and reclaimable memory - is not a measurement, and passing it off as one
+    /// would be a silent lie. But it is declared where that matters: attached to the value, and
+    /// only when there is something to declare.
     /// </para>
     /// <para>
-    /// Se il point NON e' ne' si' ne' no, la row resta dov'e': vuol dire che quella lettura
-    /// e' fallita, e un guasto che sparisce dallo schermo e' peggio di una row di troppo.
+    /// If the point is NEITHER yes nor no, the row stays where it is: it means that reading
+    /// failed, and a fault that disappears from the screen is worse than one row too many.
     /// </para>
     /// </remarks>
     private static void FoldEstimateIntoValue(List<MetricRowState> rows)
@@ -175,14 +174,14 @@ public static class SnapshotProjection
         row.Key.Split('|').ElementAtOrDefault(1) ?? string.Empty;
 
     /// <summary>
-    /// Aggiunge l'unit' fra parentesi alle rows che, dentro lo stesso riquadro, finirebbero
-    /// con lo stesso nome.
+    /// Adds the unit in parentheses to the rows that, inside the same panel, would end up with
+    /// the same name.
     /// </summary>
     /// <remarks>
-    /// Serve davvero: il collector della memoria dichiara "Used memory" sia per i byte sia
-    /// per la percentuale, e due rows con lo stesso nome e numeri diversi sembrano una
-    /// contraddizione. La regola e' generica, quindi vale anche per un collector futuro che
-    /// commetta lo stesso battesimo doppio.
+    /// It is genuinely needed: the memory collector declares "Used memory" both for the bytes
+    /// and for the percentage, and two rows with the same name and different numbers look like
+    /// a contradiction. The rule is generic, so it also covers a future collector that gives
+    /// two things the same name.
     /// </remarks>
     private static void Disambiguate(List<MetricRowState> rows, MetricCatalog catalog)
     {
@@ -200,8 +199,8 @@ public static class SnapshotProjection
                 continue;
             }
 
-            // La key contiene collectorId|metricId|istanza: il pezzo centrale e' cio' che
-            // serve per ritrovare il descriptor e quindi l'unit'.
+            // The key holds collectorId|metricId|instance: the middle piece is what is needed
+            // to find the descriptor again, and so the unit.
             string[] parts = rows[i].Key.Split('|');
             string symbol = parts.Length > 1 ? catalog.Find(parts[1])?.Unit.Symbol ?? string.Empty : string.Empty;
             string qualifier = string.IsNullOrEmpty(symbol) ? parts.ElementAtOrDefault(1) ?? "?" : symbol;
@@ -219,8 +218,8 @@ public static class SnapshotProjection
     {
         if (collector.Status == CollectorStatus.Ok)
         {
-            // Un collector Ok che non ha prodotto nulla non e' un caso normale: senza questa
-            // row il riquadro resterebbe vuoto e muto.
+            // An Ok collector that produced nothing is not a normal case: without this row the
+            // panel would stay empty and silent.
             return collector.Points is null || collector.Points.Count == 0
                 ? "The service reports this source as working but sent no values."
                 : null;
@@ -253,10 +252,10 @@ public static class SnapshotProjection
                 SeverityFor(point.Status));
         }
 
-        if (point.Value is not MetricValue valueIndex)
+        if (point.Value is not MetricValue value)
         {
-            // Ok senza valueIndex e' esattamente il caso che il commento in MetricPoint teme:
-            // mostrare zero qui darebbe una macchina piena di zeri marcati "Ok".
+            // Ok with no value is exactly the case the comment in MetricPoint fears: showing
+            // zero here would give a machine full of zeros marked "Ok".
             return new MetricRowState(
                 key,
                 label,
@@ -268,9 +267,9 @@ public static class SnapshotProjection
         return new MetricRowState(
             key,
             label,
-            MetricFormatting.Describe(valueIndex, unit),
-            MetricFormatting.Fraction(valueIndex, unit),
-            valueIndex.Kind == MetricValueKind.Unknown ? MetricSeverity.Problem : MetricSeverity.Ok);
+            MetricFormatting.Describe(value, unit),
+            MetricFormatting.Fraction(value, unit),
+            value.Kind == MetricValueKind.Unknown ? MetricSeverity.Problem : MetricSeverity.Ok);
     }
 
     private static MetricSeverity SeverityFor(CollectorStatus status) => status switch

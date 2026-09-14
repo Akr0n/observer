@@ -12,11 +12,11 @@ using Observer.App.Views;
 namespace Observer.App;
 
 /// <summary>
-/// Radice di composizione dell'applicazione.
+/// The application's composition root.
 /// </summary>
 /// <remarks>
-/// Niente container di dependency injection: i pezzi da collegare sono tre e un container
-/// aggiungerebbe un livello di indirezione senza togliere una riga di codice.
+/// No dependency injection container: there are three pieces to wire together, and a container
+/// would add a level of indirection without removing a single line of code.
 /// </remarks>
 public partial class App : Application
 {
@@ -31,25 +31,26 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // Le preferences si leggono UNA volta, qui, e si passano alla finestra: il theme va
-            // applicato prima che la finestra esista, perche' un TopLevel copia il theme alla
-            // costruzione e dopo si aprirebbe chiaro per poi scattare.
+            // The preferences are read ONCE, here, and handed to the window: the theme must be
+            // applied before the window exists, because a TopLevel copies the theme at
+            // construction; applied any later, the window would open light and then flick to
+            // the saved theme.
             Preferences preferences = PreferencesStore.Read();
             ApplyTheme(preferences.Theme);
 
             MachineListResult machineList = MachineDirectory.Read();
 
-            // Ogni client openClient va chiuso all'uscita, compresi quelli nati cambiando macchina
-            // nella barra laterale: chiuderne solo l'ultimo lascerebbe indietro un socket per
-            // ogni macchina guardata durante la sessione.
+            // Every open client must be closed on exit, including the ones created by switching
+            // machine in the sidebar: closing only the last one would leave behind a socket for
+            // every machine watched during the session.
             List<MetricsClient> openClients = [];
 
             MetricsClient Open(ObserverEndpoint endpoint)
             {
-                // Se per quel endpoint ne esiste existing' uno, si riusa. Senza, un token che il
-                // servizio continua a rifiutare farebbe nascere un client al secondo per
-                // sempre: la rilettura scatta a ogni 401, e ogni client si porta dietro il
-                // proprio pool di connessioni.
+                // If one already exists for that endpoint, it is reused. Without that, a token
+                // the service keeps rejecting would spawn one client per second for ever: the
+                // re-read fires on every 401, and every client carries its own pool of
+                // connections.
                 if (openClients.FirstOrDefault(openClient => openClient.Endpoint == endpoint) is { } existing)
                 {
                     return existing;
@@ -61,11 +62,11 @@ public partial class App : Application
                 return newClient;
             }
 
-            // La macchina che si stava guardando l'ultima volta, se e' ancora nell'machineList;
-            // altrimenti la prima voce, che e' SEMPRE il canale locale e non ha bisogno di
-            // configurazione: dopo l'installazione non c'e' niente da impostare perche' la
-            // finestra parta. Chi tiene d'occhio una macchina in rete non deve piu' sceglierla
-            // a ogni avvio e aspettare che si colleghi.
+            // The machine that was being watched last time, if it is still in the list;
+            // otherwise the first entry, which is ALWAYS the local channel and needs no
+            // configuration: after the install there is nothing to set up for the window to
+            // start. Anyone watching a machine over the network no longer has to pick
+            // it at every start and wait for it to connect.
             MetricsClient client = Open(
                 Preferences.RememberedMachine(machineList.Machines, preferences.MachineName)
                 ?? machineList.Machines[0]);
@@ -75,16 +76,16 @@ public partial class App : Application
             viewModel = new MainViewModel(
                 client,
                 configurationProblem: null,
-                // Gli appunti stanno su un TopLevel, cioe' su un controllo: il view model non
-                // referenzia Avalonia.Controls, quindi la cucitura si lega qui, dove la
-                // finestra c'e' existing'.
+                // The clipboard lives on a TopLevel, that is, on a control: the view model does
+                // not reference Avalonia.Controls, so the wiring is done here, where the
+                // window already exists.
                 copyToClipboard: text => desktop.MainWindow?.Clipboard?.SetTextAsync(text)
                     ?? Task.CompletedTask,
                 rereadConfiguration: () =>
                 {
-                    // Rilegge dal disco la voce della macchina che si sta guardando. Serve
-                    // quando il suo token viene ruotato: senza, la finestra resterebbe bloccata
-                    // su "Token rejected" fino al riavvio anche dopo aver corretto il file.
+                    // Re-reads from disk the entry of the machine being watched. It is needed
+                    // when its token is rotated: without it the window would stay stuck on
+                    // "Token rejected" until a restart, even after the file has been fixed.
                     if (viewModel?.SelectedMachine?.Endpoint is not { } currentEndpoint)
                     {
                         return null;
@@ -98,8 +99,8 @@ public partial class App : Application
                 machineList: machineList,
                 openMachine: Open,
 
-                // La stessa rilettura di sopra, per una macchina NON guardata la cui sonda
-                // torna con un token rifiutato: la voce nuova ha la credenziale nuova.
+                // The same re-read as above, for a machine that is NOT being watched whose probe
+                // comes back with a rejected token: the new entry carries the new credential.
                 rereadEndpoint: endpoint => MachineDirectory.Read().Machines.FirstOrDefault(
                     candidate => candidate.Kind == endpoint.Kind && candidate.BaseAddress == endpoint.BaseAddress));
 
@@ -112,10 +113,10 @@ public partial class App : Application
 
             desktop.Exit += (_, _) =>
             {
-                // Cancel ma NON Dispose: il ciclo di aggiornamento e' ancora sospeso su quel
-                // token e la sua ripresa e' asincrona, quindi liberare qui la sorgente aprirebbe
-                // una finestra in cui il ciclo tocca un oggetto existing' distrutto. Il processo sta
-                // uscendo comunque, e non c'e' niente da recuperare.
+                // Cancel but NOT Dispose: the refresh loop is still suspended on that token and
+                // its resumption is asynchronous, so releasing the source here would open a window
+                // of time in which the loop touches an already disposed object. The process is
+                // exiting anyway, and there is nothing to reclaim.
                 shutdown.Cancel();
 
                 foreach (MetricsClient openClient in openClients)
@@ -124,29 +125,29 @@ public partial class App : Application
                 }
             };
 
-            // Post e non chiamata diretta: qui il ciclo del dispatcher non e' ancora partito
-            // e il SynchronizationContext di Avalonia potrebbe non essere installato, quindi
-            // le continuazioni degli await rischierebbero di tornare su un thread qualsiasi
-            // e di toccare le ObservableCollection fuori dal thread della UI.
+            // Post and not a direct call: at this point the dispatcher loop has not started yet
+            // and Avalonia's SynchronizationContext may not be installed, so the await
+            // continuations would risk resuming on any thread at all and touching the
+            // ObservableCollection instances off the UI thread.
             Dispatcher.UIThread.Post(() => _ = viewModel.RunAsync(shutdown.Token));
         }
 
         base.OnFrameworkInitializationCompleted();
     }
 
-    /// <summary>Applica il theme a tutta l'applicazione: finestre, tendine e barra del titolo.</summary>
-    /// <param name="theme">La chiave: <c>system</c>, <c>light</c> o <c>dark</c>.</param>
+    /// <summary>Applies the theme to the whole application: windows, popups and the title bar.</summary>
+    /// <param name="theme">The key: <c>system</c>, <c>light</c> or <c>dark</c>.</param>
     /// <remarks>
-    /// Sull'applicazione e mai sulla finestra: le tendine e i suggerimenti sono finestre a parte
-    /// e prendono il theme da qui. E prima che la finestra esista: un TopLevel copia il theme alla
-    /// costruzione. La rilettura del theme di sistema al ritorno a "system" e' una cintura: dal
-    /// decompilato, la variant predefinita si limita a cancellare il theme effettivo e i
-    /// dizionari potrebbero ricadere su quello chiaro fino al prossimo cambio di colori del
-    /// sistema. MISURATO il 2026-09-04 su un Windows 11 in theme isDark, con Avalonia 12.1.1:
-    /// senza questa riga, da Dark a System la finestra resta scura, come deve, e la trappola
-    /// non si presenta. La riga resta perche' costa una riga, non
-    /// ha effetti collaterali (Windows la sovrascrive al prossimo cambio, come farebbe da
-    /// solo) e sugli altri backend non e' stata misurata.
+    /// On the application and never on the window: popups and tooltips are separate windows and
+    /// take the theme from here. And before the window exists: a TopLevel copies the theme at
+    /// construction. Re-reading the system theme when going back to "system" is belt and braces:
+    /// from the decompiled code, the default variant merely clears the effective theme and the
+    /// dictionaries could fall back to the light one until the next system colour change.
+    /// MEASURED on 2026-09-04 on a Windows 11 machine in the dark theme, with Avalonia 12.1.1:
+    /// without this line, going from Dark to System leaves the window dark, as it should, and the
+    /// trap does not show up. The line stays because it costs one line, has no side effects
+    /// (Windows overwrites it at the next change, as it would on its own) and it has not been
+    /// measured on the other backends.
     /// </remarks>
     public void ApplyTheme(string theme)
     {

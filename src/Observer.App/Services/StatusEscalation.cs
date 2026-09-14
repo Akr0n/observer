@@ -1,75 +1,75 @@
 namespace Observer.App.Services;
 
 /// <summary>
-/// Quanto e' grave cio' che la barra di stato sta dicendo. Governa solo il colore.
+/// How serious the status bar's message is. It governs the colour only.
 /// </summary>
 /// <remarks>
-/// Enum proprio invece di quello di FluentAvalonia, per la stessa ragione di
-/// <see cref="MetricSeverity"/>: la decisione e' logica di presentazione pura e va provata
-/// senza tirarsi dietro una libreria di controlli. La traduzione in colore la fa il view model.
+/// Its own enum instead of FluentAvalonia's, for the same reason as
+/// <see cref="MetricSeverity"/>: the decision is pure presentation logic and must be testable
+/// without dragging in a control library. The view model does the translation into a colour.
 /// </remarks>
 public enum StatusTone
 {
-    /// <summary>Sta succedendo qualcosa di normale. Neutro.</summary>
+    /// <summary>Something normal is happening. Neutral.</summary>
     Informational = 0,
 
-    /// <summary>Qualcosa non torna, ma il servizio risponde ancora.</summary>
+    /// <summary>Something is off, but the service is still answering.</summary>
     Warning = 1,
 
-    /// <summary>DisconnectedSubheading vero: quello che merita il rosso.</summary>
+    /// <summary>A real error: the one that deserves red.</summary>
     Error = 2,
 }
 
 /// <summary>
-/// Cosa mostrare quando una lettura non e' andata a buon fine.
+/// What to show when a reading did not succeed.
 /// </summary>
-/// <param name="Tone">Severity', cioe' il colore della barra.</param>
-/// <param name="Title">Titolo della barra.</param>
-/// <param name="Text">Testo della barra.</param>
-/// <param name="Subheading">La riga sotto il title della finestra.</param>
+/// <param name="Tone">Severity, that is, the colour of the bar.</param>
+/// <param name="Title">The bar's title.</param>
+/// <param name="Text">The bar's text.</param>
+/// <param name="Subheading">The line below the window title.</param>
 public sealed record StatusMessage(StatusTone Tone, string Title, string Text, string Subheading);
 
 /// <summary>
-/// Decide se un guasto e' ancora normale oppure e' diventato un errore.
+/// Decides whether a fault is still normal or has become an error.
 /// </summary>
 /// <remarks>
-/// La regola: <b>la gravita' dipende da quanto DURA il guasto, non dal singolo tentativo
-/// andato male.</b> Senza, la finestra si apriva rossa su ogni macchina appena installata,
-/// perche' il primo tentativo cadeva mentre il servizio stava ancora partendo — e l'errore
-/// spariva da solo un attimo dopo. Un allarme che si spegne da solo insegna a ignorare anche
-/// quelli veri.
+/// The rule: <b>severity depends on how LONG the fault lasts, not on the single attempt that
+/// went wrong.</b> Without it, the window opened red on every freshly installed machine,
+/// because the first attempt landed while the service was still starting — and the error
+/// cleared itself a moment later. An alarm that turns itself off teaches you to ignore the
+/// real ones too.
 /// <para>
-/// L'attesa vale solo dove aspettare puo' cambiare l'outcome: un servizio che non risponde
-/// ancora, un servizio che non ha ancora campionato. Un token sbagliato o una versione
-/// incompatibile saranno identici fra un minuto, quindi si dicono subito.
+/// The wait applies only where waiting can change the outcome: a service that is not
+/// answering yet, a service that has not sampled yet. A wrong token or an incompatible
+/// version will be identical in a minute, so they are reported immediately.
 /// </para>
 /// </remarks>
 public static class StatusEscalation
 {
     /// <summary>
-    /// Quanto si aspetta prima di chiamare guasto un servizio che non risponde.
+    /// How long to wait before treating a service that is not answering as faulted.
     /// </summary>
     /// <remarks>
-    /// Misurato su questa macchina, servizio avviato a mano e gia' scaldato: dall'avvio del
-    /// processo alla prima risposta 200 su <c>/metrics/latest</c> passano 0,9-1,4 secondi su
-    /// tre giri. Su una macchina appena installata il costo e' piu' alto — cache dei file
-    /// fredda, antivirus che scandisce i binari appena scritti, avvio mediato dal gestore dei
-    /// servizi — e dieci secondi lasciano un margine largo senza far sembrare la finestra
-    /// bloccata a chi apre la dashboard su una macchina dove il servizio non c'e'.
+    /// Measured on this machine, with the service started by hand and already warm: from
+    /// process start to the first 200 on <c>/metrics/latest</c> it takes 0.9-1.4 seconds over
+    /// three runs. On a freshly installed machine the cost is higher — cold file cache,
+    /// antivirus scanning the just-written binaries, start-up mediated by the service manager
+    /// — and ten seconds leave a wide margin without making the window look stuck to whoever
+    /// opens the dashboard on a machine where the service is not there.
     /// </remarks>
     public static readonly TimeSpan GracePeriod = TimeSpan.FromSeconds(10);
 
     /// <summary>
-    /// Traduce un outcome in cio' che va scritto a schermo.
+    /// Translates an outcome into what has to be written on screen.
     /// </summary>
-    /// <param name="outcome">Come e' andata l'ultima lettura.</param>
-    /// <param name="problem">La frase gia' pronta prodotta dal client.</param>
-    /// <param name="failingFor">Da quanto tempo le letture falliscono di fila.</param>
-    /// <param name="endpoint">Il servizio interrogato.</param>
+    /// <param name="outcome">How the last reading went.</param>
+    /// <param name="problem">The ready-made sentence produced by the client.</param>
+    /// <param name="failingFor">How long the readings have been failing in a row.</param>
+    /// <param name="endpoint">The service being queried.</param>
     /// <param name="hasValuesOnScreen">
-    /// True se a schermo ci sono gia' dei valori, che restano li' ma sono fermi.
+    /// True if there are already values on screen, which stay there but are frozen.
     /// </param>
-    /// <returns>Titolo, testo, gravita' e riga sotto il title.</returns>
+    /// <returns>Title, text, severity and the line below the window title.</returns>
     public static StatusMessage MessageFor(
         ServiceOutcome outcome,
         string problem,
@@ -83,15 +83,15 @@ public static class StatusEscalation
 
         return outcome switch
         {
-            // I tre modi di non ottenere risposta meritano la stessa attesa: appena avviata,
-            // una macchina RIFIUTA la connessione perche' la porta non e' ancora aperta, e la
-            // accetta poco dopo. Distinguerli serve quando il guasto dura, non durante l'avvio.
+            // The three ways of getting no answer deserve the same wait: right after boot, a
+            // machine REFUSES the connection because the port is not open yet, and accepts it
+            // shortly after. Telling them apart matters when the fault lasts, not during start-up.
             ServiceOutcome.Unreachable or ServiceOutcome.ConnectionRefused
                 or ServiceOutcome.TimedOut when withinGrace => new StatusMessage(
                 StatusTone.Informational,
                 "Connecting",
-                // Di una macchina REMOTA non si sa se stia partendo: sarebbe un'affermazione
-                // che da qui non si puo' fare. Si dice cio' che si sta facendo, e basta.
+                // For a REMOTE machine there is no way to know whether it is starting up: that
+                // is a claim you cannot make from here. Say what is being done, and no more.
                 endpoint.Kind == EndpointKind.Local
                     ? "Waiting for the Observer service on this machine to answer. It may still be starting up."
                     : $"Contacting {endpoint.Description}…",
@@ -103,9 +103,9 @@ public static class StatusEscalation
                 problem,
                 WaitingSubheading(hasValuesOnScreen)),
 
-            // Il servizio risponde: non e' irraggiungibile, ma non sta nemmeno campionando.
-            // Restare "Service is starting" per sempre, con un testo che promette che si
-            // risolve da solo, sarebbe una bugia che nessuno smentisce mai.
+            // The service answers: it is not unreachable, but it is not sampling either.
+            // Staying on "Service is starting" for ever, with text promising it will sort
+            // itself out, would be a lie nobody ever corrects.
             ServiceOutcome.NotReadyYet => new StatusMessage(
                 StatusTone.Warning,
                 "No readings yet",
@@ -114,9 +114,9 @@ public static class StatusEscalation
                 "see what it reports.",
                 DisconnectedSubheading(hasValuesOnScreen)),
 
-            // Rifiuto e silenzio non sono sinonimi di "irraggiungibile", ed e' tutto il endpoint:
-            // al primo si risponde avviando un servizio, al secondo aprendo una porta. Un solo
-            // title per entrambi obbligava chi guarda a indovinare quale dei due fosse.
+            // Refusal and silence are not synonyms for "unreachable", and that is the whole
+            // point: the first is answered by starting a service, the second by opening a port.
+            // One title for both forced whoever was looking to guess which of the two it was.
             ServiceOutcome.ConnectionRefused => ErrorMessage("Service not running", problem, hasValuesOnScreen),
             ServiceOutcome.TimedOut => ErrorMessage("No answer", problem, hasValuesOnScreen),
 
@@ -125,10 +125,10 @@ public static class StatusEscalation
             ServiceOutcome.IncompatibleVersion => ErrorMessage("Version mismatch", problem, hasValuesOnScreen),
             ServiceOutcome.UnreadableResponse => ErrorMessage("Unrecognized response", problem, hasValuesOnScreen),
 
-            // Questi due finivano sotto il title generico, e non per una decisione: erano
-            // semplicemente scivolati nell'arm di scarto. Un certificato cambiato in
-            // particolare merita di dirsi, perche' e' il solo guasto qui dentro a cui NON
-            // conviene rispondere riprovando.
+            // These two used to end up under the generic title, and not by decision: they had
+            // simply slipped into the fallback arm. A changed certificate in particular
+            // deserves to be named, because it is the only fault in here that should NOT be
+            // answered by retrying.
             ServiceOutcome.UnexpectedResponse => ErrorMessage("Unexpected reply", problem, hasValuesOnScreen),
             ServiceOutcome.FingerprintMismatch => ErrorMessage("Certificate changed", problem, hasValuesOnScreen),
 
@@ -144,8 +144,8 @@ public static class StatusEscalation
             ? "Reconnecting: the values shown are the last successful reading."
             : "Connecting…";
 
-    // I valori restano a schermo apposta: cancellarli farebbe credere che la macchina abbia
-    // smesso di avere una CPU. Questa riga e' cio' che impedisce di leggerli come attuali.
+    // The values stay on screen on purpose: clearing them would suggest the machine has stopped
+    // having a CPU. This line is what stops them from being read as current.
     private static string DisconnectedSubheading(bool hasValuesOnScreen) =>
         hasValuesOnScreen
             ? "Not connected: the values shown are the last successful reading."

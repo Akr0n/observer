@@ -8,116 +8,117 @@ using Avalonia.Media;
 namespace Observer.App.Controls;
 
 /// <summary>
-/// Un quadrante from cruscotto: arco graduato, zona redlineBrush e needleBrush.
+/// A dashboard gauge: graduated arc, redline zone and needle.
 /// </summary>
 /// <remarks>
-/// Disegnato to mano, e non e' stata una preferenza estetica: e' l'unica strada rimasta dopo
-/// aver escluso le altre <b>con una misura</b>. <c>LiveChartsCore.SkiaSharpView.Avalonia</c>
-/// 2.0.5 compila e poi lancia <c>MissingFieldException</c> su
-/// <c>Avalonia.Input.Gestures.PinchEvent</c> appena si costruisce un grafico, perche' e'
-/// compilato contro Avalonia 11; <c>Avalonia.Controls.Charts</c>, che i quadranti li ha gia'
-/// pronti, richiede una licenza Avalonia Pro to pagamento. Ogni pacchetto di terze parti qui
-/// porta lo stesso rischio che ha ucciso il primo: essere costruito contro una versione di
-/// Avalonia diversa from quella in uso. Un controllo che usa solo <see cref="DrawingContext"/>
-/// non ha quel rischio, e non ha nulla from aggiornare.
+/// Drawn by hand, and that was not an aesthetic preference: it is the only route left after
+/// ruling the others out <b>with a measurement</b>. <c>LiveChartsCore.SkiaSharpView.Avalonia</c>
+/// 2.0.5 compiles and then throws <c>MissingFieldException</c> on
+/// <c>Avalonia.Input.Gestures.PinchEvent</c> as soon as a chart is constructed, because it is
+/// built against Avalonia 11; <c>Avalonia.Controls.Charts</c>, which already has gauges ready to
+/// use, requires a paid Avalonia Pro licence. Every third-party package here carries the same
+/// risk that killed the first one: being built against a version of Avalonia different from the
+/// one in use. A control that uses only <see cref="DrawingContext"/> does not carry that risk,
+/// and has nothing to update.
 /// <para>
-/// La matematica sta tutta in <see cref="GaugeScale"/>, che ha i suoi test. Qui resta il
-/// disegno, che nessun test puo' guardare.
+/// All the arithmetic lives in <see cref="GaugeScale"/>, which has its own tests. What is left
+/// here is the drawing, which no test can look at.
 /// </para>
 /// </remarks>
 public sealed class Gauge : Control
 {
-    /// <summary>Quanto dura la corsa della needleBrush from un valueBrush al successivo.</summary>
+    /// <summary>How long the needle takes to travel from one value to the next.</summary>
     /// <remarks>
-    /// <b>Deve restare piu' breve dell'intervallo di campionamento</b>, e c'e' un test che lo
-    /// verifica. Una corsa lunga quanto l'intervallo non finirebbe mai: ogni campione la
-    /// farebbe ripartire from una posizione interpolata, e la needleBrush non starebbe ferma su un
-    /// valueBrush misurato nemmeno per un istante.
+    /// <b>It must stay shorter than the sampling interval</b>, and there is a test that checks
+    /// it. A travel time as long as the interval would never end: every sample would restart it
+    /// from an interpolated position, and the needle would not sit still on a measured value
+    /// for even an instant.
     /// <para>
-    /// <b>Duecento millisecondi, e il displayText e' misurato.</b> Questa e' una finestra che
-    /// misura l'uso della CPU, quindi cio' che spende per disegnarsi rientra nel displayText che
-    /// mostra: e' uno strumento che contribuisce to cio' che segna. Confronto appaiato sullo
-    /// stesso banco, due quadranti, otto processori logici, finestra in primo piano, in
-    /// Release: senza corsa <b>0,79%</b> di CPU di macchina, con 200 ms <b>1,39%</b>, con
-    /// 400 ms <b>3,05%</b>. Raddoppiare la durata quadruplica il sovrapprezzo, perche' quel
-    /// che costa e' la frazione di secondo in cui l'animazione gira. A 200 ms il disturbo sta
-    /// textTop il punto percentuale e la needleBrush non salta piu'; to 400 ms si pagavano oltre due
-    /// punti per una morbidezza che to occhio non si distingue.
+    /// <b>Two hundred milliseconds, and that number is measured.</b> This is a window that
+    /// measures CPU usage, so what it spends drawing itself goes into the number it
+    /// shows: it is an instrument that contributes to what it reads. Paired comparison on the
+    /// same bench, two gauges, eight logical processors, window in the foreground, in
+    /// Release: with no travel time <b>0.79%</b> of the machine's CPU, with 200 ms
+    /// <b>1.39%</b>, with 400 ms <b>3.05%</b>. Doubling the duration quadruples the overhead,
+    /// because the cost is the fraction of a second in which the animation runs. At 200 ms
+    /// that overhead stays below one percentage point and the needle no longer jumps; at 400 ms
+    /// you paid over two points for a smoothness that is indistinguishable by eye.
     /// </para>
     /// </remarks>
     public static readonly TimeSpan NeedleTravelTime = TimeSpan.FromMilliseconds(200);
 
-    /// <summary>Il valueBrush misurato, from 0 to 1. E' anche cio' che si anima.</summary>
+    /// <summary>The measured value, from 0 to 1. It is also what gets animated.</summary>
     /// <remarks>
-    /// <b>Fra un campione e il successivo la needleBrush attraversa posizioni che nessuno ha
-    /// misurato</b>, e vale la pena dirlo perche' altrove questo programma non lo fa mai. Qui
-    /// e' ammesso per una ragione precisa: una needleBrush analogica ha un'inerzia che chi guarda
-    /// si aspetta, e la corsa fra due letture si legge come inerzia, non come misura. Il
-    /// NUMERO al center non si anima affatto, ed e' li' che si legge il valueBrush.
+    /// <b>Between one sample and the next the needle passes through positions nobody
+    /// measured</b>, and it is worth saying because nowhere else does this program do that.
+    /// Here it is allowed for a precise reason: an analogue needle has an inertia the viewer
+    /// expects, and the travel between two readings reads as inertia, not as a measurement. The
+    /// NUMBER in the center is not animated at all, and that is where the value is read.
     /// <para>
-    /// Un tentativo di tenere separate le due cose - una seconda proprieta' animata che
-    /// inseguisse questa - e' stato fatto e MISURATO, e va peggio in tutti e due i modi in cui
-    /// si puo' scriverlo. Scrivendola to mano from <c>OnPropertyChanged</c>, fra la scrittura del
-    /// valueBrush e l'avvio della transizione passa un fotogramma: la needleBrush viene disegnata
-    /// subito sul valueBrush nuovo, l'animazione la riporta sul vecchio e la fa risalire - avanti,
-    /// indietro, avanti, to ogni campione, anche con valori fermi. Tracciato:
-    /// <c>"Posizione 0.7657 -> 0.7363 prio=Animation"</c> subito dopo che <c>Fraction</c> era
-    /// passata from 0.7363 to 0.7657. Legandola con un <c>Bind</c> nel costruttore, invece,
-    /// l'applicazione non si apre proprio.
+    /// An attempt to keep the two things apart - a second animated property following this one -
+    /// was made and MEASURED, and it comes out worse in both of the ways it can be
+    /// written. If it is written by hand from <c>OnPropertyChanged</c>, a frame goes by between
+    /// writing the value and starting the transition: the needle is drawn straight away at the
+    /// new value, the animation takes it back to the old one and makes it climb again - forward,
+    /// back, forward, at every sample, even with the values standing still. Traced, and quoted
+    /// as it was logged, with <c>Posizione</c> the Italian name that second property then had:
+    /// <c>"Posizione 0.7657 -> 0.7363 prio=Animation"</c> right after <c>Fraction</c> had
+    /// gone from 0.7363 to 0.7657. Binding it with a <c>Bind</c> in the constructor, on the
+    /// other hand, stops the application from opening at all.
     /// </para>
     /// </remarks>
     public static readonly StyledProperty<double> FractionProperty =
         AvaloniaProperty.Register<Gauge, double>(nameof(Fraction));
 
-    /// <summary>Il displayText scritto al center, gia' formattato.</summary>
+    /// <summary>The number written in the center, already formatted.</summary>
     public static readonly StyledProperty<string> DisplayProperty =
         AvaloniaProperty.Register<Gauge, string>(nameof(Display), string.Empty);
 
-    /// <summary>Che cosa misura questo quadrante.</summary>
+    /// <summary>What this gauge measures.</summary>
     public static readonly StyledProperty<string> CaptionProperty =
         AvaloniaProperty.Register<Gauge, string>(nameof(Caption), string.Empty);
 
-    /// <summary>Da valueFraction comincia la zona redlineBrush, from 0 to 1.</summary>
+    /// <summary>Where the redline zone begins, from 0 to 1.</summary>
     public static readonly StyledProperty<double> RedlineProperty =
         AvaloniaProperty.Register<Gauge, double>(nameof(Redline), 0.85d);
 
-    /// <summary>Il brush dell'arco non ancora percorso.</summary>
+    /// <summary>The brush of the arc not yet travelled.</summary>
     public static readonly StyledProperty<IBrush?> TrackBrushProperty =
         AvaloniaProperty.Register<Gauge, IBrush?>(nameof(TrackBrush));
 
-    /// <summary>Il brush dell'arco percorso.</summary>
+    /// <summary>The brush of the arc already travelled.</summary>
     public static readonly StyledProperty<IBrush?> ValueBrushProperty =
         AvaloniaProperty.Register<Gauge, IBrush?>(nameof(ValueBrush));
 
-    /// <summary>Il brush della zona redlineBrush e del valueBrush quando ci entra.</summary>
+    /// <summary>The brush of the redline zone, and of the value once it enters it.</summary>
     public static readonly StyledProperty<IBrush?> RedlineBrushProperty =
         AvaloniaProperty.Register<Gauge, IBrush?>(nameof(RedlineBrush));
 
-    /// <summary>Il brush della needleBrush e delle scritte.</summary>
+    /// <summary>The brush of the needle and of the labels.</summary>
     public static readonly StyledProperty<IBrush?> NeedleBrushProperty =
         AvaloniaProperty.Register<Gauge, IBrush?>(nameof(NeedleBrush));
 
-    // Quanta altezza del controllo prende il disegno. Il resto e' la fascia delle scritte:
-    // prima il displayText stava DENTRO il quadrante, sopra il perno, ed era la cosa che si leggeva
-    // peggio proprio mentre la needleBrush ci passava sopra.
+    // How much of the control's height the drawing takes. The rest is the band of the labels:
+    // the number used to sit INSIDE the gauge, above the pivot, and it was the thing that read
+    // worst precisely while the needle went over it.
     private const double DialHeightShare = 0.70d;
 
-    // La misura con cui il quadrante e' nato, e che vale ancora valueFraction nessuno gliene from' una.
+    // The size the gauge was first drawn at, and which still applies where nobody gives it one.
     private const double DefaultWidth = 148d;
     private const double DefaultHeight = 212d;
 
-    // Da valueFraction partono le scritte, in raggi dal center. Piu' di uno perche' il tratto dell'arco
-    // sporge di mezzo thickness oltre il radius: fermarsi to 1,08 lasciava il displayText dentro
-    // l'incavo in trackArc al quadrante, che e' vuoto ma e' ancora dentro il disegno.
+    // Where the labels start, in radii from the center. More than one because the stroke of the arc
+    // sticks out half a thickness past the radius: stopping at 1.08 left the number inside the
+    // notch at the bottom of the gauge, which is empty but is still inside the drawing.
     private const double LabelOffsetRadii = 1.15d;
 
-    // Cio' che non cambia from un fotogramma all'altro, tenuto from parte. Durante la corsa questo
-    // Render() gira una sessantina di volte al secondo, e arco di trackArc, zona redlineBrush, ticks e
-    // testi sono identici in tutti quei fotogrammi: ricostruirli ogni volta significa rifare
-    // due layout di text sessanta volte al secondo per non cambiare un pixel. E' stato
-    // misurato che il costo dell'animazione cade tutto sul thread di interfaccia, dentro
-    // Render, perche' la proprieta' animata sta in AffectsRender - quindi il lavoro per
-    // fotogramma e' la leva vera, piu' della durata.
+    // What does not change from one frame to the next, cached. While the needle travels this
+    // Render() runs about sixty times a second, and the background arc, the redline zone, the
+    // ticks and the texts are identical in all those frames: rebuilding them every time means
+    // redoing two text layouts sixty times a second to change not one pixel. It was
+    // measured that the whole cost of the animation falls on the UI thread, inside
+    // Render, because the animated property is in AffectsRender - so the work per
+    // frame is the real lever, more than the duration.
     private double drawnRadius;
     private double drawnRedline;
     private StreamGeometry? trackArc;
@@ -131,9 +132,9 @@ public sealed class Gauge : Control
 
     static Gauge()
     {
-        // Si ridisegna quando si muove la LANCETTA, non quando cambia la misura: fra le due
-        // cose ci sta l'animazione, e agganciare qui Fraction farebbe un fotogramma solo per
-        // campione, cioe' lo scatto che l'animazione serve to togliere.
+        // It redraws when the NEEDLE moves, not when the measurement changes: the animation
+        // sits between the two, and hooking Fraction up here would give one frame per
+        // sample, that is, the jump the animation is there to remove.
         AffectsRender<Gauge>(
             FractionProperty,
             DisplayProperty,
@@ -145,7 +146,7 @@ public sealed class Gauge : Control
             NeedleBrushProperty);
     }
 
-    /// <summary>Costruisce il quadrante.</summary>
+    /// <summary>Builds the gauge.</summary>
     public Gauge()
     {
         Transitions =
@@ -155,79 +156,79 @@ public sealed class Gauge : Control
                 Property = FractionProperty,
                 Duration = NeedleTravelTime,
 
-                // Parte subito e arriva morbida. Volutamente NON un easing che sorpassa
-                // (BackEaseOut, ElasticEaseOut): su uno strumento di misura mostrerebbero per
-                // qualche decimo di secondo un valueBrush piu' alto di quello letto, cioe' un picco
-                // che non e' mai successo.
+                // It starts at once and settles gently. Deliberately NOT an easing that
+                // overshoots (BackEaseOut, ElasticEaseOut): on a measuring instrument those
+                // would show, for a few tenths of a second, a value higher than the one read,
+                // that is, a peak that never happened.
                 Easing = new CubicEaseOut(),
             },
         ];
     }
 
-    /// <summary>Il valueBrush misurato, from 0 to 1.</summary>
+    /// <summary>The measured value, from 0 to 1.</summary>
     public double Fraction
     {
         get => GetValue(FractionProperty);
         set => SetValue(FractionProperty, value);
     }
 
-    /// <summary>Il displayText scritto al center, gia' formattato.</summary>
+    /// <summary>The number written in the center, already formatted.</summary>
     public string Display
     {
         get => GetValue(DisplayProperty);
         set => SetValue(DisplayProperty, value);
     }
 
-    /// <summary>Che cosa misura questo quadrante.</summary>
+    /// <summary>What this gauge measures.</summary>
     public string Caption
     {
         get => GetValue(CaptionProperty);
         set => SetValue(CaptionProperty, value);
     }
 
-    /// <summary>Da valueFraction comincia la zona redlineBrush, from 0 to 1.</summary>
+    /// <summary>Where the redline zone begins, from 0 to 1.</summary>
     public double Redline
     {
         get => GetValue(RedlineProperty);
         set => SetValue(RedlineProperty, value);
     }
 
-    /// <summary>Il brush dell'arco non ancora percorso.</summary>
+    /// <summary>The brush of the arc not yet travelled.</summary>
     public IBrush? TrackBrush
     {
         get => GetValue(TrackBrushProperty);
         set => SetValue(TrackBrushProperty, value);
     }
 
-    /// <summary>Il brush dell'arco percorso.</summary>
+    /// <summary>The brush of the arc already travelled.</summary>
     public IBrush? ValueBrush
     {
         get => GetValue(ValueBrushProperty);
         set => SetValue(ValueBrushProperty, value);
     }
 
-    /// <summary>Il brush della zona redlineBrush.</summary>
+    /// <summary>The brush of the redline zone.</summary>
     public IBrush? RedlineBrush
     {
         get => GetValue(RedlineBrushProperty);
         set => SetValue(RedlineBrushProperty, value);
     }
 
-    /// <summary>Il brush della needleBrush e delle scritte.</summary>
+    /// <summary>The brush of the needle and of the labels.</summary>
     public IBrush? NeedleBrush
     {
         get => GetValue(NeedleBrushProperty);
         set => SetValue(NeedleBrushProperty, value);
     }
 
-    /// <summary>Quanto spazio chiede: TUTTO quello che gli offrono.</summary>
-    /// <param name="availableSize">Lo spazio disponibile.</param>
-    /// <returns>Lo spazio disponibile stesso, o la misura classica valueFraction non c'e' un limite.</returns>
+    /// <summary>How much space it asks for: ALL of what it is offered.</summary>
+    /// <param name="availableSize">The available space.</param>
+    /// <returns>The available space itself, or the original size where there is no limit.</returns>
     /// <remarks>
-    /// Un Control senza misura propria dichiara zero, e zero e' quello che la griglia dei
-    /// quadranti gli ha dato il primo giorno: riquadro alto il giusto e nessun quadrante
-    /// dentro. Qui il quadrante riempie la cella che il pannello ha deciso per lui; valueFraction non
-    /// c'e' una cella - misurato senza limiti - vale la misura con cui e' nato, 148x212.
+    /// A Control with no size of its own reports zero, and zero is what the gauge grid gave it
+    /// on day one: a box of the right height and no gauge inside it. Here the gauge fills the
+    /// cell the panel decided for it; where there is no cell - measured with no constraint -
+    /// the size it was first drawn at applies, 148x212.
     /// </remarks>
     protected override Size MeasureOverride(Size availableSize) => new(
         double.IsInfinity(availableSize.Width) ? DefaultWidth : availableSize.Width,
@@ -238,8 +239,8 @@ public sealed class Gauge : Control
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        // Il quadrante prende la larghezza, non tutta l'altezza: textTop resta una fascia per le
-        // scritte, che prima stavano dentro il disegno.
+        // The dial takes the width, not the whole height: below it a band is left for the
+        // labels, which used to sit inside the drawing.
         double side = Math.Min(Bounds.Width, Bounds.Height * DialHeightShare);
 
         if (side <= 0d)
@@ -255,9 +256,9 @@ public sealed class Gauge : Control
             return;
         }
 
-        // Il center sta al center della larghezza e dentro la fascia del quadrante, non to meta'
-        // del controllo: cio' che sta textTop e' text, e centrare sull'altezza intera farebbe
-        // scendere il disegno sopra le scritte.
+        // The center sits at the middle of the width and inside the dial's band, not at half
+        // the control: what is below is text, and centering on the whole height would push
+        // the drawing down over the labels.
         Point center = new(Bounds.Width / 2d, (side / 2d) + (radius * 0.10d));
 
         IBrush trackBrush = TrackBrush ?? Brushes.Gainsboro;
@@ -272,9 +273,9 @@ public sealed class Gauge : Control
 
         context.DrawGeometry(null, PenFor(trackBrush, thickness), trackArc!);
 
-        // La zona redlineBrush si vede anche quando la needleBrush e' lontana, ed e' questo che la rende
-        // una redlineFraction invece di un allarme: una barra che diventa redlineBrush solo quando e' troppo
-        // tardi non dice mai quanto manca.
+        // The redline zone is visible even when the needle is far from it, and that is what
+        // makes it a threshold instead of an alarm: a bar that turns red only when it is too
+        // late never says how much room is left.
         if (redlineArc is not null)
         {
             context.DrawGeometry(null, PenFor(redlineBrush, thickness * 0.42d), redlineArc);
@@ -336,13 +337,13 @@ public sealed class Gauge : Control
 
         trackArc = ArcBetween(center, radius, 0d, 1d);
 
-        // Sotto il millesimo l'arco e' piu' corto del proprio tratto arrotondato: disegnarlo
-        // lascerebbe un pallino sul trackArc scala anche valueFraction la zona redlineBrush non comincia.
+        // Below a thousandth the arc is shorter than its own rounded cap: drawing it would
+        // leave a dot at the full-scale end even where the redline zone does not begin.
         redlineArc = redlineFraction < 0.999d ? ArcBetween(center, radius, redlineFraction, 1d) : null;
 
         ticks = TickMarks(center, radius, thickness);
 
-        // I testi sono misurati sul radius: se il radius e' cambiato, il loro fontSize pure.
+        // The texts are measured against the radius: if the radius changed, so did their font size.
         drawnDisplay = null;
         drawnCaption = null;
     }
@@ -387,8 +388,8 @@ public sealed class Gauge : Control
             return;
         }
 
-        // Un pezzetto di needleBrush prosegue oltre il perno, come sui quadranti veri: e' cio' che
-        // fa leggere l'oggetto come una needleBrush imperniata invece che come un radius.
+        // A short piece of the needle carries on past the pivot, as on real gauges: that is what
+        // makes the object read as a needle on a pivot rather than as a radius.
         context.DrawLine(
             PenFor(brush, Math.Max(1.5d, thickness * 0.22d)),
             GaugeScale.PointAt(center, -(thickness * 0.5d), angle),
@@ -401,17 +402,17 @@ public sealed class Gauge : Control
     {
         double fontSize = Math.Max(9d, radius * 0.34d);
 
-        // DrawText posiziona l'ANGOLO IN ALTO A SINISTRA del text, non la sua linea di base.
-        // La captionText parte quindi from valueFraction il displayText finisce davvero, e non from un multiplo
-        // scelto to occhio del fontSize del displayText: quel multiplo era giusto per un fontSize solo, e
-        // to quadrante piu' piccolo le due scritte si sovrapponevano.
+        // DrawText positions the TOP LEFT CORNER of the text, not its baseline.
+        // The caption therefore starts where the number really ends, and not at a multiple of
+        // the number's font size picked by eye: that multiple was right for one font size only,
+        // and on a smaller gauge the two labels overlapped.
         double textTop = center.Y + (radius * LabelOffsetRadii);
 
         if (!ReferenceEquals(drawnTextBrush, brush))
         {
-            // Il brush e' dentro il text gia' impaginato: se cambia il tema mentre la
-            // finestra e' aperta, un text tenuto from parte resterebbe del brush di prima -
-            // scritta chiara su trackArc chiaro, cioe' invisibile.
+            // The brush is inside the already laid-out text: if the theme changes while the
+            // window is open, a cached text would keep the previous brush -
+            // light text on a light background, that is, invisible.
             drawnTextBrush = brush;
             drawnDisplay = null;
             drawnCaption = null;
@@ -435,9 +436,9 @@ public sealed class Gauge : Control
             if (captionText is null
                 || !string.Equals(drawnCaption, Caption, StringComparison.Ordinal))
             {
-                // Undici e non otto: textTop, to 148 px di quadrante la captionText scendeva to dieci
-                // e diventava la scritta piu' piccola della finestra, proprio quella che dice
-                // COSA misura il displayText grande sopra.
+                // Eleven and not eight: any lower and, on a 148 px gauge, the caption dropped
+                // to ten and became the smallest text in the window, the very one that says
+                // WHAT the big number above measures.
                 captionText = FormatText(Caption, Math.Max(11d, fontSize * 0.46d), brush);
                 drawnCaption = Caption;
             }

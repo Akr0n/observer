@@ -10,102 +10,101 @@ using Observer.Core.Metrics.Cpu;
 namespace Observer.App.ViewModels;
 
 /// <summary>
-/// L'unica schermata: interroga il servizio una volta al secondo e mostra cio' che risponde.
+/// The only screen: polls the service once a second and shows what it answers.
 /// </summary>
 /// <remarks>
-/// Regola non negoziabile di questa classe: non lascia MAI la finestra vuota e non lascia mai
-/// uscire un'eccezione. Chi usa questa applicazione non legge i log, quindi ogni guasto deve
-/// diventare una frase in italiano dentro la barra di state.
+/// Non-negotiable rule for this class: it NEVER leaves the window empty and never lets an
+/// exception escape. Whoever uses this application does not read logs, so every fault has to
+/// become a plain English sentence inside the status bar.
 /// </remarks>
 public sealed partial class MainViewModel : ViewModelBase
 {
-    /// <summary>Ogni quanto si interroga il servizio.</summary>
+    /// <summary>How often the service is polled.</summary>
     /// <remarks>
-    /// Pubblico perche' un test possa confrontarlo con <see cref="Controls.Gauge.NeedleTravelTime"/>: la
-    /// corsa della lancetta deve restare piu' breve di questo, altrimenti non finirebbe mai e
-    /// il quadrante non starebbe fermo su un valore misurato nemmeno by un istante.
+    /// Public so a test can compare it with <see cref="Controls.Gauge.NeedleTravelTime"/>: the
+    /// needle's travel must stay shorter than this, otherwise it would never finish and the
+    /// gauge would not sit still on a measured value even for an instant.
     /// </remarks>
     public static readonly TimeSpan Interval = TimeSpan.FromSeconds(1);
 
-    /// <summary>Ogni quanto si interroga il servizio quando la finestra e' ridotta a icona.</summary>
+    /// <summary>How often the service is polled when the window is minimized.</summary>
     /// <remarks>
-    /// Non si ferma: riaprendo la finestra la barra di state deve dire subito com'e' andata,
-    /// non "collegamento in corso". Ma un campione al secondo by una finestra che nessuno
-    /// guarda e' lavoro fatto alla macchina che si sta misurando, e questo e' uno strumento
-    /// che rientra nel numero che mostra.
+    /// It does not stop: when the window comes back the status bar has to say straight away
+    /// how it went, not "connecting". But one sample a second for a window nobody is looking
+    /// at is work done on the machine being measured, and this is a tool whose own cost is
+    /// part of the number it shows.
     /// </remarks>
     public static readonly TimeSpan BackgroundInterval = TimeSpan.FromSeconds(10);
 
-    /// <summary>Ogni quanto si riprova una lettura di history fallita.</summary>
+    /// <summary>How often a failed history read is retried.</summary>
     /// <remarks>
-    /// Non il passo del period: a sette giorni quello vale due ore, e un timeout lascerebbe
-    /// accanto alla striscia un "No history" vecchio di due ore su dati che intanto sono
-    /// tornati. Si riprova presto, e si rallenta solo quando e' andata bene.
+    /// Not the period's step: at seven days that is two hours, and a timeout would leave a "No
+    /// history" next to the strip that is two hours old, on data that has meanwhile come back.
+    /// It retries soon, and slows down only once a read has gone well.
     /// </remarks>
     private static readonly TimeSpan HistoryRetryInterval = TimeSpan.FromSeconds(15);
 
-    /// <summary>In quante riletture si divide un passo, quando la lettura e' andata bene.</summary>
+    /// <summary>How many rereads a step is split into, when the read went well.</summary>
     /// <remarks>
-    /// Rileggere OGNI passo sembrava la readInterval giusta - piu' spesso non aggiunge una barra,
-    /// aggiunge solo traffico - e non lo era: l'ultima barra della striscia e' l'intervallo IN
-    /// CORSO, e da 0.18.0 si disegna larga quanto la parte che ha coperto. Rileggendo ogni
-    /// passo si guarda ogni volta una barra appena nata, sempre alla stessa frazione: a sette
-    /// giorni l'estremo destro - quello che l'occhio legge come "clock" - resterebbe una row
-    /// da un pixel by tutta la sessione, accanto a quadranti vivi. Un quarto del passo la fa
-    /// crescere in quattro scatti, e resta un trentesimo del traffico della vista da un'timeText.
+    /// Rereading EVERY step looked like the right cadence - more often does not add a bar, it
+    /// only adds traffic - and it was not: the last bar of the strip is the interval IN
+    /// PROGRESS, and since 0.18.0 it is drawn as wide as the part it has covered. Rereading
+    /// every step means looking at a newborn bar every time, always at the same fraction: at
+    /// seven days the right edge - the one the eye reads as "now" - would stay a one-pixel
+    /// sliver for the whole session, next to live gauges. A quarter of the step makes it grow
+    /// in four jumps, and is still a thirtieth of the one-hour view's traffic.
     /// </remarks>
     private const int RereadsPerStep = 4;
 
-    /// <summary>Il minimo fra due riletture dello history, quale che sia il period.</summary>
+    /// <summary>The minimum between two history rereads, whatever the period.</summary>
     /// <remarks>
-    /// Tocca solo la vista da un'timeText, il cui passo vale gia' un minuto: li' la barra in corso
-    /// resta congelata alla frazione che aveva quando si e' process il period, e si accetta.
-    /// Scenderebbe a quindici secondi, ma sono dodici richieste ogni quindici secondi - una
-    /// volta e mezza il campionamento stesso - by animare una barretta da tredici pixel. Il
-    /// prezzo lo paga la macchina che questa finestra sta misurando, e compare nel numero che
-    /// la finestra mostra. Sui periodi lunghi il quarto di passo costa molto meno di cosi' e
-    /// il difetto e' molto piu' grosso: e' li' che si spende.
+    /// It only touches the one-hour view, whose step is already a minute: there the in-progress
+    /// bar stays frozen at the fraction it had when the period was chosen, and that is accepted.
+    /// It could go down to fifteen seconds, but that is twelve requests every fifteen seconds -
+    /// one and a half times the sampling itself - to animate a thirteen-pixel bar. The price is
+    /// paid by the machine this window is measuring, and it shows up in the number the window
+    /// displays. On the long periods a quarter of the step costs far less than that and the
+    /// defect is far bigger: that is where it is worth spending.
     /// </remarks>
     private static readonly TimeSpan MinimumRereadInterval = TimeSpan.FromMinutes(1);
 
-    /// <summary>Il minimo da cui rileggere il grezzo, quale che sia il period.</summary>
+    /// <summary>How far back the raw data is reread from at a minimum, whatever the period.</summary>
     /// <remarks>
-    /// Il consolidamento degli aggregati ha una grazia di quattro minuti: il livello a un
-    /// minuto e' indietro di cinque o sei rispetto ad clock. Senza questa seconda lettura le
-    /// ultime barrette sarebbero SEMPRE vuote, e la striscia direbbe "non misurato" proprio
-    /// sull'clock, mentre il quadrante sopra mostra un valore vivo. Con una sorgente a cinque
-    /// minuti il ritardo cresce, e la tail si allarga con lei: vedi TailFor.
+    /// Aggregate consolidation has a four-minute grace: the one-minute level is five or six
+    /// minutes behind now. Without this second read the last bars would ALWAYS be empty, and
+    /// the strip would say "not measured" exactly at now, while the gauge above shows a live
+    /// value. With a five-minute source the lag grows, and the tail widens with it: see TailFor.
     /// </remarks>
     private static readonly TimeSpan MinimumTail = TimeSpan.FromMinutes(10);
 
-    /// <summary>Quante rows chiedere al pannello dei processi.</summary>
+    /// <summary>How many rows to ask the process panel for.</summary>
     /// <remarks>
-    /// Quindici, non tutti: la domanda a cui il pannello risponde e' "chi mi sta mangiando la
-    /// macchina", e la tail dell'machineList - centinaia di processi fermi - non risponde a niente
-    /// e costa banda a ogni secondo.
+    /// Fifteen, not all of them: the question the panel answers is "who is eating my machine",
+    /// and the tail of the list - hundreds of idle processes - answers nothing and costs
+    /// bandwidth every second.
     /// </remarks>
     private const int ProcessRowCount = 15;
 
     private readonly Func<IMetricsClient?>? rereadConfiguration;
     private readonly Func<DateTimeOffset> clock;
 
-    /// <summary>Come aprire un client verso una macchina scelta nell'machineList.</summary>
+    /// <summary>How to open a client to a machine picked from the list.</summary>
     private readonly Func<ObserverEndpoint, IMetricsClient>? openMachine;
 
-    /// <summary>Come rileggere da disco la machine di una macchina, quando la sua credenziale non vale piu'.</summary>
+    /// <summary>How to reread a machine's entry from disk, when its credential is no longer valid.</summary>
     private readonly Func<ObserverEndpoint, ObserverEndpoint?>? rereadEndpoint;
 
     private readonly Func<string, Task>? copyToClipboard;
 
-    /// <summary>L'ultima scrittura negli appunti, by metterci in fila la prossima.</summary>
+    /// <summary>The last clipboard write, so the next one can be queued behind it.</summary>
     private Task clipboardQueue = Task.CompletedTask;
 
-    /// <summary>La machine dell'machineList che il giro principale sta leggendo davvero.</summary>
+    /// <summary>The list entry the main loop is really reading.</summary>
     /// <remarks>
-    /// NON la selezione della lista: quella puo' diventare null (un Ctrl+clic sulla machine
-    /// evidenziata la deseleziona) mentre il giro continua a leggere la stessa macchina, e
-    /// allora la sonda la interrogherebbe una seconda volta e il entryClient pallino smetterebbe di
-    /// seguire la barra. E' questa machine che le sonde saltano e che la barra aggiorna.
+    /// NOT the list selection: that one can become null (a Ctrl+click on the highlighted entry
+    /// deselects it) while the loop keeps reading the same machine, and then the probe would
+    /// poll it a second time and its dot would stop following the bar. It is this entry that
+    /// the probes skip and that the bar updates.
     /// </remarks>
     private MachineRow? watchedEntry;
 
@@ -116,42 +115,42 @@ public sealed partial class MainViewModel : ViewModelBase
     private bool catalogLoaded;
 
     /// <summary>
-    /// From quando le readings falliscono di fila, oppure null se l'ultima e' andata bene.
+    /// Since when readings have been failing in a row, or null if the last one went well.
     /// </summary>
     /// <remarks>
-    /// E' cio' che distingue un servizio che sta partendo da un servizio che non c'e'. Va
-    /// azzerato anche quando si cambia endpoint: a una macchina diversa spetta un'timer
-    /// nuova, non quella gia' consumata dalla previousWrite.
+    /// This is what tells a service that is starting up from a service that is not there. It
+    /// has to be cleared when the endpoint changes too: a different machine deserves a fresh
+    /// grace period, not the one already used up by the previous one.
     /// </remarks>
     private DateTimeOffset? faultSince;
 
     /// <summary>
-    /// Costruisce la schermata.
+    /// Builds the screen.
     /// </summary>
-    /// <param name="client">Il client verso il servizio, oppure null se manca la configurazione.</param>
+    /// <param name="client">The client to the service, or null when the configuration is missing.</param>
     /// <param name="configurationProblem">
-    /// La frase da mostrare quando <paramref name="client"/> e' null.
+    /// The sentence to show when <paramref name="client"/> is null.
     /// </param>
     /// <param name="rereadConfiguration">
-    /// Come riprovare a leggere la configurazione mentre l'applicazione e' aperta, oppure
-    /// null by non riprovare affatto. Restituisce un client quando la configurazione
-    /// diventa validScale.
+    /// How to retry reading the configuration while the application is open, or null not to
+    /// retry at all. Returns a client once the configuration becomes valid.
     /// </param>
     /// <param name="clock">
-    /// From dove si legge l'timeText, oppure null by l'clock di sistema. Serve alle prove:
-    /// l'timer prima di dichiarare guasto un servizio dura dieci secondi, e un test che li
-    /// aspettasse davvero sarebbe un test che nessuno esegue volentieri.
+    /// Where the time is read from, or null for the system clock. It is there for the tests:
+    /// the wait before declaring a service faulted lasts ten seconds, and a test that really
+    /// waited them out would be a test nobody runs willingly.
     /// </param>
     /// <param name="machineList">
-    /// Le macchine da mettere nella barra laterale, oppure null by non mostrarla affatto.
+    /// The machines to put in the sidebar, or null not to show it at all.
     /// </param>
-    /// <param name="openMachine">Come aprire un client verso una macchina dell'machineList.</param>
+    /// <param name="openMachine">How to open a client to a machine from the list.</param>
     /// <param name="rereadEndpoint">
-    /// Come rileggere da disco la machine di una macchina non guardata quando una sonda torna
-    /// con un token rifiutato o un'impronta che non corrisponde, oppure null by non rileggere.
+    /// How to reread from disk the entry of a machine that is not being watched when a probe
+    /// comes back with a rejected token or a fingerprint that does not match, or null not to
+    /// reread.
     /// </param>
     /// <param name="copyToClipboard">
-    /// Come scrivere negli appunti, oppure null: senza, i comandi di copy restano spenti.
+    /// How to write to the clipboard, or null: without it the copy commands stay disabled.
     /// </param>
     public MainViewModel(
         IMetricsClient? client,
@@ -180,16 +179,16 @@ public sealed partial class MainViewModel : ViewModelBase
             MachineListProblems.Add(problem);
         }
 
-        // La selezione iniziale segue il client con cui la finestra e' stata costruita. Non
-        // serve alcun guardiano contro la propria stessa scrittura: il gestore qui sotto esce
-        // da se' quando la macchina scelta e' gia' quella aperta.
+        // The initial selection follows the client the window was built with. No guard against
+        // its own write is needed: the handler below returns on its own when the machine picked
+        // is already the one that is open.
         SelectedMachine = Machines.FirstOrDefault(
             machine => client is not null && machine.Endpoint == client.Endpoint) ?? Machines.FirstOrDefault();
 
-        // Solo il nome dell'applicazione. QUALE macchina si sta guardando lo dicono gia' la
-        // row sotto il title e la machine evidenziata nella barra laterale: ripeterlo nel
-        // title grande e' rumore che si legge a ogni sguardo. La version sta nella barra
-        // del title della finestra, non qui: la si cerca quando serve, non la si rilegge.
+        // Just the application name. WHICH machine is being watched is already said by the
+        // line under the title and by the highlighted entry in the sidebar: repeating it in
+        // the big title is noise that gets read at every glance. The version lives in the
+        // window's title bar, not here: you look it up when you need it, you do not reread it.
         Heading = "Observer";
 
         if (client is null)
@@ -207,20 +206,20 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Title della finestra: nome e version del programma.</summary>
+    /// <summary>The window title: the program's name and version.</summary>
     /// <remarks>
-    /// Costante by tutta la vita della finestra, quindi non e' osservabile. La version e'
-    /// quella dei metadati del binario, cioe' di <c>Directory.Build.props</c>, senza l'hash.
+    /// Constant for the whole life of the window, so it is not observable. The version is the
+    /// one in the binary's metadata, that is from <c>Directory.Build.props</c>, without the hash.
     /// </remarks>
     public string WindowTitle { get; } = Title(AppVersion.OfThisProgram());
 
-    /// <summary>Title grande in cima alla finestra.</summary>
+    /// <summary>The big title at the top of the window.</summary>
     [ObservableProperty]
     public partial string Heading { get; set; }
 
-    /// <summary>Compone il title della finestra dalla version.</summary>
-    /// <param name="version">La version corta, o vuota se non c'e'.</param>
-    /// <returns><c>Observer 0.8.0</c>, oppure solo <c>Observer</c> quando la version manca.</returns>
+    /// <summary>Composes the window title from the version.</summary>
+    /// <param name="version">The short version, or empty when there is none.</param>
+    /// <returns><c>Observer 0.8.0</c>, or just <c>Observer</c> when the version is missing.</returns>
     public static string Title(string version)
     {
         ArgumentNullException.ThrowIfNull(version);
@@ -228,161 +227,160 @@ public sealed partial class MainViewModel : ViewModelBase
         return version.Length == 0 ? "Observer" : "Observer " + version;
     }
 
-    /// <summary>LineFor sotto il title: state del collegamento e timeText dell'ultima lettura.</summary>
+    /// <summary>The line under the title: connection status and the time of the last reading.</summary>
     [ObservableProperty]
     public partial string Subheading { get; set; }
 
-    /// <summary>Title della barra di state.</summary>
+    /// <summary>The status bar's title.</summary>
     [ObservableProperty]
     public partial string StatusTitle { get; set; } = string.Empty;
 
-    /// <summary>Testo della barra di state.</summary>
+    /// <summary>The status bar's text.</summary>
     [ObservableProperty]
     public partial string StatusText { get; set; } = string.Empty;
 
-    /// <summary>SeverityFor' della barra di state.</summary>
+    /// <summary>The status bar's severity.</summary>
     [ObservableProperty]
     public partial FAInfoBarSeverity StatusSeverity { get; set; } = FAInfoBarSeverity.Informational;
 
-    /// <summary>True quando c'e' qualcosa da segnalare. Quando tutto va, la barra sparisce.</summary>
+    /// <summary>True when there is something to report. When all is well, the bar disappears.</summary>
     [ObservableProperty]
     public partial bool IsStatusVisible { get; set; } = true;
 
-    /// <summary>I riquadri, uno by sorgente di metriche.</summary>
+    /// <summary>The panels, one per metric source.</summary>
     public ObservableCollection<MetricGroup> Groups { get; } = [];
 
-    /// <summary>I quadranti, raccolti in cima da tutte le sorgenti.</summary>
+    /// <summary>The gauges, gathered at the top from every source.</summary>
     /// <remarks>
-    /// Contiene le STESSE istanze che stanno dentro i gruppi, non delle copie: le rows si
-    /// aggiornano sul posto una volta al secondo, e due copie divergerebbero senza che niente
-    /// lo segnali. Qui si raccolgono soltanto by mostrarle insieme.
+    /// It holds the SAME instances that live inside the groups, not copies: the rows update in
+    /// place once a second, and two copies would diverge with nothing to flag it. They are
+    /// gathered here only to show them together.
     /// </remarks>
     public ObservableCollection<MetricRow> Gauges { get; } = [];
 
     private DateTimeOffset nextHistoryRead = DateTimeOffset.MinValue;
 
-    /// <summary>True quando c'e' almeno un quadrante da mostrare.</summary>
+    /// <summary>True when there is at least one gauge to show.</summary>
     /// <remarks>
-    /// Senza, un riquadro vuoto col entryClient title resterebbe a schermo quando nessuna metrica e'
-    /// misurabile - che e' proprio il momento in cui non deve sembrare che vada tutto bene.
+    /// Without it, an empty panel with its title would stay on screen when no metric is
+    /// measurable - which is exactly the moment when it must not look as if all is well.
     /// </remarks>
     [ObservableProperty]
     public partial bool HasGauges { get; set; }
 
-    /// <summary>I processi mostrati nel pannello, quando e' aperto.</summary>
+    /// <summary>The processes shown in the panel, while it is open.</summary>
     public ObservableCollection<ProcessRowState> Processes { get; } = [];
 
-    /// <summary>True quando il pannello dei processi e' aperto.</summary>
+    /// <summary>True while the process panel is open.</summary>
     [ObservableProperty]
     public partial bool IsProcessPanelOpen { get; set; }
 
-    /// <summary>Title del pannello: dice di quale resource si stanno guardando i processi.</summary>
+    /// <summary>The panel's title: it says which resource the processes are being watched for.</summary>
     [ObservableProperty]
     public partial string ProcessesTitle { get; set; } = string.Empty;
 
-    /// <summary>Che cosa non va nel pannello, quando qualcosa non va. Vuoto altrimenti.</summary>
+    /// <summary>What is wrong in the panel, when something is wrong. Empty otherwise.</summary>
     [ObservableProperty]
     public partial string ProcessesProblem { get; set; } = string.Empty;
 
-    /// <summary>La row selezionata, quella che il pulsante terminerebbe.</summary>
+    /// <summary>The selected row, the one the button would end.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanCopyRow))]
     [NotifyCanExecuteChangedFor(nameof(CopyProcessRowCommand))]
     public partial ProcessRowState? SelectedProcess { get; set; }
 
-    /// <summary>True quando c'e' una row selezionata da poter terminare.</summary>
+    /// <summary>True when there is a selected row that can be ended.</summary>
     [ObservableProperty]
     public partial bool CanEndProcess { get; set; }
 
-    /// <summary>Il nome della macchina da riaprire la prossima volta, o null by questo computer.</summary>
+    /// <summary>The name of the machine to reopen next time, or null for this computer.</summary>
     /// <remarks>
-    /// Il nome GREZZO del endpoint, non <c>MachineRow.Name</c>: quello e' il nome
-    /// <i>visibile</i>, che ripiega sull'indirizzo quando una machine non ne ha uno — il caso
-    /// della vecchia configurazione a macchina singola — e sulla parola "This machine" by il
-    /// canale locale. Nessuna delle due e' una key: la prima e' un indirizzo che finirebbe
-    /// in un file dove non deve stare, la seconda non corrisponde a niente in
+    /// The RAW name from the endpoint, not <c>MachineRow.Name</c>: that one is the
+    /// <i>visible</i> name, which falls back to the address when an entry has none — the case
+    /// of the old single-machine configuration — and to the words "This machine" for the
+    /// local channel. Neither of the two is a key: the first is an address that would end up
+    /// in a file where it must not sit, the second matches nothing in
     /// <c>machines.json</c>.
     /// <para>
-    /// E' la macchina davvero LETTA, non quella selezionata: la selezione puo' essere nulla
-    /// mentre il giro continua a leggere, ed e' la stessa distinzione by cui esiste
-    /// <c>watchedEntry</c>. Non e' osservabile perche' la finestra la legge una volta sola,
-    /// alla chiusura.
+    /// It is the machine really BEING READ, not the selected one: the selection can be null
+    /// while the loop keeps reading, and it is the same distinction <c>watchedEntry</c> exists
+    /// for. It is not observable because the window reads it exactly once, on close.
     /// </para>
     /// </remarks>
     public string? MachineToRemember => watchedEntry?.Endpoint.Name?.Trim();
 
-    /// <summary>True quando gli appunti sono raggiungibili: senza, i comandi restano spenti.</summary>
+    /// <summary>True when the clipboard is reachable: without it the commands stay disabled.</summary>
     /// <remarks>
-    /// La cucitura verso gli appunti arriva da chi costruisce il view model, ed e' opzionale
-    /// perche' una prova senza finestra non ce l'ha. Se un giorno qualcuno la dimenticasse
-    /// nella radice di composizione, un comando che esce da se' sul null lascerebbe un
-    /// pulsante che non fa niente e non lo dice — e i test resterebbero verdi, perche' loro il
-    /// finto ce l'hanno. Spento si vede al primo avvio.
+    /// The wiring to the clipboard comes from whoever builds the view model, and it is optional
+    /// because a test with no window does not have one. If one day someone forgot it in the
+    /// composition root, a command that simply returned on the null would leave a button that
+    /// does nothing and does not say so — and the tests would stay green, because they do have
+    /// the fake. A disabled button, by contrast, is noticed on the very first run.
     /// </remarks>
     public bool CanCopy => copyToClipboard is not null;
 
-    /// <summary>True quando c'e' una row di processo da copiare.</summary>
+    /// <summary>True when there is a process row to copy.</summary>
     /// <remarks>
-    /// Sulla SELEZIONE e non su <see cref="CanEndProcess"/>, anche se oggi coincidono: copiare
-    /// una row e' di sola lettura, terminarla no, e far viaggiare la prima sul permesso della
-    /// seconda vuol dire che il giorno in cui si stringe il cancello di chi puo' uccidere un
-    /// processo — un utente senza diritti, una macchina di sola lettura — sparirebbe anche la
-    /// possibilita' di copiarne il nome, senza che nessuno l'abbia deciso.
+    /// On the SELECTION and not on <see cref="CanEndProcess"/>, even though today they
+    /// coincide: copying a row is read-only, ending it is not, and hanging the first on the
+    /// second's permission means that the day the gate on who may kill a process is tightened —
+    /// a user without rights, a read-only machine — the ability to copy its name would
+    /// disappear too, without anyone having decided that.
     /// </remarks>
     public bool CanCopyRow => CanCopy && SelectedProcess is not null;
 
     /// <summary>
-    /// True quando il pulsante di terminazione e' gia' state premuto una volta e sta
-    /// aspettando la conferma.
+    /// True when the end button has already been pressed once and is waiting for the
+    /// confirmation.
     /// </summary>
     /// <remarks>
-    /// La conferma sta nel pulsante e non in una finestra di dialogo, e non e' pigrizia: una
-    /// finestra modale qui richiederebbe di passare la finestra padre al view model, cioe' di
-    /// legare la logica all'interfaccia proprio dove finora non lo e'. Due clic sullo stesso
-    /// pulsante, col text che cambia, difendono dallo stesso error — un clic distratto su
-    /// una row sbagliata — senza quella dipendenza.
+    /// The confirmation lives in the button and not in a dialog window, and that is not
+    /// laziness: a modal window here would mean passing the parent window to the view model,
+    /// that is tying the logic to the interface exactly where it is not tied today. Two clicks
+    /// on the same button, with the text changing, guard against the same mistake — a careless
+    /// click on the wrong row — without that dependency.
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(EndButtonText))]
     public partial bool IsAwaitingEndConfirmation { get; set; }
 
-    /// <summary>Che cosa c'e' scritto sul pulsante di terminazione, clock.</summary>
+    /// <summary>What the end button says right now.</summary>
     /// <remarks>
-    /// UN pulsante che cambia scritta, e non due che si alternano: con due, al primo clic il
-    /// pulsante premuto spariva e il fuoco della tastiera cadeva nel vuoto, e chi conferma con
-    /// Invio si trovava a premere Invio su niente.
+    /// ONE button whose label changes, and not two that alternate: with two, on the first click
+    /// the pressed button disappeared and the keyboard focus fell into nothing, and whoever
+    /// confirms with Enter found themselves pressing Enter on nothing.
     /// </remarks>
     public string EndButtonText => IsAwaitingEndConfirmation ? "Click again to end it" : "End process";
 
     /// <summary>
-    /// True quando la finestra e' ridotta a icona: la readInterval delle readings si allunga.
+    /// True when the window is minimized: the reading cadence gets longer.
     /// </summary>
-    /// <remarks>Lo imposta la finestra; il view model non sa cos'e' una finestra.</remarks>
+    /// <remarks>The window sets it; the view model does not know what a window is.</remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PollInterval))]
     public partial bool IsMinimized { get; set; }
 
-    /// <summary>Ogni quanto si legge, clock.</summary>
+    /// <summary>How often a reading is taken right now.</summary>
     public TimeSpan PollInterval => IsMinimized ? BackgroundInterval : Interval;
 
-    /// <summary>Quanto e' scalata la finestra: 1 e' la misura normale, sotto 1 e' piu' piccola.</summary>
+    /// <summary>How much the window is scaled: 1 is the normal size, below 1 is smaller.</summary>
     /// <remarks>
-    /// Avalonia non legge la dimensione del text di sistema, quindi chi l'ha alzata in Windows
-    /// qui non la ritrova. Questa e' l'impostazione interna che la sostituisce, e va anche sotto
-    /// il 100 %, dove Windows non va: e' uno zoom, non solo una misura del text. La applica la
-    /// finestra, che scala tutto - quadranti compresi - e la ricorda fra un avvio e l'altro.
+    /// Avalonia does not read the system text size, so whoever raised it in Windows does not
+    /// find it again here. This is the internal setting that replaces it, and it goes below
+    /// 100 % too, where Windows does not: it is a zoom, not just a text size. The window
+    /// applies it, scaling everything - gauges included - and remembers it between starts.
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedScale))]
     public partial double Zoom { get; set; } = Preferences.NormalZoom;
 
-    /// <summary>Le scale fra cui si sceglie, come voci del selettore.</summary>
+    /// <summary>The scales to choose from, as selector entries.</summary>
     public static IReadOnlyList<ZoomOption> ScaleOptions { get; } =
         [.. Preferences.AllowedZoomLevels.Select(factor => new ZoomOption(factor))];
 
-    /// <summary>La scala come machine del selettore: e' <see cref="Zoom"/> con un'etichetta.</summary>
+    /// <summary>The scale as a selector entry: it is <see cref="Zoom"/> with a label.</summary>
     /// <remarks>
-    /// Il selettore puo' assegnare null mentre cambia machineList: allora la scala resta com'e'.
+    /// The selector can assign null while its list changes: the scale then stays as it is.
     /// </remarks>
     public ZoomOption SelectedScale
     {
@@ -390,8 +388,8 @@ public sealed partial class MainViewModel : ViewModelBase
         set => Zoom = value?.Factor ?? Zoom;
     }
 
-    /// <summary>Una scala non ammessa non entra: la si riporta alla normale.</summary>
-    /// <param name="value">La scala query.</param>
+    /// <summary>A scale that is not allowed does not get in: it is brought back to normal.</summary>
+    /// <param name="value">The requested scale.</param>
     partial void OnZoomChanged(double value)
     {
         double validScale = Preferences.NormalizeZoom(value);
@@ -402,66 +400,66 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Il tema: <c>system</c>, <c>light</c> o <c>dark</c>.</summary>
+    /// <summary>The theme: <c>system</c>, <c>light</c> or <c>dark</c>.</summary>
     /// <remarks>
-    /// Lo applica l'applicazione, non questa classe, che non sa cos'e' un tema: qui sta solo
-    /// la scelta, perche' e' cio' che la tendina mostra e cio' che si ricorda.
+    /// The application applies it, not this class, which does not know what a theme is: only
+    /// the choice lives here, because that is what the dropdown shows and what gets remembered.
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedTheme))]
     public partial string Theme { get; set; } = Preferences.AllowedThemes[0];
 
-    /// <summary>I temi fra cui si sceglie, come voci del selettore.</summary>
+    /// <summary>The themes to choose from, as selector entries.</summary>
     public static IReadOnlyList<ThemeOption> ThemeOptions { get; } =
         [.. Preferences.AllowedThemes.Select(key => new ThemeOption(key))];
 
-    /// <summary>Quanto history mostra la striscia: <c>1h</c>, <c>24h</c> o <c>7d</c>.</summary>
+    /// <summary>How much history the strip shows: <c>1h</c>, <c>24h</c> or <c>7d</c>.</summary>
     /// <remarks>
-    /// La key e non la machine, by la stessa ragione del tema: e' cio' che finisce nel file.
+    /// The key and not the entry, for the same reason as the theme: it is what ends up in the file.
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedHistoryPeriod))]
     public partial string HistoryPeriod { get; set; } = Preferences.AllowedPeriods[0];
 
-    /// <summary>I periodi fra cui si sceglie, come voci del selettore.</summary>
+    /// <summary>The periods to choose from, as selector entries.</summary>
     public static IReadOnlyList<HistoryPeriodOption> HistoryPeriodOptions { get; } =
         [.. Preferences.AllowedPeriods.Select(key => new HistoryPeriodOption(key))];
 
-    /// <summary>Il period come machine del selettore.</summary>
+    /// <summary>The period as a selector entry.</summary>
     /// <remarks>
-    /// Il getter non lancia MAI, come quello del tema: una key che non e' nella tabella
-    /// ricadrebbe sulla prima machine invece di far cadere la finestra mentre si disegna.
+    /// The getter NEVER throws, like the theme's: a key that is not in the table falls back to
+    /// the first entry instead of bringing the window down while it is drawing.
     /// </remarks>
     public HistoryPeriodOption SelectedHistoryPeriod
     {
-        get => HistoryPeriodOptions.FirstOrDefault(machine => machine.Key == HistoryPeriod) ?? HistoryPeriodOptions[0];
+        get => HistoryPeriodOptions.FirstOrDefault(option => option.Key == HistoryPeriod) ?? HistoryPeriodOptions[0];
         set => HistoryPeriod = value?.Key ?? HistoryPeriod;
     }
 
-    /// <summary>Il title sopra la striscia: dice il period DISEGNATO, non quello process.</summary>
+    /// <summary>The title above the strip: it says the period DRAWN, not the one chosen.</summary>
     /// <remarks>
-    /// Non si calcola da <see cref="HistoryPeriod"/>, ed e' una scelta. Calcolato, cambiava con il
-    /// selettore - cioe' all'istante - mentre sotto restavano le barre del period previousWrite
-    /// finche' la lettura nuova non atterrava: fino a otto secondi su una macchina lenta, e by
-    /// SEMPRE su una macchina che non risponde, perche' li' lo history non si rilegge affatto.
-    /// La finestra chiamava "Last 7 days" sessanta barre da un minuto, e una macchina a riposo
-    /// da un'timeText si leggeva come a riposo da una settimana. Adesso lo scrive chi disegna, dopo
-    /// la guardia sulle risposte in ritardo: il selettore dice cosa e' state chiesto, il title
-    /// cosa si sta guardando, e quando divergono e' perche' divergono davvero.
+    /// It is not computed from <see cref="HistoryPeriod"/>, and that is a decision. Computed, it
+    /// changed with the selector - that is, instantly - while underneath the previous period's
+    /// bars stayed until the new read landed: up to eight seconds on a slow machine, and
+    /// FOREVER on a machine that does not answer, because there the history is not reread at
+    /// all. The window called sixty one-minute bars "Last 7 days", and a machine idle for an
+    /// hour read as idle for a week. Now whoever draws writes it, after the guard on late
+    /// responses: the selector says what was asked for, the title says what is being watched,
+    /// and when they diverge it is because they really do diverge.
     /// </remarks>
     [ObservableProperty]
     public partial string HistoryTitle { get; set; } = new HistoryPeriodOption(Preferences.AllowedPeriods[0]).Title;
 
-    /// <summary>Il tema come machine del selettore: e' <see cref="Theme"/> con un'etichetta.</summary>
-    /// <remarks>Il selettore puo' assegnare null mentre cambia machineList: allora il tema resta com'e'.</remarks>
+    /// <summary>The theme as a selector entry: it is <see cref="Theme"/> with a label.</summary>
+    /// <remarks>The selector can assign null while its list changes: the theme then stays as it is.</remarks>
     public ThemeOption SelectedTheme
     {
         get => new(Theme);
         set => Theme = value?.Key ?? Theme;
     }
 
-    /// <summary>Un tema non ammesso non entra: si torna a quello del sistema.</summary>
-    /// <param name="value">Il tema richiesto.</param>
+    /// <summary>A theme that is not allowed does not get in: it goes back to the system one.</summary>
+    /// <param name="value">The requested theme.</param>
     partial void OnThemeChanged(string value)
     {
         string validTheme = Preferences.NormalizeTheme(value);
@@ -472,29 +470,30 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Un period non ammesso non entra, e quello nuovo si legge subito.</summary>
-    /// <param name="value">Il period richiesto.</param>
+    /// <summary>A period that is not allowed does not get in, and the new one is read at once.</summary>
+    /// <param name="value">The requested period.</param>
     /// <remarks>
-    /// Subito e non al prossimo giro: chi sceglie "7 days" guarda la striscia, e aspettare fino
-    /// a due ore by vederla cambiare sarebbe indistinguibile da un selettore che non funziona.
-    /// La scadenza torna indietro invece di chiamare la lettura da qui: cosi' la query
-    /// parte dal ciclo, dove c'e' gia' il token di annullamento e la guardia sull'fetch, e non
-    /// da un setter che il selettore chiama sul thread dell'interfaccia.
+    /// At once and not on the next loop: whoever picks "7 days" is watching the strip, and
+    /// waiting up to two hours to see it change would be indistinguishable from a selector that
+    /// does not work. The deadline moves back instead of calling the read from here: this way
+    /// the request starts from the loop, where the cancellation token and the guard on the
+    /// outcome already are, and not from a setter the selector calls on the interface thread.
     /// </remarks>
     partial void OnHistoryPeriodChanged(string value)
     {
-        string validTheme = Preferences.NormalizePeriod(value);
+        string validPeriod = Preferences.NormalizePeriod(value);
 
-        if (!string.Equals(validTheme, value, StringComparison.Ordinal))
+        if (!string.Equals(validPeriod, value, StringComparison.Ordinal))
         {
-            HistoryPeriod = validTheme;
+            HistoryPeriod = validPeriod;
 
             return;
         }
 
-        // Finche' non c'e' niente disegnato il title segue il selettore: non c'e' striscia da
-        // contraddire, e all'avvio con "7d" nel file dire "Last hour" sopra il vuoto sarebbe
-        // sbagliato e basta. Appena una lettura atterra, il title torna a dire cio' che si vede.
+        // As long as nothing is drawn the title follows the selector: there is no strip to
+        // contradict, and at start-up with "7d" in the file saying "Last hour" over an empty
+        // space would just be wrong. As soon as a read lands, the title goes back to saying
+        // what can be seen.
         if (!Gauges.Any(row => row.ShowHistory))
         {
             HistoryTitle = SelectedHistoryPeriod.Title;
@@ -502,10 +501,10 @@ public sealed partial class MainViewModel : ViewModelBase
 
         nextHistoryRead = DateTimeOffset.MinValue;
 
-        // Cambiando period cambia la DOMANDA del riepilogo, non solo la sua risposta: "cosa mi
-        // sono perso nell'ultima timeText" e "negli ultimi sette giorni" sono due cose diverse. Si
-        // ricomincia da capo, congedo compreso - chi chiude un riquadro chiude quello, non ogni
-        // riquadro futuro.
+        // Changing the period changes the summary's QUESTION, not just its answer: "what did I
+        // miss in the last hour" and "in the last seven days" are two different things. It
+        // starts over, dismissal included - whoever closes a panel closes that one, not every
+        // future panel.
         awaySummaryDismissed = false;
         AwaySummaryText = string.Empty;
         ShowAwaySummary = false;
@@ -517,21 +516,21 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Cosa e' successo mentre la finestra era chiusa, una row by macchina.</summary>
+    /// <summary>What happened while the window was closed, one line per machine.</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CopyAwaySummaryCommand))]
     public partial string AwaySummaryText { get; set; } = string.Empty;
 
-    /// <summary>True quando c'e' un riepilogo da mostrare e nessuno lo ha ancora congedato.</summary>
+    /// <summary>True when there is a summary to show and nobody has dismissed it yet.</summary>
     /// <remarks>
-    /// A due vie: la barra ha la sua X, e chiuderla scrive qui. Non e' un dettaglio - la barra
-    /// di STATO non e' chiudibile di proposito, perche' dice una cosa in corso; questa dice una
-    /// cosa del passato, e un fatto del passato si legge una volta e si archivia.
+    /// Two-way: the bar has its own X, and closing it writes here. That is not a detail - the
+    /// STATUS bar is deliberately not closable, because it says something that is going on;
+    /// this one says something from the past, and a past fact is read once and filed away.
     /// </remarks>
     [ObservableProperty]
     public partial bool ShowAwaySummary { get; set; }
 
-    /// <summary>True quando l'utente ha chiuso il riquadro by questo period.</summary>
+    /// <summary>True when the user has closed the panel for this period.</summary>
     private bool awaySummaryDismissed;
 
     partial void OnShowAwaySummaryChanged(bool value)
@@ -542,74 +541,75 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Quale resource sta guardando il pannello: <c>cpu</c>, <c>memory</c>, o null.</summary>
+    /// <summary>Which resource the panel is watching: <c>cpu</c>, <c>memory</c>, or null.</summary>
     private string? shownResource;
 
-    /// <summary>Le macchine fra cui si puo' scegliere, ognuna col entryClient state. La prima e' sempre questa.</summary>
+    /// <summary>The machines to choose from, each with its status. The first is always this one.</summary>
     public ObservableCollection<MachineRow> Machines { get; } = [];
 
-    /// <summary>Ogni quanto si sondano le macchine che NON si stanno guardando.</summary>
+    /// <summary>How often the machines that are NOT being watched get probed.</summary>
     /// <remarks>
-    /// Quindici secondi e non uno: un pallino accanto al nome deve dire "e' viva", non seguire
-    /// la CPU. E le sonde partono e non si aspettano: una macchina spenta costa otto secondi
-    /// di timeout, e il giro dei quadranti non deve pagarli.
+    /// Fifteen seconds and not one: a dot next to the name has to say "it is alive", not track
+    /// the CPU. And the probes are fired and not awaited: a machine that is off costs eight
+    /// seconds of timeout, and the gauges' loop must not pay them.
     /// </remarks>
     public static readonly TimeSpan StatusRefreshInterval = TimeSpan.FromSeconds(15);
 
     private DateTimeOffset nextProbe = DateTimeOffset.MinValue;
 
-    /// <summary>Le voci dell'machineList che sono state scartate, e perche'.</summary>
+    /// <summary>The list entries that were rejected, and why.</summary>
     /// <remarks>
-    /// Mostrate accanto all'machineList invece che nascoste in un log: una macchina configurata male
-    /// che semplicemente NON COMPARE e' indistinguibile da una macchina che non e' stata
-    /// aggiunta, e chi la cerca non ha modo di sapere che cosa correggere.
+    /// Shown next to the list instead of hidden in a log: a badly configured machine that
+    /// simply DOES NOT APPEAR is indistinguishable from a machine that was never added, and
+    /// whoever looks for it has no way of knowing what to fix.
     /// </remarks>
     public ObservableCollection<string> MachineListProblems { get; } = [];
 
     /// <summary>
-    /// Vero quando l'machineList contiene solo questa macchina e non c'e' niente da correggere.
+    /// True when the list holds only this machine and there is nothing to fix.
     /// </summary>
     /// <remarks>
-    /// La barra laterale si vede SEMPRE, e prima non era cosi': compariva solo quando c'era
-    /// gia' una seconda macchina. Il risultato e' che nessuno poteva scoprire di poterne
-    /// aggiungere una, perche' l'unico posto dove la funzione si annuncia e' la funzione
-    /// stessa. Una funzione che si mostra solo a chi sa gia' che esiste non esiste.
+    /// The sidebar is ALWAYS visible, and it was not always so: it appeared only once a second
+    /// machine was already there. The result was that nobody could discover they could add
+    /// one, because the only place the feature announces itself is the feature itself. A
+    /// feature that shows itself only to whoever already knows it exists does not exist.
     /// <para>
-    /// Al entryClient posto, quando c'e' una macchina sola, si spiega come aggiungerne un'altra e si
-    /// dice il percorso esatto del file da scrivere.
+    /// In its place, when there is a single machine, it explains how to add another one and
+    /// gives the exact path of the file to write.
     /// </para>
     /// </remarks>
     public bool ShowMachineListHint => Machines.Count <= 1 && MachineListProblems.Count == 0;
 
-    /// <summary>Come si aggiunge una macchina, col percorso del file da scrivere.</summary>
+    /// <summary>How to add a machine, with the path of the file to write.</summary>
     public string MachineListHint { get; } =
         "Only this machine so far. To watch another one, run \"observer share\" on it and put " +
         "what it prints into " + MachineDirectory.FilePath;
 
-    /// <summary>La macchina attualmente guardata.</summary>
+    /// <summary>The machine currently being watched.</summary>
     [ObservableProperty]
     public partial MachineRow? SelectedMachine { get; set; }
 
-    /// <summary>Cambia macchina senza riavviare la finestra.</summary>
-    /// <param name="value">La macchina scelta nell'machineList.</param>
+    /// <summary>Switches machine without restarting the window.</summary>
+    /// <param name="value">The machine picked from the list.</param>
     partial void OnSelectedMachineChanged(MachineRow? value)
     {
         if (value is null)
         {
-            // La lista non dovrebbe arrivarci (AlwaysSelected); se ci arriva, la macchina
-            // guardata resta quella di prima e watchedEntry non cambia.
+            // The list should never get here (AlwaysSelected); if it does, the watched machine
+            // stays the one from before and watchedEntry does not change.
             return;
         }
 
         watchedEntry = value;
 
-        // Il carico e' un derivato della macchina guardata come il catalog e i quadranti, e va
-        // buttato QUI, prima delle uscite anticipate, perche' l'invariante e' legata a
-        // watchedEntry e non al client. Senza questa row la machine appena cliccata continua a
-        // mostrare i numeri che la sonda le aveva scritto fino a quindici secondi prima: circa
-        // un secondo se la macchina risponde, ma gli interi otto del budget di query se non
-        // risponde - cioe' proprio quando la si e' cliccata by capire cosa le succede, sotto
-        // il nome evidenziato resta scritto che sta lavorando mentre la barra dice "Connecting".
+        // The load is derived from the watched machine like the catalog and the gauges, and it
+        // has to be thrown away HERE, before the early returns, because the invariant is tied
+        // to watchedEntry and not to the client. Without this line the entry just clicked keeps
+        // showing the numbers the probe had written into it up to fifteen seconds earlier:
+        // about a second if the machine answers, but the whole eight of the request budget if
+        // it does not - that is, exactly when it was clicked to find out what is happening to
+        // it, under the highlighted name it still says it is working while the bar says
+        // "Connecting".
         value.MachineLoad = MachineLoad.None;
 
         if (openMachine is null)
@@ -624,29 +624,30 @@ public sealed partial class MainViewModel : ViewModelBase
 
         client = openMachine(value.Endpoint);
 
-        // Tutto cio' che descriveva la macchina PRECEDENTE va buttato: il catalog, perche' le
-        // etichette appartengono a quel servizio, e i riquadri, perche' sono le sue misure.
-        // L'clock dei guasti invece si EREDITA dalla machine: se la sonda sa gia' da venti
-        // secondi che questa macchina e' spenta, la barra apre rossa subito invece di recitare
-        // dieci secondi di "Connecting" - la grazia serve a un servizio che sta partendo, non a
-        // uno gia' misurato spento. E cosi' barra e pallino hanno un clock solo.
+        // Everything that described the PREVIOUS machine has to be thrown away: the catalog,
+        // because the labels belong to that service, and the panels, because they are its
+        // measurements. The fault clock is INHERITED from the entry instead: if the probe has
+        // already known for twenty seconds that this machine is off, the bar opens red at once
+        // instead of acting out ten seconds of "Connecting" - the grace is for a service that
+        // is starting up, not for one already measured as off. And so bar and dot share one clock.
         catalogLoaded = false;
         catalog = MetricCatalog.Empty;
         faultSince = value.FailingSince;
         Groups.Clear();
 
-        // E i quadranti, che sono una SECONDA collezione sulle stesse rows. Svuotare solo i
-        // riquadri lasciava a schermo le lancette e le strisce della macchina previousWrite,
-        // sotto il nome di quella nuova: numeri veri, attribuiti alla macchina sbagliata. Si
-        // vedeva a colpo d'occhio proprio perche' meta' della finestra si svuotava e meta' no.
-        // Chi aggiunge una terza collezione derivata la aggiunga QUI.
+        // And the gauges, which are a SECOND collection over the same rows. Clearing only the
+        // panels left the needles and the strips of the previous machine on screen, under the
+        // new machine's name: real numbers, attributed to the wrong machine. It showed at a
+        // glance precisely because half the window emptied and half did not. Whoever adds a
+        // third derived collection adds it HERE.
         Gauges.Clear();
         HasGauges = false;
 
-        // E anche la scadenza dello history e' un derivato della macchina previousWrite. Le rows
-        // rinascono senza striscia e senza nota - ne' barre ne' il motivo by cui non ci sono -
-        // e senza questa row restano cosi' fino alla scadenza EREDITATA: mezz'timeText a sette
-        // giorni, quasi quattro minuti a ventiquattro ore, con i quadranti sopra gia' vivi.
+        // And the history deadline is derived from the previous machine too. The rows come back
+        // with no strip and no note - neither bars nor the reason why they are missing -
+        // and without this line they stay that way until the INHERITED deadline: half an hour
+        // at seven days, almost four minutes at twenty-four hours, with the gauges above
+        // already live.
         nextHistoryRead = DateTimeOffset.MinValue;
 
         ShowStatus(FAInfoBarSeverity.Informational, "Connecting", "Taking the first reading...");
@@ -654,13 +655,13 @@ public sealed partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Il ciclo di aggiornamento. Non lancia mai: qualunque guasto diventa text a schermo.
+    /// The refresh loop. It never throws: any fault becomes text on screen.
     /// </summary>
-    /// <param name="cancellationToken">Annullato alla chiusura dell'applicazione.</param>
+    /// <param name="cancellationToken">Cancelled when the application closes.</param>
     /// <summary>
-    /// Riprova a leggere la configurazione finche' non diventa validScale.
+    /// Retries reading the configuration until it becomes valid.
     /// </summary>
-    /// <returns>True se un client e' state adottato, false se non c'e' modo di riprovare.</returns>
+    /// <returns>True if a client was adopted, false if there is no way to retry.</returns>
     private async Task<bool> WaitForConfigurationAsync(CancellationToken cancellationToken)
     {
         if (rereadConfiguration is null)
@@ -696,11 +697,11 @@ public sealed partial class MainViewModel : ViewModelBase
     {
         if (client is null)
         {
-            // Senza token non c'e' niente da interrogare: martellare il servizio con richieste
-            // destinate al 401 non aiuta. Ma il message a schermo dice all'utente di creare
-            // un file di configurazione, e se crearlo non producesse alcun effetto finche' non
-            // riavvia — cosa che il message non dice — l'utente seguirebbe le istruzioni alla
-            // lettera e concluderebbe che l'applicazione e' rotta. Quindi si rilegge.
+            // With no token there is nothing to poll: hammering the service with requests bound
+            // for a 401 does not help. But the message on screen tells the user to create a
+            // configuration file, and if creating it had no effect until a restart — which the
+            // message does not say — the user would follow the instructions to the letter and
+            // conclude the application is broken. So it rereads.
             if (!await WaitForConfigurationAsync(cancellationToken))
             {
                 return;
@@ -715,60 +716,60 @@ public sealed partial class MainViewModel : ViewModelBase
             {
                 ServiceOutcome fetch = await RefreshAsync(cancellationToken);
 
-                // Lo history dopo il campionamento e solo se il campionamento e' andato: se
-                // la macchina non risponde, insistere sullo history aggiungerebbe attese a una
-                // finestra che sta gia' aspettando, senza poter dire niente di nuovo.
+                // History after the sampling and only if the sampling went through: if the
+                // machine does not answer, insisting on history would add waits to a window
+                // that is already waiting, with nothing new to say.
                 if (fetch == ServiceOutcome.Ok && clock() >= nextHistoryRead)
                 {
-                    // La scadenza la sposta la lettura, non questa row: e' l'unica che sa se
-                    // e' andata bene, male, o se la risposta e' arrivata quando non serviva
-                    // piu'. Spostarla da qui significava threeSteps cose sbagliate insieme - un
-                    // timeout rimandava di un passo intero, cioe' due ore di "No history" su
-                    // dati gia' tornati; una risposta scartata cancellava l'azzeramento che il
-                    // selettore aveva appena fatto, spegnendolo by quindici secondi; e la
-                    // scadenza si leggeva dal period di ADESSO invece che da quello chiesto.
+                    // The read moves the deadline, not this line: it is the only one that knows
+                    // whether it went well, badly, or whether the response arrived when it was
+                    // no longer wanted. Moving it from here meant three wrong things at once -
+                    // a timeout postponed by a whole step, that is two hours of "No history" on
+                    // data that had already come back; a discarded response cancelled the reset
+                    // the selector had just made, killing it for fifteen seconds; and the
+                    // deadline was read from the period of NOW instead of the one asked for.
                     await RefreshHistoryAsync(cancellationToken);
                 }
 
-                // I processi seguono lo stesso giro dei quadranti, ma solo a pannello aperto:
-                // chiedere un machineList che nessuno sta guardando costerebbe una query al
-                // secondo by niente.
+                // The processes follow the same loop as the gauges, but only while the panel is
+                // open: asking for a list nobody is watching would cost one request a second
+                // for nothing.
                 if (fetch == ServiceOutcome.Ok && IsProcessPanelOpen)
                 {
                     await RefreshProcessesAsync(cancellationToken);
                 }
 
-                // Le altre macchine, by il pallino accanto al nome. Partono e non si
-                // aspettano: vedi ProbeOtherMachines.
+                // The other machines, for the dot next to the name. They are fired and not
+                // awaited: see ProbeOtherMachines.
                 if (clock() >= nextProbe)
                 {
                     nextProbe = clock() + StatusRefreshInterval;
                     ProbeOtherMachines(cancellationToken);
 
-                    // E, allo stesso passo, cosa e' successo mentre la finestra era chiusa. Sta
-                    // QUI dentro e non fuori by due ragioni: una query succeeded non si
-                    // ripete mai (la guardia e' SummaryPeriodKey), ma una FALLITA si', e
-                    // questa e' la sua readInterval - la stessa con cui la sonda riprova il pallino.
-                    // Fuori dal cancello girerebbe una volta al secondo by non fare niente.
+                    // And, at the same pace, what happened while the window was closed. It sits
+                    // in HERE and not outside for two reasons: a successful request is never
+                    // repeated (the guard is SummaryPeriodKey), but a FAILED one is, and this
+                    // is its cadence - the same one the probe retries the dot with. Outside the
+                    // gate it would spin once a second to do nothing.
                     StartAwaySummaries(cancellationToken);
                 }
 
-                // Un 401 su una finestra GIA' collegata significa quasi sempre che il token e'
-                // state ruotato. Senza rileggere qui, la finestra resterebbe bloccata su
-                // "Token rejected" fino al riavvio: e' lo stesso incidente di "Configuration
-                // missing", su un altro percorso, e va chiuso allo stesso modo.
-                // Anche FingerprintMismatch, e by la stessa ragione: il message dice
-                // all'utente di correggere machines.json, e correggerlo deve BASTARE. E' il
-                // terzo percorso su cui questo incidente si presenta - dopo "Configuration
-                // missing" e "Token rejected" - e chiuderne due su threeSteps non serve a niente.
+                // A 401 on a window that is ALREADY connected almost always means the token was
+                // rotated. Without rereading here, the window would stay stuck on "Token
+                // rejected" until a restart: it is the same incident as "Configuration
+                // missing", on another path, and it has to be closed the same way.
+                // FingerprintMismatch too, and for the same reason: the message tells the user
+                // to fix machines.json, and fixing it has to be ENOUGH. It is the third path
+                // this incident shows up on - after "Configuration missing" and "Token
+                // rejected" - and closing two out of three is worth nothing.
                 if (fetch is ServiceOutcome.TokenRejected or ServiceOutcome.FingerprintMismatch)
                 {
                     AdoptUpdatedConfiguration();
                 }
 
-                // La readInterval segue la finestra: ridotta a icona si legge ogni dieci secondi.
-                // Cambiare il period di un PeriodicTimer vale dal tick successivo, che e'
-                // esattamente quello che serve: nessun timer da ricreare, nessun giro perso.
+                // The cadence follows the window: minimized, it reads every ten seconds.
+                // Changing a PeriodicTimer's period takes effect from the next tick, which is
+                // exactly what is needed: no timer to recreate, no loop lost.
                 timer.Period = PollInterval;
 
                 if (!await timer.WaitForNextTickAsync(cancellationToken))
@@ -779,11 +780,11 @@ public sealed partial class MainViewModel : ViewModelBase
         }
         catch (OperationCanceledException)
         {
-            // Chiusura dell'applicazione: uscita normale, non un error da mostrare.
+            // The application is closing: a normal exit, not an error to show.
         }
-#pragma warning disable CA1031 // Questo ciclo e' avviato senza nessuno che ne attenda l'fetch:
-        catch (Exception ex) // un'eccezione qui sparirebbe in silenzio e la finestra si
-#pragma warning restore CA1031 // congelerebbe senza dire niente. Va mostrata, non propagata.
+#pragma warning disable CA1031 // This loop is started with nobody awaiting its outcome: an
+        catch (Exception ex) // exception here would vanish in silence and the window would
+#pragma warning restore CA1031 // freeze saying nothing. It has to be shown, not propagated.
         {
             ShowStatus(
                 FAInfoBarSeverity.Error,
@@ -795,11 +796,11 @@ public sealed partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Rilegge la configurazione e adotta il client risultante, se e' cambiato.
+    /// Rereads the configuration and adopts the resulting client, if it changed.
     /// </summary>
     /// <remarks>
-    /// Non chiude il client previousWrite: chi lo ha costruito ne conserva il riferimento e lo
-    /// chiude all'uscita. Chiuderlo qui lo strapperebbe da sotto una query ancora in volo.
+    /// It does not close the previous client: whoever built it keeps the reference and closes
+    /// it on exit. Closing it here would pull it out from under a request still in flight.
     /// </remarks>
     private void AdoptUpdatedConfiguration()
     {
@@ -811,14 +812,14 @@ public sealed partial class MainViewModel : ViewModelBase
         client = updatedClient;
         watchedEntry?.Update(updatedClient.Endpoint);
 
-        // Attesa nuova: l'endpoint e' cambiato, e i secondi gia' consumati contro il
-        // previousWrite non dicono niente su questo. Il pallino ha lo stesso clock, ma lo
-        // azzera Update qui sopra, insieme al text che ne deriva: da fuori la machine non lo
-        // tocca piu' nessuno.
+        // A fresh wait: the endpoint changed, and the seconds already spent against the
+        // previous one say nothing about this one. The dot has the same clock, but Update above
+        // clears it, along with the text derived from it: from the outside nobody touches the
+        // entry any more.
         faultSince = null;
 
-        // Il catalog appartiene al servizio previousWrite: va refreshedEndpoint, altrimenti le etichette
-        // resterebbero quelle di una macchina diversa.
+        // The catalog belongs to the previous service: it has to be refreshed, otherwise the
+        // labels would stay those of a different machine.
         catalogLoaded = false;
         catalog = MetricCatalog.Empty;
     }
@@ -830,16 +831,16 @@ public sealed partial class MainViewModel : ViewModelBase
             return ServiceOutcome.Unknown;
         }
 
-        // Prima il campionamento e SOLO POI il catalog. Verificato sperimentalmente: con il
-        // servizio spento, chiedere prima il catalog raddoppia l'timer — due timeout invece
-        // di uno — e la finestra resta a dire "collegamento in corso" by sei secondi prima di
-        // ammettere che non si collega.
+        // The sampling first and ONLY THEN the catalog. Verified experimentally: with the
+        // service off, asking for the catalog first doubles the wait — two timeouts instead of
+        // one — and the window keeps saying "connecting" for six seconds before admitting it
+        // cannot connect.
         SnapshotFetch fetch = await activeClient.GetLatestAsync(cancellationToken);
 
-        // Fra la partenza della query e la sua risposta l'utente puo' aver cambiato
-        // macchina nella barra laterale. Applicare qui i valori appena arrivati significherebbe
-        // mostrare le misure della macchina PRECEDENTE sotto il nome di quella nuova, e
-        // riempirne il catalog con etichette che non sono le sue.
+        // Between the request leaving and its response arriving the user may have switched
+        // machine in the sidebar. Applying the values that just arrived here would mean showing
+        // the PREVIOUS machine's measurements under the new machine's name, and filling its
+        // catalog with labels that are not its own.
         if (!ReferenceEquals(client, activeClient))
         {
             return ServiceOutcome.Unknown;
@@ -851,10 +852,10 @@ public sealed partial class MainViewModel : ViewModelBase
             return fetch.Outcome;
         }
 
-        // Il catalog cambia solo quando cambia il servizio: si legge una volta sola, e si
-        // ritenta al giro dopo se non riesce. Va letto PRIMA di disegnare, altrimenti il primo
-        // fotogramma mostrerebbe "cpu.usage.total" al posto di "CPU usage". Se non arriva
-        // mai, le metriche restano visibili con il loro identificatore grezzo invece di sparire.
+        // The catalog changes only when the service changes: it is read once, and retried on
+        // the next loop if it fails. It has to be read BEFORE drawing, otherwise the first
+        // frame would show "cpu.usage.total" instead of "CPU usage". If it never arrives, the
+        // metrics stay visible with their raw identifier instead of disappearing.
         if (!catalogLoaded)
         {
             CatalogFetch catalogFetch = await activeClient.GetCatalogAsync(cancellationToken);
@@ -866,9 +867,9 @@ public sealed partial class MainViewModel : ViewModelBase
             }
         }
 
-        // Stessa guardia anche dopo il catalog: e' un secondo await, e l'utente puo' aver
-        // cambiato macchina proprio li'. Senza, il pallino di una macchina mai contattata
-        // diventava "Reachable" con la lettura di quella previousWrite.
+        // The same guard after the catalog too: it is a second await, and the user may have
+        // switched machine right there. Without it, the dot of a machine never contacted turned
+        // "Reachable" on the previous machine's reading.
         if (!ReferenceEquals(client, activeClient))
         {
             return ServiceOutcome.Unknown;
@@ -880,13 +881,13 @@ public sealed partial class MainViewModel : ViewModelBase
         IsStatusVisible = false;
         watchedEntry?.Record(ServiceOutcome.Ok, string.Empty, clock());
 
-        // La serie di guasti e' finita: la prossima ricomincia da capo, e ha diritto alla
-        // stessa timer che ha avuto questa.
+        // The run of faults is over: the next one starts from scratch, and is entitled to the
+        // same grace this one had.
         faultSince = null;
 
-        // Solo QUANDO. Il dove non e' sparito, si e' spostato dove non va refreshedEndpoint a ogni
-        // sguardo: la macchina che si sta guardando e' quella selezionata nell'machineList a
-        // sinistra, e questa row cambia una volta al secondo mentre quella non cambia mai.
+        // Only WHEN. The where has not disappeared, it moved where it does not have to be
+        // refreshed at every glance: the machine being watched is the one selected in the list
+        // on the left, and this line changes once a second while that one never changes.
         string timeText = snapshot.CapturedAt.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
 
         Subheading = $"Last Reading: {timeText}";
@@ -895,64 +896,64 @@ public sealed partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Traduce una lettura fallita in cio' che si vede a schermo.
+    /// Turns a failed reading into what is seen on screen.
     /// </summary>
     /// <remarks>
-    /// La severity' NON dipende dal singolo tentativo andato male ma da quanto dura la serie:
-    /// e' <see cref="StatusEscalation"/> a deciderlo, ed e' li' che sta la tabella provata.
-    /// Qui resta solo la misura del tempo e la traduzione in colore.
+    /// The severity does NOT depend on the single attempt that went wrong but on how long the
+    /// run lasts: <see cref="StatusEscalation"/> decides it, and that is where the tested table
+    /// lives. Only measuring the elapsed time and mapping it to a colour is left here.
     /// </remarks>
-    private void ReportProblem(ServiceOutcome fetch, string text, ObserverEndpoint endpoint)
+    private void ReportProblem(ServiceOutcome outcome, string text, ObserverEndpoint endpoint)
     {
-        DateTimeOffset timeText = clock();
-        faultSince ??= timeText;
+        DateTimeOffset now = clock();
+        faultSince ??= now;
 
         StatusMessage message = StatusEscalation.MessageFor(
-            fetch,
+            outcome,
             text,
-            timeText - faultSince.Value,
+            now - faultSince.Value,
             endpoint,
             hasValuesOnScreen: Groups.Count > 0);
 
         ShowStatus(SeverityFor(message.Tone), message.Title, message.Text);
         Subheading = message.Subheading;
 
-        // Il pallino della macchina guardata segue la barra di state, con lo stesso clock,
-        // cosi' i due non dicono mai cose diverse.
-        watchedEntry?.Record(fetch, text, timeText);
+        // The watched machine's dot follows the status bar, with the same clock, so the two
+        // never say different things.
+        watchedEntry?.Record(outcome, text, now);
     }
 
-    /// <summary>Interroga le macchine che non si stanno guardando, tutte insieme e senza aspettarle.</summary>
-    /// <param name="cancellationToken">Annullato alla chiusura.</param>
+    /// <summary>Polls the machines that are not being watched, all at once and without awaiting them.</summary>
+    /// <param name="cancellationToken">Cancelled on close.</param>
     /// <remarks>
-    /// Il giro principale NON attende le sonde: una macchina spenta risponde dopo otto secondi
-    /// di timeout, e i quadranti della macchina guardata non devono fermarsi by questo. Ogni
-    /// sonda aggiorna la propria machine quando torna, e finche' e' in volo non ne parte un'altra.
+    /// The main loop does NOT await the probes: a machine that is off answers after eight
+    /// seconds of timeout, and the watched machine's gauges must not stop for that. Each probe
+    /// updates its own entry when it comes back, and while one is in flight another does not start.
     /// </remarks>
-    /// <summary>Cosa e' successo mentre nessuno guardava, macchina by macchina.</summary>
+    /// <summary>What happened while nobody was watching, machine by machine.</summary>
     /// <remarks>
     /// <para>
-    /// Questa e' la risposta che questo progetto puo' dare ONESTAMENTE alla domanda "avvisami
-    /// se una macchina cade mentre la finestra e' chiusa". L'avviso vero - icona nell'area di
-    /// notifica, o notifica di sistema - non e' consegnabile su questo stack senza poter
-    /// fallire in SILENZIO, che e' la cosa che questo programma non fa: l'icona di Avalonia non
-    /// si puo' interrogare (<c>TrayIcon._impl</c> e' internal e ogni chiamata e' <c>?.</c>), su
-    /// Linux senza un host StatusNotifierItem non compare e non logga niente, e su Windows il
-    /// valore di ritorno di <c>Shell_NotifyIcon</c> e' ignorato. Un avviso che puo' non
-    /// comparire senza dirlo e' peggio di nessun avviso - la stessa ragione by cui in 0.16.0
-    /// e' state tolto Ctrl+C.
+    /// This is the answer this project can HONESTLY give to "tell me if a machine goes down
+    /// while the window is closed". The real alert - a notification-area icon, or a system
+    /// notification - cannot be delivered on this stack without being able to fail in SILENCE,
+    /// which is the thing this program does not do: Avalonia's icon cannot be queried
+    /// (<c>TrayIcon._impl</c> is internal and every call is <c>?.</c>), on Linux without a
+    /// StatusNotifierItem host it never appears and logs nothing, and on Windows the return
+    /// value of <c>Shell_NotifyIcon</c> is discarded. An alert that can fail to appear without
+    /// saying so is worse than no alert - the same reason Ctrl+C was removed in 0.16.0.
     /// </para>
     /// <para>
-    /// Il dato pero' c'e' gia', e non su questa macchina: il servizio remoto conserva sette
-    /// giorni di campioni al minuto. Quindi non serve nessun processo acceso, nessuna
-    /// dipendenza e nessun avvio automatico - si chiede al rientro. Una query by macchina
-    /// by period process, non periodica: la guardia e' <c>SummaryPeriodKey</c>, ed e' anche
-    /// cio' che fa ripartire il conto quando si cambia period, perche' li' cambia la domanda.
+    /// The data is already there, though, and not on this machine: the remote service keeps
+    /// seven days of one-minute samples. So no running process is needed, no dependency and no
+    /// autostart - it is asked for on the way back in. One request per machine per chosen
+    /// period, not a periodic one: the guard is <c>SummaryPeriodKey</c>, and that is also what
+    /// restarts the count when the period changes, because there the question changes.
     /// </para>
     /// <para>
-    /// Cio' che NON copre, e va detto: non sveglia nessuno, e non dice niente della macchina
-    /// ancora giu' clock - quel dato ce l'ha lei, e lei non risponde. MessageFor quella restano il
-    /// rombo rosso e "for 3 min", con il limite gia' dichiarato su <c>FailingSince</c>.
+    /// What it does NOT cover, and this should be said: it wakes nobody, and it says nothing
+    /// about the machine that is still down right now - that machine holds that data, and it is
+    /// not answering. For that one the red diamond and "for 3 min" remain, with the limit
+    /// already declared on <c>FailingSince</c>.
     /// </para>
     /// </remarks>
     private void StartAwaySummaries(CancellationToken cancellationToken)
@@ -961,12 +962,13 @@ public sealed partial class MainViewModel : ViewModelBase
 
         foreach (MachineRow machine in Machines)
         {
-            // Solo le macchine che rispondono: a una che non risponde lo history non si puo'
-            // chiedere, ed e' proprio quella dove servirebbe di piu'. Quella non produce alcuna
-            // row, di proposito - a dirlo ci sono gia' il rombo rosso e "for 3 min" accanto al
-            // nome, e ripeterlo qui sarebbe la stessa cosa scritta due volte. La row
-            // "history could not be read" e' by il caso diverso: la macchina risponde e lo
-            // history no, che senza una frase resterebbe indistinguibile dal "tutto bene".
+            // Only the machines that answer: history cannot be asked of one that does not
+            // answer, and that is exactly the one where it would help most. That one produces
+            // no line, deliberately - the red diamond and "for 3 min" next to the name already
+            // say it, and repeating it here would be the same thing written twice. The
+            // "history could not be read" line is for the different case: the machine answers
+            // and the history does not, which without a sentence would stay indistinguishable
+            // from "all is well".
             if (machine.IsSummarizing
                 || machine.Status != MachineStatus.Reachable
                 || string.Equals(machine.SummaryPeriodKey, period.Key, StringComparison.Ordinal))
@@ -986,7 +988,7 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Legge lo history di una macchina e ne ricava la row del riepilogo.</summary>
+    /// <summary>Reads a machine's history and derives its summary line from it.</summary>
     private async Task ReadAwaySummaryAsync(
         MachineRow machine,
         IMetricsClient entryClient,
@@ -995,19 +997,19 @@ public sealed partial class MainViewModel : ViewModelBase
     {
         try
         {
-            // UNA serie sola, e fissa: la domanda non e' "cosa misurava" ma "stava misurando",
-            // e a quella risponde qualunque metrica che il servizio campiona sempre. Stesso
-            // argomento di MachineLoad, stessa costante condivisa da Observer.Core.
-            // Si chiede PIU' indietro di quanto si esamina, e non e' un di piu'. La griglia si
-            // ancora all'ULTIMO endpoint che la macchina manda, e quel endpoint e' indietro rispetto
-            // ad clock quanto dura il consolidamento: chiedendo esattamente la finestra, le
-            // prime caselle cadrebbero prima del "da" della query e sarebbero vuote PER
-            // COSTRUZIONE, non perche' la macchina fosse spenta. Essendo contigue all'inizio
-            // verrebbero lette come bordo, cioe' "nothing known before" su OGNI macchina sana a
-            // OGNI apertura - una barra che si apre sempre dicendo sempre la stessa cosa non
-            // vera si impara a chiudere senza leggerla. Il margine e' TailFor, il numero che
-            // questo progetto ha gia' misurato by lo stesso ritardo nella striscia; i points in
-            // piu' cadono fuori dalla griglia e Build li ignora.
+            // ONE series only, and a fixed one: the question is not "what was it measuring" but
+            // "was it measuring", and any metric the service always samples answers that. Same
+            // argument as MachineLoad, same constant shared from Observer.Core.
+            // It asks for MORE than it examines, and that is not padding. The grid anchors to
+            // the LAST point the machine sends, and that point is behind now by as long as
+            // consolidation lasts: asking for exactly the window, the first buckets would fall
+            // before the request's "from" and would be empty BY CONSTRUCTION, not because the
+            // machine was off. Being contiguous with the start they would be read as an edge,
+            // that is "nothing known before" on EVERY healthy machine at EVERY open - a bar
+            // that always opens saying the same untrue thing is one you learn to close without
+            // reading. The margin is TailFor, the number this project has already measured for
+            // the same lag in the strip; the extra points fall outside the grid and Build
+            // ignores them.
             HistoryFetch history = await entryClient.GetHistoryAsync(
                 new HistoryQuery(
                     "cpu",
@@ -1017,8 +1019,8 @@ public sealed partial class MainViewModel : ViewModelBase
                     period.Resolution),
                 cancellationToken).ConfigureAwait(true);
 
-            // Il period puo' essere cambiato durante l'timer: quella risposta risponde a una
-            // domanda che non e' piu' quella sullo schermo.
+            // The period may have changed during the wait: that response answers a question
+            // that is no longer the one on screen.
             if (SelectedHistoryPeriod != period)
             {
                 return;
@@ -1026,12 +1028,12 @@ public sealed partial class MainViewModel : ViewModelBase
 
             machine.SummaryLine = LineFor(machine, history, period);
 
-            // La key si marca SOLO quando si e' letto davvero. Marcarla anche sul guasto
-            // vorrebbe dire che un singolo timeout - otto secondi by l'intera risposta, e a
-            // sette giorni sono duemila points - lascia in cima alla finestra "history could not
-            // be read" by tutta la sessione, mentre accanto al nome la macchina e' verde e i
-            // quadranti si aggiornano ogni secondo. Non marcandola si riprova al giro delle
-            // sonde, e la row stantia si sostituisce da sola.
+            // The key is marked ONLY when the read really happened. Marking it on the fault too
+            // would mean that a single timeout - eight seconds for the whole response, and at
+            // seven days that is two thousand points - leaves "history could not be read" at
+            // the top of the window for the whole session, while next to the name the machine
+            // is green and the gauges refresh every second. Not marking it means it is retried
+            // on the probes' loop, and the stale line replaces itself.
             if (history.Outcome == ServiceOutcome.Ok)
             {
                 machine.SummaryPeriodKey = period.Key;
@@ -1041,13 +1043,13 @@ public sealed partial class MainViewModel : ViewModelBase
         }
         catch (OperationCanceledException)
         {
-            // Chiusura: niente da dire.
+            // Closing: nothing to say.
         }
-#pragma warning disable CA1031 // Come la sonda: un riepilogo che lancia non deve far cadere niente.
+#pragma warning disable CA1031 // Like the probe: a summary that throws must bring nothing down.
         catch (Exception error)
 #pragma warning restore CA1031
         {
-            // Come sopra: non si marca la key, cosi' si riprova.
+            // As above: the key is not marked, so it is retried.
             machine.SummaryLine = $"{machine.Name}: history could not be read ({error.Message})";
             ComposeAwaySummary();
         }
@@ -1066,8 +1068,9 @@ public sealed partial class MainViewModel : ViewModelBase
 
         if (history.Points.Count == 0)
         {
-            // Zero points non e' "sempre giu'": puo' essere una macchina installata ieri, o la
-            // persistenza spenta. Dirlo cosi' com'e' costa una parola e non inventa niente.
+            // Zero points is not "down the whole time": it can be a machine installed
+            // yesterday, or persistence turned off. Saying it as it is costs one word and
+            // invents nothing.
             return $"{machine.Name}: no history for this period";
         }
 
@@ -1075,22 +1078,22 @@ public sealed partial class MainViewModel : ViewModelBase
             machine.Name,
             HistoryStrip.FindGaps(history.Points, period.Duration, period.SourceStep),
 
-            // Stessa soglia di HistoryStrip.Descrivi: oltre la giornata l'timeText da sola non
-            // colloca piu' niente.
+            // Same threshold as HistoryStrip.Describe: past a day the time of day alone no
+            // longer places anything.
             period.Duration > TimeSpan.FromHours(24));
     }
 
-    /// <summary>Mette insieme le rows delle macchine in un text solo.</summary>
+    /// <summary>Puts the machines' lines together into one text.</summary>
     private void ComposeAwaySummary()
     {
         string text = string.Join(
             Environment.NewLine,
-            Machines.Select(machine => machine.SummaryLine).Where(row => row.Length > 0));
+            Machines.Select(machine => machine.SummaryLine).Where(line => line.Length > 0));
 
         AwaySummaryText = text;
 
-        // Chiuso dall'utente resta chiuso, finche' non cambia il period: una row in piu' che
-        // arriva dieci secondi dopo non deve far ricomparire un riquadro appena congedato.
+        // Closed by the user stays closed, until the period changes: one more line arriving ten
+        // seconds later must not bring back a panel that was just dismissed.
         ShowAwaySummary = text.Length > 0 && !awaySummaryDismissed;
     }
 
@@ -1103,8 +1106,8 @@ public sealed partial class MainViewModel : ViewModelBase
 
         foreach (MachineRow machine in Machines)
         {
-            // Si salta la machine che il giro principale legge DAVVERO, non la selezione della
-            // lista: vedi watchedEntry.
+            // The entry the main loop REALLY reads is skipped, not the list selection: see
+            // watchedEntry.
             if (machine.IsProbing || ReferenceEquals(machine, watchedEntry))
             {
                 continue;
@@ -1121,16 +1124,16 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             SnapshotFetch fetch = await openMachine!(machine.Endpoint).GetLatestAsync(cancellationToken);
 
-            // La machine e' diventata la GUARDATA mentre la sonda era in volo: non si scrive, e
-            // non si rilegge nemmeno il endpoint. La sonda parte saltando la guardata ma torna
-            // fino a otto secondi dopo, e un clic basta. Scrivere vorrebbe dire due readings
-            // della stessa macchina a cadenze diverse, che con i numeri accanto al nome si
-            // contraddicono a vista. E rileggere sarebbe peggio che inutile: Update
-            // sostituisce Endpoint senza toccare client, e AdoptUpdatedConfiguration
-            // confronta proprio quel Endpoint con il disco - trovandolo gia' aggiornato non
-            // riparerebbe piu', e la finestra resterebbe su "Token rejected" dopo un
-            // "observer token set" andato a buon fine. Sulla guardata ci pensa il giro
-            // principale, che ha in mano sia il endpoint sia il client.
+            // The entry became the WATCHED one while the probe was in flight: nothing is
+            // written, and the endpoint is not reread either. The probe starts by skipping the
+            // watched entry but comes back up to eight seconds later, and one click is enough.
+            // Writing would mean two readings of the same machine at different cadences, which
+            // with the numbers next to the name contradict each other on sight. And rereading
+            // would be worse than useless: Update swaps Endpoint without touching client, and
+            // AdoptUpdatedConfiguration compares that very Endpoint with disk - finding it
+            // already updated, it would never repair anything again, and the window would
+            // stay on "Token rejected" after a successful "observer token set". The watched
+            // entry is the main loop's business, and it holds both the endpoint and the client.
             if (ReferenceEquals(machine, watchedEntry))
             {
                 return;
@@ -1138,10 +1141,10 @@ public sealed partial class MainViewModel : ViewModelBase
 
             machine.Record(fetch.Outcome, fetch.Problem, clock(), fetch.Snapshot);
 
-            // Token rifiutato o impronta che non corrisponde: la machine va riletta da disco,
-            // come fa gia' il giro principale by la macchina guardata. Altrimenti la sonda
-            // successiva riparte con la credenziale vecchia e il pallino resta rosso fino al
-            // riavvio, anche dopo "observer token set".
+            // Token rejected or fingerprint that does not match: the entry has to be reread
+            // from disk, as the main loop already does for the watched machine. Otherwise the
+            // next probe starts again with the old credential and the dot stays red until a
+            // restart, even after "observer token set".
             if (fetch.Outcome is ServiceOutcome.TokenRejected or ServiceOutcome.FingerprintMismatch
                 && rereadEndpoint?.Invoke(machine.Endpoint) is { } refreshedEndpoint
                 && refreshedEndpoint != machine.Endpoint)
@@ -1151,13 +1154,13 @@ public sealed partial class MainViewModel : ViewModelBase
         }
         catch (OperationCanceledException)
         {
-            // Chiusura: niente da registrare.
+            // Closing: nothing to record.
         }
-#pragma warning disable CA1031 // Una sonda che lancia non deve far cadere niente: il entryClient fetch e' un pallino.
+#pragma warning disable CA1031 // A probe that throws must bring nothing down: its outcome is a dot.
         catch (Exception error)
 #pragma warning restore CA1031
         {
-            // Stessa guardia del ramo riuscito, e by la stessa ragione.
+            // The same guard as the successful branch, and for the same reason.
             if (!ReferenceEquals(machine, watchedEntry))
             {
                 machine.Record(ServiceOutcome.Unknown, error.Message, clock());
@@ -1207,22 +1210,23 @@ public sealed partial class MainViewModel : ViewModelBase
         SyncGauges();
     }
 
-    /// <summary>Rilegge lo history di ogni metrica che ha un quadrante.</summary>
-    /// <param name="cancellationToken">Annullato alla chiusura.</param>
+    /// <summary>Rereads the history of every metric that has a gauge.</summary>
+    /// <param name="cancellationToken">Cancelled on close.</param>
     /// <remarks>
     /// <para>
-    /// Non lancia e non tocca <c>faultSince</c> ne' la barra di state, di proposito: <b>un
-    /// guasto dello history non e' un guasto della macchina</b>. Il servizio puo' rispondere
-    /// benissimo al campionamento e avere la persistenza spenta, e colorare di rosso la
-    /// finestra by questo insegnerebbe a ignorare anche gli allarmi veri. Il motivo finisce
-    /// accanto alla striscia, dove riguarda.
+    /// It does not throw and it touches neither <c>faultSince</c> nor the status bar, on
+    /// purpose: <b>a history fault is not a machine fault</b>. The service can answer the
+    /// sampling perfectly well and have persistence turned off, and colouring the window red
+    /// for that would teach people to ignore the real alarms too. The reason ends up next to
+    /// the strip, where it belongs.
     /// </para>
     /// <para>
-    /// Questa funzione possiede <c>nextHistoryRead</c>, e ci sono TRE esiti, non due: andata
-    /// bene, andata male, e arrivata quando non serviva piu'. Il terzo non tocca la scadenza -
-    /// chi ha cambiato period o macchina l'ha appena riportata indietro di proposito, e
-    /// spostarla qui vorrebbe dire lasciare a schermo la striscia vecchia sotto il title nuovo
-    /// by quindici secondi, che da fuori e' indistinguibile da un selettore rotto.
+    /// This function owns <c>nextHistoryRead</c>, and there are THREE outcomes, not two: it
+    /// went well, it went badly, and it arrived when it was no longer wanted. The third does
+    /// not touch the deadline - whoever changed period or machine has just moved it back on
+    /// purpose, and moving it here would mean leaving the old strip on screen under the new
+    /// title for fifteen seconds, which from the outside is indistinguishable from a broken
+    /// selector.
     /// </para>
     /// </remarks>
     private async Task RefreshHistoryAsync(CancellationToken cancellationToken)
@@ -1232,27 +1236,27 @@ public sealed partial class MainViewModel : ViewModelBase
             return;
         }
 
-        DateTimeOffset timeText = clock();
+        DateTimeOffset now = clock();
         HistoryPeriodOption period = SelectedHistoryPeriod;
 
-        // Tutte le strisce insieme, non una dopo l'altra: sei quadranti facevano dodici
-        // richieste in fila, e il tempo del giro era la SOMMA delle latenze. Le richieste
-        // partono qui, in parallelo; le rows si toccano solo dopo, quando sono tornate tutte,
-        // e sul thread dell'interfaccia.
+        // All the strips together, not one after the other: six gauges made twelve requests in
+        // a row, and the loop's time was the SUM of the latencies. The requests start here, in
+        // parallel; the rows are touched only afterwards, once they have all come back, and on
+        // the interface thread.
         List<MetricRow> rows = [.. Gauges];
 
         (HistoryFetch Aggregate, HistoryFetch? Tail)[] readings = await Task.WhenAll(
-            rows.Select(row => ReadHistoryAsync(activeClient, row.Key, period, timeText, cancellationToken)))
+            rows.Select(row => ReadHistoryAsync(activeClient, row.Key, period, now, cancellationToken)))
             .ConfigureAwait(true);
 
-        // A sette giorni una lettura puo' durare l'intero budget di otto secondi, e in quel
-        // tempo possono essere cambiate DUE cose: il period process e la macchina guardata.
-        // Scrivere queste barre clock vorrebbe dire disegnare una settimana dentro una
-        // striscia da un'timeText, o lo history della macchina sbagliata.
-        // Il confronto sulle rows non e' un di piu' rispetto a quello sul client: App.Apri
-        // tiene UN client by endpoint, quindi due cambi di macchina in fila (A->B->A) riportano
-        // lo stesso identico oggetto, mentre Gauges e' stata svuotata due volte e queste
-        // rows non sono piu' a schermo. Scriverci dentro perderebbe la lettura in silenzio.
+        // At seven days a read can last the whole eight-second budget, and in that time TWO
+        // things can have changed: the chosen period and the watched machine. Writing these
+        // bars now would mean drawing a week inside a one-hour strip, or the history of the
+        // wrong machine.
+        // Comparing the rows is not redundant next to comparing the client: App.Open keeps ONE
+        // client per endpoint, so two machine switches in a row (A->B->A) hand back the exact
+        // same object, while Gauges has been cleared twice and these rows are no longer on
+        // screen. Writing into them would lose the read in silence.
         if (!ReferenceEquals(client, activeClient)
             || SelectedHistoryPeriod != period
             || !rows.SequenceEqual(Gauges))
@@ -1260,38 +1264,38 @@ public sealed partial class MainViewModel : ViewModelBase
             return;
         }
 
-        // Il title lo scrive chi disegna, qui e non nel selettore: da questa row in poi la
-        // striscia e la frase sopra parlano dello stesso period.
+        // Whoever draws writes the title, here and not in the selector: from this line on the
+        // strip and the sentence above it talk about the same period.
         HistoryTitle = period.Title;
 
-        // "Andata bene" vuol dire TUTTE, non almeno una. Con "almeno una" cinque strisce su sei
-        // possono restare due ore a dire "No history" mentre la sesta si aggiorna, che e' lo
-        // stesso difetto di prima ridotto di un sesto. Solo l'aggregate conta: la tail grezza
-        // puo' mancare senza che la striscia ne soffra - la disegna comunque l'aggregate - e
-        // guardarla qui trasformerebbe un guasto innocuo in una query ogni quindici secondi
-        // by sempre. Zero quadranti conta come non andata: non e' partita nessuna query,
-        // quindi riprovare presto e' gratis e copre i quadranti che compaiono piu' tardi.
+        // "Went well" means ALL of them, not at least one. With "at least one" five strips out
+        // of six can spend two hours saying "No history" while the sixth refreshes, which is
+        // the same defect as before cut by a sixth. Only the aggregate counts: the raw tail can
+        // be missing without the strip suffering - the aggregate draws it anyway - and watching
+        // it here would turn a harmless fault into a request every fifteen seconds for ever.
+        // Zero gauges counts as not gone well: no request was fired, so retrying soon is free
+        // and covers the gauges that show up later.
         bool succeeded = rows.Count > 0;
 
         for (int i = 0; i < rows.Count; i++)
         {
-            ApplyHistory(rows[i], readings[i].Aggregate, readings[i].Tail, period, timeText);
+            ApplyHistory(rows[i], readings[i].Aggregate, readings[i].Tail, period, now);
             succeeded &= readings[i].Aggregate.Outcome == ServiceOutcome.Ok;
         }
 
         nextHistoryRead = clock() + HistoryReadDelay(period, succeeded);
     }
 
-    /// <summary>Fra quanto si rilegge lo history, dato il period e com'e' andata.</summary>
-    /// <param name="period">Il period mostrato.</param>
-    /// <param name="succeeded">True se ogni striscia ha ricevuto i suoi dati.</param>
-    /// <returns>Quanto aspettare prima della lettura successiva.</returns>
+    /// <summary>How long until the history is reread, given the period and how it went.</summary>
+    /// <param name="period">The period on show.</param>
+    /// <param name="succeeded">True if every strip got its data.</param>
+    /// <returns>How long to wait before the next read.</returns>
     /// <remarks>
-    /// Pura e pubblica perche' i due errori che ha gia' fatto non si vedono da nessuna parte
-    /// se non qui: <b>rimandare un guasto di un passo intero</b> - a sette giorni due ore di
-    /// "No history" su dati tornati da un secondo - e <b>rileggere esattamente ogni passo</b>,
-    /// che sembra la readInterval giusta e non lo e', perche' guarderebbe ogni volta una barra
-    /// appena nata e l'estremo destro della striscia resterebbe un pixel by sempre.
+    /// Pure and public because the two mistakes it has already made are visible nowhere but
+    /// here: <b>postponing a fault by a whole step</b> - at seven days two hours of "No
+    /// history" on data that came back a second later - and <b>rereading exactly every
+    /// step</b>, which looks like the right cadence and is not, because it would look at a
+    /// newborn bar every time and the strip's right edge would stay one pixel for ever.
     /// </remarks>
     public static TimeSpan HistoryReadDelay(HistoryPeriodOption period, bool succeeded)
     {
@@ -1307,11 +1311,11 @@ public sealed partial class MainViewModel : ViewModelBase
         return readInterval > MinimumRereadInterval ? readInterval : MinimumRereadInterval;
     }
 
-    /// <summary>From quanto indietro leggere il grezzo by la tail, dato il passo della sorgente.</summary>
+    /// <summary>How far back to read the raw data for the tail, given the source's step.</summary>
     /// <remarks>
-    /// Tre points di sorgente, mai meno del minimo. Con la sorgente a un minuto restano i dieci
-    /// minuti di sempre; a cinque minuti servono quindici, perche' il consolidamento di quel
-    /// livello aspetta anche il livello sotto e resta indietro piu' a lungo.
+    /// Three source points, never less than the minimum. With a one-minute source the usual ten
+    /// minutes stand; at five minutes fifteen are needed, because that level's consolidation
+    /// also waits for the level below it and stays behind for longer.
     /// </remarks>
     private static TimeSpan TailFor(HistoryPeriodOption period)
     {
@@ -1320,13 +1324,13 @@ public sealed partial class MainViewModel : ViewModelBase
         return threeSteps > MinimumTail ? threeSteps : MinimumTail;
     }
 
-    /// <summary>Le due readings dello history di UNA metrica: l'aggregate al minuto e la tail grezza.</summary>
-    /// <returns>La tail e' null quando l'aggregate non c'e': senza quello non serve.</returns>
+    /// <summary>The two history reads of ONE metric: the one-minute aggregate and the raw tail.</summary>
+    /// <returns>The tail is null when the aggregate is missing: without that one it is no use.</returns>
     private static async Task<(HistoryFetch Aggregate, HistoryFetch? Tail)> ReadHistoryAsync(
         IMetricsClient activeClient,
         string key,
         HistoryPeriodOption period,
-        DateTimeOffset timeText,
+        DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         string[] parts = key.Split('|');
@@ -1339,7 +1343,7 @@ public sealed partial class MainViewModel : ViewModelBase
         string? instance = parts.Length > 2 && parts[2].Length > 0 ? parts[2] : null;
 
         HistoryFetch aggregate = await activeClient.GetHistoryAsync(
-            new HistoryQuery(parts[0], parts[1], instance, timeText - period.Duration, period.Resolution),
+            new HistoryQuery(parts[0], parts[1], instance, now - period.Duration, period.Resolution),
             cancellationToken).ConfigureAwait(false);
 
         if (aggregate.Outcome != ServiceOutcome.Ok || aggregate.Points is null)
@@ -1348,7 +1352,7 @@ public sealed partial class MainViewModel : ViewModelBase
         }
 
         HistoryFetch tail = await activeClient.GetHistoryAsync(
-            new HistoryQuery(parts[0], parts[1], instance, timeText - TailFor(period), "raw"),
+            new HistoryQuery(parts[0], parts[1], instance, now - TailFor(period), "raw"),
             cancellationToken).ConfigureAwait(false);
 
         return (aggregate, tail);
@@ -1359,7 +1363,7 @@ public sealed partial class MainViewModel : ViewModelBase
         HistoryFetch aggregate,
         HistoryFetch? tail,
         HistoryPeriodOption period,
-        DateTimeOffset timeText)
+        DateTimeOffset now)
     {
         if (aggregate.Outcome != ServiceOutcome.Ok || aggregate.Points is null)
         {
@@ -1369,9 +1373,9 @@ public sealed partial class MainViewModel : ViewModelBase
             return;
         }
 
-        // La tail grezza si raggruppa al passo della SORGENTE, non a quello della barra: e'
-        // cio' che la rende confrontabile con i points aggregati prima di unirli. Il passo
-        // della barra lo applica Build, una volta sola e su tutto.
+        // The raw tail is bucketed at the SOURCE's step, not the bar's: that is what makes it
+        // comparable with the aggregated points before merging them. Build applies the bar's
+        // step, once and over everything.
         IReadOnlyList<HistoryPoint> points = tail is { Outcome: ServiceOutcome.Ok, Points: not null }
             ? HistoryStrip.Merge(aggregate.Points, HistoryStrip.Bucket(tail.Points, period.SourceStep))
             : aggregate.Points;
@@ -1380,32 +1384,32 @@ public sealed partial class MainViewModel : ViewModelBase
             ? string.Empty
             : "No history recorded for this metric yet.";
 
-        row.History = HistoryStrip.Build(ToFractions(points), timeText, period.BarCount, period.Step);
+        row.History = HistoryStrip.Build(ToFractions(points), now, period.BarCount, period.Step);
     }
 
-    /// <summary>Porta i valori dello history nella scala 0..1 dei quadranti.</summary>
+    /// <summary>Brings the history values into the gauges' 0..1 scale.</summary>
     /// <remarks>
-    /// Lo history conserva i valori come sono states misurati, quindi una percentuale arriva
-    /// da 0 a 100. E' la stessa divisione che <c>MetricFormatting.Fraction</c> fa by la row
-    /// a schermo: se le due divergessero, quadrante e striscia racconterebbero due storie
-    /// diverse della stessa metrica.
+    /// The history keeps the values as they were measured, so a percentage arrives from 0 to
+    /// 100. It is the same division <c>MetricFormatting.Fraction</c> does for the row on
+    /// screen: if the two diverged, gauge and strip would tell two different stories about the
+    /// same metric.
     /// </remarks>
     private static IReadOnlyList<HistoryPoint> ToFractions(IReadOnlyList<HistoryPoint> points) =>
-        [.. points.Select(endpoint => endpoint with
+        [.. points.Select(point => point with
         {
-            Avg = Math.Clamp(endpoint.Avg / 100d, 0d, 1d),
-            Min = Math.Clamp(endpoint.Min / 100d, 0d, 1d),
-            Max = Math.Clamp(endpoint.Max / 100d, 0d, 1d),
-            Last = Math.Clamp(endpoint.Last / 100d, 0d, 1d),
+            Avg = Math.Clamp(point.Avg / 100d, 0d, 1d),
+            Min = Math.Clamp(point.Min / 100d, 0d, 1d),
+            Max = Math.Clamp(point.Max / 100d, 0d, 1d),
+            Last = Math.Clamp(point.Last / 100d, 0d, 1d),
         })];
 
-    /// <summary>Rifa' l'machineList dei quadranti solo quando cambia davvero.</summary>
+    /// <summary>Rebuilds the list of gauges only when it really changes.</summary>
     /// <remarks>
-    /// Il confronto e' by RIFERIMENTO, e deve restarlo: le rows sono le stesse istanze che
-    /// stanno nei gruppi e si aggiornano da sole, quindi svuotare e riempire la collezione a
-    /// ogni giro ricostruirebbe ogni quadrante una volta al secondo, facendo lampeggiare la
-    /// finestra. Si ricostruisce quando un collector va o viene, oppure quando una metrica
-    /// smette di essere misurabile e il entryClient quadrante non ha piu' senso.
+    /// The comparison is by REFERENCE, and it has to stay that way: the rows are the same
+    /// instances that live in the groups and update themselves, so clearing and refilling the
+    /// collection on every loop would rebuild every gauge once a second, making the window
+    /// flicker. It is rebuilt when a collector comes or goes, or when a metric stops being
+    /// measurable and its gauge no longer makes sense.
     /// </remarks>
     private void SyncGauges()
     {
@@ -1428,16 +1432,16 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Apre il pannello dei processi by la resource del quadrante process.</summary>
-    /// <param name="row">Il quadrante su cui si e' cliccato.</param>
-    /// <returns>L'timer della prima lettura.</returns>
+    /// <summary>Opens the process panel for the resource of the gauge that was clicked.</summary>
+    /// <param name="row">The gauge that was clicked.</param>
+    /// <returns>The wait for the first read.</returns>
     /// <remarks>
-    /// Le esecuzioni concorrenti vanno PERMESSE: il comando e' uno solo by tutti i quadranti,
-    /// e un comando asincrono, finche' e' in esecuzione, rifiuta ogni altra esecuzione. Senza
-    /// questo, mentre la prima lettura e' in volo su una macchina remota lenta, ogni altro clic
-    /// — su un altro quadrante, o sullo stesso by chiudere — verrebbe scartato in silenzio, e
-    /// la finestra sembrerebbe non rispondere. La risposta di una lettura ormai superata la
-    /// scarta <see cref="RefreshProcessesAsync"/>.
+    /// Concurrent executions have to be ALLOWED: there is one command for all the gauges, and
+    /// an asynchronous command refuses every other execution while it is running. Without
+    /// this, while the first read is in flight to a slow remote machine, every other click
+    /// — on another gauge, or on the same one to close it — would be discarded in silence, and
+    /// the window would look unresponsive. <see cref="RefreshProcessesAsync"/> discards the
+    /// response of a read that has since been superseded.
     /// </remarks>
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task OpenProcessesAsync(MetricRow? row)
@@ -1447,9 +1451,9 @@ public sealed partial class MainViewModel : ViewModelBase
             return;
         }
 
-        // Lo stesso quadrante una seconda volta CHIUDE: e' il gesto che chiunque prova by
-        // primo by far sparire una cosa che ha appena fatto comparire. Un altro quadrante
-        // invece cambia machineList senza chiudere.
+        // The same gauge a second time CLOSES: it is the gesture anyone tries first to make
+        // something they have just made appear go away. Another gauge switches the list
+        // instead, without closing.
         if (IsProcessPanelOpen && string.Equals(shownResource, resource, StringComparison.Ordinal))
         {
             CloseProcessPanel();
@@ -1458,8 +1462,8 @@ public sealed partial class MainViewModel : ViewModelBase
         }
 
         shownResource = resource;
-        // "Whole machine" sta nel title perche' il quadrante da cui si arriva e' quello di UN
-        // disco, e l'machineList non lo e': i contatori di I/O sono by processo, non by dispositivo.
+        // "Whole machine" is in the title because the gauge you arrive from is ONE disk's, and
+        // the list is not: the I/O counters are per process, not per device.
         ProcessesTitle = resource switch
         {
             "memory" => "Top processes by memory",
@@ -1474,51 +1478,50 @@ public sealed partial class MainViewModel : ViewModelBase
         await RefreshProcessesAsync(CancellationToken.None);
     }
 
-    /// <summary>Copia negli appunti cio' che dice la barra di state.</summary>
-    /// <returns>L'timer della scrittura negli appunti.</returns>
+    /// <summary>Copies what the status bar says to the clipboard.</summary>
+    /// <returns>The wait for the clipboard write.</returns>
     /// <remarks>
-    /// E' il caso che pesa: un message d'error lungo — un'impronta che non corrisponde, con
-    /// le due impronte by intero — altrimenti va ricopiato a mano by incollarlo in una
-    /// ricerca. Il title e il message su due rows, perche' sono due frasi.
+    /// This is the case that matters: a long error message — a fingerprint that does not match,
+    /// with both fingerprints in full — otherwise has to be retyped by hand to paste it into a
+    /// search. The title and the message on two lines, because they are two sentences.
     /// <para>
-    /// <c>AllowConcurrentExecutions</c> non e' decorazione: un <c>AsyncRelayCommand</c> in
-    /// esecuzione si disabilita e rifiuta ogni altra chiamata, quindi un secondo clic mentre
-    /// gli appunti stanno scrivendo cadrebbe nel vuoto con il pulsante che lampeggia spento.
-    /// E' il difetto gia' pagato dai sei pulsanti dei quadranti.
+    /// <c>AllowConcurrentExecutions</c> is not decoration: an <c>AsyncRelayCommand</c> that is
+    /// running disables itself and refuses every other call, so a second click while the
+    /// clipboard is being written would fall into nothing with the button flashing disabled.
+    /// It is the defect the six gauge buttons already paid for.
     /// </para>
     /// </remarks>
     [RelayCommand(AllowConcurrentExecutions = true, CanExecute = nameof(CanCopy))]
     private Task CopyStatusAsync() =>
         WriteToClipboardAsync(StatusTitle + Environment.NewLine + StatusText);
 
-    /// <summary>Copia negli appunti il riepilogo di cio' che e' successo mentre nessuno guardava.</summary>
-    /// <returns>L'timer della scrittura negli appunti.</returns>
+    /// <summary>Copies the summary of what happened while nobody was watching to the clipboard.</summary>
+    /// <returns>The wait for the clipboard write.</returns>
     /// <remarks>
-    /// Il caso che pesa e' una row by macchina con date e durate: e' esattamente il text che
-    /// si incolla in un message a chi tiene quella macchina, e ricopiarlo a mano da un
-    /// riquadro e' come ricopiare un'impronta. Stessa fila degli altri due Copy, stesso
-    /// <c>AllowConcurrentExecutions</c>, stessa ragione.
+    /// The case that matters is one line per machine with dates and durations: it is exactly
+    /// the text you paste into a message to whoever runs that machine, and retyping it by hand
+    /// from a panel is like retyping a fingerprint. Same queue as the other two Copy commands,
+    /// same <c>AllowConcurrentExecutions</c>, same reason.
     /// </remarks>
     [RelayCommand(AllowConcurrentExecutions = true, CanExecute = nameof(CanCopyAwaySummary))]
     private Task CopyAwaySummaryAsync() => WriteToClipboardAsync(AwaySummaryText);
 
-    /// <summary>True quando c'e' un riepilogo da copiare.</summary>
+    /// <summary>True when there is a summary to copy.</summary>
     private bool CanCopyAwaySummary() => copyToClipboard is not null && AwaySummaryText.Length > 0;
 
-    /// <summary>Copia negli appunti la row di processo selezionata, col entryClient PID.</summary>
-    /// <returns>L'timer della scrittura negli appunti.</returns>
+    /// <summary>Copies the selected process row to the clipboard, with its PID.</summary>
+    /// <returns>The wait for the clipboard write.</returns>
     [RelayCommand(AllowConcurrentExecutions = true, CanExecute = nameof(CanCopyRow))]
     private Task CopyProcessRowAsync() =>
         SelectedProcess is { } process ? WriteToClipboardAsync(process.ForClipboard) : Task.CompletedTask;
 
-    /// <summary>Scrive negli appunti, e non lascia che un loro guasto si veda altrove.</summary>
-    /// <param name="text">Cio' che va negli appunti.</param>
-    /// <returns>L'timer della scrittura.</returns>
+    /// <summary>Writes to the clipboard, and does not let a clipboard fault show up elsewhere.</summary>
+    /// <param name="text">What goes into the clipboard.</param>
+    /// <returns>The wait for the write.</returns>
     /// <remarks>
-    /// Un guasto degli appunti non ha dove dirsi: l'unico posto sarebbe la barra di state, che
-    /// e' proprio cio' che si sta copiando, e sovrascriverla cancellerebbe il message.
-    /// Meglio non fare niente che perdere il text by raccontare che non si e' riusciti a
-    /// copiarlo.
+    /// A clipboard fault has nowhere to be reported: the only place would be the status bar, which
+    /// is exactly what is being copied, and overwriting it would erase the message. Better to
+    /// do nothing than to lose the text in order to report that copying it failed.
     /// </remarks>
     private Task WriteToClipboardAsync(string text)
     {
@@ -1527,26 +1530,26 @@ public sealed partial class MainViewModel : ViewModelBase
             return Task.CompletedTask;
         }
 
-        // IN FILA, una dopo l'altra. Gli appunti di Windows possono essere tenuti da un altro
-        // programma, e Avalonia in quel caso riprova dieci volte a cento millisecondi l'una:
-        // due scritture partite a poca distanza hanno due cicli di ritentativo indipendenti, e
-        // vince quella che RIESCE by ultima, non quella che si e' chiesta by ultima. Senza
-        // fila, un secondo clic puo' lasciare negli appunti il text del primo — misurato, e in
-        // silenzio. Tutto gira sul thread dell'interfaccia, quindi la fila non ha bisogno di
-        // serrature: basta incatenare i Task.
+        // QUEUED, one after the other. The Windows clipboard can be held by another program,
+        // and in that case Avalonia retries ten times a hundred milliseconds apart: two writes
+        // started close together have two independent retry loops, and the one that SUCCEEDS
+        // last wins, not the one that was asked for last. Without the queue, a second click can
+        // leave the first one's text in the clipboard — measured, and in silence. Everything
+        // runs on the interface thread, so the queue needs no locks: chaining the Tasks is
+        // enough.
         clipboardQueue = WriteQueuedAsync(clipboardQueue, copy, text);
 
         return clipboardQueue;
     }
 
-    /// <summary>Aspetta la scrittura previousWrite, poi scrive. Non lancia mai.</summary>
-    /// <param name="previousWrite">La scrittura da aspettare.</param>
-    /// <param name="copy">Come scrivere.</param>
-    /// <param name="text">Cosa scrivere.</param>
-    /// <returns>L'timer della propria scrittura.</returns>
+    /// <summary>Waits for the previous write, then writes. It never throws.</summary>
+    /// <param name="previousWrite">The write to wait for.</param>
+    /// <param name="copy">How to write.</param>
+    /// <param name="text">What to write.</param>
+    /// <returns>The wait for its own write.</returns>
     /// <remarks>
-    /// Che non lanci mai e' cio' che rende sicuro aspettarla dalla chiamata successiva: una
-    /// scrittura fallita non deve trascinarsi dietro quelle dopo.
+    /// That it never throws is what makes it safe for the next call to await it: a failed write
+    /// must not drag down the ones after it.
     /// </remarks>
     private static async Task WriteQueuedAsync(Task previousWrite, Func<string, Task> copy, string text)
     {
@@ -1556,16 +1559,16 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             await copy(text);
         }
-#pragma warning disable CA1031 // Gli appunti possono essere tenuti da un altro programma: e'
-        catch (Exception) // un fallimento del sistema, non un guasto della dashboard.
+#pragma warning disable CA1031 // The clipboard can be held by another program: that is a
+        catch (Exception) // failure of the system, not a fault of the dashboard.
 #pragma warning restore CA1031
         {
-            // Niente. Un guasto degli appunti non ha dove dirsi: l'unico posto sarebbe la
-            // barra di state, che e' proprio cio' che si sta copiando.
+            // Nothing. A clipboard fault has nowhere to be reported: the only place would be the
+            // status bar, which is exactly what is being copied.
         }
     }
 
-    /// <summary>Chiude il pannello e dimentica cosa c'era dentro.</summary>
+    /// <summary>Closes the panel and forgets what was in it.</summary>
     [RelayCommand]
     private void CloseProcessPanel()
     {
@@ -1577,8 +1580,8 @@ public sealed partial class MainViewModel : ViewModelBase
         Processes.Clear();
     }
 
-    /// <summary>Termina il processo selectedPid, chiedendo conferma al primo clic.</summary>
-    /// <returns>L'timer della query e della rilettura.</returns>
+    /// <summary>Ends the selected process, asking for confirmation on the first click.</summary>
+    /// <returns>The wait for the request and the reread.</returns>
     [RelayCommand]
     private async Task EndSelectedProcessAsync()
     {
@@ -1587,8 +1590,8 @@ public sealed partial class MainViewModel : ViewModelBase
             return;
         }
 
-        // Primo clic: arma soltanto. Il pulsante cambia text, e chi ha cliccato by sbaglio
-        // se ne accorge prima che succeda qualcosa.
+        // First click: it only arms. The button changes text, and whoever clicked by mistake
+        // notices before anything happens.
         if (!IsAwaitingEndConfirmation)
         {
             IsAwaitingEndConfirmation = true;
@@ -1605,11 +1608,11 @@ public sealed partial class MainViewModel : ViewModelBase
         await RefreshProcessesAsync(CancellationToken.None);
     }
 
-    /// <summary>Cambiare row disarma la conferma.</summary>
-    /// <param name="value">La row appena selezionata.</param>
+    /// <summary>Changing row disarms the confirmation.</summary>
+    /// <param name="value">The row just selected.</param>
     /// <remarks>
-    /// Senza, una conferma armata su un processo resterebbe armata dopo aver selectedPid un
-    /// altro processo, e il secondo clic terminerebbe quello sbagliato.
+    /// Without it, a confirmation armed on one process would stay armed after selecting another
+    /// process, and the second click would end the wrong one.
     /// </remarks>
     partial void OnSelectedProcessChanged(ProcessRowState? value)
     {
@@ -1626,10 +1629,9 @@ public sealed partial class MainViewModel : ViewModelBase
 
         ProcessFetch fetch = await client.GetProcessesAsync(resource, ProcessRowCount, cancellationToken);
 
-        // Mentre la risposta era in volo il pannello puo' essere state chiuso, o portato su
-        // un'altra resource: questa risposta allora non e' piu' di nessuno. Applicarla
-        // riempirebbe un pannello chiuso, o metterebbe le rows della CPU sotto il title
-        // della memoria.
+        // While the response was in flight the panel may have been closed, or moved to another
+        // resource: that response then belongs to nobody. Applying it would fill a closed
+        // panel, or put the CPU rows under the memory title.
         if (!IsProcessPanelOpen || !string.Equals(shownResource, resource, StringComparison.Ordinal))
         {
             return;
@@ -1644,9 +1646,9 @@ public sealed partial class MainViewModel : ViewModelBase
 
         ProcessesProblem = string.Empty;
 
-        // La selezione si tiene sul PID e non sull'oggetto: le rows arrivano nuove a ogni
-        // giro, e senza questo la selezione si perderebbe una volta al secondo — cioe' proprio
-        // mentre si sta puntando il processo da terminare.
+        // The selection is kept on the PID and not on the object: the rows arrive new on every
+        // loop, and without this the selection would be lost once a second — that is, exactly
+        // while you are aiming at the process to end.
         int? selectedPid = SelectedProcess?.Pid;
 
         Processes.Clear();

@@ -3,36 +3,36 @@ using Avalonia.Controls;
 
 namespace Observer.App.Controls;
 
-/// <summary>La matematica della griglia dei quadranti, separata dal pannello che la applica.</summary>
+/// <summary>The gauge grid's arithmetic, separate from the panel that applies it.</summary>
 /// <remarks>
-/// Un <c>WrapPanel</c> con quadranti a misura fissa lasciava buchi a fine row e non cresceva
-/// mai: a 1240 px di finestra sei quadranti da 148 stavano su una row con un terzo dello
-/// spazio vuoto, e a 720 ne stavano tre e mezzo, cioe' tre e un buco. Qui le columns sono
-/// quante ne entrano alla misura minima, e poi ogni cell si allarga fino a un massimo per
-/// riempire la row: a columns piene, senza buchi, e i quadranti diventano grandi quanto c'e'
-/// posto.
+/// A <c>WrapPanel</c> with fixed-size gauges left holes at the end of a row and never grew:
+/// in a 1240 px window six 148 px gauges sat on one row with a third of the space empty,
+/// and at 720 three and a half fitted, that is three and a hole. Here there are as many
+/// columns as fit at the minimum size, and then each cell widens up to a maximum to fill
+/// the row: full columns, no holes, and the gauges become as big as there is room for
+/// them.
 /// </remarks>
 public static class GaugeGridLayout
 {
-    /// <summary>Sotto questa cellWidth un quadrante non si legge piu'.</summary>
+    /// <summary>Below this width a gauge is no longer readable.</summary>
     public const double MinCellWidth = 148d;
 
-    /// <summary>Sopra questa cellWidth un quadrante e' un poster.</summary>
+    /// <summary>Above this width a gauge is a poster.</summary>
     public const double MaxCellWidth = 224d;
 
-    /// <summary>Altezza della cell in rapporto alla cellWidth: il quadrante piu' le due scritte sotto.</summary>
+    /// <summary>Cell height relative to its width: the gauge plus the two captions below it.</summary>
     public const double CellHeightRatio = 212d / 148d;
 
-    /// <summary>ColumnGap fra due columns.</summary>
+    /// <summary>Gap between two columns.</summary>
     public const double ColumnGap = 18d;
 
-    /// <summary>ColumnGap fra due rows.</summary>
+    /// <summary>Gap between two rows.</summary>
     public const double RowGap = 8d;
 
-    /// <summary>Quante columns, e quanto larga ogni cell, per lo spazio disponibile.</summary>
-    /// <param name="availableWidth">Quanto spazio c'e' in orizzontale; puo' essere infinito.</param>
-    /// <param name="count">Quanti quadranti ci sono.</param>
-    /// <returns>Columns e cellWidth della cell; zero columns se non c'e' niente da disporre.</returns>
+    /// <summary>How many columns, and how wide each cell, for the available space.</summary>
+    /// <param name="availableWidth">How much horizontal space there is; may be infinite.</param>
+    /// <param name="count">How many gauges there are.</param>
+    /// <returns>Columns and cell width; zero columns if there is nothing to lay out.</returns>
     public static (int Columns, double CellWidth) Plan(double availableWidth, int count)
     {
         if (count <= 0)
@@ -40,8 +40,8 @@ public static class GaugeGridLayout
             return (0, 0d);
         }
 
-        // Senza un limite - misura dentro un contenitore che non ne da' uno - tutti in fila,
-        // alla misura minima: e' il caso in cui non c'e' niente da riempire.
+        // With no limit - measuring inside a container that does not give one - all in a row,
+        // at the minimum size: this is the case where there is nothing to fill.
         if (double.IsInfinity(availableWidth) || double.IsNaN(availableWidth))
         {
             return (count, MinCellWidth);
@@ -52,13 +52,13 @@ public static class GaugeGridLayout
 
         double cellWidth = (availableWidth - (ColumnGap * (columns - 1))) / columns;
 
-        // Verso l'alto si ferma al massimo; verso il basso no: in una finestra piu' stretta della
-        // cell minima un quadrante piccolo e' meglio di un quadrante tagliato.
+        // The cell width is capped at the maximum, but not floored at the minimum: in a window
+        // narrower than the minimum cell a small gauge is better than a clipped one.
         return (columns, Math.Max(1d, Math.Min(cellWidth, MaxCellWidth)));
     }
 }
 
-/// <summary>Il pannello che dispone i quadranti secondo <see cref="GaugeGridLayout"/>.</summary>
+/// <summary>The panel that lays the gauges out according to <see cref="GaugeGridLayout"/>.</summary>
 public sealed class GaugeGrid : Panel
 {
     /// <inheritdoc />

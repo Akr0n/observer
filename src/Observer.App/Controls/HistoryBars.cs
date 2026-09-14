@@ -7,24 +7,24 @@ using Observer.App.Services;
 namespace Observer.App.Controls;
 
 /// <summary>
-/// La striscia dello storico: una barretta per intervallo, dal piu' vecchio al piu' recente.
+/// The history strip: one small bar per interval, from the oldest to the most recent.
 /// </summary>
 /// <remarks>
-/// <b>La regola che governa questo disegno: l'assenza non deve essere piu' silenziosa di un
-/// uso basso, deve essere piu' rumorosa.</b>
+/// <b>The rule that governs this drawing: absence must not be quieter than low usage, it must
+/// be louder.</b>
 /// <para>
-/// E' controintuitivo e vale la pena scriverlo. La soluzione istintiva per "qui non c'e'
-/// niente da mostrare" e' non disegnare niente, o disegnare qualcosa di tenue. Ma qui una
-/// macchina a riposo e' <i>gia'</i> quasi niente: una CPU ferma sta al due o tre per cento,
-/// cioe' drawnBars alte un pixel per tutta la striscia. Rendere l'assenza ancora piu' tenue la
-/// renderebbe indistinguibile dal riposo, e la striscia direbbe "tutto tranquillo" proprio nei
-/// periodi in cui non si sa niente. Per questo un buco porta un tratteggio a tutta trackHeight e
-/// interrompe il filo di base, mentre una misura, anche di zero, ha sempre un piede solidBrush.
+/// It is counter-intuitive and worth writing down. The instinctive solution for "there is
+/// nothing to show here" is to draw nothing, or to draw something faint. But here a machine at
+/// rest is <i>already</i> almost nothing: an idle CPU sits at two or three per cent, that is,
+/// bars one pixel tall for the whole strip. Making absence fainter still would leave it
+/// indistinguishable from rest, and the strip would say "all quiet" precisely in the periods
+/// where nothing is known. That is why a gap carries a dashed line over the full height and
+/// breaks the baseline, while a measurement, even of zero, always has a solid foot.
 /// </para>
 /// <para>
-/// L'trackHeight porta l'informazione principale e il colore la raddoppia, mai il contrario: chi
-/// non distingue il rosso dal verde legge comunque la striscia, perche' un intervallo redlineBrush
-/// e' <i>alto</i> prima ancora che colorato.
+/// Height carries the main information and colour reinforces it, never the other way round:
+/// someone who cannot tell red from green still reads the strip, because a busy interval is
+/// <i>tall</i> before it is even coloured.
 /// </para>
 /// </remarks>
 public sealed class HistoryBars : Control
@@ -32,36 +32,35 @@ public sealed class HistoryBars : Control
     private const double BarGap = 1d;
     private const double BaselineThickness = 1.5d;
 
-    /// <summary>L'trackHeight minima di una colonna misurata.</summary>
+    /// <summary>The minimum height of a measured column.</summary>
     /// <remarks>
-    /// Uno zero valueBrush deve avere un piede visibile. Il pavimento puo' solo SOVRASTIMARE un
-    /// valore piccolo, mai sottostimarlo: sbagliare per eccesso su un due per cento costa un
-    /// paio di pixel, sbagliare per difetto vuol dire far sparire la prova che li' si stava
-    /// misurando.
+    /// A measured zero must have a visible foot. The floor may only OVERSTATE a small value,
+    /// never understate it: erring high on a two per cent value costs a couple of pixels, erring
+    /// low means making the evidence that something was being measured there disappear.
     /// </remarks>
     private const double MinBarHeight = 3d;
 
-    /// <summary>Gli intervalli da disegnare, dal piu' vecchio al piu' recente.</summary>
+    /// <summary>The intervals to draw, from the oldest to the most recent.</summary>
     public static readonly StyledProperty<IReadOnlyList<HistoryBar>?> BarsProperty =
         AvaloniaProperty.Register<HistoryBars, IReadOnlyList<HistoryBar>?>(nameof(Bars));
 
-    /// <summary>Da dove un intervallo si considera redlineBrush, da 0 a 1.</summary>
+    /// <summary>From where an interval counts as busy, from 0 to 1.</summary>
     public static readonly StyledProperty<double> RedlineProperty =
         AvaloniaProperty.Register<HistoryBars, double>(nameof(Redline), 0.85d);
 
-    /// <summary>Il trackBrush della striscia, cioe' l'area che va da zero al peak.</summary>
+    /// <summary>The strip's background, that is the area running from zero to the maximum.</summary>
     public static readonly StyledProperty<IBrush?> TrackBrushProperty =
         AvaloniaProperty.Register<HistoryBars, IBrush?>(nameof(TrackBrush));
 
-    /// <summary>Il colore di un intervallo valueBrush.</summary>
+    /// <summary>The colour of a measured interval.</summary>
     public static readonly StyledProperty<IBrush?> ValueBrushProperty =
         AvaloniaProperty.Register<HistoryBars, IBrush?>(nameof(ValueBrush));
 
-    /// <summary>Il colore di un intervallo che ha toccato la redline.</summary>
+    /// <summary>The colour of an interval that touched the redline.</summary>
     public static readonly StyledProperty<IBrush?> RedlineBrushProperty =
         AvaloniaProperty.Register<HistoryBars, IBrush?>(nameof(RedlineBrush));
 
-    /// <summary>Il colore del tratteggio e del filo di base.</summary>
+    /// <summary>The colour of the dashes and of the baseline.</summary>
     public static readonly StyledProperty<IBrush?> MissingBrushProperty =
         AvaloniaProperty.Register<HistoryBars, IBrush?>(nameof(MissingBrush));
 
@@ -76,42 +75,42 @@ public sealed class HistoryBars : Control
             MissingBrushProperty);
     }
 
-    /// <summary>Gli intervalli da disegnare.</summary>
+    /// <summary>The intervals to draw.</summary>
     public IReadOnlyList<HistoryBar>? Bars
     {
         get => GetValue(BarsProperty);
         set => SetValue(BarsProperty, value);
     }
 
-    /// <summary>Da dove un intervallo si considera redlineBrush.</summary>
+    /// <summary>From where an interval counts as busy.</summary>
     public double Redline
     {
         get => GetValue(RedlineProperty);
         set => SetValue(RedlineProperty, value);
     }
 
-    /// <summary>Il trackBrush della striscia.</summary>
+    /// <summary>The strip's background.</summary>
     public IBrush? TrackBrush
     {
         get => GetValue(TrackBrushProperty);
         set => SetValue(TrackBrushProperty, value);
     }
 
-    /// <summary>Il colore di un intervallo valueBrush.</summary>
+    /// <summary>The colour of a measured interval.</summary>
     public IBrush? ValueBrush
     {
         get => GetValue(ValueBrushProperty);
         set => SetValue(ValueBrushProperty, value);
     }
 
-    /// <summary>Il colore di un intervallo che ha toccato la redline.</summary>
+    /// <summary>The colour of an interval that touched the redline.</summary>
     public IBrush? RedlineBrush
     {
         get => GetValue(RedlineBrushProperty);
         set => SetValue(RedlineBrushProperty, value);
     }
 
-    /// <summary>Il colore del tratteggio e del filo di base.</summary>
+    /// <summary>The colour of the dashes and of the baseline.</summary>
     public IBrush? MissingBrush
     {
         get => GetValue(MissingBrushProperty);
@@ -120,9 +119,9 @@ public sealed class HistoryBars : Control
 
     /// <inheritdoc />
     /// <remarks>
-    /// Il suggerimento si ricalcola a ogni movimento perche' cambia PER BARRA, e una striscia
-    /// e' un controllo solo: senza questo direbbe la stessa cosa su tutta la barWidth, cioe'
-    /// non direbbe niente.
+    /// The tooltip is recomputed on every move because it changes PER BAR, and a strip is a
+    /// single control: without this it would say the same thing across the whole width, that
+    /// is, it would say nothing.
     /// </remarks>
     protected override void OnPointerMoved(PointerEventArgs e)
     {
@@ -158,8 +157,8 @@ public sealed class HistoryBars : Control
 
         double redline = Math.Clamp(Redline, 0d, 1d);
 
-        // Un trackBrush unico per tutta la striscia, e non uno per barretta: cosi' l'estensione
-        // della finestra si vede sempre, anche quando non c'e' un solo dato dentro.
+        // One background for the whole strip, and not one per bar: that way the extent of the
+        // time window is always visible, even when there is not a single reading inside it.
         double baseY = Bounds.Height - BaselineThickness;
         double trackHeight = baseY;
 
@@ -172,7 +171,7 @@ public sealed class HistoryBars : Control
         {
             double x = i * step;
 
-            if (drawnBars[i].Genere == BarKind.Missing)
+            if (drawnBars[i].Kind == BarKind.Missing)
             {
                 DrawMissing(context, missingBrush, x, barWidth, baseY, trackHeight);
 
@@ -181,9 +180,9 @@ public sealed class HistoryBars : Control
 
             DrawBar(context, drawnBars[i], valueBrush, redlineBrush, redline, x, barWidth, baseY, trackHeight);
 
-            // Il filo di base continua sotto ogni intervallo di cui si sa qualcosa, e si
-            // interrompe sotto i buchi: e' la seconda cosa, oltre al tratteggio, che rende
-            // l'assenza visibile anche quando i valori intorno sono tutti bassi.
+            // The baseline continues under every interval something is known about, and breaks
+            // under the gaps: it is the second thing, besides the dashes, that makes absence
+            // visible even when the values around it are all low.
             context.FillRectangle(missingBrush, new Rect(x, baseY, barWidth, BaselineThickness));
         }
     }
@@ -199,21 +198,21 @@ public sealed class HistoryBars : Control
         double baseY,
         double trackHeight)
     {
-        double average = Math.Clamp(bar.Media, 0d, 1d);
-        double peak = Math.Clamp(bar.Massimo, average, 1d);
+        double average = Math.Clamp(bar.Average, 0d, 1d);
+        double peak = Math.Clamp(bar.Max, average, 1d);
 
         double averageHeight = Math.Max(MinBarHeight, average * trackHeight);
         double peakHeight = Math.Max(averageHeight, peak * trackHeight);
 
-        // Una bar che ha coperto solo in parte il suo intervallo si disegna stretta in
-        // proporzione: l'ultima della striscia e' sempre l'intervallo IN CORSO, e a step
-        // largo si disegnerebbe piena sapendo di pochi minuti. La regola sta in HistoryStrip
-        // perche' e' aritmetica e si prova senza disegnare niente.
+        // A bar that covered only part of its interval is drawn narrow in proportion: the last
+        // one in the strip is always the interval IN PROGRESS, and with a wide step it would
+        // be drawn full while only a few minutes are known. The rule lives in HistoryStrip
+        // because it is arithmetic and can be tested without drawing anything.
         barWidth = HistoryStrip.WidthOf(bar, barWidth);
 
-        // Il prolungamento, da dove stava di solito fino a dove e' arrivato. Senza, una
-        // barretta bassa con un picco breve e una barretta bassa e basta sarebbero identiche,
-        // e il picco - che di solito e' la cosa che si sta cercando - sparirebbe nella average.
+        // The extension, from where it usually sat up to where it got to. Without it, a low bar
+        // with a brief peak and a plain low bar would be identical, and the peak - usually the
+        // very thing being looked for - would vanish into the average.
         if (peakHeight - averageHeight > 0.5d)
         {
             context.FillRectangle(
@@ -234,9 +233,9 @@ public sealed class HistoryBars : Control
         double baseY,
         double trackHeight)
     {
-        // Tratteggio a TUTTA trackHeight, e nessun filo di base sotto. Non e' decorazione: e'
-        // l'unico modo perche' "non si sa niente" resti distinguibile da "valueBrush e a
-        // riposo", che a schermo e' quasi altrettanto vuoto.
+        // Dashes over the FULL height, and no baseline underneath. It is not decoration: it is
+        // the only way for "nothing is known" to stay distinguishable from "measured and at
+        // rest", which on screen is almost as empty.
         double centerX = x + (barWidth / 2d) - 0.5d;
         double y = baseY - trackHeight;
 
@@ -253,15 +252,15 @@ public sealed class HistoryBars : Control
     private static Color ColorOf(IBrush brush) =>
         brush is ISolidColorBrush solidBrush ? solidBrush.Color : Colors.Gray;
 
-    /// <summary>Aggiorna il suggerimento con la bar che sta sotto il puntatore.</summary>
+    /// <summary>Updates the tooltip with the bar sitting under the pointer.</summary>
     private void UpdateTip(double x)
     {
         string tipText = Bars is { Count: > 0 } drawnBars
             ? HistoryStrip.Describe(drawnBars, HistoryStrip.IndexAt(x, Bounds.Width, drawnBars.Count))
             : string.Empty;
 
-        // Si riscrive solo quando cambia davvero: assegnare la stessa stringa a ogni pixel di
-        // movimento farebbe sfarfallare il suggerimento mentre lo si legge.
+        // It is rewritten only when it really changes: assigning the same string on every pixel
+        // of movement would make the tooltip flicker while you are reading it.
         if (!string.Equals(ToolTip.GetTip(this) as string, tipText, StringComparison.Ordinal))
         {
             ToolTip.SetTip(this, tipText.Length == 0 ? null : tipText);

@@ -15,34 +15,34 @@
         MinWidth="720" MinHeight="520"
         Title="{Binding WindowTitle}">
 
-    <!-- 900x700 e non 720x560: a 720 entravano due quadranti per riga e i dischi finivano
-         sotto la piega gia' sulla macchina di chi ha scritto il programma. Il minimo e'
-         misurato sul layout, e non e' 640 come sembrava bastare per due quadranti: a 640 le
-         tre colonne numeriche del pannello dei processi mangiavano tutta la larghezza e la
-         colonna del NOME - l'unica elastica - andava a zero, righe di soli numeri. A 720
-         restano al nome 148 px. Il vecchio minimo, 420x360, era di un giorno PRIMA che
-         esistesse la barra laterale, e non era mai stato riallineato. -->
+    <!-- 900x700 and not 720x560: at 720 only two gauges fitted per row and the disks ended up
+         below the fold even on the machine of whoever wrote the program. The minimum is
+         measured on the layout, and it is not 640, which had seemed enough for two gauges: at 640
+         the three numeric columns of the process panel ate the whole width and the NAME
+         column - the only elastic one - went to zero, rows of nothing but numbers. At 720 the
+         name keeps 148 px. The old minimum, 420x360, was from a day BEFORE the sidebar
+         existed, and had never been realigned. -->
 
     <Window.Styles>
-        <!-- I popup (suggerimenti, tendine) seguono lo zoom. La tendina del
-             selettore lo fa gia' per conto del tema; il suggerimento di Avalonia no, e a
-             150% il valore sotto il puntatore sullo storico restava piccolo. -->
+        <!-- Popups (tooltips, drop-downs) follow the zoom. The selector's drop-down already
+             does it thanks to the theme; Avalonia's tooltip does not, and at 150% the value
+             under the pointer on the history strip stayed small. -->
         <Style Selector="Popup">
             <Setter Property="InheritsTransform" Value="True" />
         </Style>
 
-        <!-- Solo un guasto vero si colora. Un Warmup all'avvio o una metrica non misurabile
-             su questa piattaforma restano neutri: allarmare per una cosa normale insegna a
-             ignorare anche gli allarmi veri. -->
+        <!-- Only a real fault gets coloured. A Warmup at start-up or a metric that cannot be
+             measured on this platform stays neutral: raising an alarm for something normal
+             teaches you to ignore the real alarms too. -->
         <Style Selector="TextBlock.problem">
             <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
         </Style>
 
-        <!-- Un quadrante cliccabile INVITA: cursore a mano, e il riquadro che compare al
-             passaggio del mouse e' quello del pulsante. Quello non cliccabile - lo spazio
-             disco - resta un quadrante e basta: senza il riquadro del pulsante disabilitato,
-             che lo faceva sembrare spento (misurato: un rettangolo al 4% di bianco). L'invito
-             sta sul cliccabile, non la punizione sul non cliccabile. -->
+        <!-- A clickable gauge INVITES: hand cursor, and the box that appears on hover is the
+             button's. The one that is not clickable - disk space - stays just a gauge: without
+             the disabled button's box, which made it look switched off (measured: a rectangle
+             at 4% white). The invitation goes on the clickable one, not the punishment on the
+             one that is not clickable. -->
         <Style Selector="Button.gauge">
             <Setter Property="Cursor" Value="Hand" />
         </Style>
@@ -54,23 +54,23 @@
             <Setter Property="Opacity" Value="1" />
         </Style>
 
-        <!-- Le didascalie prendono colore dal tema, non da un'opacita' scelta a mano: cosi'
-             restano leggibili in entrambi i temi senza ricalcolarle. -->
+        <!-- Captions take their colour from the theme, not from an opacity picked by hand: that
+             way they stay legible in both themes without recomputing them. -->
         <Style Selector="TextBlock.secondary">
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
         </Style>
 
-        <!-- I segni di stato delle macchine: gli stessi colori del tema, cosi' verde, giallo e
-             rosso qui vogliono dire cio' che vogliono dire nella barra di stato. E una FORMA
-             oltre al colore, perche' misurato (CIEDE2000 dopo la simulazione di Machado) nel
-             tema chiaro con la deuteranopia giallo e rosso distano 1,0: lo stesso colore. Gli
-             stati provvisori sono anelli vuoti (meno inchiostro, non di piu', nei dieci secondi
-             di grazia), il verde e' il pallino pieno di sempre, il guasto e' un quadrato messo
-             di punta: un rombo, perche' un quadrato dritto da 10 px sporge dal disco di due
-             pixel per angolo e verde/rosso, per la deuteranopia nel tema chiaro (distanza
-             5,7), resterebbero separati solo da quello. Le punte del rombo sporgono dove il
-             disco e' tondo. Ogni coppia che il colore confonde e' separata da pieno/vuoto o
-             da cerchio/rombo. -->
+        <!-- The machines' status marks: the same colours as the theme, so that green, yellow and
+             red here mean what they mean in the status bar. And a SHAPE as well as the colour,
+             because, measured with CIEDE2000 after Machado's simulation, in the light theme with
+             deuteranopia, yellow and red are 1.0 apart: the same colour. The provisional states
+             are hollow rings (less ink, not more, during the ten seconds of grace), green is
+             the filled dot it has always been, and a fault is a square stood on its point: a
+             diamond, because an upright 10 px square pokes out of the disc by two pixels per
+             corner and green/red, for deuteranopia in the light theme (distance 5.7), would be
+             told apart by that alone. The diamond's points stick out where the disc is round.
+             Every pair the colour confuses is separated by filled/hollow or by
+             circle/diamond. -->
         <Style Selector="Ellipse.unknown">
             <Setter Property="Stroke" Value="{DynamicResource TextFillColorTertiaryBrush}" />
             <Setter Property="StrokeThickness" Value="2" />
@@ -87,21 +87,21 @@
         </Style>
     </Window.Styles>
 
-    <!-- Nessun Design.DataContext: MainViewModel non ha piu' un costruttore senza argomenti,
-         perche' senza client e senza configurazione non saprebbe cosa mostrare. Le binding
-         restano comunque verificate a compilazione grazie a x:DataType + x:CompileBindings. -->
+    <!-- No Design.DataContext: MainViewModel no longer has a parameterless constructor, because
+         without a client and without configuration it would not know what to show. The bindings
+         are still checked at compile time thanks to x:DataType + x:CompileBindings. -->
 
-    <!-- La radice e' un LayoutTransformControl: e' cio' che scala TUTTA la finestra quando si
-         cambia "Zoom", quadranti compresi, in su come in giu'. Avalonia non legge la
-         dimensione del testo di sistema, e ingrandire solo i caratteri lascerebbe i quadranti
-         piccoli sotto scritte grandi. Il code-behind gli assegna la trasformazione e muove di
-         pari passo la dimensione minima della finestra. -->
+    <!-- The root is a LayoutTransformControl: it is what scales the WHOLE window when "Zoom"
+         changes, gauges included, upwards as well as downwards. Avalonia does not read the
+         system text size, and enlarging only the characters would leave small gauges under
+         large text. The code-behind assigns it the transform and moves the window's minimum
+         size along with it. -->
     <LayoutTransformControl x:Name="Root">
     <DockPanel Margin="20">
 
         <DockPanel DockPanel.Dock="Top">
-            <!-- Tema e zoom, in alto a destra: scelte che si fanno una volta e non
-                 si rileggono, quindi stanno fuori dal percorso dello sguardo. -->
+            <!-- Theme and zoom, top right: choices you make once and never read back,
+                 so they sit out of the eye's way. -->
             <StackPanel DockPanel.Dock="Right"
                         Orientation="Horizontal"
                         Spacing="8"
@@ -111,8 +111,8 @@
                            Theme="{StaticResource CaptionTextBlockStyle}"
                            Classes="secondary"
                            VerticalAlignment="Center" />
-                <!-- Voci ThemeOption: il testo e' "System", "Light", "Dark". Lo applica
-                     l'applicazione, non la finestra: le tendine sono finestre a parte. -->
+                <!-- ThemeOption entries: the text is "System", "Light", "Dark". The
+                     application applies it, not the window: drop-downs are separate windows. -->
                 <ComboBox ItemsSource="{x:Static vm:MainViewModel.ThemeOptions}"
                           SelectedItem="{Binding SelectedTheme}"
                           MinWidth="92"
@@ -122,9 +122,9 @@
                            Theme="{StaticResource CaptionTextBlockStyle}"
                            Classes="secondary"
                            VerticalAlignment="Center" />
-                <!-- Le voci sono ZoomOption, il cui testo e' "115 %": niente modello di
-                     voce, cosi' tendina, testo e cio' che annuncia un lettore di schermo
-                     coincidono (con un double nudo annunciava "1,15"). -->
+                <!-- The entries are ZoomOption, whose text is "115 %": no item template, so
+                     the drop-down, the text and what a screen reader announces all agree
+                     (with a bare double it announced "1,15"). -->
                 <ComboBox ItemsSource="{x:Static vm:MainViewModel.ScaleOptions}"
                           SelectedItem="{Binding SelectedScale}"
                           MinWidth="92"
@@ -148,14 +148,14 @@
                       Severity="{Binding StatusSeverity}"
                       Title="{Binding StatusTitle}"
                       Message="{Binding StatusText}">
-            <!-- Un pulsante e non testo selezionabile. Il titolo e il messaggio appartengono
-                 al template di FAInfoBar: per renderli selezionabili bisognerebbe riscrivere
-                 il template di una libreria di terze parti, ed ereditarlo per sempre.
-                 ActionButton e' lo slot che il controllo espone apposta, e il caso che pesa
-                 e' proprio questo: un'impronta che non corrisponde stampa due impronte
-                 intere, che nessuno ricopia a mano. Il pulsante compare anche sulla barra
-                 "Connecting" dell'avvio, che dura un secondo: accettato, il primo Copy che si
-                 vede copia una frase che non serve a nessuno, ma la barra sparisce da sola. -->
+            <!-- A button and not selectable text. The title and the message belong to
+                 FAInfoBar's template: making them selectable would mean rewriting a
+                 third-party library's template, and owning it for ever.
+                 ActionButton is the slot the control exposes for exactly this, and the case
+                 that matters is precisely this one: a fingerprint that does not match prints
+                 two whole fingerprints, which nobody copies out by hand. The button appears on
+                 the start-up "Connecting" bar too, which lasts a second: accepted, the first
+                 Copy you see copies a sentence nobody needs, but the bar goes away by itself. -->
             <ui:FAInfoBar.ActionButton>
                 <Button Content="Copy"
                         Command="{Binding CopyStatusCommand}"
@@ -163,14 +163,14 @@
             </ui:FAInfoBar.ActionButton>
         </ui:FAInfoBar>
 
-        <!-- Cosa e' successo mentre la finestra era chiusa. Una barra SEPARATA da quella di
-             stato, e le differenze sono tutte volute:
-             - quella parla della macchina guardata e di ADESSO, questa di tutte e del PASSATO;
-               due messaggi nella stessa barra la farebbero litigare con se stessa;
-             - IsClosable="True" mentre quella di stato e' False: un fatto del passato si legge
-               una volta e si archivia, uno stato in corso no;
-             - Severity Informational e non Warning: e' un resoconto, non un allarme. Cio' che
-               e' rotto ADESSO lo dicono il rombo rosso e la barra di stato. -->
+        <!-- What happened while the window was closed. A bar SEPARATE from the status one, and
+             every difference is deliberate:
+             - that one speaks about the watched machine and about NOW, this one about all of
+               them and about the PAST; two messages in one bar would make it argue with itself;
+             - IsClosable="True" while the status one is False: a fact from the past is read
+               once and filed away, a state in progress is not;
+             - Severity Informational and not Warning: it is a report, not an alarm. What is
+               broken NOW is told by the red diamond and by the status bar. -->
         <ui:FAInfoBar DockPanel.Dock="Top"
                       Margin="0,8,0,0"
                       IsOpen="{Binding ShowAwaySummary, Mode=TwoWay}"
@@ -185,22 +185,22 @@
             </ui:FAInfoBar.ActionButton>
         </ui:FAInfoBar>
 
-        <!-- L'elenco delle macchine, SEMPRE visibile. Prima compariva solo quando ce n'era
-             gia' una seconda, e cosi' nessuno poteva scoprire di poterne aggiungere: l'unico
-             posto in cui la funzione si annunciava era la funzione stessa. Con una macchina
-             sola, al suo posto c'e' la frase che dice come aggiungerne un'altra. -->
-        <!-- Larga quanto il suo contenuto, fra 150 e 240: prima erano 210 px fissi anche per
-             due voci di dieci lettere, cioe' un terzo della finestra minima speso per il
-             vuoto. Il massimo serve al suggerimento su come aggiungere una macchina, che va
-             a capo invece di allargare la barra.
-             Da 0.19.0 non sono piu' i NOMI a decidere: la riga del carico e' piu' larga di
-             quasi ogni nome, e la barra passa da 163 a 191 px misurati quando compare. E'
-             spazio tolto ai quadranti, quindi vale la pena sapere quanto: la griglia cambia
-             numero di colonne solo quando lo spazio scende sotto 646 px (quattro celle da
-             148 piu' tre spazi da 18, vedi GaugeGridLayout), e i 28 px non bastano ad
-             attraversare quella soglia ne' a 900 px di finestra - dove le colonne sono tre
-             prima e dopo - ne' a 1125, dove sono quattro prima e dopo. Chi allarga ancora
-             questa riga rifaccia il conto. -->
+        <!-- The machine list, ALWAYS visible. It used to appear only once a second machine was
+             already there, so nobody could discover that machines can be added: the only place
+             the feature announced itself was the feature itself. With a single machine, in its
+             place there is the sentence that says how to add another one. -->
+        <!-- As wide as its content, between 150 and 240: it used to be a fixed 210 px even for
+             two entries of ten letters, which is a third of the minimum window spent on
+             emptiness. The maximum is there for the hint on how to add a machine, which wraps
+             instead of widening the sidebar.
+             Since 0.19.0 it is no longer the NAMES that decide: the load line is wider than
+             almost every name, and the sidebar goes from 163 to 191 px measured when it
+             appears. That is space taken from the gauges, so it is worth knowing how much: the
+             grid changes its number of columns only when the space drops below 646 px (four
+             cells of 148 plus three gaps of 18, see GaugeGridLayout), and the 28 px are not
+             enough to cross that threshold either at a 900 px window - where the columns are
+             three before and after - or at 1125, where they are four before and after. Whoever
+             widens this line further should redo the arithmetic. -->
         <Border DockPanel.Dock="Left"
                 MinWidth="150"
                 MaxWidth="240"
@@ -216,9 +216,9 @@
                            Theme="{StaticResource BodyStrongTextBlockStyle}"
                            Margin="0,0,0,8" />
 
-                <!-- I problemi stanno SOTTO l'elenco, non in un log: una macchina configurata
-                     male che semplicemente non compare e' indistinguibile da una che non e'
-                     stata aggiunta, e chi la cerca non saprebbe cosa correggere. -->
+                <!-- The problems go UNDER the list, not into a log: a badly configured machine
+                     that simply does not appear is indistinguishable from one that was never
+                     added, and whoever looks for it would not know what to fix. -->
                 <TextBlock DockPanel.Dock="Bottom"
                            Text="{Binding MachineListHint}"
                            IsVisible="{Binding ShowMachineListHint}"
@@ -241,20 +241,20 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <!-- AlwaysSelected: senza, un Ctrl+clic sulla voce evidenziata la
-                     deselezionerebbe, e la macchina guardata - che il giro principale
-                     continua a leggere - finirebbe sondata una seconda volta. -->
+                <!-- AlwaysSelected: without it, a Ctrl+click on the highlighted entry would
+                     deselect it, and the watched machine - which the main loop keeps
+                     reading - would end up probed a second time. -->
                 <ListBox ItemsSource="{Binding Machines}"
                          SelectedItem="{Binding SelectedMachine}"
                          SelectionMode="Single,AlwaysSelected"
                          Background="Transparent"
                          BorderThickness="0"
                          AutomationProperties.Name="Machines">
-                    <!-- Come per i processi: il nome accessibile sta sulla riga, non dentro
-                         il modello, perche' e' la riga che le frecce scelgono e che un
-                         lettore di schermo annuncia. E il suggerimento sta li' per la
-                         stessa ragione: su un pannello senza sfondo compariva solo sopra
-                         gli otto pixel del pallino e sul nome, non sul resto della riga. -->
+                    <!-- As with the processes: the accessible name goes on the row, not inside
+                         the template, because the row is what the arrow keys pick and what a
+                         screen reader announces. And the tooltip is there for the same
+                         reason: on a panel with no background it appeared only over the dot's
+                         eight pixels and over the name, not over the rest of the row. -->
                     <ListBox.Styles>
                         <Style Selector="ListBoxItem">
                             <Setter Property="AutomationProperties.Name"
@@ -264,17 +264,18 @@
                     </ListBox.Styles>
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:MachineRow">
-                            <!-- Il pallino dice se la macchina e' viva senza doverci cliccare
-                                 sopra; il colore segue la stessa regola della barra di stato,
-                                 e il testo del suggerimento dice perche'. -->
-                            <!-- Un Grid e non due StackPanel annidati: dentro uno StackPanel
-                                 orizzontale il figlio viene stirato in verticale, quindi il
-                                 segno centrato finirebbe a meta' fra il nome e la durata
-                                 invece che accanto al nome - e solo sulle righe guaste, che
-                                 sono quelle che si guardano. Con il Grid il segno sta nella
-                                 PRIMA riga, dove sta il nome, e la durata scorre sotto. -->
+                            <!-- The dot says whether the machine is alive without having to
+                                 click on it; the colour follows the same rule as the status
+                                 bar, and the tooltip text says why. -->
+                            <!-- A Grid and not two nested StackPanels: inside a horizontal
+                                 StackPanel the child is stretched vertically, so the centred
+                                 mark would land halfway between the name and the duration
+                                 instead of next to the name - and only on the faulted rows,
+                                 which are the ones you look at. With the Grid the mark sits
+                                 in the FIRST row, where the name is, and the duration runs
+                                 underneath. -->
                             <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
-                                <!-- 10 px e non 8: a 8 l'anello da 2 px non ha un buco. -->
+                                <!-- 10 px and not 8: at 8 a 2 px ring has no hole. -->
                                 <Panel Grid.Row="0"
                                        Grid.Column="0"
                                        Width="10"
@@ -295,19 +296,19 @@
                                            Grid.Column="1"
                                            Text="{Binding Name}"
                                            TextWrapping="Wrap" />
-                                <!-- Una riga sotto il nome che dice una cosa alla volta: da
-                                     quanto dura il guasto, oppure - quando la macchina
-                                     risponde - quanto sta lavorando. I due si escludono per
-                                     costruzione, vedi Subtitle.
-                                     Niente IsVisible, ed e' il punto: con IsVisible la riga
-                                     usciva dal layout e la voce si accorciava di colpo, cosa
-                                     che capita a ogni singhiozzo - i dieci secondi di
-                                     tolleranza di StatusEscalation tengono la durata vuota,
-                                     quindi ogni blip faceva due salti di altezza. Lo spazio
-                                     lo riserva la riga VUOTA: un TextBlock Caption senza
-                                     testo misura comunque una riga alta quanto il font,
-                                     quindi non serve un MinHeight - ce n'era uno da 15 px
-                                     che non legava mai, perche' la riga ne misura 16. -->
+                                <!-- A line under the name that says one thing at a time: how
+                                     long the fault has lasted, or - when the machine
+                                     answers - how hard it is working. The two are mutually
+                                     exclusive by construction, see Subtitle.
+                                     No IsVisible, and that is the point: with IsVisible the
+                                     line left the layout and the entry shortened all at once,
+                                     which happens at every blip - StatusEscalation's ten
+                                     seconds of tolerance keep the duration empty, so every
+                                     blip made two jumps in height. The space is reserved by
+                                     the EMPTY line: a Caption TextBlock with no text still
+                                     measures one line as tall as the font, so no MinHeight is
+                                     needed - there was one of 15 px that never took effect,
+                                     because the line measures 16. -->
                                 <TextBlock Grid.Row="1"
                                            Grid.Column="1"
                                            Text="{Binding Subtitle}"
@@ -324,9 +325,9 @@
         <ScrollViewer Margin="0,14,0,0" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Spacing="12">
 
-                <!-- I quadranti, tutti insieme in cima e staccati dal resto. Sono le sole
-                     metriche che si leggono con un'occhiata invece che con una lettura, e
-                     mescolarle alle righe scritte costringeva a cercarle. -->
+                <!-- The gauges, all together at the top and set apart from the rest. They are
+                     the only metrics you take in with a glance instead of by reading, and
+                     mixing them into the written rows forced you to hunt for them. -->
                 <Border Padding="16"
                         CornerRadius="8"
                         BorderThickness="1"
@@ -337,10 +338,10 @@
 
                         <TextBlock Text="At a glance" Theme="{StaticResource BodyStrongTextBlockStyle}" />
 
-                        <!-- La griglia decide colonne e misura delle celle: quante ne entrano
-                             alla misura minima, allargate fino a un massimo per riempire la
-                             riga. Niente buchi a fine riga, e quadranti grandi quanto c'e'
-                             posto (vedi GaugeGrid). -->
+                        <!-- The grid decides the columns and the size of the cells: how many
+                             fit at the minimum size, widened up to a maximum to fill the row.
+                             No holes at the end of a row, and gauges as large as there is
+                             room for (see GaugeGrid). -->
                         <ItemsControl ItemsSource="{Binding Gauges}" Margin="0,4,0,0">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -349,16 +350,16 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:MetricRow">
-                                    <!-- Il quadrante sta dentro un pulsante trasparente: CPU,
-                                         memoria e attivita' dei dischi si aprono sull'elenco
-                                         dei processi, lo spazio dei dischi no, e IsEnabled lo
-                                         dice senza spiegazioni.
-                                         Un pulsante e non un gestore di clic sul controllo,
-                                         cosi' ci si arriva anche da tastiera. Il nome e il
-                                         valore per il lettore di schermo stanno qui, perche' il
-                                         disegno su DrawingContext per lui non esiste.
-                                         Contenuto allineato a Stretch: il quadrante non ha una
-                                         misura propria, prende quella della cella. -->
+                                    <!-- The gauge sits inside a transparent button: CPU,
+                                         memory and disk activity open the process list, disk
+                                         space does not, and IsEnabled says so without
+                                         explaining.
+                                         A button and not a click handler on the control, so
+                                         it can be reached from the keyboard too. The name and
+                                         the value for the screen reader are here, because the
+                                         drawing on a DrawingContext does not exist for it.
+                                         Content aligned to Stretch: the gauge has no size of
+                                         its own, it takes the cell's. -->
                                     <Button Classes="gauge"
                                             Padding="0"
                                             Background="Transparent"
@@ -382,14 +383,14 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <!-- Il pannello dei processi, che si apre cliccando un quadrante.
-                             Sta QUI, sotto i quadranti e sopra lo storico, e non in una
-                             finestra a parte: la domanda "chi mi sta mangiando la CPU" nasce
-                             guardando il quadrante, e la risposta deve comparire accanto a
-                             cio' che l'ha fatta nascere. E' un livello ELEVATO dentro il
-                             riquadro (LayerFill invece di CardBackground): e' l'unica
-                             superficie che compare e sparisce, e deve staccarsi da cio' che
-                             resta. La finestra scorre fin qui da sola quando si apre: vedi il
+                        <!-- The process panel, which opens by clicking a gauge. It is HERE,
+                             under the gauges and above the history, and not in a separate
+                             window: the question "who is eating my CPU" arises while you look
+                             at the gauge, and the answer has to appear next to what raised
+                             it. It is a RAISED layer inside the card (LayerFill instead of
+                             CardBackground): it is the only surface that appears and
+                             disappears, and it has to stand out from what stays. The window
+                             scrolls down to it by itself when it opens: see the
                              code-behind. -->
                         <Border x:Name="ProcessPanel"
                                 IsVisible="{Binding IsProcessPanelOpen}"
@@ -415,11 +416,11 @@
                                            IsVisible="{Binding ProcessesProblem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                            Foreground="{DynamicResource SystemFillColorCriticalBrush}" />
 
-                                <!-- Le intestazioni, con le STESSE colonne delle righe: tre
-                                     numeri senza nome sopra non dicono di cosa sono. Le
-                                     larghezze sono misurate sui valori piu' larghi che le
-                                     colonne mostrano ("100.0 %", "649.8 MiB", "419.7 KiB/s"):
-                                     ogni pixel in piu' qui e' un pixel tolto al nome. -->
+                                <!-- The headers, with the SAME columns as the rows: three
+                                     numbers with no name above them do not say what they are.
+                                     The widths are measured against the widest values the
+                                     columns show ("100.0 %", "649.8 MiB", "419.7 KiB/s"):
+                                     every extra pixel here is a pixel taken from the name. -->
                                 <Grid ColumnDefinitions="*,70,90,90" Margin="12,0,12,0">
                                     <TextBlock Text="Name" Theme="{StaticResource CaptionTextBlockStyle}" Classes="secondary" />
                                     <TextBlock Grid.Column="1" Text="CPU" Theme="{StaticResource CaptionTextBlockStyle}" Classes="secondary" HorizontalAlignment="Right" />
@@ -427,45 +428,46 @@
                                     <TextBlock Grid.Column="3" Text="I/O" Theme="{StaticResource CaptionTextBlockStyle}" Classes="secondary" HorizontalAlignment="Right" />
                                 </Grid>
 
-                                <!-- Senza MaxHeight: sono al piu' quindici righe, e un elenco
-                                     che si fermava a 260 px costringeva a scorrere DENTRO un
-                                     pannello che sta gia' dentro una pagina che scorre. -->
+                                <!-- No MaxHeight: there are fifteen rows at most, and a list
+                                     that stopped at 260 px forced you to scroll INSIDE a
+                                     panel that already sits inside a page that scrolls. -->
                                 <ListBox x:Name="ProcessListBox"
                                          ItemsSource="{Binding Processes}"
                                          SelectedItem="{Binding SelectedProcess}"
                                          AutomationProperties.Name="{Binding ProcessesTitle}">
-                                    <!-- Niente Ctrl+C, ed e' una rinuncia misurata. Un
-                                         KeyBinding sull'elenco non scatta mai: il fuoco non
-                                         resta li' dentro, ne' cliccando una riga ne' con
-                                         Focusable="True" sul ListBox, provati entrambi sulla
-                                         finestra vera. Metterlo sulla FINESTRA lo farebbe
-                                         scattare col fuoco ovunque, copiando una riga che chi
-                                         guarda non sta vedendo. Una scorciatoia annunciata e
-                                         non funzionante e' peggio di nessuna scorciatoia.
-                                         Il tasto destro SELEZIONA la riga su cui si preme, e la
-                                         selezione e' anche il bersaglio di "End process". Un
-                                         gesto che chi lo fa considera di sola lettura sposta
-                                         quindi quel bersaglio: non e' pericoloso, perche' la
-                                         terminazione chiede conferma e la conferma si disarma
-                                         da sola quando la selezione cambia, ma va saputo. -->
-                                    <!-- ContextFlyout con FAMenuFlyout, e non ContextMenu: in
-                                         questa applicazione si carica SOLO FluentAvaloniaTheme,
-                                         che non porta un ControlTheme per ContextMenu. Un
-                                         ContextMenu si apre lo stesso, senza modello, e non
-                                         disegna niente: il menu del tasto destro non
-                                         comparirebbe mai, e l'unico segno sarebbe la selezione
-                                         che si sposta. -->
+                                    <!-- No Ctrl+C, and it is a measured give-up. A KeyBinding
+                                         on the list never fires: focus does not stay in
+                                         there, neither by clicking a row nor with
+                                         Focusable="True" on the ListBox, both tried on the
+                                         real window. Putting it on the WINDOW would make it
+                                         fire with the focus anywhere, copying a row the
+                                         person looking is not seeing. A shortcut that is
+                                         announced and does not work is worse than none.
+                                         The right button SELECTS the row it is pressed on,
+                                         and the selection is also the target of "End
+                                         process". A gesture that the person making it takes
+                                         to be read-only therefore moves that target: it is
+                                         not dangerous, because killing asks for confirmation
+                                         and the confirmation disarms itself when the
+                                         selection changes, but it is worth knowing. -->
+                                    <!-- ContextFlyout with FAMenuFlyout, and not ContextMenu:
+                                         this application loads ONLY FluentAvaloniaTheme,
+                                         which brings no ControlTheme for ContextMenu. A
+                                         ContextMenu opens all the same, with no template, and
+                                         draws nothing: the right-click menu would never
+                                         appear, and the only sign would be the selection
+                                         moving. -->
                                     <ListBox.ContextFlyout>
                                         <ui:FAMenuFlyout>
                                             <ui:FAMenuFlyoutItem Text="Copy row"
                                                                  Command="{Binding CopyProcessRowCommand}" />
                                         </ui:FAMenuFlyout>
                                     </ListBox.ContextFlyout>
-                                    <!-- Il nome accessibile sta sulla RIGA, il ListBoxItem: e'
-                                         cio' che le frecce selezionano e che un lettore di
-                                         schermo annuncia. Messo sulla Grid dentro il modello
-                                         non lo leggeva nessuno. ReflectionBinding perche' uno
-                                         Style non ha un x:DataType da cui compilare. -->
+                                    <!-- The accessible name goes on the ROW, the ListBoxItem:
+                                         it is what the arrow keys select and what a screen
+                                         reader announces. When it was on the Grid inside the
+                                         template, nobody read it. ReflectionBinding because a
+                                         Style has no x:DataType to compile against. -->
                                     <ListBox.Styles>
                                         <Style Selector="ListBoxItem">
                                             <Setter Property="AutomationProperties.Name"
@@ -490,26 +492,26 @@
                                     </ListBox.ItemTemplate>
                                 </ListBox>
 
-                                <!-- UN pulsante che cambia scritta: il primo clic arma, il
-                                     secondo termina. Prima erano due pulsanti alternati, e al
-                                     primo clic quello premuto spariva portandosi via il fuoco
-                                     della tastiera. -->
+                                <!-- ONE button that changes its text: the first click arms,
+                                     the second kills. It used to be two alternating buttons,
+                                     and on the first click the one that had been pressed
+                                     disappeared, taking the keyboard focus with it. -->
                                 <Button Content="{Binding EndButtonText}"
                                         IsEnabled="{Binding CanEndProcess}"
                                         Command="{Binding EndSelectedProcessCommand}" />
                             </StackPanel>
                         </Border>
 
-                        <!-- Lo storico. Il servizio lo registra da sempre e fino a oggi non
-                             l'aveva mai guardato nessuno. Sta a larghezza piena e non sotto
-                             ogni quadrante: sessanta barrette in centocinquanta pixel non si
-                             leggono. -->
-                        <!-- Title a sinistra e selettore del periodo a destra, sulla stessa
-                             riga: il titolo dice cosa si sta guardando e la tendina come
-                             cambiarlo, e tenerli vicini evita di far cercare l'uno per capire
-                             l'altro. Nel DockPanel la tendina va dichiarata PRIMA, perche' un
-                             figlio agganciato a destra prende il suo spazio prima di quello
-                             che riempie il resto. -->
+                        <!-- The history. The service has always recorded it and until today
+                             nobody had ever looked at it. It is full width and not under each
+                             gauge: sixty little bars in a hundred and fifty pixels cannot be
+                             read. -->
+                        <!-- Title on the left and period selector on the right, on the same
+                             line: the title says what you are looking at and the drop-down
+                             how to change it, and keeping them together saves hunting for one
+                             in order to understand the other. In the DockPanel the drop-down
+                             must be declared FIRST, because a child docked to the right takes
+                             its space before the one that fills the rest. -->
                         <DockPanel Margin="0,14,0,0" IsVisible="{Binding HasGauges}">
                             <ComboBox DockPanel.Dock="Right"
                                       ItemsSource="{x:Static vm:MainViewModel.HistoryPeriodOptions}"
@@ -539,11 +541,11 @@
                                                          RedlineBrush="{DynamicResource SystemFillColorCriticalBrush}"
                                                          MissingBrush="{DynamicResource TextFillColorTertiaryBrush}" />
 
-                                        <!-- Il motivo per cui la striscia non c'e' sta QUI e
-                                             non nella barra di stato: la persistenza spenta e'
-                                             una scelta di configurazione, non un guasto della
-                                             macchina, e colorare di rosso la finestra per
-                                             questo insegnerebbe a ignorare gli allarmi veri. -->
+                                        <!-- The reason the strip is not there goes HERE and
+                                             not in the status bar: persistence switched off is
+                                             a configuration choice, not a fault of the
+                                             machine, and colouring the window red for it would
+                                             teach you to ignore the real alarms. -->
                                         <TextBlock Text="{Binding HistoryNote}"
                                                    IsVisible="{Binding ShowHistoryNote}"
                                                    Theme="{StaticResource CaptionTextBlockStyle}"
@@ -558,9 +560,9 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Tutto il resto, scritto. Un valore che non e' una frazione di un massimo
-                     si legge, non si guarda: su un quadrante suggerirebbe un limite che non
-                     esiste. -->
+                <!-- Everything else, written out. A value that is not a fraction of a maximum
+                     is read, not glanced at: on a gauge it would suggest a limit that does not
+                     exist. -->
                 <Border Padding="16"
                         CornerRadius="8"
                         BorderThickness="1"
@@ -575,9 +577,9 @@
                                 <DataTemplate x:DataType="vm:MetricGroup">
                                     <StackPanel Margin="0,10,0,0" Spacing="2">
 
-                                        <!-- Il nome della sorgente resta, ma da sottotitolo:
-                                             serve a sapere DA DOVE viene un numero, non a
-                                             separare due riquadri che ormai sono uno. -->
+                                        <!-- The source's name stays, but as a subtitle: it is
+                                             there so you know WHERE a number comes from, not
+                                             to separate two cards that are now one. -->
                                         <TextBlock Text="{Binding Title}"
                                                    IsVisible="{Binding ShowRows}"
                                                    Theme="{StaticResource BodyStrongTextBlockStyle}"

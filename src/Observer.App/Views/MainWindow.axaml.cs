@@ -11,25 +11,25 @@ using Observer.App.ViewModels;
 namespace Observer.App.Views;
 
 /// <summary>
-/// La finestra. Il code-behind fa le cose che il view model non puo' fare perche' non sa
-/// cos'e' una finestra: portare in vista il panelBounds dei processi quando si apre, dire al view
-/// model quando la finestra e' ridotta a icona, ricordare dov'era e quanto grande, e scalare
-/// tutto quando cambia lo zoom.
+/// The window. The code-behind does the things the view model cannot, because it does not know
+/// what a window is: bringing the process panel into view when it opens, telling the view model
+/// when the window is minimized, remembering where it was and how big, and scaling everything
+/// when the zoom changes.
 /// </summary>
 /// <remarks>
-/// Le regole che si possono provare senza una finestra stanno altrove: cosa ricordare alla
-/// chiusura e' <see cref="WindowPlacement.AtClose"/>, e se una position sta su uno
-/// screen e' <see cref="WindowPlacement.WithinAnyOf"/>. Qui restano solo le letture e le
-/// scritture delle proprieta' della finestra.
+/// The rules that can be tested without a window live elsewhere: what to remember on close is
+/// <see cref="WindowPlacement.AtClose"/>, and whether a position sits on a screen is
+/// <see cref="WindowPlacement.WithinAnyOf"/>. What stays here is only the reads and the writes
+/// of the window's properties.
 /// </remarks>
 public partial class MainWindow : Window
 {
-    /// <summary>Quanto del panelBounds dei processi portare in vista quando si apre.</summary>
+    /// <summary>How much of the process panel to bring into view when it opens.</summary>
     /// <remarks>
-    /// Il titolo, le intestazioni e le prime righe: abbastanza da vedere che si e' aperto e
-    /// cosa contiene. Non tutto il panelBounds — quindici righe sono piu' alte della finestra
-    /// predefinita, e portarlo in vista per intero spingeva fuori i quadranti, compreso
-    /// quello appena cliccato.
+    /// The title, the headers and the first rows: enough to see that it opened and what it
+    /// contains. Not the whole panel — fifteen rows are taller than the default window, and
+    /// bringing all of it into view pushed the gauges out, including the one that had just
+    /// been clicked.
     /// </remarks>
     private const double PanelPeekHeight = 160d;
 
@@ -39,50 +39,50 @@ public partial class MainWindow : Window
     private INotifyPropertyChanged? observedContext;
     private Preferences preferences;
 
-    /// <summary>L'ultima geometria vista in state normalGeometry in questa sessione, se c'e' stata.</summary>
+    /// <summary>The last geometry seen in the normal state in this session, if there was one.</summary>
     private WindowPlacement? lastNormalGeometry;
 
-    /// <summary>Se l'ultimo state non ridotto a icona era a tutto screen.</summary>
+    /// <summary>Whether the last state that was not minimized was maximized.</summary>
     private bool wasMaximized;
 
-    /// <summary>La scale applicata adesso.</summary>
+    /// <summary>The scale applied right now.</summary>
     private double scale = 1d;
 
-    /// <summary>Chi aveva il fuoco quando il panelBounds si e' aperto: di norma, il quadrante.</summary>
+    /// <summary>Who had the focus when the panel opened: normally, the gauge.</summary>
     private IInputElement? focusBeforeOpen;
 
-    /// <summary>Costruttore che il compilatore XAML di Avalonia esige, e che nessuno chiama.</summary>
+    /// <summary>Constructor that Avalonia's XAML compiler demands, and that nobody calls.</summary>
     /// <remarks>
-    /// L'applicazione usa sempre quello con le preferences, gia' lette e gia' applicate per il
-    /// tema. Questo esiste solo perche' senza un costruttore pubblico senza argomenti il XAML
-    /// della finestra non compila (AVLN3000).
+    /// The application always uses the one that takes the preferences, already read and already
+    /// applied for the theme. This one exists only because without a public parameterless
+    /// constructor the window's XAML does not compile (AVLN3000).
     /// </remarks>
     public MainWindow()
         : this(PreferencesStore.Read())
     {
     }
 
-    /// <summary>Costruisce la finestra e la rimette dov'era.</summary>
-    /// <param name="preferences">Le preferences gia' lette, e gia' applicate per il tema.</param>
+    /// <summary>Builds the window and puts it back where it was.</summary>
+    /// <param name="preferences">The preferences already read, and already applied for the theme.</param>
     public MainWindow(Preferences preferences)
     {
         ArgumentNullException.ThrowIfNull(preferences);
 
         InitializeComponent();
 
-        // I minimi scritti nel XAML sono quelli a scale 1: a scale 1,3 la stessa finestra
-        // deve essere il 30% piu' grande per contenere lo stesso layout, e a 0,75 puo' essere
-        // il 25% piu' piccola.
+        // The minimums written in the XAML are the ones at scale 1: at scale 1.3 the same
+        // window has to be 30% bigger to hold the same layout, and at 0.75 it can be
+        // 25% smaller.
         baseMinWidth = MinWidth;
         baseMinHeight = MinHeight;
 
         this.preferences = preferences;
         Reposition(preferences.Placement);
 
-        // Con un Post, non nel gestore: su Windows lo state "a tutto screen" arriva con la
-        // stessa raffica di eventi che porta la newScale position e misura, e chi legge
-        // WindowState dentro il gestore rischia di annotare la geometria massimizzata come
-        // se fosse quella normalGeometry. Rimandato in coda, il controllo gira a raffica finita.
+        // With a Post, not inside the handler: on Windows the maximized state arrives in the
+        // same burst of events that carries the new position and size, and whoever reads
+        // WindowState inside the handler risks recording the maximized geometry as if it were
+        // the normal one. Deferred to the queue, the check runs once the burst is over.
         PositionChanged += (_, _) => Dispatcher.UIThread.Post(RecordIfNormal);
         SizeChanged += (_, _) => Dispatcher.UIThread.Post(RecordIfNormal);
 
@@ -102,27 +102,29 @@ public partial class MainWindow : Window
 
         WindowState state = change.GetNewValue<WindowState>();
 
-        // Ridotta a icona non dice niente su com'era: si ricorda l'ultimo state pieno.
+        // Minimized says nothing about how it was: what is remembered is the last state that was
+        // not minimized.
         if (state != WindowState.Minimized)
         {
             wasMaximized = state == WindowState.Maximized;
         }
 
-        // Ridotta a icona, la finestra legge ogni dieci secondi invece che ogni secondo. Lo
-        // state lo sa solo la finestra; la cadenza la decide il view model.
+        // Minimized, the window reads every ten seconds instead of every second. Only the
+        // window knows the state; the view model decides the cadence.
         if (DataContext is MainViewModel viewModel)
         {
             viewModel.IsMinimized = state == WindowState.Minimized;
         }
     }
 
-    /// <summary>Rimette la finestra dov'era, se quel posto esiste ancora.</summary>
+    /// <summary>Puts the window back where it was, if that place still exists.</summary>
     /// <remarks>
-    /// Il controllo sugli schermi non e' pignoleria: con un monitor esterno scollegato la
-    /// finestra riaprirebbe fuori da tutto, invisibile e senza modo di afferrarla. In quel caso
-    /// si apre onScreen decide il sistema, come la prima volta. A tutto screen si torna anche
-    /// allora: lo state e' dello screen che c'e', non di quello che manca. E lo si imposta
-    /// PRIMA che la finestra si mostri, cosi' appare gia' piena invece di saltarci dopo.
+    /// The check against the screens is not pedantry: with an external monitor unplugged the
+    /// window would reopen outside everything, invisible and with no way to grab it. In that case
+    /// it opens where the system decides, as it did the first time. Maximized comes back even
+    /// then: the state belongs to the screen that is there, not to the one that is missing. And it
+    /// is set BEFORE the window is shown, so it appears already maximized instead of snapping
+    /// to it afterwards.
     /// </remarks>
     private void Reposition(WindowPlacement? savedPosition)
     {
@@ -151,20 +153,20 @@ public partial class MainWindow : Window
     private static WindowPlacement.WorkArea WorkingAreaOf(Screen screen) => new(
         screen.WorkingArea.X, screen.WorkingArea.Y, screen.WorkingArea.Width, screen.WorkingArea.Height);
 
-    /// <summary>Annota la geometria, se la finestra e' normalGeometry e sta su uno screen.</summary>
+    /// <summary>Records the geometry, if the window is normal and sits on a screen.</summary>
     /// <remarks>
-    /// Ci si arriva solo da un Post: i due gestori di geometria rimandano in coda, e fra
-    /// l'accodamento e il turno la finestra puo' essersi chiusa. Da li' in poi
-    /// <c>Screens.ScreenFromWindow</c>, che <c>ApplyMinimumSize</c> chiama sempre, lancia
-    /// ObjectDisposedException: il contratto lo dichiara, e la condizione del lancio e'
-    /// esattamente <c>PlatformImpl == null</c>, cioe' la guardia qui sopra. Disiscrivere i due
-    /// gestori alla chiusura non basterebbe: un'operazione gia' accodata si toglie solo con
-    /// Abort, e Post non ne restituisce l'handle.
-    /// Misurato su un banco Avalonia: con la X, con Alt+F4 e chiudendo subito dopo un
-    /// trascinamento vero non e' mai successo (0 su 160 corse); con una Close() secca nello
-    /// stesso giro di una raffica di geometria succede sempre (20 su 20). Perche' le due vie
-    /// si comportino diversamente non e' state dimostrato, quindi qui non c'e' scritto: la
-    /// guardia copre tutte e due. Oggi l'applicazione non chiama mai Close().
+    /// It is only reached from a Post: the two geometry handlers defer to the queue, and between
+    /// the queuing and the turn the window may have closed. From then on
+    /// <c>Screens.ScreenFromWindow</c>, which <c>ApplyMinimumSize</c> always calls, throws
+    /// ObjectDisposedException: the contract says so, and the condition for the throw is
+    /// exactly <c>PlatformImpl == null</c>, which is the guard just above. Unsubscribing the two
+    /// handlers on close would not be enough: an operation already queued can only be removed
+    /// with Abort, and Post does not return its handle.
+    /// Measured on an Avalonia bench: with the close button, with Alt+F4 and by closing right
+    /// after a real drag it never happened (0 out of 160 runs); with a bare Close() in the same
+    /// turn as a burst of geometry it always happens (20 out of 20). Why the two paths behave
+    /// differently has not been proven, so it is not written here: the guard covers both of them.
+    /// Today the application never calls Close().
     /// </remarks>
     private void RecordIfNormal()
     {
@@ -178,12 +180,12 @@ public partial class MainWindow : Window
             lastNormalGeometry = normalGeometry;
         }
 
-        // La finestra puo' essere passata a uno screen piu' piccolo: il tetto ai minimi si
-        // ricalcola su quello.
+        // The window may have moved to a smaller screen: the cap on the minimums is recomputed
+        // against that one.
         ApplyMinimumSize();
     }
 
-    /// <summary>Scrive dov'e' la finestra, lo zoom, il tema e il resto, per la prossima volta.</summary>
+    /// <summary>Writes where the window is, the zoom, the theme and the rest, for next time.</summary>
     private void SaveOnClose()
     {
         MainViewModel? viewModel = DataContext as MainViewModel;
@@ -198,9 +200,9 @@ public partial class MainWindow : Window
             preferences.Placement,
             CurrentGeometry());
 
-        // Niente ?? sul nome: null qui vuol dire "questo computer", non "non lo so". Con un
-        // ripiego sul valore vecchio, chi passa da una macchina remota a quella locale si
-        // ritroverebbe la remota riaperta per sempre.
+        // No ?? on the name: null here means "this computer", not "I do not know". With a
+        // fallback to the old value, anyone moving from a remote machine to the local one would
+        // find the remote one reopened for ever.
         preferences = new Preferences(
             position,
             scaleToSave,
@@ -210,21 +212,21 @@ public partial class MainWindow : Window
         PreferencesStore.Write(preferences);
     }
 
-    /// <summary>Scrive le preferences prendendo dal view model TUTTO cio' che sa lui.</summary>
-    /// <param name="viewModel">Il view model a screen.</param>
+    /// <summary>Writes the preferences, taking from the view model EVERYTHING it knows.</summary>
+    /// <param name="viewModel">The view model on screen.</param>
     /// <remarks>
-    /// Non <c>preferences with { la sola cosa cambiata }</c>: <c>preferences</c> e' ancora il
-    /// record letto all'avvio, e periodo e macchina si cambiano SENZA scrivere - li salva solo
-    /// la chiusura. Scegliendo "7 days" e poi cambiando zoom, sul disco finiva lo zoom nuovo
-    /// accanto al periodo dell'avvio; se poi il processo moriva prima della chiusura (spegnimento
-    /// forzato, kill) si perdeva la scelta fatta PRIMA e sopravviveva quella fatta DOPO, che e'
-    /// il contrario di quello che chiunque si aspetta. La position no: quella la sa la finestra,
-    /// non il view model, e va letta alla chiusura - vedi <c>SaveOnClose</c>.
+    /// Not <c>preferences with { the one thing that changed }</c>: <c>preferences</c> is still
+    /// the record read at start-up, and period and machine change WITHOUT writing - only the
+    /// close saves them. Choosing "7 days" and then changing the zoom put the new zoom on disk
+    /// next to the start-up period; and if the process then died before the close (forced
+    /// shutdown, kill) the choice made FIRST was lost and the one made AFTER survived, which is
+    /// the opposite of what anyone expects. Not the position: the window knows that one, not the
+    /// view model, and it has to be read at close - see <c>SaveOnClose</c>.
     /// </remarks>
     private void Save(MainViewModel viewModel)
     {
-        // Niente ?? sulla macchina, per la stessa ragione scritta in SaveOnClose: null vuol dire
-        // "questo computer", non "non lo so".
+        // No ?? on the machine, for the same reason written in SaveOnClose: null means
+        // "this computer", not "I do not know".
         preferences = preferences with
         {
             Zoom = viewModel.Zoom,
@@ -249,10 +251,10 @@ public partial class MainWindow : Window
 
         if (DataContext is MainViewModel viewModel)
         {
-            // I valori salvati entrano nel view model PRIMA di iscriversi a PropertyChanged:
-            // il tema lo ha gia' applicato l'applicazione e la scale si applica a mano qui
-            // sotto, quindi il gestore non deve scattare. Scattava, e riscriveva identico a
-            // ogni avvio il file appena letto.
+            // The saved values enter the view model BEFORE subscribing to PropertyChanged:
+            // the application has already applied the theme and the scale is applied by hand
+            // just below, so the handler must not fire. It did fire, and rewrote the file it
+            // had just read, identical, at every start-up.
             viewModel.Zoom = preferences.Zoom;
             ApplyScale(viewModel.Zoom);
             viewModel.Theme = preferences.Theme;
@@ -295,8 +297,9 @@ public partial class MainWindow : Window
 
         if (!viewModel.IsProcessPanelOpen)
         {
-            // Chiuso il panelBounds, il fuoco torna da onScreen era partito invece di sparire con
-            // l'elenco: da tastiera, un fuoco perso vuol dire ricominciare dall'inizio.
+            // With the panel closed, the focus goes back where it came from instead of
+            // vanishing with the list: for someone using the keyboard, losing focus means
+            // starting over from scratch.
             focusBeforeOpen?.Focus();
             focusBeforeOpen = null;
 
@@ -305,12 +308,12 @@ public partial class MainWindow : Window
 
         focusBeforeOpen = FocusManager?.GetFocusedElement();
 
-        // DOPO il layout, non subito: il panelBounds appena reso visibile non ha ancora una
-        // dimensione, e portare in vista un rettangolo vuoto non porta da nessuna parte. E il
-        // fuoco va nell'elenco, cosi' le frecce scelgono la riga e Invio non cade nel vuoto.
-        // Senza questo, alla dimensione predefinita il clic sul quadrante apriva il panelBounds
-        // sotto la piega e sembrava non aver fatto niente: era il difetto piu' grave della
-        // ricognizione, e questo e' l'intero rimedio.
+        // AFTER the layout, not right away: the panel that has just been made visible has no
+        // size yet, and bringing an empty rectangle into view goes nowhere. And the focus goes
+        // into the list, so the arrow keys pick the row and Enter has something to act on.
+        // Without this, at the default size a click on the gauge opened the panel below the
+        // fold and looked as if it had done nothing: it was the worst defect the review found,
+        // and this is the whole remedy.
         Dispatcher.UIThread.Post(
             () =>
             {
@@ -322,12 +325,12 @@ public partial class MainWindow : Window
             DispatcherPriority.Loaded);
     }
 
-    /// <summary>Scala tutta la finestra, e con lei la sua misura minima.</summary>
+    /// <summary>Scales the whole window, and its minimum size with it.</summary>
     /// <remarks>
-    /// Sotto 1 e' l'unico vincolo d'ordine nuovo: la larghezza savedPosition nel file puo' stare
-    /// sotto il minimo del XAML (a 0,75 il minimo e' 540), quindi questo deve girare prima del
-    /// primo layout. Gira da <see cref="Observe"/>, all'assegnazione del DataContext, che in
-    /// <c>App</c> precede lo Show.
+    /// Below 1 is the one new ordering constraint: the width saved in the file can be below the
+    /// XAML minimum (at 0.75 the minimum is 540), so this has to run before the first layout. It
+    /// runs from <see cref="Observe"/>, on the DataContext assignment, which in <c>App</c> comes
+    /// before Show.
     /// </remarks>
     private void ApplyScale(double newScale)
     {
@@ -336,13 +339,13 @@ public partial class MainWindow : Window
         ApplyMinimumSize();
     }
 
-    /// <summary>I minimi del XAML per la scale, ma mai piu' grandi dello screen.</summary>
+    /// <summary>The XAML minimums times the scale, but never bigger than the screen.</summary>
     /// <remarks>
-    /// A 150% i minimi del XAML diventano 1080x780 logici, e su un portatile 1366x768 l'area
-    /// di lavoro e' alta 720: senza tetto la finestra si allungherebbe oltre lo screen e non
-    /// si potrebbe piu' rimpicciolire. Sotto il minimo di progetto il contenuto scorre, che e'
-    /// cio' che lo ScrollViewer c'e' a fare. L'area di lavoro e' in pixel fisici e i minimi in
-    /// logici: si divide per la scale dello screen.
+    /// At 150% the XAML minimums become 1080x780 logical, and on a 1366x768 laptop the working
+    /// area is 720 tall: with no cap the window would stretch past the screen and could no
+    /// longer be made smaller. Below the design minimum the content scrolls, which is what the
+    /// ScrollViewer is there for. The working area is in physical pixels and the minimums in
+    /// logical ones: divide by the screen's scaling.
     /// </remarks>
     private void ApplyMinimumSize()
     {

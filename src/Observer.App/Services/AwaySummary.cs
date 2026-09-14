@@ -3,32 +3,32 @@ using System.Globalization;
 namespace Observer.App.Services;
 
 /// <summary>
-/// La riga che racconta a una persona cosa si e' persa mentre non guardava.
+/// The line that tells a person what they missed while they were not looking.
 /// </summary>
 /// <remarks>
-/// Pura e senza finestra, come <see cref="Downtime"/>: si prova senza disegnare niente. Sta
-/// separata da <see cref="HistoryStrip.Assenze"/> di proposito - quella produce i fatti, questa
-/// li mette in parole.
+/// Pure and needs no window, like <see cref="Downtime"/>: it is tested without drawing anything.
+/// It is kept apart from <see cref="HistoryStrip.FindGaps"/> deliberately - that one produces the
+/// facts, this one puts them into words.
 /// </remarks>
 public static class AwaySummary
 {
-    /// <summary>La riga per una macchina, vuota longestRange non c'e' niente da dire.</summary>
-    /// <param name="machineName">Come si chiama la macchina a schermo.</param>
-    /// <param name="gaps">I vuoti trovati nel suo storico.</param>
-    /// <param name="withDay">Se gli istanti devono portare il giorno della settimana.</param>
-    /// <returns>La frase, o stringa vuota.</returns>
+    /// <summary>The line for one machine, empty when there is nothing to say.</summary>
+    /// <param name="machineName">What the machine is called on screen.</param>
+    /// <param name="gaps">The holes found in its history.</param>
+    /// <param name="withDay">Whether the timestamps must carry the day of the week.</param>
+    /// <returns>The sentence, or an empty string.</returns>
     /// <remarks>
     /// <para>
-    /// Il silenzio e' un risultato, non un guasto: nessuna riga vuol dire "ho chiesto e non
-    /// c'era niente da dire". E' il contrario di un avviso che non compare - li' non si sa se e'
-    /// andato tutto bene o se il canale e' rotto - perche' l'impossibilita' di chiedere la
-    /// scrive il chiamante con un'altra frase, e quella frase compare.
+    /// Silence is a result, not a fault: no line means "I asked and there was nothing to say".
+    /// It is the opposite of an alert that never shows up - there you cannot tell whether
+    /// everything went well or the channel is broken - because being unable to ask is written by
+    /// the caller as a different sentence, and that sentence does show up.
     /// </para>
     /// <para>
-    /// Un vuoto che tocca il edgeGap vecchio NON si conta fra le interruzioni: la ritenzione
-    /// cancella un prefisso, e un prefisso mancante e' indistinguibile da una macchina accesa a
-    /// meta' finestra. Chiamarlo "interruzione di tre ore" sarebbe inventare una cosa che
-    /// nessuno ha visto, e una sola frase inventata insegna a non fidarsi di tutte le altre.
+    /// A hole that touches the oldest edge does NOT count as an outage: retention deletes a
+    /// prefix, and a missing prefix is indistinguishable from a machine switched on halfway
+    /// through the window. Calling it a "three-hour outage" would be inventing something nobody
+    /// saw, and a single invented sentence teaches you to distrust all the others.
     /// </para>
     /// </remarks>
     public static string LineFor(string machineName, IReadOnlyList<HistoryGap> gaps, bool withDay)
@@ -63,10 +63,10 @@ public static class AwaySummary
 
         string longestRange = DescribeRange(longestGap, withDay);
 
-        // Con una sola interruzione il total E' quella: ripetere "in 1 period" sarebbe rumore.
-        // Con piu' di una il total da solo mentirebbe per omissione - tre ore in un colpo e tre
-        // ore in dieci singhiozzi sono due macchine diverse - quindi si dice quante sono e si
-        // mostra la piu' lunga, che e' quella che decide se alzarsi dalla sedia.
+        // With a single outage the total IS that outage: repeating "in 1 period" would be noise.
+        // With more than one the total alone would lie by omission - three hours in one go and
+        // three hours in ten hiccups are two different machines - so the count is stated and the
+        // longest one is shown, because that is the one that decides whether you leave your chair.
         string body = outages.Length == 1
             ? $"not measured for {Downtime.Describe(total)} ({longestRange})"
             : $"not measured for {Downtime.Describe(total)} in {outages.Length.ToString(CultureInfo.InvariantCulture)} periods (longest {longestRange})";
@@ -74,16 +74,16 @@ public static class AwaySummary
         return tail.Length == 0 ? $"{machineName}: {body}" : $"{machineName}: {body}; {tail}";
     }
 
-    /// <summary>I due estremi di un'interruzione, col giorno longestRange serve davvero.</summary>
+    /// <summary>The two ends of an outage, with the day when it is really needed.</summary>
     /// <remarks>
-    /// Il giorno si mette anche longestRange <paramref name="withDay"/> e' falso ma i due estremi
-    /// cadono in due GIORNATE diverse, e non e' pignoleria: qui si stampa l'arco di
-    /// un'interruzione intera, non i due lati di una barra. A ventiquattro ore un'gap puo'
-    /// durare quasi l'intera finestra, e senza il giorno la riga direbbe
-    /// "not measured for 23 h 45 min (09:25 – 09:10)" - una durata di quasi un giorno accanto a
-    /// un intervallo che si legge come un quarto d'ora all'indietro. Succede anche a un'ora, su
-    /// una macchina spenta a cavallo di mezzanotte. Per coppia e non per soglia, cosi' e' giusto
-    /// in ogni periodo invece che in quelli che si e' pensato di controllare.
+    /// The day is added even when <paramref name="withDay"/> is false but the two ends fall on
+    /// two different DAYS, and this is not pedantry: what is printed here is the span of a whole
+    /// outage, not the two sides of a bar. At twenty-four hours a gap can last almost the entire
+    /// window, and without the day the line would read
+    /// "not measured for 23 h 45 min (09:25 – 09:10)" - a duration of almost a day next to an
+    /// interval that reads as a quarter of an hour backwards. It happens at one hour too, on a
+    /// machine switched off across midnight. Decided per pair, not by a threshold, so it is right
+    /// in every period instead of in the ones somebody thought to check.
     /// </remarks>
     private static string DescribeRange(HistoryGap gap, bool withDay)
     {
@@ -94,8 +94,8 @@ public static class AwaySummary
     }
 
     /// <remarks>
-    /// Stesso formato di <see cref="HistoryStrip.Descrivi"/>: InvariantCulture perche' cio' che
-    /// si vede e' in inglese.
+    /// Same format as <see cref="HistoryStrip.Describe"/>: InvariantCulture because what is on
+    /// screen is in English.
     /// </remarks>
     private static string DescribeInstant(DateTimeOffset instant, bool withDay) =>
         instant.ToLocalTime().ToString(withDay ? "ddd HH:mm" : "HH:mm", CultureInfo.InvariantCulture);

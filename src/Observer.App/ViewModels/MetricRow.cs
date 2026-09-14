@@ -5,213 +5,213 @@ using Observer.App.Services;
 namespace Observer.App.ViewModels;
 
 /// <summary>
-/// Una riga di metrica a schermo.
+/// A metric row on screen.
 /// </summary>
 /// <remarks>
-/// Deriva da <see cref="ObservableObject"/> e NON da <see cref="ViewModelBase"/>, e il nome
-/// non finisce per "ViewModel": entrambe le cose di proposito. ViewLocator aggancia
-/// qualunque ViewModelBase e, non trovando una Observer.App.Views.MetricRowView, disegnerebbe
-/// un TextBlock "Not Found" al posto della riga. Qui il disegno lo decide il DataTemplate
-/// dichiarato in MainWindow.axaml.
+/// Derives from <see cref="ObservableObject"/> and NOT from <see cref="ViewModelBase"/>, and the
+/// name does not end in "ViewModel": both on purpose. ViewLocator picks up
+/// any ViewModelBase and, finding no Observer.App.Views.MetricRowView, would draw
+/// a "Not Found" TextBlock in place of the row. Here the drawing is decided by the DataTemplate
+/// declared in MainWindow.axaml.
 /// </remarks>
 public sealed partial class MetricRow : ObservableObject
 {
-    /// <summary>Costruisce la riga dal suo stato.</summary>
-    public MetricRow(MetricRowState stato)
+    /// <summary>Builds the row from its state.</summary>
+    public MetricRow(MetricRowState state)
     {
-        ArgumentNullException.ThrowIfNull(stato);
+        ArgumentNullException.ThrowIfNull(state);
 
-        Key = stato.Key;
-        Label = stato.Label;
-        Display = stato.Display;
-        HasGauge = stato.Fraction.HasValue;
+        Key = state.Key;
+        Label = state.Label;
+        Display = state.Display;
+        HasGauge = state.Fraction.HasValue;
 
-        // Quando la frazione manca, l'ultima resta dov'e' invece di azzerarsi. Non e' per
-        // conservarla - il quadrante sparisce comunque, perche' HasGauge e' falso - ma
-        // perche' la lancetta si anima: scrivere zero le darebbe un bersaglio, e per qualche
-        // decimo di secondo si vedrebbe scendere a fondo scala prima di sparire, come se la
-        // macchina si fosse svuotata invece che smettere di rispondere.
-        if (stato.Fraction is { } misurata)
+        // When the fraction is missing, the last one stays where it is instead of being zeroed.
+        // Not to keep it - the gauge disappears anyway, because HasGauge is false - but
+        // because the needle animates: writing zero would give it a target, and for a few
+        // tenths of a second you would see it drop to the bottom of the scale before vanishing, as
+        // if the machine had emptied out rather than simply stopped answering.
+        if (state.Fraction is { } fraction)
         {
-            Fraction = misurata;
+            Fraction = fraction;
         }
-        Severity = stato.Severity;
+        Severity = state.Severity;
     }
 
-    /// <summary>Identita' stabile della riga.</summary>
+    /// <summary>Stable identity of the row.</summary>
     public string Key { get; }
 
-    /// <summary>True quando da questo quadrante si puo' aprire l'elenco dei processi.</summary>
+    /// <summary>True when the process list can be opened from this gauge.</summary>
     /// <remarks>
-    /// Falso sullo spazio dei dischi, e quel quadrante allora non e' cliccabile affatto: meglio
-    /// nessun invito che un invito che porta a un pannello vuoto. Vero sull'attivita' dei
-    /// dischi, che apre l'elenco per I/O. Il perche' sta in <see cref="ProcessResource"/>.
+    /// False on disk space, and that gauge is then not clickable at all: better
+    /// no invitation than an invitation leading to an empty panel. True on disk
+    /// activity, which opens the list by I/O. The reason is in <see cref="ProcessResource"/>.
     /// </remarks>
     public bool CanShowProcesses => ProcessResource.From(Key) is not null;
 
-    /// <summary>Nome leggibile della metrica.</summary>
+    /// <summary>Readable name of the metric.</summary>
     [ObservableProperty]
     public partial string Label { get; set; }
 
-    /// <summary>Display formattato, oppure il motivo per cui manca.</summary>
+    /// <summary>The formatted value, or the reason it is missing.</summary>
     [ObservableProperty]
     public partial string Display { get; set; }
 
-    /// <summary>Quanto e' pieno il quadrante, da 0 a 1.</summary>
+    /// <summary>How full the gauge is, from 0 to 1.</summary>
     /// <remarks>
-    /// La stessa frazione che arriva dal servizio, non moltiplicata per cento. Prima veniva
-    /// portata a 0..100 per la barra di avanzamento che stava qui; il quadrante lavora sulla
-    /// frazione, e la conversione in mezzo era solo un posto in piu' dove sbagliare.
+    /// The same fraction that arrives from the service, not multiplied by a hundred. It used to be
+    /// scaled to 0..100 for the progress bar that was here; the gauge works on the
+    /// fraction, and the conversion in between was just one more place to get it wrong.
     /// </remarks>
     [ObservableProperty]
     public partial double Fraction { get; set; }
 
-    /// <summary>True quando la metrica e' una frazione e il quadrante ha senso.</summary>
+    /// <summary>True when the metric is a fraction and the gauge makes sense.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowHistory))]
     [NotifyPropertyChangedFor(nameof(ShowHistoryNote))]
     public partial bool HasGauge { get; set; }
 
-    /// <summary>Gli intervalli dello storico, dal piu' vecchio al piu' recente.</summary>
+    /// <summary>The history intervals, from the oldest to the most recent.</summary>
     /// <remarks>
-    /// Nullo finche' lo storico non e' stato letto. La striscia si mostra solo quando c'e'
-    /// qualcosa da mostrare: una striscia tutta vuota sotto un quadrante vivo sarebbe una
-    /// domanda senza risposta.
+    /// Null until the history has been read. The strip is shown only when there is
+    /// something to show: a wholly empty strip under a live gauge would be a
+    /// question with no answer.
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowHistory))]
     public partial IReadOnlyList<HistoryBar>? History { get; set; }
 
-    /// <summary>Perche' lo storico non c'e', quando non c'e'.</summary>
+    /// <summary>Why the history is missing, when it is.</summary>
     /// <remarks>
-    /// Sta qui e non nella barra di stato di proposito: un guasto dello storico NON e' un
-    /// guasto della macchina. La macchina puo' rispondere benissimo al campionamento e avere
-    /// la persistenza spenta, e colorare di rosso la finestra per questo insegnerebbe a
-    /// ignorare anche gli allarmi veri.
+    /// It is here and not in the status bar on purpose: a fault of the history is NOT a
+    /// fault of the machine. The machine can respond to sampling perfectly well and have
+    /// persistence turned off, and painting the window red for that would teach the reader to
+    /// ignore the real alarms too.
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowHistoryNote))]
     public partial string HistoryNote { get; set; } = string.Empty;
 
-    /// <summary>True quando c'e' una striscia da disegnare.</summary>
+    /// <summary>True when there is a strip to draw.</summary>
     public bool ShowHistory => HasGauge && History is { Count: > 0 };
 
-    /// <summary>True quando c'e' un motivo da scrivere al posto della striscia.</summary>
+    /// <summary>True when there is a reason to write in place of the strip.</summary>
     public bool ShowHistoryNote => HasGauge && HistoryNote.Length > 0;
 
-    /// <summary>Severity' di cio' che la riga dice.</summary>
+    /// <summary>Severity of what the row is saying.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Problem))]
     public partial MetricSeverity Severity { get; set; }
 
     /// <summary>
-    /// True solo per un guasto vero. Un Warmup all'avvio o una metrica non misurabile su
-    /// questa piattaforma NON devono colorarsi di rosso: sono informazioni, e allarmare chi
-    /// guarda per una cosa normale gli insegna a ignorare anche gli allarmi veri.
+    /// True only for a real fault. A Warmup at start-up or a metric that cannot be measured on
+    /// this platform must NOT turn red: they are information, and alarming the viewer
+    /// over something normal teaches them to ignore the real alarms too.
     /// </summary>
     public bool Problem => Severity == MetricSeverity.Problem;
 
-    /// <summary>Update la riga sul posto, senza ricrearla: evita lo sfarfallio a ogni secondo.</summary>
-    public void Update(MetricRowState stato)
+    /// <summary>Updates the row in place, without recreating it: avoids the flicker every second.</summary>
+    public void Update(MetricRowState state)
     {
-        ArgumentNullException.ThrowIfNull(stato);
+        ArgumentNullException.ThrowIfNull(state);
 
-        Label = stato.Label;
-        Display = stato.Display;
-        HasGauge = stato.Fraction.HasValue;
+        Label = state.Label;
+        Display = state.Display;
+        HasGauge = state.Fraction.HasValue;
 
-        // Quando la frazione manca, l'ultima resta dov'e' invece di azzerarsi. Non e' per
-        // conservarla - il quadrante sparisce comunque, perche' HasGauge e' falso - ma
-        // perche' la lancetta si anima: scrivere zero le darebbe un bersaglio, e per qualche
-        // decimo di secondo si vedrebbe scendere a fondo scala prima di sparire, come se la
-        // macchina si fosse svuotata invece che smettere di rispondere.
-        if (stato.Fraction is { } misurata)
+        // When the fraction is missing, the last one stays where it is instead of being zeroed.
+        // Not to keep it - the gauge disappears anyway, because HasGauge is false - but
+        // because the needle animates: writing zero would give it a target, and for a few
+        // tenths of a second you would see it drop to the bottom of the scale before vanishing, as
+        // if the machine had emptied out rather than simply stopped answering.
+        if (state.Fraction is { } fraction)
         {
-            Fraction = misurata;
+            Fraction = fraction;
         }
-        Severity = stato.Severity;
+        Severity = state.Severity;
     }
 }
 
 /// <summary>
-/// Un riquadro a schermo: un collector con le sue righe. Stesse ragioni di
-/// <see cref="MetricRow"/> per non derivare da <see cref="ViewModelBase"/>.
+/// A panel on screen: a collector with its rows. Same reasons as
+/// <see cref="MetricRow"/> for not deriving from <see cref="ViewModelBase"/>.
 /// </summary>
 public sealed partial class MetricGroup : ObservableObject
 {
-    /// <summary>Costruisce il riquadro dal suo stato.</summary>
-    public MetricGroup(MetricGroupState stato)
+    /// <summary>Builds the panel from its state.</summary>
+    public MetricGroup(MetricGroupState state)
     {
-        ArgumentNullException.ThrowIfNull(stato);
+        ArgumentNullException.ThrowIfNull(state);
 
-        CollectorId = stato.CollectorId;
-        Title = stato.Title;
-        Note = stato.Note ?? string.Empty;
-        ShowNote = stato.Note is not null;
-        Severity = stato.Severity;
+        CollectorId = state.CollectorId;
+        Title = state.Title;
+        Note = state.Note ?? string.Empty;
+        ShowNote = state.Note is not null;
+        Severity = state.Severity;
 
-        foreach (MetricRowState riga in stato.Rows)
+        foreach (MetricRowState row in state.Rows)
         {
-            Rows.Add(new MetricRow(riga));
+            Rows.Add(new MetricRow(row));
         }
 
         RefreshShowRows();
     }
 
-    /// <summary>Identificatore del collector.</summary>
+    /// <summary>Identifier of the collector.</summary>
     public string CollectorId { get; }
 
-    /// <summary>Title leggibile del riquadro.</summary>
+    /// <summary>Readable title of the panel.</summary>
     [ObservableProperty]
     public partial string Title { get; set; }
 
-    /// <summary>Motivo per cui la sorgente e' degradata.</summary>
+    /// <summary>Why the source is degraded.</summary>
     [ObservableProperty]
     public partial string Note { get; set; }
 
-    /// <summary>True quando c'e' una nota da mostrare.</summary>
+    /// <summary>True when there is a note to show.</summary>
     [ObservableProperty]
     public partial bool ShowNote { get; set; }
 
-    /// <summary>Severity' dello stato della sorgente.</summary>
+    /// <summary>Severity of the source's state.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Problem))]
     public partial MetricSeverity Severity { get; set; }
 
-    /// <summary>True solo per un guasto vero: vedi <see cref="MetricRow.Problem"/>.</summary>
+    /// <summary>True only for a real fault: see <see cref="MetricRow.Problem"/>.</summary>
     public bool Problem => Severity == MetricSeverity.Problem;
 
-    /// <summary>Le righe misurate.</summary>
+    /// <summary>The measured rows.</summary>
     public ObservableCollection<MetricRow> Rows { get; } = [];
 
-    /// <summary>True quando questo riquadro ha almeno una riga da SCRIVERE.</summary>
+    /// <summary>True when this panel has at least one row to WRITE OUT.</summary>
     /// <remarks>
-    /// Le metriche che sono una frazione si leggono sul quadrante, in cima, e non vengono
-    /// ripetute qui sotto. Un collector che ne emette soltanto di quelle lascerebbe un titolo
-    /// sospeso sopra il vuoto: questa proprieta' e' cio' che lo fa sparire.
+    /// Metrics that are a fraction are read on the gauge, at the top, and are not
+    /// repeated down here. A collector that emits only those would leave a title
+    /// hanging over nothing: this property is what makes it disappear.
     /// </remarks>
     [ObservableProperty]
     public partial bool ShowRows { get; set; }
 
-    /// <summary>Update il riquadro sul posto.</summary>
-    public void Update(MetricGroupState stato)
+    /// <summary>Updates the panel in place.</summary>
+    public void Update(MetricGroupState state)
     {
-        ArgumentNullException.ThrowIfNull(stato);
+        ArgumentNullException.ThrowIfNull(state);
 
-        Title = stato.Title;
-        Note = stato.Note ?? string.Empty;
-        ShowNote = stato.Note is not null;
-        Severity = stato.Severity;
+        Title = state.Title;
+        Note = state.Note ?? string.Empty;
+        ShowNote = state.Note is not null;
+        Severity = state.Severity;
 
-        // Finche' le chiavi coincidono si aggiorna sul posto; appena l'elenco cambia davvero
-        // si ricostruisce. Ricostruire sempre farebbe lampeggiare la finestra ogni secondo.
-        if (!HasSameKeys(stato.Rows))
+        // As long as the keys match it updates in place; as soon as the list really changes
+        // it rebuilds. Always rebuilding would make the window flash every second.
+        if (!HasSameKeys(state.Rows))
         {
             Rows.Clear();
 
-            foreach (MetricRowState riga in stato.Rows)
+            foreach (MetricRowState row in state.Rows)
             {
-                Rows.Add(new MetricRow(riga));
+                Rows.Add(new MetricRow(row));
             }
 
             RefreshShowRows();
@@ -219,27 +219,27 @@ public sealed partial class MetricGroup : ObservableObject
             return;
         }
 
-        for (int i = 0; i < stato.Rows.Count; i++)
+        for (int i = 0; i < state.Rows.Count; i++)
         {
-            Rows[i].Update(stato.Rows[i]);
+            Rows[i].Update(state.Rows[i]);
         }
 
         RefreshShowRows();
     }
 
     private void RefreshShowRows() =>
-        ShowRows = Rows.Any(riga => !riga.HasGauge);
+        ShowRows = Rows.Any(row => !row.HasGauge);
 
-    private bool HasSameKeys(IReadOnlyList<MetricRowState> stati)
+    private bool HasSameKeys(IReadOnlyList<MetricRowState> states)
     {
-        if (Rows.Count != stati.Count)
+        if (Rows.Count != states.Count)
         {
             return false;
         }
 
-        for (int i = 0; i < stati.Count; i++)
+        for (int i = 0; i < states.Count; i++)
         {
-            if (!string.Equals(Rows[i].Key, stati[i].Key, StringComparison.Ordinal))
+            if (!string.Equals(Rows[i].Key, states[i].Key, StringComparison.Ordinal))
             {
                 return false;
             }

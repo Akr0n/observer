@@ -76,13 +76,13 @@ public class HistoryStripTests
 
         HistoryBar piena = striscia[0];
 
-        Assert.Equal(0.5d, piena.Media, 9);
-        Assert.Equal(0.2d, piena.Minimo, 9);
-        Assert.Equal(0.8d, piena.Massimo, 9);
+        Assert.Equal(0.5d, piena.Average, 9);
+        Assert.Equal(0.2d, piena.Min, 9);
+        Assert.Equal(0.8d, piena.Max, 9);
 
         // E i campioni si sommano: 900 su 900, cioe' un quarto d'ora coperto per intero.
-        Assert.Equal(900, piena.Campioni);
-        Assert.Equal(BarKind.Measured, piena.Genere);
+        Assert.Equal(900, piena.Samples);
+        Assert.Equal(BarKind.Measured, piena.Kind);
     }
 
     [Fact]
@@ -98,13 +98,13 @@ public class HistoryStripTests
             Minuto);
 
         Assert.Equal(10, striscia.Count);
-        Assert.Equal(7, striscia.Count(barra => barra.Genere == BarKind.Missing));
+        Assert.Equal(7, striscia.Count(barra => barra.Kind == BarKind.Missing));
 
         // E stanno esattamente dove devono: il primo, il quinto e l'ultimo.
-        Assert.Equal(BarKind.Measured, striscia[0].Genere);
-        Assert.Equal(BarKind.Measured, striscia[4].Genere);
-        Assert.Equal(BarKind.Measured, striscia[9].Genere);
-        Assert.Equal(BarKind.Missing, striscia[1].Genere);
+        Assert.Equal(BarKind.Measured, striscia[0].Kind);
+        Assert.Equal(BarKind.Measured, striscia[4].Kind);
+        Assert.Equal(BarKind.Measured, striscia[9].Kind);
+        Assert.Equal(BarKind.Missing, striscia[1].Kind);
     }
 
     [Fact]
@@ -114,8 +114,8 @@ public class HistoryStripTests
         // direbbe "qui la macchina era a riposo" invece di "qui non si sa niente".
         HistoryBar buco = Assert.Single(HistoryStrip.Build([], Adesso, barCount: 1, Minuto));
 
-        Assert.Equal(BarKind.Missing, buco.Genere);
-        Assert.Equal(0, buco.Campioni);
+        Assert.Equal(BarKind.Missing, buco.Kind);
+        Assert.Equal(0, buco.Samples);
     }
 
     [Fact]
@@ -130,9 +130,9 @@ public class HistoryStripTests
             barCount: 1,
             Minuto);
 
-        Assert.Equal(BarKind.Partial, striscia[0].Genere);
-        Assert.Equal(53, striscia[0].Campioni);
-        Assert.Equal(60, striscia[0].Attesi);
+        Assert.Equal(BarKind.Partial, striscia[0].Kind);
+        Assert.Equal(53, striscia[0].Samples);
+        Assert.Equal(60, striscia[0].Expected);
     }
 
     [Fact]
@@ -155,8 +155,8 @@ public class HistoryStripTests
             barCount: 2,
             Minuto);
 
-        Assert.Equal(BarKind.Measured, striscia[0].Genere);
-        Assert.Equal(0.33d, striscia[0].Media);
+        Assert.Equal(BarKind.Measured, striscia[0].Kind);
+        Assert.Equal(0.33d, striscia[0].Average);
     }
 
     [Fact]
