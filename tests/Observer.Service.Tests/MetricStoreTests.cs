@@ -45,8 +45,9 @@ public class MetricStoreTests
     public void ReadHistory_RawBeyondTheLimit_KeepsTheNewestPointsNotTheOldest()
     {
         // An ascending ORDER BY plus LIMIT keeps the OLDEST points. A 90-day request over
-        // 5-minute buckets is 25920 points against a limit of 5000: the chart would look like
-        // it ends seventeen days ago, plausible and with no error at all.
+        // 5-minute buckets is 25920 points against a limit of 5000: the chart would show only
+        // the oldest seventeen days of the ninety and stop about seventy-three days in the
+        // past, plausible and with no error at all.
         // On a dashboard the present is the part you cannot afford to lose.
         using TempMetricStore temp = new();
 

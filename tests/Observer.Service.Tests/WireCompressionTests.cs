@@ -68,7 +68,7 @@ public class WireCompressionTests
     /// </remarks>
     private static X509Certificate2 StoredCertificate()
     {
-        using X509Certificate2 generated = MachineCertificate.Create("banco", DateTimeOffset.UtcNow);
+        using X509Certificate2 generated = MachineCertificate.Create("bench", DateTimeOffset.UtcNow);
 
         return MachineCertificate.Load(MachineCertificate.Export(generated));
     }
@@ -104,7 +104,7 @@ public class WireCompressionTests
         // is between 4x and 6x.
         Assert.True(
             compressedBytes * 2 < plainBytes,
-            $"compressa {compressedBytes} byte contro {plainBytes} in chiaro: non vale il lavoro");
+            $"compressed {compressedBytes} bytes against {plainBytes} uncompressed: not worth the work");
     }
 
     [Fact]
@@ -135,8 +135,8 @@ public class WireCompressionTests
 
         Assert.True(
             withEveryEncoding <= best,
-            $"offrendo tutto si ottengono {withEveryEncoding} byte (scelto: {chosen}), ma il migliore "
-            + $"disponibile ne fa {best} — gzip {gzipOnly}, br {brotliOnly}");
+            $"offering every encoding yields {withEveryEncoding} bytes (chosen: {chosen}), but the best "
+            + $"available does {best} — gzip {gzipOnly}, br {brotliOnly}");
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public class WireCompressionTests
         // EnableForHttps can be observed without a TLS transport.
         Assert.True(
             service.Services.GetRequiredService<IOptions<ResponseCompressionOptions>>().Value.EnableForHttps,
-            "EnableForHttps e' tornato al predefinito: sulla rete non si comprimerebbe piu' niente");
+            "EnableForHttps is back to its default: nothing would be compressed on the network any more");
     }
 
     [Fact]
@@ -183,7 +183,7 @@ public class WireCompressionTests
         await using Bench bench = await Bench.StartAsync(certificate, withAccessControl: true);
 
         using HttpClient client = Bench.PinningClient(fingerprint);
-        using HttpRequestMessage request = new(HttpMethod.Get, new Uri(bench.Address, "storia"));
+        using HttpRequestMessage request = new(HttpMethod.Get, new Uri(bench.Address, "history"));
         request.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip, br");
 
         using HttpResponseMessage response = await client.SendAsync(request);
@@ -238,7 +238,7 @@ public class WireCompressionTests
             }
 
             application.UseResponseCompression();
-            application.MapGet("/storia", () => Results.Content(Body, "application/json"));
+            application.MapGet("/history", () => Results.Content(Body, "application/json"));
 
             await application.StartAsync();
 
@@ -262,7 +262,7 @@ public class WireCompressionTests
             // No AutomaticDecompression: the handler must not decompress on its own, or the bytes
             // measured would be the already expanded ones and the test would say nothing.
             using HttpClient client = PinningClient(fingerprint);
-            using HttpRequestMessage request = new(HttpMethod.Get, new Uri(Address, "storia"));
+            using HttpRequestMessage request = new(HttpMethod.Get, new Uri(Address, "history"));
 
             if (encoding is not null)
             {
@@ -287,7 +287,7 @@ public class WireCompressionTests
                 "gzip" => new GZipStream(compressed, CompressionMode.Decompress),
                 "br" => new BrotliStream(compressed, CompressionMode.Decompress),
                 "deflate" => new DeflateStream(compressed, CompressionMode.Decompress),
-                _ => throw new InvalidOperationException($"codifica inattesa: {responseEncoding}"),
+                _ => throw new InvalidOperationException($"unexpected encoding: {responseEncoding}"),
             };
             using StreamReader reader = new(decompressor);
 

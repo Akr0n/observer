@@ -32,13 +32,13 @@ public class HttpsTransportTests
     {
         using CertificateRoundTrip certificate = CertificateRoundTrip.GenerateAndReload();
 
-        Assert.True(certificate.Reloaded.HasPrivateKey, "senza chiave privata Kestrel non puo' servirlo");
+        Assert.True(certificate.Reloaded.HasPrivateKey, "without the private key Kestrel cannot serve it");
         Assert.Equal(certificate.Fingerprint, MachineCertificate.Fingerprint(certificate.Generated));
 
         await using KestrelHost host = await KestrelHost.StartAsync(certificate.Reloaded);
 
         using HttpClient client = PinningClient(certificate.Fingerprint);
-        string body = await client.GetStringAsync(new Uri(host.Address, "prova"));
+        string body = await client.GetStringAsync(new Uri(host.Address, "test"));
 
         Assert.Equal(ProbeBody, body);
     }
@@ -50,14 +50,14 @@ public class HttpsTransportTests
         // middle presents their OWN certificate, the connection succeeds, and the token reaches
         // them.
         using CertificateRoundTrip certificate = CertificateRoundTrip.GenerateAndReload();
-        using X509Certificate2 foreign = MachineCertificate.Create("un-altra-macchina", DateTimeOffset.UtcNow);
+        using X509Certificate2 foreign = MachineCertificate.Create("another-machine", DateTimeOffset.UtcNow);
 
         await using KestrelHost host = await KestrelHost.StartAsync(certificate.Reloaded);
 
         using HttpClient client = PinningClient(MachineCertificate.Fingerprint(foreign));
 
         await Assert.ThrowsAsync<HttpRequestException>(
-            () => client.GetStringAsync(new Uri(host.Address, "prova")));
+            () => client.GetStringAsync(new Uri(host.Address, "test")));
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public class HttpsTransportTests
         using HttpClient client = new();
 
         await Assert.ThrowsAsync<HttpRequestException>(
-            () => client.GetStringAsync(new Uri(host.Address, "prova")));
+            () => client.GetStringAsync(new Uri(host.Address, "test")));
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public class HttpsTransportTests
 #pragma warning restore CA5359
 
         using HttpClient client = new(handler);
-        await client.GetStringAsync(new Uri(host.Address, "prova"));
+        await client.GetStringAsync(new Uri(host.Address, "test"));
 
         Assert.Equal(certificate.Fingerprint, seenByTheClient);
     }
@@ -122,7 +122,7 @@ public class HttpsTransportTests
         // A fault that looks like a network problem and repairs itself.
         string folder = Path.Combine(
             Path.GetTempPath(),
-            "observer-primo-avvio-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
+            "observer-first-start-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
 
         Directory.CreateDirectory(folder);
 
@@ -130,7 +130,7 @@ public class HttpsTransportTests
         {
             ProvisionedCertificate provisioned = CertificateProvisioning.Provision(
                 Path.Combine(folder, CredentialDirectory.FileName),
-                "primo-avvio",
+                "first-start",
                 DateTimeOffset.UtcNow,
                 runningAsService: false);
 
@@ -142,7 +142,7 @@ public class HttpsTransportTests
 
                 using HttpClient client = PinningClient(provisioned.Fingerprint);
 
-                Assert.Equal(ProbeBody, await client.GetStringAsync(new Uri(host.Address, "prova")));
+                Assert.Equal(ProbeBody, await client.GetStringAsync(new Uri(host.Address, "test")));
             }
             finally
             {
@@ -186,7 +186,7 @@ public class HttpsTransportTests
 
         public static CertificateRoundTrip GenerateAndReload()
         {
-            X509Certificate2 generated = MachineCertificate.Create("questa-macchina", DateTimeOffset.UtcNow);
+            X509Certificate2 generated = MachineCertificate.Create("this-machine", DateTimeOffset.UtcNow);
 
             return new CertificateRoundTrip(generated, MachineCertificate.Load(MachineCertificate.Export(generated)));
         }
@@ -234,7 +234,7 @@ public class HttpsTransportTests
 
             WebApplication application = builder.Build();
 
-            application.MapGet("/prova", () => ProbeBody);
+            application.MapGet("/test", () => ProbeBody);
 
             await application.StartAsync();
 

@@ -24,15 +24,15 @@ public class EndpointUrlTests
 
     [Theory]
     // The case that opened port 80 on all interfaces without saying anything.
-    [InlineData(@"http://unix:C:\Users\tizio\AppData\Local\Temp\x.sock")]
+    [InlineData(@"http://unix:C:\Users\user\AppData\Local\Temp\x.sock")]
     // A relative unix path: Kestrel rejects it at StartAsync, which is too late to work out why.
-    [InlineData("http://unix:relativo.sock")]
+    [InlineData("http://unix:relative.sock")]
     // A pipe without the slash: the same trap as the Windows path.
     [InlineData("http://pipe:Observer")]
     [InlineData("http://pipe:/")]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("non-un-url")]
+    [InlineData("not-a-url")]
     public void BrokenUrls_ExplainTheProblem(string url) =>
         Assert.False(string.IsNullOrWhiteSpace(EndpointUrl.Problem(url)));
 

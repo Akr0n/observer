@@ -36,7 +36,7 @@ public class MetricSamplingSinkTests
         {
             MachineSnapshot delivered = await sink.FirstSnapshot.WaitAsync(TimeSpan.FromSeconds(15));
 
-            Assert.Equal("finto", delivered.Collectors[0].CollectorId);
+            Assert.Equal("fake", delivered.Collectors[0].CollectorId);
 
             // The cache and history must receive the SAME object: if they diverged, the history
             // chart and the tile showing the present would show different numbers for the same
@@ -51,17 +51,17 @@ public class MetricSamplingSinkTests
 
     private sealed class FakeCollector : IMetricCollector
     {
-        public string Id => "finto";
+        public string Id => "fake";
 
         public IReadOnlyList<MetricDescriptor> Descriptors =>
-            [new MetricDescriptor("finto.valore", "Valore finto", MetricUnit.None, IsPerInstance: false)];
+            [new MetricDescriptor("fake.value", "Fake value", MetricUnit.None, IsPerInstance: false)];
 
         public ValueTask<MetricSnapshot> CollectAsync(CancellationToken cancellationToken) =>
             ValueTask.FromResult(new MetricSnapshot(
                 Id,
                 CollectorStatus.Ok,
                 null,
-                [MetricPoint.Measured("finto.valore", null, MetricValue.FromNumber(1d))]));
+                [MetricPoint.Measured("fake.value", null, MetricValue.FromNumber(1d))]));
     }
 
     private sealed class RecordingSink(MetricSnapshotCache cache) : IMetricSnapshotSink

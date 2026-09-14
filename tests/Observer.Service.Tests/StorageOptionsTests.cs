@@ -51,7 +51,7 @@ public class StorageOptionsTests
     {
         // Whoever gives an explicit path has their reasons (a different disk, a data volume):
         // it must not be reinterpreted.
-        string explicitPath = Path.Combine(Path.GetTempPath(), "observer-esplicito.db");
+        string explicitPath = Path.Combine(Path.GetTempPath(), "observer-explicit.db");
         StorageOptions options = new() { DatabasePath = explicitPath };
 
         Assert.Equal(explicitPath, options.ResolveDatabasePath());

@@ -87,7 +87,7 @@ public sealed class RealKestrelBench : IAsyncDisposable
         // is never consulted. A name under .invalid makes it explicit that it must not resolve.
         new(handler, disposeHandler: true)
         {
-            BaseAddress = new Uri("http://canale-locale.invalid/"),
+            BaseAddress = new Uri("http://local-channel.invalid/"),
             Timeout = TimeSpan.FromSeconds(10),
         };
 

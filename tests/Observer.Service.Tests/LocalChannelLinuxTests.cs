@@ -119,21 +119,21 @@ public class LocalChannelLinuxTests
 
         await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
             options => options.ListenUnixSocket(path),
-            app => app.MapGet("/chi", (HttpContext context) =>
+            app => app.MapGet("/who", (HttpContext context) =>
             {
                 CallerOrigin origin = LocalCaller.Classify(context);
-                return origin.Kind + "|" + (origin.Sid ?? "(nessuno)");
+                return origin.Kind + "|" + (origin.Sid ?? "(none)");
             }));
 
         using HttpClient client = RealKestrelBench.ClientOn(SocketHandler(path));
-        string outcome = await client.GetStringAsync("chi", CancellationToken.None);
+        string outcome = await client.GetStringAsync("who", CancellationToken.None);
 
         // On a unix socket the caller is ALWAYS on the same machine: there is no SMB route like
         // the one Windows has. The only question is whether the uid can be read.
         string[] parts = outcome.Split('|');
 
         Assert.Equal(nameof(CallerKind.LocalIdentified), parts[0]);
-        Assert.True(uint.TryParse(parts[1], out _), "uid non numerico: " + parts[1]);
+        Assert.True(uint.TryParse(parts[1], out _), "non-numeric uid: " + parts[1]);
     }
 
     [LinuxOnly]
@@ -172,7 +172,7 @@ public class LocalChannelLinuxTests
                 options.Listen(System.Net.IPAddress.Loopback, 0);
                 options.ListenUnixSocket(path);
             },
-            app => app.MapGet("/riservato", () => "segreto").LocalOnly(),
+            app => app.MapGet("/restricted", () => "secret").LocalOnly(),
             middleware: app => app.UseObserverAccessControl(LocalChannelWindowsTests.Token));
 
         string tcp = bench.Addresses.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
@@ -181,11 +181,11 @@ public class LocalChannelLinuxTests
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", LocalChannelWindowsTests.TestToken);
 
         // With the RIGHT token, it is still a 404.
-        using HttpResponseMessage fromNetwork = await overTcp.GetAsync("riservato", CancellationToken.None);
+        using HttpResponseMessage fromNetwork = await overTcp.GetAsync("restricted", CancellationToken.None);
         Assert.Equal(System.Net.HttpStatusCode.NotFound, fromNetwork.StatusCode);
 
         using HttpClient overSocket = RealKestrelBench.ClientOn(SocketHandler(path));
-        Assert.Equal("segreto", await overSocket.GetStringAsync("riservato", CancellationToken.None));
+        Assert.Equal("secret", await overSocket.GetStringAsync("restricted", CancellationToken.None));
     }
 
     internal static string ShortSocketPath()

@@ -48,26 +48,26 @@ public class StorageEndpointsTests
     [Fact]
     public async Task Series_ListsWhatHasBeenWritten()
     {
-        Seed("seriegia", 5d);
+        Seed("writtenseries", 5d);
 
         using HttpClient client = service.CreateAuthorizedClient();
         using JsonDocument document = await ReadJson(client, "/metrics/series");
 
         bool found = document.RootElement.EnumerateArray().Any(element =>
-            element.GetProperty("metricId").GetString() == "seriegia");
+            element.GetProperty("metricId").GetString() == "writtenseries");
 
-        Assert.True(found, "la serie appena scritta deve comparire nell'elenco");
+        Assert.True(found, "the series just written must appear in the list");
     }
 
     [Fact]
     public async Task History_ReturnsTheSeededRawPoints()
     {
-        Seed("storicogrezzo", 42d);
+        Seed("rawhistory", 42d);
 
         using HttpClient client = service.CreateAuthorizedClient();
         using JsonDocument document = await ReadJson(
             client,
-            "/metrics/history?collector=prova&metric=storicogrezzo" +
+            "/metrics/history?collector=test&metric=rawhistory" +
             "&from=2026-08-26T12:00:00Z&to=2026-08-26T12:01:00Z&resolution=raw");
 
         Assert.Equal("raw", document.RootElement.GetProperty("resolution").GetString());
@@ -91,7 +91,7 @@ public class StorageEndpointsTests
         using HttpClient client = service.CreateAuthorizedClient();
         using JsonDocument document = await ReadJson(
             client,
-            "/metrics/history?collector=prova&metric=qualsiasi" +
+            "/metrics/history?collector=test&metric=anything" +
             "&from=2026-08-26T00:00:00Z&to=2026-08-26T12:00:00Z");
 
         // Twelve hours at one point a second would be 43200 points in a single response.
@@ -117,7 +117,7 @@ public class StorageEndpointsTests
         // "the machine was not being monitored".
         using HttpClient client = service.CreateAuthorizedClient();
         using HttpResponseMessage response = await client.GetAsync(new Uri(
-            "/metrics/history?collector=cpu&metric=cpu.usage.total&resolution=ogni-tanto",
+            "/metrics/history?collector=cpu&metric=cpu.usage.total&resolution=now-and-then",
             UriKind.Relative));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -170,7 +170,7 @@ public class StorageEndpointsTests
         service.Store().WriteSamples(
         [
             new SeriesSample(
-                new SeriesKey("prova", metric, string.Empty),
+                new SeriesKey("test", metric, string.Empty),
                 MetricValueKind.Number,
                 T("2026-08-26T12:00:30Z").ToUnixTimeMilliseconds(),
                 value),

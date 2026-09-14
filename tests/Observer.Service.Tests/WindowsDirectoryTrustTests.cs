@@ -57,8 +57,8 @@ public class WindowsDirectoryTrustTests
         // A junction is created by a standard user with NO privileges: no
         // SeCreateSymbolicLinkPrivilege, no developer mode. If the service did not recognise it,
         // it would "secure" the attacker's directory and store the machine token inside it.
-        string target = Path.Combine(Path.GetTempPath(), "obs-bersaglio-" + Guid.NewGuid().ToString("N")[..8]);
-        string junction = Path.Combine(Path.GetTempPath(), "obs-giunzione-" + Guid.NewGuid().ToString("N")[..8]);
+        string target = Path.Combine(Path.GetTempPath(), "obs-target-" + Guid.NewGuid().ToString("N")[..8]);
+        string junction = Path.Combine(Path.GetTempPath(), "obs-junction-" + Guid.NewGuid().ToString("N")[..8]);
 
         Directory.CreateDirectory(target);
 

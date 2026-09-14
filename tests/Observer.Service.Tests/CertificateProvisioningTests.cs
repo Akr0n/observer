@@ -46,7 +46,7 @@ public class CertificateProvisioningTests : IDisposable
     }
 
     private ProvisionedCertificate ProvisionForTest() =>
-        CertificateProvisioning.Provision(storePath, "macchina-di-prova", DateTimeOffset.UtcNow, false);
+        CertificateProvisioning.Provision(storePath, "test-machine", DateTimeOffset.UtcNow, false);
 
     [Fact]
     public void TheSecondStartREUSESTheSameCertificate()
@@ -69,7 +69,7 @@ public class CertificateProvisioningTests : IDisposable
 
         try
         {
-            Assert.True(provisioned.Certificate.HasPrivateKey, "senza chiave privata non serve a niente");
+            Assert.True(provisioned.Certificate.HasPrivateKey, "without the private key it is useless");
 
             X509EnhancedKeyUsageExtension keyUsage = provisioned.Certificate.Extensions
                 .OfType<X509EnhancedKeyUsageExtension>()
@@ -96,11 +96,11 @@ public class CertificateProvisioningTests : IDisposable
         {
             Assert.True(
                 provisioned.Certificate.NotAfter > DateTime.Now.AddYears(5),
-                "una scadenza vicina taglierebbe fuori i client senza avvisare nessuno");
+                "a near expiry would cut off every client with no warning to anyone");
 
             Assert.True(
                 provisioned.Certificate.NotBefore < DateTime.Now,
-                "un certificato che vale solo da adesso viene rifiutato da un orologio indietro");
+                "a certificate valid only from now on is rejected by a clock that is behind");
         }
         finally
         {
@@ -113,17 +113,17 @@ public class CertificateProvisioningTests : IDisposable
     {
         // Replacing it would be the convenient thing to do, and it would be wrong: a new
         // certificate has a new fingerprint. Better to stop and let a person decide.
-        File.WriteAllText(MachineCertificate.PathNextTo(storePath), "non sono un PKCS#12");
+        File.WriteAllText(MachineCertificate.PathNextTo(storePath), "not a PKCS#12");
 
         InvalidOperationException error = Assert.Throws<InvalidOperationException>(
             () => CertificateProvisioning.Provision(
                 storePath,
-                "macchina-di-prova",
+                "test-machine",
                 DateTimeOffset.UtcNow,
                 runningAsService: true));
 
         Assert.Contains("fingerprint", error.Message, StringComparison.Ordinal);
-        Assert.Equal("non sono un PKCS#12", File.ReadAllText(MachineCertificate.PathNextTo(storePath)));
+        Assert.Equal("not a PKCS#12", File.ReadAllText(MachineCertificate.PathNextTo(storePath)));
     }
 
     [Fact]
@@ -169,12 +169,12 @@ public class CertificateProvisioningTests : IDisposable
         // that is there and unreadable. Falling back silently would show a service that
         // starts, a new fingerprint at every start, and no clue about the broken file sitting
         // on disk.
-        File.WriteAllText(MachineCertificate.PathNextTo(storePath), "non sono un PKCS#12");
+        File.WriteAllText(MachineCertificate.PathNextTo(storePath), "not a PKCS#12");
 
         Assert.Throws<InvalidOperationException>(
             () => CertificateProvisioning.Provision(
                 storePath,
-                "macchina-di-prova",
+                "test-machine",
                 DateTimeOffset.UtcNow,
                 runningAsService: false));
     }

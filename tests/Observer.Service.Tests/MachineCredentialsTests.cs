@@ -19,7 +19,7 @@ public class MachineCredentialsTests
 
         for (int i = 0; i < 200; i++)
         {
-            Assert.True(seen.Add(TokenGenerator.Generate()), "token ripetuto");
+            Assert.True(seen.Add(TokenGenerator.Generate()), "the generator produced the same token twice");
         }
     }
 
@@ -34,7 +34,7 @@ public class MachineCredentialsTests
         Assert.DoesNotContain('/', token);
         Assert.DoesNotContain('=', token);
         Assert.DoesNotContain(' ', token);
-        Assert.True(token.Length >= 40, "token troppo corto: " + token.Length);
+        Assert.True(token.Length >= 40, "token too short: " + token.Length);
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public class MachineCredentialsTests
     {
         MachineCredentials credentials = MachineCredentials.Create();
 
-        Assert.False(credentials.Accepts("non-e-il-token", Now));
+        Assert.False(credentials.Accepts("not-the-token", Now));
         Assert.False(credentials.Accepts(string.Empty, Now));
     }
 

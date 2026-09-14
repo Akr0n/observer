@@ -29,10 +29,10 @@ public class CredentialProvisioningTests : IDisposable
         // Backward compatibility, and it is what keeps the tests and CI working: anyone who
         // already has a token in appsettings.Local.json must not notice a thing.
         ProvisionedCredentials result = CredentialProvisioning.Provision(
-            "token-scelto-a-mano", StorePath, runningAsService: false);
+            "hand-picked-token", StorePath, runningAsService: false);
 
         Assert.Equal(CredentialOrigin.Configuration, result.Origin);
-        Assert.Equal("token-scelto-a-mano", result.Credentials.Current);
+        Assert.Equal("hand-picked-token", result.Credentials.Current);
         Assert.False(File.Exists(StorePath));
     }
 
@@ -87,7 +87,7 @@ public class CredentialProvisioningTests : IDisposable
     {
         // Overwriting it would generate a new key and throw away the one the remote clients
         // are using, over a fault that could be a botched hand edit from a minute earlier.
-        File.WriteAllText(StorePath, "non e' JSON {{{");
+        File.WriteAllText(StorePath, "not JSON {{{");
 
         Assert.Throws<InvalidOperationException>(
             () => CredentialProvisioning.Provision(null, StorePath, runningAsService: false));
@@ -99,7 +99,7 @@ public class CredentialProvisioningTests : IDisposable
         // A directory cannot exist INSIDE a file: that holds on Windows as on Linux, for the
         // administrator as for the standard user. This needs a deterministic case, not one
         // that depends on who runs the tests — on a CI runner you are often an administrator.
-        string blockingFile = Path.Combine(directory, "sono-un-file");
+        string blockingFile = Path.Combine(directory, "blocking-file");
         File.WriteAllText(blockingFile, "x");
 
         return Path.Combine(blockingFile, "Observer", "credentials.json");

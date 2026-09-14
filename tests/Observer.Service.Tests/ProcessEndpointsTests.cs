@@ -70,7 +70,7 @@ public class ProcessEndpointsTests
 
         Assert.True(
             processes.GetArrayLength() > 0,
-            "l'elenco dei processi e' vuoto sulla macchina che lo sta servendo");
+            "the process list is empty on the very machine serving it");
 
         JsonElement first = processes[0];
         Assert.True(first.GetProperty("pid").GetInt32() > 0);
@@ -95,7 +95,7 @@ public class ProcessEndpointsTests
         foreach (JsonElement process in processes.EnumerateArray())
         {
             long current = process.GetProperty("workingSetBytes").GetInt64();
-            Assert.True(current <= previous, "l'elenco per memoria non e' in ordine decrescente");
+            Assert.True(current <= previous, "the list by memory is not in descending order");
             previous = current;
         }
     }
@@ -118,7 +118,7 @@ public class ProcessEndpointsTests
     [InlineData("/processes?by=memory", "memory")]
     [InlineData("/processes?by=io", "io")]
     [InlineData("/processes?by=IO", "io")]
-    [InlineData("/processes?by=boh", "cpu")]
+    [InlineData("/processes?by=nonsense", "cpu")]
     public async Task TheResponseEchoesTheCriterionItApplied(string path, string expected)
     {
         // The client uses it to notice a service that does not know "io" yet: without it, the
@@ -161,10 +161,10 @@ public class ProcessEndpointsTests
                 continue;
             }
 
-            Assert.False(unknownRatesStarted, "un tasso noto dopo uno ignoto: l'ordine e' sbagliato");
+            Assert.False(unknownRatesStarted, "a known rate after an unknown one: the ordering is wrong");
 
             double current = rate.GetDouble();
-            Assert.True(current <= previous, "l'elenco per I/O non e' in ordine decrescente");
+            Assert.True(current <= previous, "the list by I/O is not in descending order");
             previous = current;
         }
 

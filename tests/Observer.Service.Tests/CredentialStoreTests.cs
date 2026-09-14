@@ -10,7 +10,7 @@ public class CredentialStoreTests : IDisposable
 
     public CredentialStoreTests()
     {
-        directory = Path.Combine(Path.GetTempPath(), "obs-dep-" + Guid.NewGuid().ToString("N")[..10]);
+        directory = Path.Combine(Path.GetTempPath(), "obs-store-" + Guid.NewGuid().ToString("N")[..10]);
         Directory.CreateDirectory(directory);
     }
 
@@ -80,7 +80,7 @@ public class CredentialStoreTests : IDisposable
         // Load-bearing distinction: "it is not there" means generate a new one, "I cannot
         // read it" means stop. Blurring the two would regenerate the key at every start,
         // cutting off every remote client with nobody able to work out why.
-        File.WriteAllText(StorePath, "questo non e' JSON {{{");
+        File.WriteAllText(StorePath, "this is not JSON {{{");
 
         Assert.Throws<InvalidOperationException>(() => CredentialStore.Read(StorePath));
     }

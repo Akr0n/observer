@@ -25,7 +25,7 @@ namespace Observer.Service.Tests;
 public sealed class ProcessEnvironment : ICollectionFixture<InMemoryService>
 {
     /// <summary>The name of the collection, so it is not repeated as a string all over.</summary>
-    public const string Name = "ambiente-del-processo";
+    public const string Name = "process-environment";
 }
 
 /// <summary>

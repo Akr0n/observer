@@ -25,8 +25,8 @@ public class SamplerWarningTests
     {
         LogRecorder recorder = new();
         CountingSink sink = new(expected: 4);
-        FlakyCollector first = new("uno", new InvalidOperationException("primo"));
-        FlakyCollector second = new("due", new NotSupportedException("secondo"));
+        FlakyCollector first = new("one", new InvalidOperationException("first"));
+        FlakyCollector second = new("two", new NotSupportedException("second"));
 
         using MetricSamplingService sampler = new(
             [first, second],
@@ -56,8 +56,8 @@ public class SamplerWarningTests
     {
         LogRecorder recorder = new();
         CountingSink sink = new(expected: 3);
-        FlakyCollector flaky = new("uno", new InvalidOperationException("guasto"));
-        FlakyCollector healthy = new("due", failure: null);
+        FlakyCollector flaky = new("one", new InvalidOperationException("fault"));
+        FlakyCollector healthy = new("two", failure: null);
 
         using MetricSamplingService sampler = new(
             [flaky, healthy],
@@ -97,7 +97,7 @@ public class SamplerWarningTests
         public string Id { get; } = id;
 
         public IReadOnlyList<MetricDescriptor> Descriptors =>
-            [new MetricDescriptor(Id + ".valore", "Valore", MetricUnit.None, IsPerInstance: false)];
+            [new MetricDescriptor(Id + ".value", "Value", MetricUnit.None, IsPerInstance: false)];
 
         public void Recover() => failure = null;
 
@@ -112,7 +112,7 @@ public class SamplerWarningTests
                 Id,
                 CollectorStatus.Ok,
                 null,
-                [MetricPoint.Measured(Id + ".valore", null, MetricValue.FromNumber(1d))]));
+                [MetricPoint.Measured(Id + ".value", null, MetricValue.FromNumber(1d))]));
         }
     }
 

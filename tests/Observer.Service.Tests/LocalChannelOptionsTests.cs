@@ -65,7 +65,7 @@ public class LocalChannelOptionsTests
         {
             Enabled = false,
             PipeName = string.Empty,
-            SocketPath = "non-assoluto",
+            SocketPath = "not-absolute",
         };
 
         options.Validate();

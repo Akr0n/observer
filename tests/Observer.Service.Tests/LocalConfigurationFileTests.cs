@@ -24,13 +24,13 @@ public class LocalConfigurationFileTests : IDisposable
     [Fact]
     public void AnABSENTFileIsNotLoaded()
     {
-        Assert.False(LocalConfigurationFile.ShouldLoad(Path.Combine(folder, "non-c-e.json")));
+        Assert.False(LocalConfigurationFile.ShouldLoad(Path.Combine(folder, "missing.json")));
     }
 
     [Fact]
     public void AnEMPTYFileIsNotLoaded()
     {
-        string filePath = Path.Combine(folder, "vuoto.json");
+        string filePath = Path.Combine(folder, "empty.json");
         File.WriteAllText(filePath, string.Empty);
 
         Assert.False(LocalConfigurationFile.ShouldLoad(filePath));
@@ -40,7 +40,7 @@ public class LocalConfigurationFileTests : IDisposable
     public void AFileOfONLYWHITESPACEIsNotLoaded()
     {
         // A file "emptied" with an editor is often left with a newline inside it.
-        string filePath = Path.Combine(folder, "spazi.json");
+        string filePath = Path.Combine(folder, "whitespace.json");
         File.WriteAllText(filePath, "\r\n   \r\n");
 
         Assert.False(LocalConfigurationFile.ShouldLoad(filePath));
@@ -49,7 +49,7 @@ public class LocalConfigurationFileTests : IDisposable
     [Fact]
     public void AFileWITHCONTENTIsLoaded()
     {
-        string filePath = Path.Combine(folder, "pieno.json");
+        string filePath = Path.Combine(folder, "full.json");
         File.WriteAllText(filePath, "{ \"Observer\": { \"ApiToken\": \"x\" } }");
 
         Assert.True(LocalConfigurationFile.ShouldLoad(filePath));
@@ -61,8 +61,8 @@ public class LocalConfigurationFileTests : IDisposable
         // Here there is NO tolerance: a file with something in it that is not JSON is a real
         // error, and failing is the right thing. The tolerance only covers "there is nothing to
         // read", which is indistinguishable from the file being absent.
-        string filePath = Path.Combine(folder, "rotto.json");
-        File.WriteAllText(filePath, "{{{ non e' json");
+        string filePath = Path.Combine(folder, "broken.json");
+        File.WriteAllText(filePath, "{{{ not json");
 
         Assert.True(LocalConfigurationFile.ShouldLoad(filePath));
     }

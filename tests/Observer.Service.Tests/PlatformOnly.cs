@@ -13,7 +13,7 @@ public sealed class WindowsOnlyAttribute : FactAttribute
     {
         if (!OperatingSystem.IsWindows())
         {
-            Skip = "Named pipe e identita' di Windows: eseguito solo su windows-latest.";
+            Skip = "Named pipe and Windows identity: run only on windows-latest.";
         }
     }
 }
@@ -26,7 +26,7 @@ public sealed class LinuxOnlyAttribute : FactAttribute
     {
         if (!OperatingSystem.IsLinux())
         {
-            Skip = "SO_PEERCRED esiste solo su Linux: eseguito solo su ubuntu-latest.";
+            Skip = "SO_PEERCRED exists only on Linux: run only on ubuntu-latest.";
         }
     }
 }

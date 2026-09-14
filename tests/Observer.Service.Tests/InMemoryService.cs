@@ -18,7 +18,7 @@ namespace Observer.Service.Tests;
 public sealed class InMemoryService : WebApplicationFactory<Program>
 {
     /// <summary>The token the tests authenticate with.</summary>
-    public const string Token = "token-di-prova";
+    public const string Token = "test-token";
 
     private readonly string directory;
 
@@ -36,7 +36,7 @@ public sealed class InMemoryService : WebApplicationFactory<Program>
             "observer-http-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
 
         Directory.CreateDirectory(directory);
-        DatabasePath = Path.Combine(directory, "storico.db");
+        DatabasePath = Path.Combine(directory, "history.db");
 
         SetVariable("Observer__ApiToken", Token);
         SetVariable("Observer__Storage__DatabasePath", DatabasePath);

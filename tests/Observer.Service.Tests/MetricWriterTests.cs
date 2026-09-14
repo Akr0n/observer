@@ -30,7 +30,7 @@ public class MetricWriterTests
             "2026-08-26T12:00:00Z",
             MetricPoint.Measured("cpu.usage.total", null, MetricValue.FromNumber(42d)),
             MetricPoint.Measured("cpu.model", null, MetricValue.FromText("Ryzen")),
-            MetricPoint.Unavailable("cpu.temp", null, "nessun sensore")));
+            MetricPoint.Unavailable("cpu.temp", null, "no sensor")));
 
         Assert.Equal(1, writer.FlushPending());
 

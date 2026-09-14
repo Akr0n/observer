@@ -75,7 +75,7 @@ public class AccessPolicyTests
                 {
                     Assert.True(
                         Enum.IsDefined(AccessPolicy.Decide(caller, scope, token)),
-                        $"{caller}/{scope}/{token} ha prodotto un esito non definito");
+                        $"{caller}/{scope}/{token} produced an undefined outcome");
                 }
             }
         }

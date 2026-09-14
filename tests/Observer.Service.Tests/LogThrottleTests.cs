@@ -21,7 +21,7 @@ public class LogThrottleTests
     {
         LogThrottle throttle = Create(out _);
 
-        Assert.True(throttle.ShouldLog("disco-pieno"));
+        Assert.True(throttle.ShouldLog("disk-full"));
     }
 
     [Fact]
@@ -29,9 +29,9 @@ public class LogThrottleTests
     {
         LogThrottle throttle = Create(out _);
 
-        Assert.True(throttle.ShouldLog("disco-pieno"));
-        Assert.False(throttle.ShouldLog("disco-pieno"));
-        Assert.False(throttle.ShouldLog("disco-pieno"));
+        Assert.True(throttle.ShouldLog("disk-full"));
+        Assert.False(throttle.ShouldLog("disk-full"));
+        Assert.False(throttle.ShouldLog("disk-full"));
     }
 
     [Fact]
@@ -42,9 +42,9 @@ public class LogThrottleTests
         // already reporting something" would leave the log telling the wrong fault.
         LogThrottle throttle = Create(out _);
 
-        Assert.True(throttle.ShouldLog("disco-pieno"));
-        Assert.False(throttle.ShouldLog("disco-pieno"));
-        Assert.True(throttle.ShouldLog("file-agganciato"));
+        Assert.True(throttle.ShouldLog("disk-full"));
+        Assert.False(throttle.ShouldLog("disk-full"));
+        Assert.True(throttle.ShouldLog("file-locked"));
     }
 
     [Fact]
@@ -55,11 +55,11 @@ public class LogThrottleTests
         // the message would stay those of the first round.
         LogThrottle throttle = Create(out FakeClock clock);
 
-        Assert.True(throttle.ShouldLog("disco-pieno"));
+        Assert.True(throttle.ShouldLog("disk-full"));
         clock.Advance(RepeatWindow - TimeSpan.FromSeconds(1));
-        Assert.False(throttle.ShouldLog("disco-pieno"));
+        Assert.False(throttle.ShouldLog("disk-full"));
         clock.Advance(TimeSpan.FromSeconds(1));
-        Assert.True(throttle.ShouldLog("disco-pieno"));
+        Assert.True(throttle.ShouldLog("disk-full"));
     }
 
     [Fact]
@@ -70,12 +70,12 @@ public class LogThrottleTests
         // were "a new reason", half the flood would be left.
         LogThrottle throttle = Create(out _);
 
-        Assert.True(throttle.ShouldLog("scaduto"));
+        Assert.True(throttle.ShouldLog("timed-out"));
         Assert.True(throttle.ShouldLogRecovery(out _));
 
         for (int round = 0; round < 100; round++)
         {
-            Assert.False(throttle.ShouldLog("scaduto"));
+            Assert.False(throttle.ShouldLog("timed-out"));
             Assert.False(throttle.ShouldLogRecovery(out _));
         }
     }
@@ -87,7 +87,7 @@ public class LogThrottleTests
         // would let you believe a fault is still open.
         LogThrottle throttle = Create(out _);
 
-        Assert.True(throttle.ShouldLog("disco-pieno"));
+        Assert.True(throttle.ShouldLog("disk-full"));
 
         Assert.True(throttle.ShouldLogRecovery(out int silenced));
         Assert.Equal(0, silenced);
@@ -98,9 +98,9 @@ public class LogThrottleTests
     {
         LogThrottle throttle = Create(out _);
 
-        throttle.ShouldLog("disco-pieno");
-        throttle.ShouldLog("disco-pieno");
-        throttle.ShouldLog("disco-pieno");
+        throttle.ShouldLog("disk-full");
+        throttle.ShouldLog("disk-full");
+        throttle.ShouldLog("disk-full");
 
         Assert.True(throttle.ShouldLogRecovery(out int silenced));
         Assert.Equal(2, silenced);
@@ -124,10 +124,10 @@ public class LogThrottleTests
         // what keeps a flickering fault silent.
         LogThrottle throttle = Create(out _);
 
-        throttle.ShouldLog("scaduto");
+        throttle.ShouldLog("timed-out");
         throttle.ShouldLogRecovery(out _);
 
-        Assert.False(throttle.ShouldLog("scaduto"));
+        Assert.False(throttle.ShouldLog("timed-out"));
         Assert.False(throttle.ShouldLogRecovery(out _));
     }
 
@@ -138,13 +138,13 @@ public class LogThrottleTests
         // passed, a fault that still comes and goes shows up once more.
         LogThrottle throttle = Create(out FakeClock clock);
 
-        throttle.ShouldLog("scaduto");
+        throttle.ShouldLog("timed-out");
         throttle.ShouldLogRecovery(out _);
-        Assert.False(throttle.ShouldLog("scaduto"));
+        Assert.False(throttle.ShouldLog("timed-out"));
 
         clock.Advance(RepeatWindow);
 
-        Assert.True(throttle.ShouldLog("scaduto"));
+        Assert.True(throttle.ShouldLog("timed-out"));
     }
 
     [Fact]

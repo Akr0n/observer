@@ -23,7 +23,7 @@ internal sealed class TempMetricStore : IDisposable
             "observer-test-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
 
         Directory.CreateDirectory(directory);
-        DatabasePath = Path.Combine(directory, "storico.db");
+        DatabasePath = Path.Combine(directory, "history.db");
         Store = new MetricStore(DatabasePath);
         Store.Initialize();
     }

@@ -97,14 +97,14 @@ public class LocalChannelWindowsTests
 
         await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
             options => options.ListenNamedPipe(pipe),
-            app => app.MapGet("/chi", (HttpContext context) =>
+            app => app.MapGet("/who", (HttpContext context) =>
             {
                 CallerOrigin origin = LocalCaller.Classify(context);
-                return origin.Kind + "|" + (origin.Sid ?? "(nessuno)");
+                return origin.Kind + "|" + (origin.Sid ?? "(none)");
             }));
 
         using HttpClient client = RealKestrelBench.ClientOn(PipeHandler(pipe));
-        string outcome = await client.GetStringAsync("chi", CancellationToken.None);
+        string outcome = await client.GetStringAsync("who", CancellationToken.None);
 
         Assert.StartsWith(nameof(CallerKind.LocalIdentified) + "|S-1-", outcome, StringComparison.Ordinal);
     }
@@ -122,12 +122,12 @@ public class LocalChannelWindowsTests
 
         await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
             options => options.ListenNamedPipe(pipe),
-            app => app.MapGet("/chi", (HttpContext context) => LocalCaller.Classify(context).Kind.ToString()));
+            app => app.MapGet("/who", (HttpContext context) => LocalCaller.Classify(context).Kind.ToString()));
 
         using HttpClient client = RealKestrelBench.ClientOn(
             PipeHandler(pipe, TokenImpersonationLevel.Anonymous));
 
-        using HttpResponseMessage response = await client.GetAsync("chi", CancellationToken.None);
+        using HttpResponseMessage response = await client.GetAsync("who", CancellationToken.None);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(
@@ -145,14 +145,14 @@ public class LocalChannelWindowsTests
 
         await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
             options => options.ListenNamedPipe(pipe),
-            app => app.MapGet("/chi", (HttpContext context) => LocalCaller.Classify(context).Kind.ToString()));
+            app => app.MapGet("/who", (HttpContext context) => LocalCaller.Classify(context).Kind.ToString()));
 
         using HttpClient client = RealKestrelBench.ClientOn(
             PipeHandler(pipe, TokenImpersonationLevel.Identification, server: "localhost"));
 
         Assert.Equal(
             nameof(CallerKind.FromNetwork),
-            await client.GetStringAsync("chi", CancellationToken.None));
+            await client.GetStringAsync("who", CancellationToken.None));
     }
 
     [WindowsOnly]
@@ -166,14 +166,14 @@ public class LocalChannelWindowsTests
                 options.Listen(IPAddress.Loopback, 0);
                 options.ListenNamedPipe(pipe);
             },
-            app => app.MapGet("/chi", (HttpContext context) => LocalCaller.Classify(context).Kind.ToString()));
+            app => app.MapGet("/who", (HttpContext context) => LocalCaller.Classify(context).Kind.ToString()));
 
         string tcp = bench.Addresses.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
         using HttpClient client = new() { BaseAddress = new Uri(tcp) };
 
         Assert.Equal(
             nameof(CallerKind.FromNetwork),
-            await client.GetStringAsync("chi", CancellationToken.None));
+            await client.GetStringAsync("who", CancellationToken.None));
     }
 
     [WindowsOnly]
@@ -240,7 +240,7 @@ public class LocalChannelWindowsTests
                 options.Listen(IPAddress.Loopback, 0);
                 options.ListenNamedPipe(pipe);
             },
-            app => app.MapGet("/riservato", () => "segreto").LocalOnly(),
+            app => app.MapGet("/restricted", () => "secret").LocalOnly(),
             middleware: app => app.UseObserverAccessControl(Token));
 
         string tcp = bench.Addresses.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
@@ -248,17 +248,17 @@ public class LocalChannelWindowsTests
         overTcp.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TestToken);
 
-        using HttpResponseMessage fromNetwork = await overTcp.GetAsync("riservato", CancellationToken.None);
+        using HttpResponseMessage fromNetwork = await overTcp.GetAsync("restricted", CancellationToken.None);
 
         // With the RIGHT token, and still a 404.
         Assert.Equal(HttpStatusCode.NotFound, fromNetwork.StatusCode);
 
         using HttpClient overPipe = RealKestrelBench.ClientOn(PipeHandler(pipe));
-        Assert.Equal("segreto", await overPipe.GetStringAsync("riservato", CancellationToken.None));
+        Assert.Equal("secret", await overPipe.GetStringAsync("restricted", CancellationToken.None));
     }
 
     /// <summary>The token used by the access control tests.</summary>
-    internal const string TestToken = "token-del-banco";
+    internal const string TestToken = "bench-token";
 
     internal static MachineCredentials Token =>
         new(TestToken, null, null);

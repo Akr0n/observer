@@ -92,8 +92,8 @@ public class SnapshotFlattenerTests
         // A missing point must NOT become a zero: in the chart a zero is data, a gap is a
         // gap. The difference only shows if the gap stays a gap.
         MetricPoint point = status == CollectorStatus.Unsupported
-            ? MetricPoint.Unsupported("cpu.temp", null, "niente sensore qui")
-            : MetricPoint.Unavailable("cpu.temp", null, "driver non caricato");
+            ? MetricPoint.Unsupported("cpu.temp", null, "no sensor here")
+            : MetricPoint.Unavailable("cpu.temp", null, "driver not loaded");
 
         Assert.Empty(SnapshotFlattener.Flatten(WithOnePoint(point)));
     }
@@ -135,7 +135,7 @@ public class SnapshotFlattenerTests
             MachineSnapshot.CurrentSchemaVersion,
             Instant,
             [
-                new MetricSnapshot("smart", CollectorStatus.Faulted, "esploso", []),
+                new MetricSnapshot("smart", CollectorStatus.Faulted, "crashed", []),
                 new MetricSnapshot("mem", CollectorStatus.Ok, null,
                     [MetricPoint.Measured("mem.used", null, MetricValue.FromNumber(1024d))]),
             ]);

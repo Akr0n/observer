@@ -37,9 +37,9 @@ public class ParallelSamplingTests
 
         using MetricSamplingService sampler = new(
             [
-                new SlowCollector("uno", counter: counter),
-                new SlowCollector("due", counter: counter),
-                new SlowCollector("tre", counter: counter),
+                new SlowCollector("one", counter: counter),
+                new SlowCollector("two", counter: counter),
+                new SlowCollector("three", counter: counter),
             ],
             cache,
             sink,
@@ -70,9 +70,9 @@ public class ParallelSamplingTests
 
         using MetricSamplingService sampler = new(
             [
-                new SlowCollector("primo", TimeSpan.FromMilliseconds(250)),
-                new SlowCollector("secondo", TimeSpan.Zero),
-                new SlowCollector("terzo", TimeSpan.FromMilliseconds(120)),
+                new SlowCollector("first", TimeSpan.FromMilliseconds(250)),
+                new SlowCollector("second", TimeSpan.Zero),
+                new SlowCollector("third", TimeSpan.FromMilliseconds(120)),
             ],
             cache,
             sink,
@@ -84,10 +84,10 @@ public class ParallelSamplingTests
         {
             MachineSnapshot first = await sink.FirstSnapshot.WaitAsync(TimeSpan.FromSeconds(15));
 
-            // "secondo" finishes first and "primo" finishes last: if arrival order counted, the
+            // "second" finishes first and "first" finishes last: if arrival order counted, the
             // list would come out reversed.
             Assert.Equal(
-                ["primo", "secondo", "terzo"],
+                ["first", "second", "third"],
                 first.Collectors.Select(collector => collector.CollectorId));
         }
         finally
@@ -155,7 +155,7 @@ public class ParallelSamplingTests
         public string Id { get; } = id;
 
         public IReadOnlyList<MetricDescriptor> Descriptors =>
-            [new MetricDescriptor(Id + ".valore", "Valore", MetricUnit.None, IsPerInstance: false)];
+            [new MetricDescriptor(Id + ".value", "Value", MetricUnit.None, IsPerInstance: false)];
 
         public async ValueTask<MetricSnapshot> CollectAsync(CancellationToken cancellationToken)
         {
@@ -170,7 +170,7 @@ public class ParallelSamplingTests
                 Id,
                 CollectorStatus.Ok,
                 null,
-                [MetricPoint.Measured(Id + ".valore", null, MetricValue.FromNumber(1d))]);
+                [MetricPoint.Measured(Id + ".value", null, MetricValue.FromNumber(1d))]);
         }
     }
 }
