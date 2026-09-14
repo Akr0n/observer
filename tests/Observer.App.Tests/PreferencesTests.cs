@@ -7,7 +7,7 @@ namespace Observer.App.Tests;
 /// Cio' che la finestra ricorda di se', e quando deve dimenticarlo.
 /// </summary>
 /// <remarks>
-/// La regola che conta e' quella dello schermo scollegato: una posizione saved su un monitor
+/// La regola che conta e' quella dello schermo scollegato: una posizione salvata su un monitor
 /// che non c'e' piu' riaprirebbe la finestra dove nessuno puo' vederla ne' afferrarla.
 /// </remarks>
 public class PreferenzeTests

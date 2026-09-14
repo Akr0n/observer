@@ -5,7 +5,7 @@ using Observer.Core.Metrics;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Il pannello dei processi: quando si apre, cosa ricorda, e cosa serve by terminare.
+/// Il pannello dei processi: quando si apre, cosa ricorda, e cosa serve per terminare.
 /// </summary>
 /// <remarks>
 /// E' l'unico posto dell'applicazione da cui si distrugge qualcosa, e le regole che contano
@@ -49,7 +49,7 @@ public class PannelloProcessiTests
     [Fact]
     public async Task DalQuadranteDellAttivitaDiscoSiChiedeLIoDellInteraMacchina()
     {
-        // Il quadrante e' di UN disco, l'elenco no: i contatori sono by processo, non by
+        // Il quadrante e' di UN disco, l'elenco no: i contatori sono per processo, non per
         // dispositivo. Il titolo deve dirlo, e al servizio si chiede "io", non la CPU.
         ClienteConProcessi cliente = new();
         MainViewModel viewModel = new(cliente, configurationProblem: null);
@@ -65,7 +65,7 @@ public class PannelloProcessiTests
     public void UnTassoDiIoSiFormattaInBytePerSecondoEUnoIgnotoEUnTrattino()
     {
         // Un trattino e non "0 B/s": sono due affermazioni diverse, e la seconda su un elenco
-        // ordinato by I/O sposterebbe l'attenzione sul programma sbagliato.
+        // ordinato per I/O sposterebbe l'attenzione sul programma sbagliato.
         Assert.Equal("1.5 MiB/s", ProcessRowState.From(new ProcessWire(1, "copia", 0d, 10, 1_572_864d)).Io);
         Assert.Equal("—", ProcessRowState.From(new ProcessWire(1, "ignoto", 0d, 10, null)).Io);
     }
@@ -82,8 +82,8 @@ public class PannelloProcessiTests
 
         viewModel.SelectedProcess = viewModel.Processes.Single(riga => riga.Pid == 22);
 
-        // Stessi PID, valori nuovi: e' cio' che succede a ogni giro. Si passa by un altro
-        // quadrante e non by lo stesso, perche' lo stesso quadrante una seconda volta CHIUDE
+        // Stessi PID, valori nuovi: e' cio' che succede a ogni giro. Si passa per un altro
+        // quadrante e non per lo stesso, perche' lo stesso quadrante una seconda volta CHIUDE
         // il pannello; un altro lo aggiorna sul posto, ed e' l'aggiornamento che qui conta.
         cliente.Cpu = ["9.0 %", "3.0 %"];
         await viewModel.OpenProcessesCommand.ExecuteAsync(Riga("memory|memory.used.percent|"));
@@ -136,7 +136,7 @@ public class PannelloProcessiTests
     [Fact]
     public async Task CliccareDiNuovoLoStessoQuadranteChiudeIlPannello()
     {
-        // Il gesto che chiunque prova by primo by far sparire cio' che ha appena fatto
+        // Il gesto che chiunque prova per primo per far sparire cio' che ha appena fatto
         // comparire. Prima riapriva lo stesso elenco, e l'unico modo di chiuderlo era il
         // pulsante Close in fondo a destra.
         ClienteConProcessi cliente = new();
@@ -215,8 +215,8 @@ public class PannelloProcessiTests
     public async Task UnClicMentreLaPrimaLetturaEInVoloNonVieneScartato()
     {
         // Macchina remota lenta: la prima lettura dell'elenco non torna subito. Nel frattempo
-        // chi ha cliccato clicca ancora — by chiudere, o by passare a un altro quadrante —
-        // e quel clic deve contare. Prima veniva scartato: il comando e' UNO by tutti i
+        // chi ha cliccato clicca ancora — per chiudere, o per passare a un altro quadrante —
+        // e quel clic deve contare. Prima veniva scartato: il comando e' UNO per tutti i
         // quadranti, e un comando asincrono in esecuzione rifiuta le esecuzioni concorrenti.
         ClienteConProcessi cliente = new() { Attesa = new TaskCompletionSource<ProcessFetch>() };
         MainViewModel viewModel = new(cliente, configurationProblem: null);
@@ -230,7 +230,7 @@ public class PannelloProcessiTests
 
         Assert.False(viewModel.IsProcessPanelOpen);
 
-        // E la risposta arrivata in ritardo by un pannello ormai chiuso non lo riempie.
+        // E la risposta arrivata in ritardo per un pannello ormai chiuso non lo riempie.
         cliente.Attesa.SetResult(new ProcessFetch(
             ServiceOutcome.Ok, string.Empty, [new ProcessRowState(99, "in ritardo", "99 %", "1 MiB")]));
         await prima;

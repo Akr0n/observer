@@ -48,7 +48,7 @@ public class MacchinaRicordataTests
     {
         // Si ricorda la macchina che il giro sta davvero LEGGENDO, non quella evidenziata: la
         // selezione puo' diventare nulla mentre la lettura continua, ed e' la stessa
-        // distinzione per cui il view model tiene voceGuardata separata dalla selezione.
+        // distinzione per cui il view model tiene watchedEntry separata dalla selezione.
         ObserverEndpoint locale = ObserverEndpoint.LocalChannel();
         ObserverEndpoint remota = Remota("laptop");
 

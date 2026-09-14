@@ -12,7 +12,7 @@ namespace Observer.App.Tests;
 /// macchina che semplicemente non compare e' indistinguibile da una che non e' stata aggiunta,
 /// e chi la cerca non ha modo di sapere che cosa correggere.
 /// <para>
-/// Da oggi ne difende una seconda: <b>il token non sta piu' nel file</b>. Sta nel store del
+/// Da oggi ne difende una seconda: <b>il token non sta piu' nel file</b>. Sta nel deposito del
 /// sistema, e una voce che se lo porta ancora dietro viene rifiutata anche se quel token e'
 /// giusto — accettarlo "per compatibilita'" vorrebbe dire che il segreto puo' restare li' per
 /// sempre.
@@ -101,7 +101,7 @@ public class MachineDirectoryTests
     public void SenzaNomeNonSiSaDoveCercareIlToken()
     {
         // Prima il nome era facoltativo e la macchina si chiamava col proprio indirizzo. Ora e'
-        // la chiave con cui il token si cerca nel store, quindi senza non si va da nessuna
+        // la chiave con cui il token si cerca nel deposito, quindi senza non si va da nessuna
         // parte — e va detto, invece di far sparire la voce.
         MachineListResult elenco = Leggi(
             $$"""
@@ -223,7 +223,7 @@ public class MachineDirectoryTests
     public void IlVecchioClientJsonNonPuoRiaprireLaStradaInChiaro()
     {
         // La porta di servizio piu' facile da lasciare aperta: l'elenco rifiuta http://, ma il
-        // fallback a macchina singola entrava senza passare da alcun controllo. Il risultato
+        // ripiego a macchina singola entrava senza passare da alcun controllo. Il risultato
         // sarebbe stato il token spedito in chiaro una volta al secondo, cioe' esattamente cio'
         // che la chiusura della porta doveva impedire.
         ObserverEndpoint inChiaro = ObserverEndpoint.Remote(

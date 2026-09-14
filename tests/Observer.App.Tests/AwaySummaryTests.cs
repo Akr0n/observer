@@ -9,7 +9,7 @@ namespace Observer.App.Tests;
 /// La frase che dice cosa e' successo mentre la finestra era chiusa.
 /// </summary>
 /// <remarks>
-/// E' la risposta onesta che questo stack puo' dare alla query "avvisami se una macchina cade
+/// E' la risposta onesta che questo stack puo' dare alla richiesta "avvisami se una macchina cade
 /// mentre non guardo": l'avviso vero non e' consegnabile senza poter fallire in silenzio, questo
 /// non puo' fallire in silenzio perche' non promette niente mentre nessuno guarda.
 /// </remarks>
@@ -17,7 +17,7 @@ public class RiepilogoTests
 {
     /// <remarks>
     /// Mezzogiorno LOCALE, non UTC: la frase mostra l'ora della macchina di chi guarda (come
-    /// <c>HistoryStrip.Descrivi</c>), quindi un istante UTC renderebbe il test dipendente dal
+    /// <c>HistoryStrip.Describe</c>), quindi un istante UTC renderebbe il test dipendente dal
     /// fuso di chi lo esegue - verde qui e rosso sul runner, o viceversa.
     /// </remarks>
     private static readonly DateTimeOffset Mezzogiorno = new(new DateTime(2026, 9, 12, 12, 0, 0, DateTimeKind.Local));
@@ -81,7 +81,7 @@ public class RiepilogoTests
     [Fact]
     public void OltreLaGiornataGliIstantiPortanoIlGiorno()
     {
-        // Stessa soglia e stessa ragione di HistoryStrip.Descrivi: a sette giorni "14:20" puo'
+        // Stessa soglia e stessa ragione di HistoryStrip.Describe: a sette giorni "14:20" puo'
         // essere uno qualunque di sette pomeriggi.
         string senza = AwaySummary.LineFor("lavoro", [Vuoto(20, 200)], withDay: false);
         string con = AwaySummary.LineFor("lavoro", [Vuoto(20, 200)], withDay: true);
@@ -168,7 +168,7 @@ public class RiepilogoTests
         }
         catch (OperationCanceledException)
         {
-            // End del test.
+            // Fine del test.
         }
     }
 

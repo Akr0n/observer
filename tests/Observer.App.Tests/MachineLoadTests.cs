@@ -239,7 +239,7 @@ public class CaricoTests
     public async Task UnaSondaCheTornaSullaMacchinaDiventataGuardataNonScrive()
     {
         // La sonda PARTE filtrando la macchina guardata, ma TORNA fino a otto secondi dopo, e
-        // in quel tempo un clic basta. From li' in poi scriverebbero in due sulla stessa voce -
+        // in quel tempo un clic basta. Da li' in poi scriverebbero in due sulla stessa voce -
         // la sonda ogni quindici secondi, il giro principale ogni secondo - e la riga
         // mostrerebbe a strappi due letture diverse della STESSA macchina.
         ObserverEndpoint locale = ObserverEndpoint.LocalChannel();
@@ -289,7 +289,7 @@ public class CaricoTests
         }
         catch (OperationCanceledException)
         {
-            // End del test.
+            // Fine del test.
         }
     }
 

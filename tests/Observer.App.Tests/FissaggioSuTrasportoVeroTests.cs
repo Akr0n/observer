@@ -197,7 +197,7 @@ public sealed class FissaggioSuTrasportoVeroTests : IDisposable
         }
         catch (OperationCanceledException)
         {
-            // End del test.
+            // Fine del test.
         }
         catch (SocketException)
         {
@@ -220,7 +220,7 @@ public sealed class FissaggioSuTrasportoVeroTests : IDisposable
         /// <summary>Byte arrivati DOPO l'handshake, cioe' quelli della richiesta HTTP.</summary>
         public int ByteApplicativiRicevuti => Volatile.Read(ref ricevuti);
 
-        /// <summary>Record quanto e' arrivato.</summary>
+        /// <summary>Registra quanto e' arrivato.</summary>
         public void Conta(int quanti) => Interlocked.Add(ref ricevuti, quanti);
     }
 }

@@ -74,7 +74,7 @@ public class LeggerezzaTests
         }
         catch (OperationCanceledException)
         {
-            // End del test.
+            // Fine del test.
         }
     }
 

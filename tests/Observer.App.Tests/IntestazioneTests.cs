@@ -48,7 +48,7 @@ public class IntestazioneTests
         }
         catch (OperationCanceledException)
         {
-            // End del test.
+            // Fine del test.
         }
     }
 

@@ -64,7 +64,7 @@ public class CambioMacchinaTests
         }
         catch (OperationCanceledException)
         {
-            // End del test.
+            // Fine del test.
         }
     }
 

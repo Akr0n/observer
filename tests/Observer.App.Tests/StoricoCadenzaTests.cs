@@ -84,7 +84,7 @@ public class StoricoCadenzaTests
     public async Task UnoStoricoCheFallisceNonCongelaLaStrisciaPerUnPasso()
     {
         // A sette giorni il passo e' due ore: se la scadenza si spostasse lo stesso dopo un
-        // guasto, la seconda lettura non partirebbe per mezz'ora di clock. Qui l'clock
+        // guasto, la seconda lettura non partirebbe per mezz'ora di orologio. Qui l'orologio
         // avanza di venti secondi e la seconda lettura deve esserci gia'.
         OrologioFinto clock = new();
         ClientSenzaStorico cliente = new();
@@ -158,7 +158,7 @@ public class StoricoCadenzaTests
 
         Assert.Empty(viewModel.Gauges);
 
-        // Senza avanzare l'clock: la striscia della macchina nuova deve tornare nei secondi
+        // Senza avanzare l'orologio: la striscia della macchina nuova deve tornare nei secondi
         // del ciclo, non fra mezz'ora.
         while (!arresto.IsCancellationRequested && !viewModel.Gauges.Any(riga => riga.ShowHistory))
         {
@@ -210,7 +210,7 @@ public class StoricoCadenzaTests
         }
         catch (OperationCanceledException)
         {
-            // End del test.
+            // Fine del test.
         }
     }
 

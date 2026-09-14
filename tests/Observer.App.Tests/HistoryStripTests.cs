@@ -46,7 +46,7 @@ public class HistoryStripTests
     public void LeBarrePieneEIBuchiRestanoLarghiUguali()
     {
         // Stringere una barra piena sarebbe una bugia al contrario, e un buco ha gia' il suo
-        // segno: la stripWidth parla solo di quanto un intervallo e' stato coperto.
+        // segno: la larghezza parla solo di quanto un intervallo e' stato coperto.
         HistoryBar piena = new(Adesso, BarKind.Measured, 0.5d, 0.5d, 0.5d, 60, 60);
         HistoryBar buco = new(Adesso, BarKind.Missing, 0d, 0d, 0d, 0, 60);
 
@@ -238,7 +238,7 @@ public class HistoryStripTests
     [Fact]
     public void ICampioniAttesiSeguonoLaDurataDellIntervallo()
     {
-        // Il servizio campiona una volta al secondo: e' cio' che rende "barCount campioni sono
+        // Il servizio campiona una volta al secondo: e' cio' che rende "quanti campioni sono
         // arrivati" una misura della copertura, e non un dettaglio.
         Assert.Equal(60, HistoryStrip.ExpectedSamplesIn(TimeSpan.FromMinutes(1)));
         Assert.Equal(300, HistoryStrip.ExpectedSamplesIn(TimeSpan.FromMinutes(5)));
@@ -269,7 +269,7 @@ public class HistoryStripTests
     [InlineData(-1d)]
     public void FuoriDallaStrisciaNonCEUnaBarra(double x)
     {
-        // Il bordo destro sbaglia da solo: con x esattamente uguale alla stripWidth la
+        // Il bordo destro sbaglia da solo: con x esattamente uguale alla larghezza la
         // divisione da' dieci, cioe' un indice che non esiste, e senza il controllo il
         // suggerimento leggerebbe fuori dall'elenco.
         Assert.Equal(-1, HistoryStrip.IndexAt(x, width: 100d, barCount: 10));

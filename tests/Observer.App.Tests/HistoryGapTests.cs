@@ -92,7 +92,7 @@ public class AssenzeTests
         // sinistra. Con le due cose insieme non deve uscire nessun vuoto.
         //
         // Costruita come la manderebbe il servizio: 60 minuti di finestra, margine di dieci
-        // minuti davanti (CodaDi a un'ora), e la serie che finisce cinque minuti prima di
+        // minuti davanti (TailFor a un'ora), e la serie che finisce cinque minuti prima di
         // adesso. Senza il margine nella richiesta, qui esce un'assenza AtEdge e la riga
         // diventa "nothing known before" su una macchina che ha misurato tutto il tempo.
         TimeSpan finestra = TimeSpan.FromHours(1);

@@ -211,7 +211,7 @@ public class StatoMacchineTests
         }
         catch (OperationCanceledException)
         {
-            // End del test.
+            // Fine del test.
         }
     }
 
@@ -237,7 +237,7 @@ public class StatoMacchineTests
     public async Task LaMacchinaGuardataNonVieneSondataAncheSeRemota()
     {
         // "Salta la selezionata" e "salta la locale" sono indistinguibili quando la guardata
-        // e' la prima dell'machineList. Qui la guardata e' la seconda, e remota.
+        // e' la prima dell'elenco. Qui la guardata e' la seconda, e remota.
         ObserverEndpoint locale = ObserverEndpoint.LocalChannel();
         ObserverEndpoint viva = Remota("viva");
         ObserverEndpoint spenta = Remota("spenta");
@@ -420,9 +420,9 @@ public class StatoMacchineTests
     [Fact]
     public async Task RileggendoLaMacchinaLaDurataRiparteDaCapo()
     {
-        // Stesso posto nell'machineList, macchina cambiata sotto: "giu' da mezz'ora" riferito alla
+        // Stesso posto nell'elenco, macchina cambiata sotto: "giu' da mezz'ora" riferito alla
         // precedente sarebbe una bugia, ed e' una bugia che nessuno andrebbe a cercare.
-        // Il percorso passa da rereadEndpoint -> SondaAsync -> Aggiorna, che e' interno: si
+        // Il percorso passa da rereadEndpoint -> ProbeAsync -> Update, che e' interno: si
         // prova da qui, dove e' raggiungibile, invece di allargare la superficie della classe.
         // Il client rifiuta ANCHE la credenziale nuova, altrimenti una lettura buona azzererebbe
         // tutto per un'altra strada e il test passerebbe anche senza l'azzeramento.
@@ -449,7 +449,7 @@ public class StatoMacchineTests
             await Task.Delay(50, CancellationToken.None);
         }
 
-        // Il guasto invecchia. L'clock si sposta una volta sola: sono le sonde successive
+        // Il guasto invecchia. L'orologio si sposta una volta sola: sono le sonde successive
         // a leggerlo, e la riga arriva a dire mezz'ora.
         clock.Avanza(TimeSpan.FromMinutes(30));
 
@@ -461,7 +461,7 @@ public class StatoMacchineTests
 
         Assert.Equal("for 30 min", viewModel.Machines[1].DowntimeText);
 
-        // Adesso la macchina cambia sotto: la sonda successiva la rilegge. L'clock deve
+        // Adesso la macchina cambia sotto: la sonda successiva la rilegge. L'orologio deve
         // avanzare, altrimenti la sonda non scatta piu' e non c'e' nessuna lettura successiva.
         ruota = true;
 
@@ -473,7 +473,7 @@ public class StatoMacchineTests
 
         // La macchina e' ancora giu', ma e' un'ALTRA macchina: la misura ricomincia da zero e
         // il rifiuto successivo riparte da "under 1 min", invece di continuare la mezz'ora
-        // della precedente. Senza l'azzeramento dentro Aggiorna la durata proseguirebbe.
+        // della precedente. Senza l'azzeramento dentro Update la durata proseguirebbe.
         Assert.Equal(nuova, viewModel.Machines[1].Endpoint);
         Assert.True(viewModel.Machines[1].IsFaulted || viewModel.Machines[1].IsWarning);
         // Vuota se si guarda fra l'azzeramento e la lettura successiva, "under 1 min" se si
@@ -536,7 +536,7 @@ public class StatoMacchineTests
     [Fact]
     public async Task ScegliendoUnaMacchinaCheLaSondaSaGiaSpentaLaBarraNonRecitaConnecting()
     {
-        // Barra e pallino hanno un clock solo: la sonda sa da sedici secondi che la macchina
+        // Barra e pallino hanno un orologio solo: la sonda sa da sedici secondi che la macchina
         // e' spenta, e cliccandoci sopra la barra deve aprire rossa, non "Connecting" per altri
         // dieci secondi mentre il pallino accanto e' gia' rosso.
         ObserverEndpoint locale = ObserverEndpoint.LocalChannel();
@@ -626,7 +626,7 @@ public class StatoMacchineTests
         }
         catch (OperationCanceledException)
         {
-            // End del test.
+            // Fine del test.
         }
     }
 
