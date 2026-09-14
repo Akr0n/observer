@@ -6,33 +6,33 @@ using Observer.Core.Units;
 namespace Observer.Core.Tests;
 
 /// <summary>
-/// Comportamento dei collector con porte finte: nessun accesso a /proc, al registro o alle
-/// API di sistema. Verificano la degradazione graziosa, che e' la proprieta' su cui poggia
-/// il requisito "misurare qualsiasi parametro": una sorgente che non c'e' o che esplode
-/// deve degradare una piastrella, non abbattere il servizio.
+/// Collector behaviour against fake ports: no access to /proc, to the registry or to the
+/// system APIs. These tests check graceful degradation, which is the property the requirement
+/// "measure any parameter" rests on: a source that is not there, or that blows up, must
+/// degrade one gauge, not bring the service down.
 /// </summary>
 public class CollectorBehaviourTests
 {
     [Fact]
-    public async Task Cpu_PrimoCampione_EWarmupENonZeroPerCento()
+    public async Task Cpu_FirstSample_IsWarmupAndNotZeroPercent()
     {
-        // Senza uno stato "in avvio" il primo giro pubblicherebbe uno 0% inventato, che a
-        // grafico sembra una macchina ferma: un numero falso e perfettamente plausibile.
-        // L'assenza del dato dev'essere DICHIARATA, non silenziosa.
+        // Without a "warming up" state the first pass would publish a made-up 0%, which on a
+        // chart looks like an idle machine: a number that is false and perfectly plausible.
+        // A missing reading must be DECLARED, not silent.
         ScriptedCpuProvider provider = new(
             new CpuTimes(Idle: 1000L, Total: 2000L),
             new CpuTimes(Idle: 1500L, Total: 3000L));
         CpuCollector collector = new(provider);
 
-        MetricSnapshot primo = await collector.CollectAsync(CancellationToken.None);
+        MetricSnapshot first = await collector.CollectAsync(CancellationToken.None);
 
-        Assert.Equal(CollectorStatus.Warmup, primo.Status);
-        Assert.Empty(primo.Points);
-        Assert.False(string.IsNullOrWhiteSpace(primo.Message));
+        Assert.Equal(CollectorStatus.Warmup, first.Status);
+        Assert.Empty(first.Points);
+        Assert.False(string.IsNullOrWhiteSpace(first.Message));
     }
 
     [Fact]
-    public async Task Cpu_SecondoCampione_PubblicaLaPercentuale()
+    public async Task Cpu_SecondSample_PublishesThePercentage()
     {
         ScriptedCpuProvider provider = new(
             new CpuTimes(Idle: 1000L, Total: 2000L),
@@ -40,18 +40,18 @@ public class CollectorBehaviourTests
         CpuCollector collector = new(provider);
 
         await collector.CollectAsync(CancellationToken.None);
-        MetricSnapshot secondo = await collector.CollectAsync(CancellationToken.None);
+        MetricSnapshot second = await collector.CollectAsync(CancellationToken.None);
 
-        Assert.Equal(CollectorStatus.Ok, secondo.Status);
-        MetricPoint punto = Assert.Single(secondo.Points, p => p.MetricId == CpuCollector.TotalUsageMetricId);
-        Assert.Equal(50.0, punto.Value!.Value.Number);
+        Assert.Equal(CollectorStatus.Ok, second.Status);
+        MetricPoint point = Assert.Single(second.Points, p => p.MetricId == CpuCollector.TotalUsageMetricId);
+        Assert.Equal(50.0, point.Value!.Value.Number);
     }
 
     [Fact]
-    public async Task Cpu_LetturaFallita_EUnavailableENonWarmup()
+    public async Task Cpu_ReadFailed_IsUnavailableAndNotWarmup()
     {
-        // "Non ho ancora due letture" e "non riesco a leggere" sono due cose diverse e
-        // vanno mostrate diversamente. Confonderle nasconde un guasto dietro un'attesa.
+        // "I do not have two readings yet" and "I cannot read" are two different things and
+        // must be shown differently. Confusing them hides a fault behind a wait.
         ScriptedCpuProvider provider = new();
         CpuCollector collector = new(provider);
 
@@ -62,11 +62,11 @@ public class CollectorBehaviourTests
     }
 
     [Fact]
-    public async Task Cpu_ProviderNonSupportato_RestaNelCatalogoEDichiaraIlMotivo()
+    public async Task Cpu_UnsupportedProvider_StaysInTheCatalogAndStatesTheReason()
     {
-        // Differenza fra "non si puo' misurare qui" e "me la sono dimenticata". La metrica
-        // deve comparire in dashboard CON la spiegazione, non sparire.
-        UnsupportedCpuProvider provider = new("i contatori per-core richiedono ntdll");
+        // The difference between "it cannot be measured here" and "I forgot about it". The
+        // metric must show up in the dashboard WITH the explanation, not disappear.
+        UnsupportedCpuProvider provider = new("per-core counters need ntdll");
         CpuCollector collector = new(provider);
 
         MetricSnapshot snapshot = await collector.CollectAsync(CancellationToken.None);
@@ -77,10 +77,10 @@ public class CollectorBehaviourTests
     }
 
     [Fact]
-    public async Task Memoria_SenzaSwap_NonEmettePuntiSwap()
+    public async Task Memory_NoSwap_EmitsNoSwapPoints()
     {
-        // Una macchina senza swap e' una configurazione legittima, non un guasto. Emettere
-        // zeri sarebbe fuorviante: l'assenza del punto e' la convenzione per "non applicabile".
+        // A machine with no swap is a legitimate configuration, not a fault. Emitting zeros
+        // would be misleading: the absence of the point is the convention for "not applicable".
         FakeMemoryProvider provider = new(new MemoryReading(
             Total: ByteSize.FromKibibytes(1048576L),
             Available: ByteSize.FromKibibytes(524288L),
@@ -97,7 +97,7 @@ public class CollectorBehaviourTests
     }
 
     [Fact]
-    public async Task Memoria_UsaAvailableNonFree_QuindiRiporta50NonNovantanove()
+    public async Task Memory_UsesAvailableNotFree_SoItReports50Not99()
     {
         FakeMemoryProvider provider = new(new MemoryReading(
             Total: ByteSize.FromKibibytes(1048576L),
@@ -109,18 +109,18 @@ public class CollectorBehaviourTests
 
         MetricSnapshot snapshot = await collector.CollectAsync(CancellationToken.None);
 
-        MetricPoint usata = Assert.Single(snapshot.Points, p => p.MetricId == MemoryCollector.UsedPercentMetricId);
-        Assert.Equal(50.0, usata.Value!.Value.Number);
+        MetricPoint usedPercent = Assert.Single(snapshot.Points, p => p.MetricId == MemoryCollector.UsedPercentMetricId);
+        Assert.Equal(50.0, usedPercent.Value!.Value.Number);
         Assert.Contains(snapshot.Points, p => p.MetricId == MemoryCollector.SwapTotalMetricId);
     }
 
     [Fact]
-    public async Task OgniPuntoEmesso_HaUnDescrittoreDichiarato()
+    public async Task EveryEmittedPoint_HasADeclaredDescriptor()
     {
-        // Il legame chiave-collector non e' verificato dal compilatore: se un collector
-        // emette un punto di cui non pubblica il descrittore, la UI non sa che unita' usare
-        // ne' come etichettarlo, e lo disegna sbagliato o lo scarta. Questo test sposta
-        // l'errore in CI invece che in dashboard.
+        // The key-to-collector link is not checked by the compiler: if a collector emits a
+        // point whose descriptor it does not publish, the UI does not know which unit to use
+        // nor how to label it, and either draws it wrong or discards it. This test moves the
+        // error into CI instead of into the dashboard.
         FakeMemoryProvider provider = new(new MemoryReading(
             Total: ByteSize.FromKibibytes(1048576L),
             Available: ByteSize.FromKibibytes(524288L),
@@ -131,32 +131,32 @@ public class CollectorBehaviourTests
 
         MetricSnapshot snapshot = await collector.CollectAsync(CancellationToken.None);
 
-        HashSet<string> dichiarati = collector.Descriptors.Select(d => d.MetricId).ToHashSet(StringComparer.Ordinal);
-        Assert.All(snapshot.Points, p => Assert.Contains(p.MetricId, dichiarati));
+        HashSet<string> declared = collector.Descriptors.Select(d => d.MetricId).ToHashSet(StringComparer.Ordinal);
+        Assert.All(snapshot.Points, p => Assert.Contains(p.MetricId, declared));
     }
 
     [Fact]
-    public void MetricUnit_EUnTipoAperto_QuindiUnaUnitaNuovaNonRichiedeDiToccareIlCore()
+    public void MetricUnit_IsAnOpenType_SoANewUnitNeedsNoChangeToCore()
     {
-        // Se le unita' fossero un enum chiuso, il primo sensore in rpm o in volt
-        // costringerebbe a modificare Observer.Core. Il requisito "qualsiasi parametro"
-        // richiede che questo resti possibile senza toccare nulla.
-        MetricUnit giriAlMinuto = new("rpm");
+        // If the units were a closed enum, the first sensor measured in rpm or volts would force a
+        // change to Observer.Core. The requirement "any parameter" needs this to stay
+        // possible without touching anything.
+        MetricUnit rpm = new("rpm");
 
-        Assert.Equal("rpm", giriAlMinuto.Symbol);
+        Assert.Equal("rpm", rpm.Symbol);
     }
 
     [Fact]
-    public void CollectorStatus_ValoreZero_EUnknownENonOk()
+    public void CollectorStatus_ZeroValue_IsUnknownAndNotOk()
     {
-        // Uno zero che significasse "Ok" farebbe passare per riuscita una raccolta mai
-        // avvenuta: default(CollectorStatus) non deve spacciarsi per successo.
+        // A zero that meant "Ok" would report a collection that never happened as a success:
+        // default(CollectorStatus) must not pass itself off as one.
         Assert.Equal(CollectorStatus.Unknown, default(CollectorStatus));
     }
 
-    // ---- porte finte -------------------------------------------------------------
+    // ---- fake ports --------------------------------------------------------------
 
-    /// <summary>Restituisce a turno i campioni preimpostati; esaurita la lista, fallisce.</summary>
+    /// <summary>Returns the preset samples in turn; once the list is exhausted, it fails.</summary>
     private sealed class ScriptedCpuProvider(params CpuTimes[] samples) : ICpuTimesProvider
     {
         private int index;

@@ -4,81 +4,81 @@ using Observer.Core.Metrics;
 namespace Observer.Core.Tests;
 
 /// <summary>
-/// Il confine di serializzazione. E' il punto in cui un difetto non si vede compilando ne'
-/// guardando il JSON in uscita: si vede solo rimettendo dentro cio' che e' uscito. Un valore
-/// che si serializza ma non si rideserializza produce un client pieno di zeri marcati "Ok",
-/// cioe' il bug piu' pericoloso possibile per chi non puo' leggere il codice.
+/// The serialization boundary. It is the point where a defect shows up neither at compile time
+/// nor by looking at the outgoing JSON: it shows up only by feeding back in what came out. A
+/// value that serializes but does not deserialize back produces a client full of zeros marked
+/// "Ok" — the most dangerous bug there can be for someone who cannot read the code.
 /// </summary>
 public class WireFormatTests
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
 
-    public static TheoryData<string, MetricValue> ValoriDiOgniTipo() => new()
+    public static TheoryData<string, MetricValue> ValuesOfEveryKind() => new()
     {
-        { "numero", MetricValue.FromNumber(34122366976d) },
-        { "testo", MetricValue.FromText("Samsung 990") },
+        { "number", MetricValue.FromNumber(34122366976d) },
+        { "text", MetricValue.FromText("Samsung 990") },
         { "flag", MetricValue.FromFlag(true) },
     };
 
     [Theory]
-    [MemberData(nameof(ValoriDiOgniTipo))]
-    public void MetricValue_OgniTipo_SopravviveAlRoundTrip(string nome, MetricValue originale)
+    [MemberData(nameof(ValuesOfEveryKind))]
+    public void MetricValue_EveryKind_SurvivesTheRoundTrip(string metricId, MetricValue original)
     {
-        // Iterare su TUTTI i tipi non e' pedanteria: il giorno in cui qualcuno aggiunge un
-        // quarto MetricValueKind senza aggiornare la serializzazione, questo test fallisce
-        // da solo invece di lasciare che il valore sparisca in silenzio.
+        // Iterating over ALL the kinds is not pedantry: the day someone adds a fourth
+        // MetricValueKind without updating the serialization, this test fails on its own
+        // instead of letting the value disappear in silence.
         MachineSnapshot snapshot = new(
             MachineSnapshot.CurrentSchemaVersion,
             DateTimeOffset.UnixEpoch,
             [
                 new MetricSnapshot(
-                    "prova",
+                    "test",
                     CollectorStatus.Ok,
                     null,
-                    [MetricPoint.Measured(nome, null, originale)]),
+                    [MetricPoint.Measured(metricId, null, original)]),
             ]);
 
         string json = JsonSerializer.Serialize(snapshot, Options);
-        MachineSnapshot? tornato = JsonSerializer.Deserialize<MachineSnapshot>(json, Options);
+        MachineSnapshot? roundTripped = JsonSerializer.Deserialize<MachineSnapshot>(json, Options);
 
-        MetricValue valore = tornato!.Collectors[0].Points[0].Value!.Value;
+        MetricValue value = roundTripped!.Collectors[0].Points[0].Value!.Value;
 
-        Assert.Equal(originale.Kind, valore.Kind);
-        Assert.Equal(originale.Number, valore.Number);
-        Assert.Equal(originale.Text, valore.Text);
-        Assert.Equal(originale.Flag, valore.Flag);
+        Assert.Equal(original.Kind, value.Kind);
+        Assert.Equal(original.Number, value.Number);
+        Assert.Equal(original.Text, value.Text);
+        Assert.Equal(original.Flag, value.Flag);
     }
 
     [Fact]
-    public void MachineSnapshot_SopravviveAlRoundTrip_ConStatoEIstanza()
+    public void MachineSnapshot_SurvivesTheRoundTrip_WithStatusAndInstance()
     {
-        // Struttura e diagnostica devono tornare indietro quanto i valori: uno stato
-        // degradato che si perde nel trasporto diventa un guasto invisibile.
+        // Structure and diagnostics must survive the round trip just as the values do: a
+        // degraded status lost in transport becomes an invisible fault.
         MachineSnapshot snapshot = new(
             MachineSnapshot.CurrentSchemaVersion,
             DateTimeOffset.UnixEpoch,
             [
-                new MetricSnapshot("cpu", CollectorStatus.Unsupported, "niente ntdll qui", []),
+                new MetricSnapshot("cpu", CollectorStatus.Unsupported, "no ntdll here", []),
                 new MetricSnapshot("smart", CollectorStatus.Ok, null,
                     [MetricPoint.Measured("smart.temp", "nvme0", MetricValue.FromNumber(41d))]),
             ]);
 
         string json = JsonSerializer.Serialize(snapshot, Options);
-        MachineSnapshot tornato = JsonSerializer.Deserialize<MachineSnapshot>(json, Options)!;
+        MachineSnapshot roundTripped = JsonSerializer.Deserialize<MachineSnapshot>(json, Options)!;
 
-        Assert.Equal(MachineSnapshot.CurrentSchemaVersion, tornato.SchemaVersion);
-        Assert.Equal(DateTimeOffset.UnixEpoch, tornato.CapturedAt);
-        Assert.Equal(CollectorStatus.Unsupported, tornato.Collectors[0].Status);
-        Assert.Equal("niente ntdll qui", tornato.Collectors[0].Message);
-        Assert.Equal("nvme0", tornato.Collectors[1].Points[0].Instance);
-        Assert.Equal(41d, tornato.Collectors[1].Points[0].Value!.Value.Number);
+        Assert.Equal(MachineSnapshot.CurrentSchemaVersion, roundTripped.SchemaVersion);
+        Assert.Equal(DateTimeOffset.UnixEpoch, roundTripped.CapturedAt);
+        Assert.Equal(CollectorStatus.Unsupported, roundTripped.Collectors[0].Status);
+        Assert.Equal("no ntdll here", roundTripped.Collectors[0].Message);
+        Assert.Equal("nvme0", roundTripped.Collectors[1].Points[0].Instance);
+        Assert.Equal(41d, roundTripped.Collectors[1].Points[0].Value!.Value.Number);
     }
 
     [Fact]
-    public void MachineSnapshot_PortaLaVersioneDiSchemaSulFilo()
+    public void MachineSnapshot_CarriesTheSchemaVersionOnTheWire()
     {
-        // Senza versione sul filo, un client e un servizio compilati da commit diversi
-        // divergono in silenzio con campi a zero invece che con un messaggio leggibile.
+        // Without a version on the wire, a client and a service built from different commits
+        // diverge in silence with zeroed fields instead of with a readable message.
         MachineSnapshot snapshot = new(MachineSnapshot.CurrentSchemaVersion, DateTimeOffset.UnixEpoch, []);
 
         string json = JsonSerializer.Serialize(snapshot, Options);
@@ -90,11 +90,11 @@ public class WireFormatTests
     [InlineData(double.NaN)]
     [InlineData(double.PositiveInfinity)]
     [InlineData(double.NegativeInfinity)]
-    public void MetricValue_FromNumber_RifiutaIValoriNonFiniti(double valoreRotto)
+    public void MetricValue_FromNumber_RejectsNonFiniteValues(double brokenValue)
     {
-        // Un NaN accettato qui fa LANCIARE il serializzatore piu' tardi, e a quel punto non
-        // si perde una metrica: si perde l'INTERA risposta HTTP, tutte le altre comprese.
-        // Meglio un errore rumoroso subito, dove si vede chi lo ha prodotto.
-        Assert.Throws<ArgumentOutOfRangeException>(() => MetricValue.FromNumber(valoreRotto));
+        // A NaN accepted here makes the serializer THROW later, and at that point it is not
+        // one metric that is lost: the ENTIRE HTTP response is lost, all the others with it.
+        // Better a noisy error right away, where you can see who produced it.
+        Assert.Throws<ArgumentOutOfRangeException>(() => MetricValue.FromNumber(brokenValue));
     }
 }

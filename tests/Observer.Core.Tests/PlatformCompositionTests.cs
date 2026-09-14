@@ -9,15 +9,15 @@ using Observer.Core.Platform.Windows;
 namespace Observer.Core.Tests;
 
 /// <summary>
-/// Selezione della piattaforma e radice di composizione. La piattaforma e' un PARAMETRO e
-/// non una lettura dell'ambiente: cosi' il ramo Linux si prova dal runner Windows della CI,
-/// ed e' testabile proprio il punto da cui nasce la degradazione.
+/// Platform selection and composition root. The platform is a PARAMETER, not something read
+/// from the environment: that way the Linux branch is exercised from CI's Windows runner, and
+/// the point where degradation begins is itself testable.
 /// </summary>
 public class PlatformCompositionTests
 {
     private const string ProcStat = "cpu  95 0 530 17966 170 0 119 0 0 0\ncpu0 12 0 209 4245 23 0 85 0 0 0\n";
 
-    private const string ProcStatDopo = "cpu  595 0 530 18466 170 0 119 0 0 0\ncpu0 62 0 209 4295 23 0 85 0 0 0\n";
+    private const string ProcStatAfter = "cpu  595 0 530 18466 170 0 119 0 0 0\ncpu0 62 0 209 4295 23 0 85 0 0 0\n";
 
     private const string ProcMeminfo = """
         MemTotal:        1048576 kB
@@ -28,14 +28,14 @@ public class PlatformCompositionTests
         """;
 
     [Fact]
-    public void Composizione_SuOgniPiattaforma_RegistraSempreCpuEMemoria()
+    public void Composition_OnEveryPlatform_AlwaysRegistersCpuAndMemory()
     {
-        // Una metrica non deve MAI sparire in base alla piattaforma: se sparisse, in
-        // dashboard non si distinguerebbe "non misurabile qui" da "dimenticata".
-        foreach (HostPlatform piattaforma in new[] { HostPlatform.Windows, HostPlatform.Linux, HostPlatform.Unknown })
+        // A metric must NEVER disappear depending on the platform: if it did, in the
+        // dashboard "not measurable here" could not be told apart from "forgotten".
+        foreach (HostPlatform platform in new[] { HostPlatform.Windows, HostPlatform.Linux, HostPlatform.Unknown })
         {
             IReadOnlyList<IMetricCollector> collectors =
-                ObserverMetrics.CreateCollectors(piattaforma, new FakeFileTextReader());
+                ObserverMetrics.CreateCollectors(platform, new FakeFileTextReader());
 
             Assert.Contains(collectors, c => c.Id == "cpu");
             Assert.Contains(collectors, c => c.Id == "memory");
@@ -44,58 +44,58 @@ public class PlatformCompositionTests
     }
 
     [Fact]
-    public void IlLettoreDellIoSegueLaPiattaforma()
+    public void TheIoReaderFollowsThePlatform()
     {
-        // Stessa regola dei collector: la piattaforma e' un parametro. E la scelta sbagliata
-        // non farebbe eccezione - WindowsProcessIoReader fuori da Windows risponde false in
-        // silenzio, e ogni tasso resterebbe ignoto senza che nessuno lo dica.
-        FakeFileTextReader lettore = new();
+        // Same rule as the collectors: the platform is a parameter. And the wrong choice
+        // would not throw - WindowsProcessIoReader outside Windows returns false in silence,
+        // and every rate would stay unknown without anyone saying so.
+        FakeFileTextReader reader = new();
 
-        Assert.IsType<WindowsProcessIoReader>(ProcessIoReaders.For(HostPlatform.Windows, lettore));
-        Assert.IsType<LinuxProcessIoReader>(ProcessIoReaders.For(HostPlatform.Linux, lettore));
-        Assert.Null(ProcessIoReaders.For(HostPlatform.Unknown, lettore));
+        Assert.IsType<WindowsProcessIoReader>(ProcessIoReaders.For(HostPlatform.Windows, reader));
+        Assert.IsType<LinuxProcessIoReader>(ProcessIoReaders.For(HostPlatform.Linux, reader));
+        Assert.Null(ProcessIoReaders.For(HostPlatform.Unknown, reader));
     }
 
     [Fact]
-    public async Task Linux_ConProcFinto_CalcolaUsoCpuAlSecondoCampione()
+    public async Task Linux_WithFakeProc_ComputesCpuUsageOnTheSecondSample()
     {
-        // Delta atteso: total da 18880 a 19880 (+1000), idle da 18136 a 18636 (+500).
-        // Occupato = 500/1000 = 50%.
-        FakeFileTextReader lettore = new();
-        lettore.Set("/proc/stat", ProcStat);
-        IReadOnlyList<IMetricCollector> collectors = ObserverMetrics.CreateCollectors(HostPlatform.Linux, lettore);
+        // Expected delta: total from 18880 to 19880 (+1000), idle from 18136 to 18636 (+500).
+        // Busy = 500/1000 = 50%.
+        FakeFileTextReader reader = new();
+        reader.Set("/proc/stat", ProcStat);
+        IReadOnlyList<IMetricCollector> collectors = ObserverMetrics.CreateCollectors(HostPlatform.Linux, reader);
         IMetricCollector cpu = collectors.Single(c => c.Id == "cpu");
 
-        MetricSnapshot primo = await cpu.CollectAsync(CancellationToken.None);
-        lettore.Set("/proc/stat", ProcStatDopo);
-        MetricSnapshot secondo = await cpu.CollectAsync(CancellationToken.None);
+        MetricSnapshot first = await cpu.CollectAsync(CancellationToken.None);
+        reader.Set("/proc/stat", ProcStatAfter);
+        MetricSnapshot second = await cpu.CollectAsync(CancellationToken.None);
 
-        Assert.Equal(CollectorStatus.Warmup, primo.Status);
-        Assert.Equal(CollectorStatus.Ok, secondo.Status);
-        MetricPoint uso = Assert.Single(secondo.Points, p => p.MetricId == CpuCollector.TotalUsageMetricId);
-        Assert.Equal(50.0, uso.Value!.Value.Number);
+        Assert.Equal(CollectorStatus.Warmup, first.Status);
+        Assert.Equal(CollectorStatus.Ok, second.Status);
+        MetricPoint usage = Assert.Single(second.Points, p => p.MetricId == CpuCollector.TotalUsageMetricId);
+        Assert.Equal(50.0, usage.Value!.Value.Number);
     }
 
     [Fact]
-    public async Task Linux_ConMeminfoFinto_UsaAvailableEOmetteLoSwapAssente()
+    public async Task Linux_WithFakeMeminfo_UsesAvailableAndOmitsAbsentSwap()
     {
-        FakeFileTextReader lettore = new();
-        lettore.Set("/proc/meminfo", ProcMeminfo);
-        IReadOnlyList<IMetricCollector> collectors = ObserverMetrics.CreateCollectors(HostPlatform.Linux, lettore);
-        IMetricCollector memoria = collectors.Single(c => c.Id == "memory");
+        FakeFileTextReader reader = new();
+        reader.Set("/proc/meminfo", ProcMeminfo);
+        IReadOnlyList<IMetricCollector> collectors = ObserverMetrics.CreateCollectors(HostPlatform.Linux, reader);
+        IMetricCollector memory = collectors.Single(c => c.Id == "memory");
 
-        MetricSnapshot snapshot = await memoria.CollectAsync(CancellationToken.None);
+        MetricSnapshot snapshot = await memory.CollectAsync(CancellationToken.None);
 
         Assert.Equal(CollectorStatus.Ok, snapshot.Status);
-        MetricPoint usata = Assert.Single(snapshot.Points, p => p.MetricId == MemoryCollector.UsedPercentMetricId);
-        Assert.Equal(50.0, usata.Value!.Value.Number);
+        MetricPoint usedPercent = Assert.Single(snapshot.Points, p => p.MetricId == MemoryCollector.UsedPercentMetricId);
+        Assert.Equal(50.0, usedPercent.Value!.Value.Number);
         Assert.DoesNotContain(snapshot.Points, p => p.MetricId == MemoryCollector.SwapTotalMetricId);
     }
 
     [Fact]
-    public async Task Linux_SenzaProcLeggibile_EUnavailableENonLancia()
+    public async Task Linux_WithoutReadableProc_IsUnavailableAndDoesNotThrow()
     {
-        // Su un /proc assente o non leggibile il servizio deve degradare, non morire.
+        // On a /proc that is missing or unreadable the service must degrade, not die.
         IReadOnlyList<IMetricCollector> collectors =
             ObserverMetrics.CreateCollectors(HostPlatform.Linux, new FakeFileTextReader());
 
@@ -110,7 +110,7 @@ public class PlatformCompositionTests
     }
 
     [Fact]
-    public async Task PiattaformaSconosciuta_DichiaraNonSupportatoConIlMotivo()
+    public async Task UnknownPlatform_DeclaresUnsupportedWithAReason()
     {
         IReadOnlyList<IMetricCollector> collectors =
             ObserverMetrics.CreateCollectors(HostPlatform.Unknown, new FakeFileTextReader());
@@ -125,33 +125,33 @@ public class PlatformCompositionTests
     }
 
     [Fact]
-    public async Task OgniPuntoEmesso_HaSempreUnDescrittoreDichiarato()
+    public async Task EveryEmittedPoint_AlwaysHasADeclaredDescriptor()
     {
-        // Vale per TUTTI i collector prodotti dalla composizione, non solo per uno: e' la
-        // rete che tiene il legame chiave-descrittore, che il compilatore non verifica.
-        FakeFileTextReader lettore = new();
-        lettore.Set("/proc/stat", ProcStat);
-        lettore.Set("/proc/meminfo", ProcMeminfo);
-        IReadOnlyList<IMetricCollector> collectors = ObserverMetrics.CreateCollectors(HostPlatform.Linux, lettore);
+        // This holds for EVERY collector the composition produces, not just for one: it is
+        // the safety net under the key-to-descriptor link, which the compiler does not check.
+        FakeFileTextReader reader = new();
+        reader.Set("/proc/stat", ProcStat);
+        reader.Set("/proc/meminfo", ProcMeminfo);
+        IReadOnlyList<IMetricCollector> collectors = ObserverMetrics.CreateCollectors(HostPlatform.Linux, reader);
 
         foreach (IMetricCollector collector in collectors)
         {
             await collector.CollectAsync(CancellationToken.None);
             MetricSnapshot snapshot = await collector.CollectAsync(CancellationToken.None);
 
-            HashSet<string> dichiarati = collector.Descriptors
+            HashSet<string> declared = collector.Descriptors
                 .Select(d => d.MetricId)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.All(snapshot.Points, p => Assert.Contains(p.MetricId, dichiarati));
+            Assert.All(snapshot.Points, p => Assert.Contains(p.MetricId, declared));
         }
     }
 
     [Fact]
-    public void IdDeiCollector_SonoUnivoci()
+    public void CollectorIds_AreUnique()
     {
-        // Due collector con lo stesso id si sovrascriverebbero in silenzio sul filo e nel
-        // database: e' un errore che va scoperto in CI, non guardando un grafico storto.
+        // Two collectors with the same id would overwrite each other in silence on the wire
+        // and in the database: an error that must be caught in CI, not by spotting a skewed chart.
         IReadOnlyList<IMetricCollector> collectors =
             ObserverMetrics.CreateCollectors(HostPlatform.Linux, new FakeFileTextReader());
 

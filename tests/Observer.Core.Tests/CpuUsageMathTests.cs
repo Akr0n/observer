@@ -5,93 +5,93 @@ using Observer.Core.Units;
 namespace Observer.Core.Tests;
 
 /// <summary>
-/// Il cuore del progetto: due campioni di contatori dentro, una percentuale fuori.
-/// Nessun hardware, nessun I/O, nessuna attesa di tempo reale. Se questi test sono verdi
-/// la matematica e' corretta su entrambe le piattaforme, perche' l'unita' dei tick si
-/// semplifica nel rapporto e non conta se sono jiffy Linux o intervalli da 100 ns Windows.
+/// The heart of the project: two counter samples in, one percentage out.
+/// No hardware, no I/O, no waiting on real time. If these tests are green the maths is
+/// correct on both platforms, because the unit of the ticks cancels out in the ratio and
+/// it makes no difference whether they are Linux jiffies or Windows 100 ns intervals.
 /// </summary>
 public class CpuUsageMathTests
 {
     [Fact]
-    public void TryComputePercent_MetaCaricoSuFinestraNota_RestituisceCinquanta()
+    public void TryComputePercent_HalfLoadOverAKnownWindow_Returns50()
     {
-        // Finestra: total +1000 tick, di cui 500 in idle. Occupato = 500/1000 = 50%.
-        CpuTimes precedente = new(Idle: 1000L, Total: 2000L);
-        CpuTimes corrente = new(Idle: 1500L, Total: 3000L);
+        // Window: total +1000 ticks, 500 of them idle. Busy = 500/1000 = 50%.
+        CpuTimes previous = new(Idle: 1000L, Total: 2000L);
+        CpuTimes current = new(Idle: 1500L, Total: 3000L);
 
-        bool riuscito = CpuUsage.TryComputePercent(precedente, corrente, out Percent uso, out SampleFailure _);
+        bool succeeded = CpuUsage.TryComputePercent(previous, current, out Percent usage, out SampleFailure _);
 
-        Assert.True(riuscito);
-        Assert.Equal(50.0, uso.Points);
+        Assert.True(succeeded);
+        Assert.Equal(50.0, usage.Points);
     }
 
     [Fact]
-    public void TryComputePercent_DueCampioniIdentici_FallisceConNoElapsedTime()
+    public void TryComputePercent_TwoIdenticalSamples_FailsWithNoElapsedTime()
     {
-        // Su Windows i contatori si aggiornano solo sul clock tick (~15,6 ms): due letture
-        // ravvicinate danno delta ESATTAMENTE zero. Senza questo guard sarebbe 0/0 = NaN,
-        // cioe' JSON non valido e dashboard rotta.
-        CpuTimes stesso = new(Idle: 1000L, Total: 2000L);
+        // On Windows the counters only advance on the clock tick (~15.6 ms): two readings
+        // close together give a delta of EXACTLY zero. Without this guard it would be
+        // 0/0 = NaN, that is invalid JSON and a broken dashboard.
+        CpuTimes sample = new(Idle: 1000L, Total: 2000L);
 
-        bool riuscito = CpuUsage.TryComputePercent(stesso, stesso, out Percent _, out SampleFailure motivo);
+        bool succeeded = CpuUsage.TryComputePercent(sample, sample, out Percent _, out SampleFailure reason);
 
-        Assert.False(riuscito);
-        Assert.Equal(SampleFailure.NoElapsedTime, motivo);
+        Assert.False(succeeded);
+        Assert.Equal(SampleFailure.NoElapsedTime, reason);
     }
 
     [Fact]
-    public void TryComputePercent_ContatoriTornatiIndietro_FallisceConCounterWentBackwards()
+    public void TryComputePercent_CountersWentBackwards_FailsWithCounterWentBackwards()
     {
-        // Dopo suspend/resume o migrazione di VM il delta e' negativo.
-        CpuTimes precedente = new(Idle: 5000L, Total: 9000L);
-        CpuTimes corrente = new(Idle: 1000L, Total: 2000L);
+        // After a suspend/resume or a VM migration the delta is negative.
+        CpuTimes previous = new(Idle: 5000L, Total: 9000L);
+        CpuTimes current = new(Idle: 1000L, Total: 2000L);
 
-        bool riuscito = CpuUsage.TryComputePercent(precedente, corrente, out Percent _, out SampleFailure motivo);
+        bool succeeded = CpuUsage.TryComputePercent(previous, current, out Percent _, out SampleFailure reason);
 
-        Assert.False(riuscito);
-        Assert.Equal(SampleFailure.CounterWentBackwards, motivo);
+        Assert.False(succeeded);
+        Assert.Equal(SampleFailure.CounterWentBackwards, reason);
     }
 
     [Fact]
-    public void TryComputePercent_IdleCresceOltreIlTotale_FallisceInveceDiPubblicareUnNegativo()
+    public void TryComputePercent_IdleGrowsPastTheTotal_FailsInsteadOfPublishingANegative()
     {
-        // Finestra incoerente: entrambi i delta sono POSITIVI, quindi il guard sui contatori
-        // che arretrano non scatta, ma idle cresce piu' del totale e "occupato" diventa
-        // negativo. Succede davvero: su Linux basta che "steal" arretri dopo una live
-        // migration (iowait si cancella da entrambi i lati e sfugge al primo controllo); su
-        // Windows l'aggregazione per-processore di GetSystemTimes non e' atomica e idle puo'
-        // risultare in anticipo su kernel. A grafico un -3% passa per rumore: e' un numero
-        // sbagliato pubblicato come valido, cioe' esattamente cio' che non deve accadere.
-        CpuTimes precedente = new(Idle: 500L, Total: 1000L);
-        CpuTimes corrente = new(Idle: 520L, Total: 1010L);
+        // Inconsistent window: both deltas are POSITIVE, so the guard on counters going
+        // backwards does not fire, but idle grows more than the total and "busy" comes out
+        // negative. It really happens: on Linux "steal" going backwards after a live migration
+        // is enough (iowait cancels out on both sides and escapes the first check); on
+        // Windows the per-processor aggregation of GetSystemTimes is not atomic and idle can
+        // end up ahead of kernel. On a chart a -3% passes for noise: it is a wrong number
+        // published as valid, which is exactly what must not happen.
+        CpuTimes previous = new(Idle: 500L, Total: 1000L);
+        CpuTimes current = new(Idle: 520L, Total: 1010L);
 
-        bool riuscito = CpuUsage.TryComputePercent(precedente, corrente, out Percent uso, out SampleFailure motivo);
+        bool succeeded = CpuUsage.TryComputePercent(previous, current, out Percent usage, out SampleFailure reason);
 
-        Assert.False(riuscito);
-        Assert.Equal(SampleFailure.CounterWentBackwards, motivo);
-        Assert.Equal(0.0, uso.Points);
+        Assert.False(succeeded);
+        Assert.Equal(SampleFailure.CounterWentBackwards, reason);
+        Assert.Equal(0.0, usage.Points);
     }
 
     [Fact]
-    public void Describe_OgniMotivoDiFallimento_HaUnaSpiegazionePropriaENonVuota()
+    public void Describe_EveryFailureReason_HasItsOwnNonEmptyExplanation()
     {
-        // Il committente deve leggere in dashboard PERCHE' manca il dato, non trovare un
-        // buco muto. Non verifico le parole esatte (sarebbe un test che si rompe a ogni
-        // riscrittura del testo): verifico che una spiegazione ci sia e che i motivi
-        // diversi non collassino tutti sulla stessa frase generica.
-        string indietro = SampleFailureText.Describe(SampleFailure.CounterWentBackwards);
-        string fermo = SampleFailureText.Describe(SampleFailure.NoElapsedTime);
+        // The dashboard has to tell the operator WHY the reading is missing, rather than leave
+        // an unexplained gap. I do not check the exact words (that would be a test that breaks
+        // at every rewrite of the text): I check that an explanation is there and that
+        // different reasons do not all collapse onto the same generic sentence.
+        string wentBackwards = SampleFailureText.Describe(SampleFailure.CounterWentBackwards);
+        string noElapsedTime = SampleFailureText.Describe(SampleFailure.NoElapsedTime);
 
-        Assert.False(string.IsNullOrWhiteSpace(indietro));
-        Assert.False(string.IsNullOrWhiteSpace(fermo));
-        Assert.NotEqual(indietro, fermo);
+        Assert.False(string.IsNullOrWhiteSpace(wentBackwards));
+        Assert.False(string.IsNullOrWhiteSpace(noElapsedTime));
+        Assert.NotEqual(wentBackwards, noElapsedTime);
     }
 
     [Fact]
-    public void SampleFailure_ValoreZero_EUnknownENonUnMotivoReale()
+    public void SampleFailure_ZeroValue_IsUnknownAndNotARealReason()
     {
-        // default(SampleFailure) non deve spacciarsi per una causa diagnosticata: uno zero
-        // che significa "CounterWentBackwards" farebbe apparire una diagnosi mai fatta.
+        // default(SampleFailure) must not pass itself off as a diagnosed cause: a zero that
+        // means "CounterWentBackwards" would show a diagnosis that was never made.
         Assert.Equal(SampleFailure.Unknown, default(SampleFailure));
     }
 }

@@ -5,348 +5,348 @@ using Observer.Core.Units;
 namespace Observer.Core.Tests;
 
 /// <summary>
-/// L'aritmetica dei tassi di lettura e scrittura.
+/// The arithmetic of the read and write rates.
 /// </summary>
 /// <remarks>
-/// Questa e' la prima metrica che misura una VELOCITA', e cambia le regole. Lo spazio su
-/// disco si legge e si pubblica; i byte al secondo esistono solo come differenza fra due
-/// campioni divisa per il tempo passato in mezzo, e ogni modo in cui quella divisione puo'
-/// andare storta produrrebbe un numero credibile e falso.
+/// This is the first metric that measures a SPEED, and it changes the rules. Disk space is
+/// read and published as it is; bytes per second exist only as the difference between two
+/// samples divided by the time elapsed in between, and every way that division can go wrong
+/// would produce a number that is credible and false.
 /// <para>
-/// La regola che nessuno indovina: la percentuale di tempo occupato NON si ottiene sommando
-/// il tempo di lettura e quello di scrittura. Le due code si sovrappongono, e su una stessa
-/// finestra quella somma ha gia' dato 843%. Si ricava dall'INATTIVITA' su Windows e dai tick
-/// di occupato su Linux, che sono la stessa grandezza vista dai due lati.
+/// The rule nobody guesses: the busy time percentage is NOT obtained by summing read time
+/// and write time. The two queues overlap, and over a single sampling window that sum has
+/// already given 843%. It is derived from the IDLE time on Windows and from the busy ticks
+/// on Linux, which are the same quantity seen from both sides.
 /// </para>
 /// </remarks>
 public class DiskActivityRatesTests
 {
-    private static DiskActivityReading Inattivo(ulong letti, ulong scritti, double secondiInattivo) =>
-        DiskActivityReading.WithIdleTime("Disk 0", letti, scritti, TimeSpan.FromSeconds(secondiInattivo));
+    private static DiskActivityReading ReadingWithIdleTime(ulong bytesRead, ulong bytesWritten, double idleSeconds) =>
+        DiskActivityReading.WithIdleTime("Disk 0", bytesRead, bytesWritten, TimeSpan.FromSeconds(idleSeconds));
 
-    private static DiskActivityReading Occupato(ulong letti, ulong scritti, double secondiOccupato) =>
-        DiskActivityReading.WithBusyTime("sda", letti, scritti, TimeSpan.FromSeconds(secondiOccupato));
+    private static DiskActivityReading ReadingWithBusyTime(ulong bytesRead, ulong bytesWritten, double busySeconds) =>
+        DiskActivityReading.WithBusyTime("sda", bytesRead, bytesWritten, TimeSpan.FromSeconds(busySeconds));
 
     [Fact]
-    public void IlTassoEIlDeltaDivisoIlTempo()
+    public void TheRateIsTheDeltaDividedByTheTime()
     {
         Assert.True(DiskActivityRates.TryComputeBytesPerSecond(
-            1_000UL, 3_000UL, TimeSpan.FromSeconds(2), out double tasso, out _));
+            1_000UL, 3_000UL, TimeSpan.FromSeconds(2), out double rate, out _));
 
-        Assert.Equal(1_000d, tasso);
+        Assert.Equal(1_000d, rate);
     }
 
     [Fact]
-    public void UnContatoreCheTornaIndietroNonProduceUnTasso()
+    public void ACounterThatGoesBackwardsProducesNoRate()
     {
-        // Sospensione, ripristino, disco staccato e riattaccato, migrazione di macchina
-        // virtuale. Il delta calcolato su ulong darebbe un numero enorme e plausibile.
+        // Suspend, resume, a disk unplugged and plugged back in, a virtual machine
+        // migration. The delta computed on ulong would give a huge and plausible number.
         Assert.False(DiskActivityRates.TryComputeBytesPerSecond(
-            3_000UL, 1_000UL, TimeSpan.FromSeconds(2), out _, out SampleFailure guasto));
+            3_000UL, 1_000UL, TimeSpan.FromSeconds(2), out _, out SampleFailure error));
 
-        Assert.Equal(SampleFailure.CounterWentBackwards, guasto);
+        Assert.Equal(SampleFailure.CounterWentBackwards, error);
     }
 
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public void SenzaTempoTrascorsoNonSiCalcolaNiente(int secondi)
+    public void WithNoElapsedTimeNothingIsComputed(int seconds)
     {
-        // Una divisione per zero qui non darebbe un errore: darebbe infinito, e
-        // MetricValue.FromNumber lancerebbe, azzerando l'INTERA risposta HTTP per colpa di
-        // un disco solo.
+        // A division by zero here would not give an error: it would give infinity, and
+        // MetricValue.FromNumber would throw, wiping out the ENTIRE HTTP response because of
+        // one single disk.
         Assert.False(DiskActivityRates.TryComputeBytesPerSecond(
-            0UL, 1_000UL, TimeSpan.FromSeconds(secondi), out _, out SampleFailure guasto));
+            0UL, 1_000UL, TimeSpan.FromSeconds(seconds), out _, out SampleFailure error));
 
-        Assert.Equal(SampleFailure.NoElapsedTime, guasto);
+        Assert.Equal(SampleFailure.NoElapsedTime, error);
     }
 
     [Fact]
-    public void LOccupazioneSiCalcolaDallInattivita()
+    public void BusyPercentIsComputedFromIdleTime()
     {
-        // Windows conta il tempo INATTIVO. Su un secondo di intervallo con 0,6 s di
-        // inattivita', il disco ha lavorato il 40% del tempo.
+        // Windows counts IDLE time. Over a one-second interval with 0.6 s of idle, the disk
+        // worked 40% of the time.
         Assert.True(DiskActivityRates.TryComputeBusy(
-            Inattivo(0UL, 0UL, 10.0),
-            Inattivo(0UL, 0UL, 10.6),
+            ReadingWithIdleTime(0UL, 0UL, 10.0),
+            ReadingWithIdleTime(0UL, 0UL, 10.6),
             TimeSpan.FromSeconds(1),
-            out Percent occupato,
+            out Percent busy,
             out _));
 
-        Assert.Equal(40d, occupato.Points, 6);
+        Assert.Equal(40d, busy.Points, 6);
     }
 
     [Fact]
-    public void UnDiscoFermoNonPuoRisultareOccupatoNegativamente()
+    public void AnIdleDiskNeverReportsANegativeBusyPercent()
     {
-        // Misurato su questa macchina, PhysicalDrive1 fermo: l'inattivita' avanza di un
-        // filo PIU' dell'intervallo, perche' i due orologi non sono lo stesso orologio, e il
-        // calcolo dava -0,07%. Percent.TryFromRatio rifiuta i negativi, quindi senza limite
-        // un disco fermo si dichiarerebbe GUASTO invece che fermo.
+        // Measured on this machine, with PhysicalDrive1 idle: the idle counter advances a
+        // hair MORE than the interval, because the two clocks are not the same clock, and the
+        // computation gave -0.07%. Percent.TryFromRatio rejects negatives, so without the
+        // clamp an idle disk would report itself as FAULTED instead of idle.
         Assert.True(DiskActivityRates.TryComputeBusy(
-            Inattivo(0UL, 0UL, 10.0),
-            Inattivo(0UL, 0UL, 11.0007),
+            ReadingWithIdleTime(0UL, 0UL, 10.0),
+            ReadingWithIdleTime(0UL, 0UL, 11.0007),
             TimeSpan.FromSeconds(1),
-            out Percent occupato,
+            out Percent busy,
             out _));
 
-        Assert.Equal(0d, occupato.Points);
+        Assert.Equal(0d, busy.Points);
     }
 
     [Fact]
-    public void LOccupazioneSiCalcolaAncheDaiTickDiOccupato()
+    public void BusyPercentIsAlsoComputedFromBusyTicks()
     {
-        // Linux conta il tempo OCCUPATO: la stessa grandezza vista dall'altro lato.
+        // Linux counts BUSY time: the same quantity seen from the other side.
         Assert.True(DiskActivityRates.TryComputeBusy(
-            Occupato(0UL, 0UL, 5.0),
-            Occupato(0UL, 0UL, 5.25),
+            ReadingWithBusyTime(0UL, 0UL, 5.0),
+            ReadingWithBusyTime(0UL, 0UL, 5.25),
             TimeSpan.FromSeconds(1),
-            out Percent occupato,
+            out Percent busy,
             out _));
 
-        Assert.Equal(25d, occupato.Points, 6);
+        Assert.Equal(25d, busy.Points, 6);
     }
 
     [Fact]
-    public void LOccupazioneNonSuperaIlCentoPerCento()
+    public void BusyPercentNeverExceeds100()
     {
-        // Con piu' richieste in coda i tick di occupato possono superare l'intervallo. Il
-        // disco non e' occupato al 150%: e' occupato, e basta.
+        // With several requests queued the busy ticks can exceed the interval. The disk is
+        // not 150% busy: it is busy, and that is all.
         Assert.True(DiskActivityRates.TryComputeBusy(
-            Occupato(0UL, 0UL, 5.0),
-            Occupato(0UL, 0UL, 6.5),
+            ReadingWithBusyTime(0UL, 0UL, 5.0),
+            ReadingWithBusyTime(0UL, 0UL, 6.5),
             TimeSpan.FromSeconds(1),
-            out Percent occupato,
+            out Percent busy,
             out _));
 
-        Assert.Equal(100d, occupato.Points);
+        Assert.Equal(100d, busy.Points);
     }
 
     [Fact]
-    public void IlTempoDiOccupazioneCheTornaIndietroSiDichiara()
+    public void BusyTimeThatGoesBackwardsIsReportedAsAFailure()
     {
         Assert.False(DiskActivityRates.TryComputeBusy(
-            Occupato(0UL, 0UL, 6.0),
-            Occupato(0UL, 0UL, 5.0),
+            ReadingWithBusyTime(0UL, 0UL, 6.0),
+            ReadingWithBusyTime(0UL, 0UL, 5.0),
             TimeSpan.FromSeconds(1),
             out _,
-            out SampleFailure guasto));
+            out SampleFailure error));
 
-        Assert.Equal(SampleFailure.CounterWentBackwards, guasto);
+        Assert.Equal(SampleFailure.CounterWentBackwards, error);
     }
 }
 
 /// <summary>
-/// Il collector dell'attivita' dei dischi.
+/// The disk activity collector.
 /// </summary>
 /// <remarks>
-/// Tiene uno stato — la lettura precedente e l'istante in cui e' stata presa — e lo tiene
-/// PER ISTANZA, che e' la differenza rispetto alla CPU: i dischi compaiono e spariscono
-/// mentre il programma gira, e un disco appena comparso non deve rubare il campione
-/// precedente di un altro.
+/// It keeps state — the previous reading and the instant it was taken — and it keeps it
+/// PER INSTANCE, which is the difference from the CPU: disks appear and disappear while the
+/// program is running, and a disk that has just appeared must not steal another disk's
+/// previous sample.
 /// </remarks>
 public class DiskActivityCollectorTests
 {
-    private static readonly TimeSpan Giro = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan RoundInterval = TimeSpan.FromSeconds(1);
 
     [Fact]
-    public async Task IlPrimoGiroEUnRiscaldamentoSenzaPunti()
+    public async Task TheFirstRoundIsWarmupWithNoPoints()
     {
-        // Zero non e' "il disco e' fermo": e' "non lo so ancora". Pubblicare zero al primo
-        // giro e' il modo piu' facile di far sembrare fermo un disco che sta lavorando.
-        ProviderFinto provider = new([Inattivo("Disk 0", 0UL, 0UL, 0)]);
-        (DiskActivityCollector collector, _) = Crea(provider);
+        // Zero is not "the disk is idle": it is "I do not know yet". Publishing zero on the
+        // first round is the easiest way to make a disk that is working look idle.
+        FakeProvider provider = new([ReadingWithIdleTime("Disk 0", 0UL, 0UL, 0)]);
+        (DiskActivityCollector collector, _) = Create(provider);
 
-        MetricSnapshot primo = await collector.CollectAsync(CancellationToken.None);
+        MetricSnapshot first = await collector.CollectAsync(CancellationToken.None);
 
-        Assert.Equal(CollectorStatus.Warmup, primo.Status);
-        Assert.Empty(primo.Points);
+        Assert.Equal(CollectorStatus.Warmup, first.Status);
+        Assert.Empty(first.Points);
     }
 
     [Fact]
-    public async Task DalSecondoGiroCiSonoTrePuntiPerDisco()
+    public async Task FromTheSecondRoundThereAreThreePointsPerDisk()
     {
-        ProviderFinto provider = new([Inattivo("Disk 0", 0UL, 0UL, 0)]);
-        (DiskActivityCollector collector, OrologioFinto orologio) = Crea(provider);
+        FakeProvider provider = new([ReadingWithIdleTime("Disk 0", 0UL, 0UL, 0)]);
+        (DiskActivityCollector collector, FakeClock clock) = Create(provider);
 
         await collector.CollectAsync(CancellationToken.None);
 
-        provider.Letture = [Inattivo("Disk 0", 2_000UL, 6_000UL, 0.75)];
-        orologio.Avanza(Giro);
+        provider.Readings = [ReadingWithIdleTime("Disk 0", 2_000UL, 6_000UL, 0.75)];
+        clock.Advance(RoundInterval);
 
-        MetricSnapshot secondo = await collector.CollectAsync(CancellationToken.None);
+        MetricSnapshot second = await collector.CollectAsync(CancellationToken.None);
 
-        Assert.Equal(CollectorStatus.Ok, secondo.Status);
-        Assert.Equal(3, secondo.Points.Count);
-        Assert.Equal(2_000d, Valore(secondo, DiskActivityCollector.ReadBytesPerSecondMetricId));
-        Assert.Equal(6_000d, Valore(secondo, DiskActivityCollector.WriteBytesPerSecondMetricId));
-        Assert.Equal(25d, Valore(secondo, DiskActivityCollector.BusyPercentMetricId), 6);
+        Assert.Equal(CollectorStatus.Ok, second.Status);
+        Assert.Equal(3, second.Points.Count);
+        Assert.Equal(2_000d, ValueOf(second, DiskActivityCollector.ReadBytesPerSecondMetricId));
+        Assert.Equal(6_000d, ValueOf(second, DiskActivityCollector.WriteBytesPerSecondMetricId));
+        Assert.Equal(25d, ValueOf(second, DiskActivityCollector.BusyPercentMetricId), 6);
     }
 
     [Fact]
-    public async Task OgniDiscoHaLaSuaIstanza()
+    public async Task EveryDiskHasItsOwnInstance()
     {
-        ProviderFinto provider = new(
-            [Inattivo("Disk 0", 0UL, 0UL, 0), Inattivo("Disk 1", 0UL, 0UL, 0)]);
-        (DiskActivityCollector collector, OrologioFinto orologio) = Crea(provider);
+        FakeProvider provider = new(
+            [ReadingWithIdleTime("Disk 0", 0UL, 0UL, 0), ReadingWithIdleTime("Disk 1", 0UL, 0UL, 0)]);
+        (DiskActivityCollector collector, FakeClock clock) = Create(provider);
 
         await collector.CollectAsync(CancellationToken.None);
 
-        provider.Letture =
-            [Inattivo("Disk 0", 1_000UL, 0UL, 0.5), Inattivo("Disk 1", 4_000UL, 0UL, 1.0)];
-        orologio.Avanza(Giro);
+        provider.Readings =
+            [ReadingWithIdleTime("Disk 0", 1_000UL, 0UL, 0.5), ReadingWithIdleTime("Disk 1", 4_000UL, 0UL, 1.0)];
+        clock.Advance(RoundInterval);
 
-        MetricSnapshot secondo = await collector.CollectAsync(CancellationToken.None);
+        MetricSnapshot second = await collector.CollectAsync(CancellationToken.None);
 
-        Assert.Equal(3, secondo.Points.Count(p => p.Instance == "Disk 0"));
-        Assert.Equal(3, secondo.Points.Count(p => p.Instance == "Disk 1"));
+        Assert.Equal(3, second.Points.Count(p => p.Instance == "Disk 0"));
+        Assert.Equal(3, second.Points.Count(p => p.Instance == "Disk 1"));
 
-        // Se lo stato fosse tenuto per collector invece che per disco, i due si
-        // ruberebbero il campione precedente a vicenda e i numeri sarebbero incrociati.
+        // If the state were kept per collector instead of per disk, the two would steal each
+        // other's previous sample and the two disks' numbers would be swapped.
         Assert.Equal(
             1_000d,
-            secondo.Points.Single(p =>
+            second.Points.Single(p =>
                 p.MetricId == DiskActivityCollector.ReadBytesPerSecondMetricId
                 && p.Instance == "Disk 0").Value!.Value.Number);
     }
 
     [Fact]
-    public async Task UnDiscoCheCompareDopoAspettaIlSuoSecondoCampione()
+    public async Task ADiskThatAppearsLaterWaitsForItsSecondSample()
     {
-        // Una chiavetta infilata adesso non ha un campione precedente. Calcolare il suo
-        // tasso sul contatore assoluto darebbe "da quando esiste il disco", non "adesso":
-        // un numero enorme, e nessuno lo segnalerebbe.
-        ProviderFinto provider = new([Inattivo("Disk 0", 0UL, 0UL, 0)]);
-        (DiskActivityCollector collector, OrologioFinto orologio) = Crea(provider);
+        // A USB stick plugged in just now has no previous sample. Computing its rate from
+        // the absolute counter would give "since the disk came into existence", not "now":
+        // a huge number, and nobody would flag it.
+        FakeProvider provider = new([ReadingWithIdleTime("Disk 0", 0UL, 0UL, 0)]);
+        (DiskActivityCollector collector, FakeClock clock) = Create(provider);
 
         await collector.CollectAsync(CancellationToken.None);
 
-        provider.Letture =
-            [Inattivo("Disk 0", 1_000UL, 0UL, 0.5), Inattivo("Disk 9", 999_999UL, 0UL, 0.5)];
-        orologio.Avanza(Giro);
+        provider.Readings =
+            [ReadingWithIdleTime("Disk 0", 1_000UL, 0UL, 0.5), ReadingWithIdleTime("Disk 9", 999_999UL, 0UL, 0.5)];
+        clock.Advance(RoundInterval);
 
-        MetricSnapshot secondo = await collector.CollectAsync(CancellationToken.None);
+        MetricSnapshot second = await collector.CollectAsync(CancellationToken.None);
 
-        Assert.Equal(3, secondo.Points.Count(p => p.Instance == "Disk 0"));
-        Assert.DoesNotContain(secondo.Points, p => p.Instance == "Disk 9" && p.Value is not null);
+        Assert.Equal(3, second.Points.Count(p => p.Instance == "Disk 0"));
+        Assert.DoesNotContain(second.Points, p => p.Instance == "Disk 9" && p.Value is not null);
     }
 
     [Fact]
-    public async Task UnDiscoCheSparisceNonLasciaNumeriFermi()
+    public async Task ADiskThatDisappearsLeavesNoStaleNumbers()
     {
-        // Un disco staccato non deve continuare a mostrare l'ultimo numero: sarebbe una
-        // misura ferma che si legge come attuale.
-        ProviderFinto provider = new(
-            [Inattivo("Disk 0", 0UL, 0UL, 0), Inattivo("Disk 1", 0UL, 0UL, 0)]);
-        (DiskActivityCollector collector, OrologioFinto orologio) = Crea(provider);
+        // A disk that has been unplugged must not go on showing its last number: it would be
+        // a frozen reading that reads as a current one.
+        FakeProvider provider = new(
+            [ReadingWithIdleTime("Disk 0", 0UL, 0UL, 0), ReadingWithIdleTime("Disk 1", 0UL, 0UL, 0)]);
+        (DiskActivityCollector collector, FakeClock clock) = Create(provider);
 
         await collector.CollectAsync(CancellationToken.None);
 
-        provider.Letture = [Inattivo("Disk 0", 1_000UL, 0UL, 0.5)];
-        orologio.Avanza(Giro);
+        provider.Readings = [ReadingWithIdleTime("Disk 0", 1_000UL, 0UL, 0.5)];
+        clock.Advance(RoundInterval);
 
-        MetricSnapshot secondo = await collector.CollectAsync(CancellationToken.None);
+        MetricSnapshot second = await collector.CollectAsync(CancellationToken.None);
 
-        Assert.DoesNotContain(secondo.Points, p => p.Instance == "Disk 1");
+        Assert.DoesNotContain(second.Points, p => p.Instance == "Disk 1");
     }
 
     [Fact]
-    public async Task UnaLetturaFallitaAzzeraLaStoria()
+    public async Task AFailedReadClearsTheHistory()
     {
-        // Il buco e' il punto: riprendendo dopo un errore, il delta sarebbe calcolato su un
-        // intervallo di cui non si sa la durata. Meglio un giro di riscaldamento in piu'
-        // che una media inventata su un tempo sconosciuto.
-        ProviderFinto provider = new([Inattivo("Disk 0", 0UL, 0UL, 0)]);
-        (DiskActivityCollector collector, OrologioFinto orologio) = Crea(provider);
+        // The gap is the point: resuming after an error, the delta would be computed over an
+        // interval whose duration is unknown. Better one more warm-up round than an average
+        // invented over an unknown span of time.
+        FakeProvider provider = new([ReadingWithIdleTime("Disk 0", 0UL, 0UL, 0)]);
+        (DiskActivityCollector collector, FakeClock clock) = Create(provider);
 
         await collector.CollectAsync(CancellationToken.None);
 
-        provider.Leggibile = false;
-        orologio.Avanza(Giro);
-        MetricSnapshot rotto = await collector.CollectAsync(CancellationToken.None);
+        provider.Readable = false;
+        clock.Advance(RoundInterval);
+        MetricSnapshot broken = await collector.CollectAsync(CancellationToken.None);
 
-        Assert.Equal(CollectorStatus.Unavailable, rotto.Status);
+        Assert.Equal(CollectorStatus.Unavailable, broken.Status);
 
-        provider.Leggibile = true;
-        provider.Letture = [Inattivo("Disk 0", 50_000UL, 0UL, 0.5)];
-        orologio.Avanza(Giro);
-        MetricSnapshot ripresa = await collector.CollectAsync(CancellationToken.None);
+        provider.Readable = true;
+        provider.Readings = [ReadingWithIdleTime("Disk 0", 50_000UL, 0UL, 0.5)];
+        clock.Advance(RoundInterval);
+        MetricSnapshot resumed = await collector.CollectAsync(CancellationToken.None);
 
-        Assert.Equal(CollectorStatus.Warmup, ripresa.Status);
-        Assert.Empty(ripresa.Points);
+        Assert.Equal(CollectorStatus.Warmup, resumed.Status);
+        Assert.Empty(resumed.Points);
     }
 
     [Fact]
-    public async Task UnaPiattaformaCheNonSiSaMisurareLoDice()
+    public async Task APlatformThatCannotBeMeasuredSaysSo()
     {
-        ProviderFinto provider = new([], supportato: false, motivo: "qui non si misura");
-        (DiskActivityCollector collector, _) = Crea(provider);
+        FakeProvider provider = new([], supported: false, reason: "nothing is measured here");
+        (DiskActivityCollector collector, _) = Create(provider);
 
         MetricSnapshot snapshot = await collector.CollectAsync(CancellationToken.None);
 
         Assert.Equal(CollectorStatus.Unsupported, snapshot.Status);
-        Assert.Equal("qui non si misura", snapshot.Message);
+        Assert.Equal("nothing is measured here", snapshot.Message);
     }
 
     [Fact]
-    public void IlCatalogoDichiaraTuttoPerIstanza()
+    public void TheCatalogDeclaresEverythingPerInstance()
     {
-        (DiskActivityCollector collector, _) = Crea(new ProviderFinto([]));
+        (DiskActivityCollector collector, _) = Create(new FakeProvider([]));
 
         Assert.Equal(3, collector.Descriptors.Count);
         Assert.All(collector.Descriptors, d => Assert.True(d.IsPerInstance));
 
-        // Un quadrante compare solo per le percentuali: i due tassi restano righe scritte,
-        // ed e' una conseguenza voluta, non una dimenticanza.
+        // A gauge appears only for the percentages: the two rates stay as text rows, and
+        // that is a deliberate consequence, not an oversight.
         Assert.Single(collector.Descriptors, d => d.Unit == MetricUnit.Percent);
     }
 
-    private static double Valore(MetricSnapshot snapshot, string metrica) =>
-        snapshot.Points.Single(p => p.MetricId == metrica).Value!.Value.Number;
+    private static double ValueOf(MetricSnapshot snapshot, string metricId) =>
+        snapshot.Points.Single(p => p.MetricId == metricId).Value!.Value.Number;
 
-    private static DiskActivityReading Inattivo(
-        string istanza, ulong letti, ulong scritti, double secondiInattivo) =>
+    private static DiskActivityReading ReadingWithIdleTime(
+        string instance, ulong bytesRead, ulong bytesWritten, double idleSeconds) =>
         DiskActivityReading.WithIdleTime(
-            istanza, letti, scritti, TimeSpan.FromSeconds(secondiInattivo));
+            instance, bytesRead, bytesWritten, TimeSpan.FromSeconds(idleSeconds));
 
-    private static (DiskActivityCollector Collector, OrologioFinto Orologio) Crea(
+    private static (DiskActivityCollector Collector, FakeClock Clock) Create(
         IDiskActivityProvider provider)
     {
-        OrologioFinto orologio = new();
+        FakeClock clock = new();
 
-        return (new DiskActivityCollector(provider, orologio), orologio);
+        return (new DiskActivityCollector(provider, clock), clock);
     }
 
-    /// <summary>Un orologio che avanza solo quando glielo si dice.</summary>
-    private sealed class OrologioFinto : TimeProvider
+    /// <summary>A clock that advances only when it is told to.</summary>
+    private sealed class FakeClock : TimeProvider
     {
-        private long adesso;
+        private long now;
 
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
-        public override long GetTimestamp() => adesso;
+        public override long GetTimestamp() => now;
 
-        public void Avanza(TimeSpan quanto) => adesso += quanto.Ticks;
+        public void Advance(TimeSpan delta) => now += delta.Ticks;
     }
 
-    private sealed class ProviderFinto(
-        IReadOnlyList<DiskActivityReading> letture,
-        bool supportato = true,
-        string? motivo = null) : IDiskActivityProvider
+    private sealed class FakeProvider(
+        IReadOnlyList<DiskActivityReading> readings,
+        bool supported = true,
+        string? reason = null) : IDiskActivityProvider
     {
-        public IReadOnlyList<DiskActivityReading> Letture { get; set; } = letture;
+        public IReadOnlyList<DiskActivityReading> Readings { get; set; } = readings;
 
-        public bool Leggibile { get; set; } = true;
+        public bool Readable { get; set; } = true;
 
-        public bool IsSupported => supportato;
+        public bool IsSupported => supported;
 
-        public string? UnsupportedReason => motivo;
+        public string? UnsupportedReason => reason;
 
         public bool TryRead(out IReadOnlyList<DiskActivityReading> readings)
         {
-            readings = Letture;
+            readings = Readings;
 
-            return Leggibile;
+            return Readable;
         }
     }
 }

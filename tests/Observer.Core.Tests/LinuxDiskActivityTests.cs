@@ -5,24 +5,24 @@ using Observer.Core.Platform.Linux;
 namespace Observer.Core.Tests;
 
 /// <summary>
-/// La lettura di /proc/diskstats e, soprattutto, chi resta fuori.
+/// Reading /proc/diskstats and, above all, who stays out.
 /// </summary>
 /// <remarks>
-/// Leggere i contatori e' la parte facile. La parte in cui si sbaglia in silenzio e' decidere
-/// di CHI sono: /proc/diskstats elenca insieme dischi interi, partizioni e dispositivi finti,
-/// e prenderli tutti conterebbe lo stesso byte due o tre volte — una volta sul disco, una
-/// sulla partizione, una sul volume logico. A schermo verrebbe un numero piu' grande del vero
-/// che nessuno riconosce come sbagliato.
+/// Reading the counters is the easy part. The part that fails silently is deciding
+/// WHOSE they are: /proc/diskstats lists whole disks, partitions and virtual devices together,
+/// and taking them all would count the same byte two or three times — once on the disk, once
+/// on the partition, once on the logical volume. On screen you would see a number bigger than
+/// the truth, and nobody would recognize it as wrong.
 /// <para>
-/// Gira dal runner Windows come da quello Linux: il provider non apre file, li chiede a
-/// <see cref="IFileTextReader"/>, e qui il lettore e' finto.
+/// It runs on the Windows runner as well as on the Linux one: the provider does not open files,
+/// it asks <see cref="IFileTextReader"/> for them, and here the reader is a fake.
 /// </para>
 /// </remarks>
 public class LinuxDiskActivityTests
 {
-    // Righe vere accorciate ai 14 campi che contano: major, minor, nome, poi le letture
-    // (completate, unite, SETTORI, ms), le scritture (idem), le richieste in corso, i
-    // millisecondi occupati e il tempo pesato.
+    // Real lines shortened to the 14 fields that matter: major, minor, name, then the reads
+    // (completed, merged, SECTORS, ms), the writes (same), the requests in flight, the busy
+    // milliseconds and the weighted time.
     private const string DiskStats =
         """
         259       0 nvme0n1 1000 0 4000 100 500 0 2000 50 0 750 900
@@ -32,135 +32,136 @@ public class LinuxDiskActivityTests
           7       0 loop0 5 0 10 1 0 0 0 0 0 3 3
         """;
 
-    private const int RigheNelCampione = 5;
+    private const int SampleLineCount = 5;
 
     [Fact]
-    public void ISettoriValgonoSempreCinquecentododiciByte()
+    public void SectorsAreAlways512Bytes()
     {
-        // Non e' la dimensione fisica del blocco: e' un contratto documentato del kernel. Un
-        // disco "4K native" li conta ugualmente da 512, e chi moltiplicasse per la dimensione
-        // vera pubblicherebbe numeri otto volte piu' grandi.
-        DiskStatsLine riga = ProcDiskStatsParser.Read(DiskStats).Single(r => r.Device == "nvme0n1");
+        // It is not the physical block size: it is a documented kernel contract. A "4K
+        // native" disk counts them as 512 all the same, and multiplying by the real size
+        // would publish numbers eight times larger.
+        DiskStatsLine line = ProcDiskStatsParser.Read(DiskStats).Single(r => r.Device == "nvme0n1");
 
-        Assert.Equal(4_000UL * 512UL, riga.BytesRead);
-        Assert.Equal(2_000UL * 512UL, riga.BytesWritten);
+        Assert.Equal(4_000UL * 512UL, line.BytesRead);
+        Assert.Equal(2_000UL * 512UL, line.BytesWritten);
     }
 
     [Fact]
-    public void IlTempoOccupatoEIlCampoDeiTickNonLaSommaDiLetturaEScrittura()
+    public void BusyTimeIsTheTickFieldNotTheSumOfReadAndWrite()
     {
-        // Su nvme0n1 la somma dei millisecondi di lettura e scrittura fa 150; il campo giusto
-        // e' 750. Prendere la somma e' l'errore che su una finestra vera ha dato 843%.
-        DiskStatsLine riga = ProcDiskStatsParser.Read(DiskStats).Single(r => r.Device == "nvme0n1");
+        // On nvme0n1 the sum of the read and write milliseconds is 150; the right field is
+        // 750. Taking the sum is the error that on a real window gave 843%.
+        DiskStatsLine line = ProcDiskStatsParser.Read(DiskStats).Single(r => r.Device == "nvme0n1");
 
-        Assert.Equal(TimeSpan.FromMilliseconds(750), riga.Busy);
+        Assert.Equal(TimeSpan.FromMilliseconds(750), line.Busy);
     }
 
     [Theory]
     [InlineData("8 0 sda 1 2 3")]
     [InlineData("8 0 xxx a b c d e f g h i j k l")]
     [InlineData("")]
-    public void UnaRigaCheNonSiCapisceVieneSaltataSenzaFarCadereLeAltre(string rotta)
+    public void AnUnparsableLineIsSkippedWithoutDroppingTheOthers(string brokenLine)
     {
-        IReadOnlyList<DiskStatsLine> righe = ProcDiskStatsParser.Read(rotta + "\n" + DiskStats);
+        IReadOnlyList<DiskStatsLine> lines = ProcDiskStatsParser.Read(brokenLine + "\n" + DiskStats);
 
-        Assert.Equal(RigheNelCampione, righe.Count);
-        Assert.Contains(righe, r => r.Device == "sda");
+        Assert.Equal(SampleLineCount, lines.Count);
+        Assert.Contains(lines, r => r.Device == "sda");
     }
 
     [Fact]
-    public void LePartizioniRestanoFuori()
+    public void PartitionsStayOut()
     {
-        // Una partizione conta gli stessi byte del disco che la contiene. Il criterio non e'
-        // il NOME — "nvme0n1p1" e "sda1" non si somigliano nemmeno, e al primo schema di nomi
-        // nuovo un elenco di suffissi sbaglierebbe in silenzio — ma dove il kernel la mette:
-        // sotto /sys/block una partizione non compare, sta dentro la cartella del suo disco.
-        IReadOnlyList<DiskActivityReading> letture = Leggi();
+        // A partition counts the same bytes as the disk that holds it. The criterion is not
+        // the NAME — "nvme0n1p1" and "sda1" do not even resemble each other, and at the first
+        // new naming scheme a list of suffixes would fail silently — but where the
+        // kernel puts it: a partition does not appear under /sys/block, it lives inside its
+        // disk's directory.
+        IReadOnlyList<DiskActivityReading> readings = ReadDisks();
 
-        Assert.DoesNotContain(letture, l => l.Instance == "nvme0n1p1");
-        Assert.DoesNotContain(letture, l => l.Instance == "sda1");
+        Assert.DoesNotContain(readings, reading => reading.Instance == "nvme0n1p1");
+        Assert.DoesNotContain(readings, reading => reading.Instance == "sda1");
     }
 
     [Fact]
-    public void IDispositiviFintiRestanoFuori()
+    public void VirtualDevicesStayOut()
     {
-        // loop0 e' un dispositivo intero a tutti gli effetti: ha il suo /sys/block/loop0/stat.
-        // Cio' che non ha e' un dispositivo fisico dietro, ed e' quella la domanda giusta.
-        IReadOnlyList<DiskActivityReading> letture = Leggi();
+        // loop0 is a whole device in every respect: it has its own /sys/block/loop0/stat.
+        // What it does not have is a physical device behind it, and that is the right
+        // question to ask.
+        IReadOnlyList<DiskActivityReading> readings = ReadDisks();
 
-        Assert.DoesNotContain(letture, l => l.Instance == "loop0");
+        Assert.DoesNotContain(readings, reading => reading.Instance == "loop0");
     }
 
     [Fact]
-    public void IDischiVeriRestanoDentro()
+    public void RealDisksStayIn()
     {
-        IReadOnlyList<DiskActivityReading> letture = Leggi();
+        IReadOnlyList<DiskActivityReading> readings = ReadDisks();
 
-        Assert.Equal(2, letture.Count);
-        Assert.Contains(letture, l => l.Instance == "nvme0n1");
-        Assert.Contains(letture, l => l.Instance == "sda");
+        Assert.Equal(2, readings.Count);
+        Assert.Contains(readings, reading => reading.Instance == "nvme0n1");
+        Assert.Contains(readings, reading => reading.Instance == "sda");
     }
 
     [Fact]
-    public void IlTempoArrivaComeOccupatoNonComeInattivo()
+    public void TimeIsReportedAsBusyNotAsIdle()
     {
-        // Linux conta i tick di occupato, Windows quelli di inattivita'. Se questo provider
-        // riempisse il campo sbagliato, la percentuale uscirebbe rovesciata: un disco fermo
-        // si mostrerebbe al 100%.
-        DiskActivityReading disco = Leggi().Single(l => l.Instance == "sda");
+        // Linux counts busy ticks, Windows idle ones. If this provider filled the wrong
+        // field, the percentage would come out inverted: an idle disk would show as 100%.
+        DiskActivityReading disk = ReadDisks().Single(reading => reading.Instance == "sda");
 
-        Assert.Equal(TimeSpan.FromMilliseconds(40), disco.Busy);
-        Assert.Null(disco.Idle);
+        Assert.Equal(TimeSpan.FromMilliseconds(40), disk.Busy);
+        Assert.Null(disk.Idle);
     }
 
     [Fact]
-    public void SenzaProcDiskstatsLaLetturaFallisceInveceDiFingereZeroDischi()
+    public void WithoutProcDiskstatsTheReadFailsInsteadOfFakingZeroDisks()
     {
-        // "Non sono riuscito a leggere" e "questa macchina non ha dischi" sono due cose
-        // diverse, e il collector le tratta diversamente: la prima azzera la storia.
-        LettoreFinto lettore = new();
+        // "I could not read it" and "this machine has no disks" are two different things, and
+        // the collector treats them differently: the first one clears the history.
+        FakeTextReader reader = new();
 
-        Assert.False(new LinuxDiskActivityProvider(lettore)
-            .TryRead(out IReadOnlyList<DiskActivityReading> letture));
+        Assert.False(new LinuxDiskActivityProvider(reader)
+            .TryRead(out IReadOnlyList<DiskActivityReading> readings));
 
-        Assert.Empty(letture);
+        Assert.Empty(readings);
     }
 
-    private static IReadOnlyList<DiskActivityReading> Leggi()
+    private static IReadOnlyList<DiskActivityReading> ReadDisks()
     {
-        LettoreFinto lettore = new();
-        lettore.Metti("/proc/diskstats", DiskStats);
+        FakeTextReader reader = new();
+        reader.Put("/proc/diskstats", DiskStats);
 
-        // Presenti per fedelta' alla realta', non perche' il filtro li guardi: i dispositivi
-        // interi hanno il proprio /sys/block/NOME/stat, e le partizioni sotto /sys/block non
-        // compaiono affatto. E' esattamente il motivo per cui un controllo su questo file
-        // non escluderebbe niente in piu' — una mutazione lo ha dimostrato togliendolo senza
-        // far fallire nulla, ed e' stato rimosso.
-        lettore.Metti("/sys/block/nvme0n1/stat", "");
-        lettore.Metti("/sys/block/sda/stat", "");
-        lettore.Metti("/sys/block/loop0/stat", "");
+        // Here to match reality, not because the filter looks at them: whole devices
+        // have their own /sys/block/NAME/stat, and partitions do not appear under /sys/block
+        // at all. That is exactly why a check on this file would exclude nothing more — a
+        // mutation proved it, removing the check without making anything fail, and it was
+        // taken out.
+        reader.Put("/sys/block/nvme0n1/stat", "");
+        reader.Put("/sys/block/sda/stat", "");
+        reader.Put("/sys/block/loop0/stat", "");
 
-        // Il filtro vero: solo chi ha un dispositivo fisico dietro ha device/uevent.
-        lettore.Metti("/sys/block/nvme0n1/device/uevent", "DEVTYPE=nvme");
-        lettore.Metti("/sys/block/sda/device/uevent", "DEVTYPE=scsi_device");
+        // The real filter: only what has a physical device behind it has device/uevent.
+        reader.Put("/sys/block/nvme0n1/device/uevent", "DEVTYPE=nvme");
+        reader.Put("/sys/block/sda/device/uevent", "DEVTYPE=scsi_device");
 
-        Assert.True(new LinuxDiskActivityProvider(lettore)
-            .TryRead(out IReadOnlyList<DiskActivityReading> letture));
+        Assert.True(new LinuxDiskActivityProvider(reader)
+            .TryRead(out IReadOnlyList<DiskActivityReading> readings));
 
-        return letture;
+        return readings;
     }
 
-    private sealed class LettoreFinto : IFileTextReader
+    private sealed class FakeTextReader : IFileTextReader
     {
-        private readonly Dictionary<string, string> file = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> files = new(StringComparer.Ordinal);
 
-        public void Metti(string percorso, string contenuto) => file[percorso] = contenuto;
+        public void Put(string path, string content) => files[path] = content;
 
         public bool TryReadAllText(string path, out string content)
         {
-            if (file.TryGetValue(path, out string? trovato))
+            if (files.TryGetValue(path, out string? found))
             {
-                content = trovato;
+                content = found;
 
                 return true;
             }
