@@ -5,68 +5,67 @@ using Observer.Service.Credentials;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// L'adattatore che raccoglie da Windows i fatti su una cartella.
+/// The adapter that collects the facts about a directory from Windows.
 /// </summary>
 /// <remarks>
-/// Qui si prova solo cio' che una sessione NON amministrativa puo' davvero costruire: una
-/// giunzione e una cartella posseduta dall'utente corrente. Il caso "sicura" richiede un
-/// proprietario SYSTEM o Administrators e non e' costruibile senza elevazione — e' coperto
-/// dalla tabella di <see cref="DirectoryTrustTests"/>, che lavora sui fatti.
+/// Only what a NON-administrative session can really build is tested here: a junction and a
+/// directory owned by the current user. The "safe" case needs an owner of SYSTEM or
+/// Administrators and cannot be built without elevation — it is covered by the table in
+/// <see cref="DirectoryTrustTests"/>, which works on the facts.
 /// </remarks>
-[Collection(AmbienteDelProcesso.Nome)]
+[Collection(ProcessEnvironment.Name)]
 [SupportedOSPlatform("windows")]
 public class WindowsDirectoryTrustTests
 {
-    [SoloSuWindows]
-    public void UnaCartellaAssenteVieneVistaComeAssente()
+    [WindowsOnly]
+    public void AMissingDirectoryIsReportedAsMissing()
     {
-        string percorso = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
+        string path = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
 
-        Assert.Equal(DirectoryVerdict.Missing, WindowsDirectoryTrust.VerdictFor(percorso));
+        Assert.Equal(DirectoryVerdict.Missing, WindowsDirectoryTrust.VerdictFor(path));
     }
 
-    [SoloSuWindows]
-    public void UnaCartellaCreataDaUnUtenteNonEFidataPerIlSERVIZIO_maLoEPerChiLaCrea()
+    [WindowsOnly]
+    public void ADirectoryCreatedByAUserIsNotTrustedForTheSERVICEButIsForItsCreator()
     {
-        // E' il caso dello sviluppatore, ed e' anche il caso dell'attaccante che prepara la
-        // cartella prima che il servizio parta: dall'esterno sono identici, ed e' giusto che
-        // entrambi vengano rifiutati.
-        string percorso = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
-        Directory.CreateDirectory(percorso);
+        // This is the developer's case, and it is also the case of the attacker who prepares the
+        // directory before the service starts: from the outside they are identical, and it is
+        // right that both are refused.
+        string path = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
+        Directory.CreateDirectory(path);
 
         try
         {
-            // Contro i soli SYSTEM e amministratori NON e' fidata: e' il caso
-            // dell'attaccante che prepara la cartella prima che il servizio parta.
-            Assert.False(DirectoryTrust.Evaluate(WindowsDirectoryTrust.Observe(percorso)).CanHoldSecret());
+            // Against SYSTEM and administrators alone it is NOT trusted: it is the
+            // case of the attacker who prepares the directory before the service starts.
+            Assert.False(DirectoryTrust.Evaluate(WindowsDirectoryTrust.Observe(path)).CanHoldSecret());
 
-            // Ma il processo che l'ha creata puo' fidarsene, ed e' il caso dello
-            // sviluppatore che lancia il servizio a mano.
-            WindowsDirectoryTrust.Prepare(percorso);
-            Assert.True(WindowsDirectoryTrust.VerdictFor(percorso).CanHoldSecret());
+            // But the process that created it can trust it, and that is the case of
+            // the developer who starts the service by hand.
+            WindowsDirectoryTrust.Prepare(path);
+            Assert.True(WindowsDirectoryTrust.VerdictFor(path).CanHoldSecret());
         }
         finally
         {
-            Directory.Delete(percorso, recursive: true);
+            Directory.Delete(path, recursive: true);
         }
     }
 
-    [SoloSuWindows]
-    public void UnaGIUNZIONEVieneRiconosciutaPrimaDiGuardareLeAcl()
+    [WindowsOnly]
+    public void AJUNCTIONIsDetectedBeforeAnyAclIsRead()
     {
-        // Una giunzione la crea un utente standard SENZA privilegi: niente
-        // SeCreateSymbolicLinkPrivilege, niente modalita' sviluppatore. Se il servizio non la
-        // riconoscesse, "metterebbe in sicurezza" la cartella dell'attaccante e ci
-        // depositerebbe dentro il token di macchina.
-        string bersaglio = Path.Combine(Path.GetTempPath(), "obs-bersaglio-" + Guid.NewGuid().ToString("N")[..8]);
-        string giunzione = Path.Combine(Path.GetTempPath(), "obs-giunzione-" + Guid.NewGuid().ToString("N")[..8]);
+        // A junction is created by a standard user with NO privileges: no
+        // SeCreateSymbolicLinkPrivilege, no developer mode. If the service did not recognise it,
+        // it would "secure" the attacker's directory and store the machine token inside it.
+        string target = Path.Combine(Path.GetTempPath(), "obs-target-" + Guid.NewGuid().ToString("N")[..8]);
+        string junction = Path.Combine(Path.GetTempPath(), "obs-junction-" + Guid.NewGuid().ToString("N")[..8]);
 
-        Directory.CreateDirectory(bersaglio);
+        Directory.CreateDirectory(target);
 
         using Process? mklink = Process.Start(new ProcessStartInfo
         {
             FileName = "cmd.exe",
-            Arguments = $"/c mklink /J \"{giunzione}\" \"{bersaglio}\"",
+            Arguments = $"/c mklink /J \"{junction}\" \"{target}\"",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -79,37 +78,37 @@ public class WindowsDirectoryTrustTests
         {
             Assert.Equal(0, mklink.ExitCode);
 
-            DirectoryFacts fatti = WindowsDirectoryTrust.Observe(giunzione);
+            DirectoryFacts facts = WindowsDirectoryTrust.Observe(junction);
 
-            Assert.True(fatti.IsReparsePoint);
-            Assert.Equal(DirectoryVerdict.ReparsePoint, DirectoryTrust.Evaluate(fatti));
+            Assert.True(facts.IsReparsePoint);
+            Assert.Equal(DirectoryVerdict.ReparsePoint, DirectoryTrust.Evaluate(facts));
 
-            // E il servizio si rifiuta, invece di "ripararla".
-            InvalidOperationException errore =
-                Assert.Throws<InvalidOperationException>(() => WindowsDirectoryTrust.Prepare(giunzione));
+            // And the service refuses, instead of "repairing" it.
+            InvalidOperationException error =
+                Assert.Throws<InvalidOperationException>(() => WindowsDirectoryTrust.Prepare(junction));
 
-            Assert.Contains("junction", errore.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("junction", error.Message, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
-            // Directory.Delete su una giunzione rimuove il collegamento, non il bersaglio.
-            if (Directory.Exists(giunzione))
+            // Directory.Delete on a junction removes the link, not the target.
+            if (Directory.Exists(junction))
             {
-                Directory.Delete(giunzione);
+                Directory.Delete(junction);
             }
 
-            Directory.Delete(bersaglio, recursive: true);
+            Directory.Delete(target, recursive: true);
         }
     }
 
-    [SoloSuWindows]
-    public void LaSicurezzaPropostaNonNominaNessunoOltreSystemEAmministratori()
+    [WindowsOnly]
+    public void TheProposedSecurityNamesNobodyBesidesSystemAndAdministrators()
     {
         string sddl = WindowsDirectoryTrust.SecurityDescriptor()
             .GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.Access);
 
-        // "P" = protetta, cioe' non eredita. Senza, erediterebbe da ProgramData l'ACE che
-        // concede lettura a BUILTIN\Users.
+        // "P" = protected, that is, it does not inherit. Without it, it would inherit from
+        // ProgramData the ACE that grants read access to BUILTIN\Users.
         Assert.Contains("D:P", sddl, StringComparison.Ordinal);
         Assert.Contains(";;;SY)", sddl, StringComparison.Ordinal);
         Assert.Contains(";;;BA)", sddl, StringComparison.Ordinal);

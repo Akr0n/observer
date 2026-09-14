@@ -5,12 +5,12 @@ using Observer.Service.Persistence;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Un database vero, su file vero, in una cartella temporanea diversa per ogni test.
+/// A real database, in a real file, in a different temporary folder for every test.
 /// </summary>
 /// <remarks>
-/// Deliberatamente NON in memoria: meta' delle cose che si vogliono verificare qui —
-/// giornale WAL, indici UNIQUE, upsert, dimensione del file — dipendono dal fatto che il
-/// database stia davvero su disco. Un test in memoria le darebbe tutte per buone.
+/// Deliberately NOT in memory: half the things worth checking here — the WAL journal,
+/// UNIQUE indexes, upsert, the size of the file — depend on the database really being on
+/// disk. An in-memory test would take them all on trust.
 /// </remarks>
 internal sealed class TempMetricStore : IDisposable
 {
@@ -23,7 +23,7 @@ internal sealed class TempMetricStore : IDisposable
             "observer-test-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
 
         Directory.CreateDirectory(directory);
-        DatabasePath = Path.Combine(directory, "storico.db");
+        DatabasePath = Path.Combine(directory, "history.db");
         Store = new MetricStore(DatabasePath);
         Store.Initialize();
     }
@@ -34,9 +34,9 @@ internal sealed class TempMetricStore : IDisposable
 
     public void Dispose()
     {
-        // Senza questo, le connessioni del pool restano aperte e su Windows il file non si
-        // puo' cancellare: i test passerebbero comunque, lasciando dietro una cartella
-        // temporanea per ogni esecuzione.
+        // Without this, the pooled connections stay open and on Windows the file cannot be
+        // deleted: the tests would pass all the same, leaving behind a temporary folder
+        // for every run.
         SqliteConnection.ClearAllPools();
 
         try
@@ -45,8 +45,8 @@ internal sealed class TempMetricStore : IDisposable
         }
         catch (IOException)
         {
-            // Pulizia opportunistica: un file ancora agganciato non deve far fallire un test
-            // che ha gia' verificato quello che doveva verificare.
+            // Opportunistic cleanup: a file still held open must not fail a test that has
+            // already verified what it set out to verify.
         }
         catch (UnauthorizedAccessException)
         {

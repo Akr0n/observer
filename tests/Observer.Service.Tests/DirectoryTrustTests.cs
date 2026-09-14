@@ -3,128 +3,128 @@ using Observer.Service.Credentials;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Se ci si puo' fidare della cartella che ospitera' il token di macchina.
+/// Whether the directory that will hold the machine token can be trusted.
 /// </summary>
 /// <remarks>
-/// Funzione PURA sui fatti osservati, per due motivi. Il primo e' che i casi che contano non si
-/// possono costruire tutti su una macchina qualsiasi: una cartella posseduta da SYSTEM richiede
-/// una sessione amministrativa. Il secondo e' che questa e' la decisione di sicurezza portante
-/// del deposito, e va verificata a tabella e non per campione.
+/// A PURE function over the observed facts, for two reasons. The first is that the cases that
+/// matter cannot all be built on just any machine: a directory owned by SYSTEM needs an
+/// administrative session. The second is that this is the store's load-bearing security decision,
+/// and it has to be verified as a table and not by sampling.
 /// </remarks>
 public class DirectoryTrustTests
 {
-    private const string Sistema = "S-1-5-18";
-    private const string Amministratori = "S-1-5-32-544";
-    private const string Utente = "S-1-5-21-1-2-3-1001";
-    private const string Tutti = "S-1-1-0";
-    private const string UtentiIntegrati = "S-1-5-32-545";
+    private const string SystemSid = "S-1-5-18";
+    private const string AdministratorsSid = "S-1-5-32-544";
+    private const string UserSid = "S-1-5-21-1-2-3-1001";
+    private const string EveryoneSid = "S-1-1-0";
+    private const string BuiltinUsersSid = "S-1-5-32-545";
 
     [Fact]
-    public void UnaCartellaAssenteSiPuoCreare()
+    public void AMissingDirectoryCanBeCreated()
     {
-        Assert.Equal(DirectoryVerdict.Missing, DirectoryTrust.Evaluate(Fatti(esiste: false)));
+        Assert.Equal(DirectoryVerdict.Missing, DirectoryTrust.Evaluate(Facts(exists: false)));
     }
 
     [Fact]
-    public void UnPuntoDiReparseVinceSuTUTTOilResto()
+    public void AReparsePointOutweighsEVERYTHINGElse()
     {
-        // Una giunzione la crea un utente standard SENZA privilegi. Se il controllo non venisse
-        // per primo, si correggerebbero proprietario e ACL della cartella dell'ATTACCANTE, e ci
-        // si depositerebbe dentro il token. Qui i fatti sono per il resto perfetti, apposta.
-        DirectoryFacts perfettaMaGiunzione = Fatti(
-            puntoDiReparse: true,
-            proprietario: Sistema,
-            daclProtetta: true,
-            sid: [Sistema, Amministratori]);
+        // A junction is created by a standard user with NO privileges. If this check did not come
+        // first, the owner and the ACL of the ATTACKER's directory would be repaired, and the
+        // token would be stored inside it. The rest of the facts here are perfect, on purpose.
+        DirectoryFacts perfectButAJunction = Facts(
+            isReparsePoint: true,
+            owner: SystemSid,
+            daclProtected: true,
+            daclSids: [SystemSid, AdministratorsSid]);
 
-        Assert.Equal(DirectoryVerdict.ReparsePoint, DirectoryTrust.Evaluate(perfettaMaGiunzione));
+        Assert.Equal(DirectoryVerdict.ReparsePoint, DirectoryTrust.Evaluate(perfectButAJunction));
     }
 
     [Fact]
-    public void UnDescrittoreIlleggibileENonSicuro_NonSconosciutoEBasta()
+    public void AnUnreadableDescriptorIsVerdictUnknown()
     {
         Assert.Equal(
             DirectoryVerdict.Unknown,
-            DirectoryTrust.Evaluate(Fatti(descrittoreLeggibile: false)));
+            DirectoryTrust.Evaluate(Facts(securityDescriptorReadable: false)));
     }
 
     [Fact]
-    public void UnaDaclPerfettaConProprietarioUTENTE_ENONsicura()
+    public void APerfectDaclOwnedByAUSERIsNOTSafe()
     {
-        // E' il "finto protetto": la DACL non nomina l'utente in alcun modo, ma il proprietario
-        // ha WRITE_DAC implicito e se la riscrive quando vuole. Misurato: una sola chiamata e
-        // l'accesso torna completo. Chi guarda solo le ACE dice "sicura" e sbaglia.
-        DirectoryFacts fintoProtetto = Fatti(
-            proprietario: Utente,
-            daclProtetta: true,
-            sid: [Sistema, Amministratori]);
+        // This is the "fake protected" case: the DACL does not name the user in any way, but the
+        // owner has implicit WRITE_DAC and rewrites it whenever it likes. Measured: a single call
+        // and access is complete again. Whoever looks only at the ACEs says "safe" and is wrong.
+        DirectoryFacts fakeProtected = Facts(
+            owner: UserSid,
+            daclProtected: true,
+            daclSids: [SystemSid, AdministratorsSid]);
 
-        Assert.Equal(DirectoryVerdict.UntrustedOwner, DirectoryTrust.Evaluate(fintoProtetto));
+        Assert.Equal(DirectoryVerdict.UntrustedOwner, DirectoryTrust.Evaluate(fakeProtected));
     }
 
     [Theory]
-    [InlineData(Sistema)]
-    [InlineData(Amministratori)]
-    public void IDueSoliProprietariAmmessi(string proprietario)
+    [InlineData(SystemSid)]
+    [InlineData(AdministratorsSid)]
+    public void SystemAndAdministratorsAreSafeOwners(string owner)
     {
         Assert.Equal(
             DirectoryVerdict.Safe,
-            DirectoryTrust.Evaluate(Fatti(proprietario: proprietario, daclProtetta: true, sid: [Sistema, Amministratori])));
+            DirectoryTrust.Evaluate(Facts(owner: owner, daclProtected: true, daclSids: [SystemSid, AdministratorsSid])));
     }
 
     [Fact]
-    public void UnaDaclNonProtettaENONsicura_AncheSeLeAceSonoGiuste()
+    public void AnUnprotectedDaclIsNOTSafeEvenIfTheAcesAreRight()
     {
-        // Non protetta significa che eredita: e la cartella di sistema che ospita il deposito
-        // concede a BUILTIN\Users la lettura ereditabile. Ereditare basta a perdere il segreto,
-        // senza bisogno di alcun attaccante.
+        // Not protected means it inherits: and the system directory that holds the store grants
+        // BUILTIN\Users inheritable read access. Inheriting is enough to lose the secret, with no
+        // attacker needed at all.
         Assert.Equal(
             DirectoryVerdict.OpenDacl,
-            DirectoryTrust.Evaluate(Fatti(proprietario: Sistema, daclProtetta: false, sid: [Sistema, Amministratori])));
+            DirectoryTrust.Evaluate(Facts(owner: SystemSid, daclProtected: false, daclSids: [SystemSid, AdministratorsSid])));
     }
 
     [Theory]
-    [InlineData(Tutti)]
-    [InlineData(UtentiIntegrati)]
-    [InlineData(Utente)]
-    public void UnaSolaAceDiTroppoBastaARenderlaNonSicura(string intruso)
+    [InlineData(EveryoneSid)]
+    [InlineData(BuiltinUsersSid)]
+    [InlineData(UserSid)]
+    public void OneExtraAceIsEnoughToMakeItUnsafe(string intruder)
     {
         Assert.Equal(
             DirectoryVerdict.OpenDacl,
-            DirectoryTrust.Evaluate(Fatti(proprietario: Sistema, daclProtetta: true, sid: [Sistema, Amministratori, intruso])));
+            DirectoryTrust.Evaluate(Facts(owner: SystemSid, daclProtected: true, daclSids: [SystemSid, AdministratorsSid, intruder])));
     }
 
     [Fact]
-    public void IlValoreZeroDelVerdettoNonEQuelloCheAutorizza()
+    public void TheZeroVerdictIsNotTheOneThatAuthorizes()
     {
-        // Un campo dimenticato o una struct non inizializzata non devono produrre "Sicura".
+        // A forgotten field or an uninitialised struct must not produce "Safe".
         Assert.Equal(DirectoryVerdict.Unknown, default(DirectoryVerdict));
         Assert.NotEqual(DirectoryVerdict.Safe, default(DirectoryVerdict));
     }
 
     [Fact]
-    public void SoloSicuraEAssenteSonoEsitiUtilizzabili()
+    public void OnlySafeCanHoldTheSecret()
     {
-        // Chiunque usi il verdetto deve poter distinguere "vai avanti" da "fermati", senza
-        // dover elencare a mano i casi negativi e senza dimenticarne uno.
+        // Whoever uses the verdict must be able to tell "go ahead" from "stop", without having
+        // to list the negative cases by hand and without forgetting one.
         Assert.True(DirectoryVerdict.Safe.CanHoldSecret());
         Assert.False(DirectoryVerdict.Missing.CanHoldSecret());
 
-        foreach (DirectoryVerdict verdetto in Enum.GetValues<DirectoryVerdict>())
+        foreach (DirectoryVerdict verdict in Enum.GetValues<DirectoryVerdict>())
         {
-            if (verdetto != DirectoryVerdict.Safe)
+            if (verdict != DirectoryVerdict.Safe)
             {
-                Assert.False(verdetto.CanHoldSecret(), verdetto.ToString());
+                Assert.False(verdict.CanHoldSecret(), verdict.ToString());
             }
         }
     }
 
-    private static DirectoryFacts Fatti(
-        bool esiste = true,
-        bool puntoDiReparse = false,
-        bool descrittoreLeggibile = true,
-        string? proprietario = Sistema,
-        bool daclProtetta = true,
-        IReadOnlyList<string>? sid = null) =>
-        new(esiste, puntoDiReparse, descrittoreLeggibile, proprietario, daclProtetta, sid ?? [Sistema, Amministratori]);
+    private static DirectoryFacts Facts(
+        bool exists = true,
+        bool isReparsePoint = false,
+        bool securityDescriptorReadable = true,
+        string? owner = SystemSid,
+        bool daclProtected = true,
+        IReadOnlyList<string>? daclSids = null) =>
+        new(exists, isReparsePoint, securityDescriptorReadable, owner, daclProtected, daclSids ?? [SystemSid, AdministratorsSid]);
 }

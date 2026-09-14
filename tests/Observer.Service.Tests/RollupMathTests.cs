@@ -4,71 +4,71 @@ using Observer.Service.Persistence;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// La matematica del rollup, provata SENZA database. E' il punto piu' pericoloso di tutta la
-/// persistenza: un errore qui non fa fallire nulla, non lancia e non si vede nei log —
-/// produce grafici pieni di numeri plausibili e sbagliati. L'unico modo di scoprirlo e'
-/// confrontare l'aggregato con il calcolo diretto sui campioni grezzi.
+/// The rollup arithmetic, tested WITHOUT a database. It is the most dangerous spot in the whole
+/// persistence layer: a mistake here fails no test, throws nothing and shows up in no log — it
+/// produces charts full of plausible, wrong numbers. The only way to find it is to compare the
+/// aggregate against the direct calculation over the raw samples.
 /// </summary>
 public class RollupMathTests
 {
-    private static readonly TimeSpan UnMinuto = TimeSpan.FromMinutes(1);
-    private static readonly TimeSpan CinqueMinuti = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan OneMinute = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan FiveMinutes = TimeSpan.FromMinutes(5);
 
-    private static long Ms(string istanteIso) =>
-        DateTimeOffset.Parse(istanteIso, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
+    private static long Ms(string instantIso) =>
+        DateTimeOffset.Parse(instantIso, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
             .ToUnixTimeMilliseconds();
 
     [Fact]
-    public void AllineaAlBucket_RiportaAllInizioDelMinuto()
+    public void AlignToBucketStart_SnapsToTheStartOfTheMinute()
     {
-        long allineato = RollupMath.AlignToBucketStart(Ms("2026-08-26T12:03:47.812Z"), UnMinuto);
+        long aligned = RollupMath.AlignToBucketStart(Ms("2026-08-26T12:03:47.812Z"), OneMinute);
 
-        Assert.Equal(Ms("2026-08-26T12:03:00Z"), allineato);
+        Assert.Equal(Ms("2026-08-26T12:03:00Z"), aligned);
     }
 
     [Fact]
-    public void AllineaAlBucket_LasciaFermoUnIstanteGiaAllineato()
+    public void AlignToBucketStart_LeavesAnAlreadyAlignedInstantWhereItIs()
     {
-        // Se un istante esattamente sul bordo scivolasse al bucket precedente, ogni bucket
-        // conterrebbe un campione del bucket successivo e le medie sarebbero tutte sfalsate
-        // di un campione: sbagliate di poco, quindi invisibili.
-        long allineato = RollupMath.AlignToBucketStart(Ms("2026-08-26T12:05:00Z"), CinqueMinuti);
+        // If an instant exactly on the boundary slipped into the previous bucket, every bucket
+        // would hold one sample belonging to the next one and every average would be off by a
+        // single sample: slightly wrong, and therefore invisible.
+        long aligned = RollupMath.AlignToBucketStart(Ms("2026-08-26T12:05:00Z"), FiveMinutes);
 
-        Assert.Equal(Ms("2026-08-26T12:05:00Z"), allineato);
+        Assert.Equal(Ms("2026-08-26T12:05:00Z"), aligned);
     }
 
     [Fact]
-    public void AllineaAlBucket_ArrotondaVersoIlPassatoAnchePrimaDellEpoch()
+    public void AlignToBucketStart_RoundsDownEvenBeforeTheEpoch()
     {
-        // Con la divisione intera del C# -1500 / 60000 fa 0, e un istante prima del 1970
-        // finirebbe nel bucket SUCCESSIVO invece che nel precedente. Non capita in
-        // produzione, ma e' il modo piu' economico di verificare che l'arrotondamento sia un
-        // vero floor e non un troncamento verso lo zero.
-        long allineato = RollupMath.AlignToBucketStart(-1500L, UnMinuto);
+        // With C# integer division -1500 / 60000 is 0, so an instant before 1970 would land in
+        // the NEXT bucket instead of the previous one. It does not happen in production, but it
+        // is the cheapest way to check that the rounding is a real floor and not a truncation
+        // towards zero.
+        long aligned = RollupMath.AlignToBucketStart(-1500L, OneMinute);
 
-        Assert.Equal(-60000L, allineato);
+        Assert.Equal(-60000L, aligned);
     }
 
     [Theory]
     [InlineData(0)]
     [InlineData(-1000)]
-    public void AllineaAlBucket_RifiutaUnAmpiezzaNonPositiva(int millisecondi)
+    public void AlignToBucketStart_RejectsANonPositiveWidth(int milliseconds)
     {
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => RollupMath.AlignToBucketStart(0L, TimeSpan.FromMilliseconds(millisecondi)));
+            () => RollupMath.AlignToBucketStart(0L, TimeSpan.FromMilliseconds(milliseconds)));
     }
 
     [Fact]
-    public void Aggrega_CalcolaConteggioSommaMinimoMassimoEUltimo()
+    public void Aggregate_ComputesCountSumMinMaxAndLast()
     {
-        RawSample[] campioni =
+        RawSample[] samples =
         [
             new(Ms("2026-08-26T12:00:00Z"), 10d),
             new(Ms("2026-08-26T12:00:01Z"), 30d),
             new(Ms("2026-08-26T12:00:02Z"), 20d),
         ];
 
-        RollupBucket bucket = Assert.Single(RollupMath.Aggregate(campioni, UnMinuto));
+        RollupBucket bucket = Assert.Single(RollupMath.Aggregate(samples, OneMinute));
 
         Assert.Equal(Ms("2026-08-26T12:00:00Z"), bucket.BucketStartMs);
         Assert.Equal(3, bucket.Count);
@@ -80,59 +80,59 @@ public class RollupMathTests
     }
 
     [Fact]
-    public void Aggrega_SeparaIBucketEliRestituisceInOrdineDiTempo()
+    public void Aggregate_SplitsTheBucketsAndReturnsThemInTimeOrder()
     {
-        RawSample[] campioni =
+        RawSample[] samples =
         [
             new(Ms("2026-08-26T12:01:30Z"), 5d),
             new(Ms("2026-08-26T12:00:30Z"), 1d),
             new(Ms("2026-08-26T12:00:31Z"), 3d),
         ];
 
-        IReadOnlyList<RollupBucket> bucket = RollupMath.Aggregate(campioni, UnMinuto);
+        IReadOnlyList<RollupBucket> buckets = RollupMath.Aggregate(samples, OneMinute);
 
-        Assert.Equal(2, bucket.Count);
-        Assert.Equal(Ms("2026-08-26T12:00:00Z"), bucket[0].BucketStartMs);
-        Assert.Equal(2, bucket[0].Count);
-        Assert.Equal(Ms("2026-08-26T12:01:00Z"), bucket[1].BucketStartMs);
-        Assert.Equal(1, bucket[1].Count);
+        Assert.Equal(2, buckets.Count);
+        Assert.Equal(Ms("2026-08-26T12:00:00Z"), buckets[0].BucketStartMs);
+        Assert.Equal(2, buckets[0].Count);
+        Assert.Equal(Ms("2026-08-26T12:01:00Z"), buckets[1].BucketStartMs);
+        Assert.Equal(1, buckets[1].Count);
     }
 
     [Fact]
-    public void Aggrega_LUltimoEIlPiuRecenteNonLUltimoArrivato()
+    public void Aggregate_LastIsTheMostRecentNotTheLastToArrive()
     {
-        // I campioni arrivano gia' ordinati dal database, ma "ultimo" deve significare
-        // "piu' recente" e non "ultimo della lista": altrimenti il giorno in cui qualcuno
-        // toglie l'ORDER BY dalla query il valore corrente mostrato in dashboard diventa un
-        // valore vecchio a caso, senza che nulla fallisca.
-        RawSample[] campioniInDisordine =
+        // The samples already arrive ordered from the database, but "last" has to mean "most
+        // recent" and not "last in the list": otherwise, the day someone drops the ORDER BY from
+        // the query, the current value shown on the dashboard becomes an old value picked at
+        // random, and nothing fails.
+        RawSample[] samplesOutOfOrder =
         [
             new(Ms("2026-08-26T12:00:59Z"), 99d),
             new(Ms("2026-08-26T12:00:01Z"), 1d),
         ];
 
-        RollupBucket bucket = Assert.Single(RollupMath.Aggregate(campioniInDisordine, UnMinuto));
+        RollupBucket bucket = Assert.Single(RollupMath.Aggregate(samplesOutOfOrder, OneMinute));
 
         Assert.Equal(99d, bucket.Last);
     }
 
     [Fact]
-    public void Aggrega_SenzaCampioniNonProduceBucket()
+    public void Aggregate_ProducesNoBucketWhenThereAreNoSamples()
     {
-        // Un bucket vuoto avrebbe conteggio zero e media 0/0 = NaN, e un NaN in JSON fa
-        // fallire l'INTERA risposta HTTP, non solo quella metrica.
-        Assert.Empty(RollupMath.Aggregate([], UnMinuto));
+        // An empty bucket would have a count of zero and an average of 0/0 = NaN, and a NaN in
+        // JSON fails the WHOLE HTTP response, not just that one metric.
+        Assert.Empty(RollupMath.Aggregate([], OneMinute));
     }
 
     [Fact]
-    public void Ricombina_LaMediaACinqueMinutiCoincideConLaMediaDeiGrezzi()
+    public void Combine_TheFiveMinuteAverageMatchesTheAverageOfTheRawSamples()
     {
-        // IL test. Cinque minuti con un numero DIVERSO di campioni ciascuno: e' il caso
-        // normale, non un caso limite — succede a ogni riavvio del servizio, a ogni timeout
-        // di un collector e ogni volta che una metrica compare a meta' minuto. Chi conserva
-        // la media invece di somma e conteggio calcola qui la media delle medie e ottiene un
-        // numero credibile e falso.
-        RawSample[] grezzi =
+        // THE test. Five minutes with a DIFFERENT number of samples each: that is the normal
+        // case, not an edge case — it happens at every service restart, at every collector
+        // timeout and every time a metric appears halfway through a minute. Anything that keeps
+        // the average instead of the sum and the count computes the average of the averages
+        // here, and gets a believable, false number.
+        RawSample[] rawSamples =
         [
             new(Ms("2026-08-26T12:00:10Z"), 100d),
             new(Ms("2026-08-26T12:01:10Z"), 0d),
@@ -144,66 +144,66 @@ public class RollupMathTests
             new(Ms("2026-08-26T12:04:10Z"), 0d),
         ];
 
-        IReadOnlyList<RollupBucket> minuti = RollupMath.Aggregate(grezzi, UnMinuto);
-        RollupBucket cinqueMinuti = Assert.Single(RollupMath.Combine(minuti, CinqueMinuti));
+        IReadOnlyList<RollupBucket> minuteBuckets = RollupMath.Aggregate(rawSamples, OneMinute);
+        RollupBucket fiveMinuteBucket = Assert.Single(RollupMath.Combine(minuteBuckets, FiveMinutes));
 
-        // Media vera: 100 / 8 = 12,5. Media delle medie: (100+0+0+0+0)/5 = 20.
-        Assert.Equal(100d / 8d, cinqueMinuti.Average);
-        Assert.Equal(8, cinqueMinuti.Count);
-        Assert.Equal(100d, cinqueMinuti.Sum);
+        // True average: 100 / 8 = 12.5. Average of the averages: (100+0+0+0+0)/5 = 20.
+        Assert.Equal(100d / 8d, fiveMinuteBucket.Average);
+        Assert.Equal(8, fiveMinuteBucket.Count);
+        Assert.Equal(100d, fiveMinuteBucket.Sum);
     }
 
     [Fact]
-    public void Ricombina_PrendeGliEstremiNonLaLoroSomma()
+    public void Combine_TakesTheExtremesNotTheirSum()
     {
-        RollupBucket[] minuti =
+        RollupBucket[] minuteBuckets =
         [
             new(Ms("2026-08-26T12:00:00Z"), 60, 600d, 2d, 40d, 7d),
             new(Ms("2026-08-26T12:01:00Z"), 60, 600d, 5d, 90d, 9d),
         ];
 
-        RollupBucket combinato = Assert.Single(RollupMath.Combine(minuti, CinqueMinuti));
+        RollupBucket combined = Assert.Single(RollupMath.Combine(minuteBuckets, FiveMinutes));
 
-        Assert.Equal(2d, combinato.Min);
-        Assert.Equal(90d, combinato.Max);
+        Assert.Equal(2d, combined.Min);
+        Assert.Equal(90d, combined.Max);
     }
 
     [Fact]
-    public void Ricombina_LUltimoVieneDalBucketPiuRecente()
+    public void Combine_LastComesFromTheMostRecentBucket()
     {
-        RollupBucket[] minutiInDisordine =
+        RollupBucket[] minuteBucketsOutOfOrder =
         [
             new(Ms("2026-08-26T12:04:00Z"), 60, 600d, 1d, 20d, 42d),
             new(Ms("2026-08-26T12:00:00Z"), 60, 600d, 1d, 20d, 7d),
         ];
 
-        RollupBucket combinato = Assert.Single(RollupMath.Combine(minutiInDisordine, CinqueMinuti));
+        RollupBucket combined = Assert.Single(RollupMath.Combine(minuteBucketsOutOfOrder, FiveMinutes));
 
-        Assert.Equal(42d, combinato.Last);
-        Assert.Equal(Ms("2026-08-26T12:00:00Z"), combinato.BucketStartMs);
+        Assert.Equal(42d, combined.Last);
+        Assert.Equal(Ms("2026-08-26T12:00:00Z"), combined.BucketStartMs);
     }
 
     [Fact]
-    public void Ricombina_TieneSeparatiIBucketDiCinqueMinutiDiversi()
+    public void Combine_KeepsDifferentFiveMinuteBucketsApart()
     {
-        RollupBucket[] minuti =
+        RollupBucket[] minuteBuckets =
         [
             new(Ms("2026-08-26T12:04:00Z"), 60, 60d, 1d, 1d, 1d),
             new(Ms("2026-08-26T12:05:00Z"), 60, 120d, 2d, 2d, 2d),
         ];
 
-        IReadOnlyList<RollupBucket> combinati = RollupMath.Combine(minuti, CinqueMinuti);
+        IReadOnlyList<RollupBucket> combined = RollupMath.Combine(minuteBuckets, FiveMinutes);
 
-        Assert.Equal(2, combinati.Count);
-        Assert.Equal(Ms("2026-08-26T12:00:00Z"), combinati[0].BucketStartMs);
-        Assert.Equal(Ms("2026-08-26T12:05:00Z"), combinati[1].BucketStartMs);
+        Assert.Equal(2, combined.Count);
+        Assert.Equal(Ms("2026-08-26T12:00:00Z"), combined[0].BucketStartMs);
+        Assert.Equal(Ms("2026-08-26T12:05:00Z"), combined[1].BucketStartMs);
     }
 
     [Fact]
-    public void Bucket_RifiutaUnConteggioNonPositivo()
+    public void Bucket_RejectsANonPositiveCount()
     {
-        // Un bucket a conteggio zero produce media NaN e fa saltare la serializzazione
-        // dell'intera risposta. Meglio non lasciarlo nascere.
+        // A bucket with a count of zero produces a NaN average and breaks the serialization of
+        // the whole response. Better not to let one exist in the first place.
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new RollupBucket(0L, 0, 0d, 0d, 0d, 0d));
     }
@@ -211,9 +211,9 @@ public class RollupMathTests
     [Theory]
     [InlineData(double.NaN)]
     [InlineData(double.PositiveInfinity)]
-    public void Bucket_RifiutaIValoriNonFiniti(double valoreRotto)
+    public void Bucket_RejectsNonFiniteValues(double brokenValue)
     {
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => new RollupBucket(0L, 1, valoreRotto, valoreRotto, valoreRotto, valoreRotto));
+            () => new RollupBucket(0L, 1, brokenValue, brokenValue, brokenValue, brokenValue));
     }
 }

@@ -4,101 +4,101 @@ using Observer.Service.Persistence;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// La coda fra il campionatore e il disco. Il requisito che difende non e' la velocita': e'
-/// la CORRETTEZZA della misura successiva. La percentuale di CPU si calcola sulla distanza
-/// fra due letture, quindi un campionatore che aspetta il disco non produce un grafico
-/// lento, produce numeri sbagliati.
+/// The queue between the sampler and the disk. What it protects is not speed: it is the
+/// CORRECTNESS of the next measurement. CPU percentage is computed from the distance between
+/// two readings, so a sampler that waits for the disk does not produce a slow chart, it
+/// produces wrong numbers.
 /// </summary>
 public class SnapshotBufferTests
 {
-    private static MachineSnapshot Snapshot(int secondo) =>
+    private static MachineSnapshot Snapshot(int second) =>
         new(
             MachineSnapshot.CurrentSchemaVersion,
-            new DateTimeOffset(2026, 8, 26, 12, 0, secondo, TimeSpan.Zero),
+            new DateTimeOffset(2026, 8, 26, 12, 0, second, TimeSpan.Zero),
             []);
 
     [Fact]
-    public void Accoda_ERestituisceInOrdineDiArrivo()
+    public void Enqueue_DrainsInArrivalOrder()
     {
-        SnapshotBuffer coda = new(capacity: 8);
+        SnapshotBuffer buffer = new(capacity: 8);
 
-        coda.Enqueue(Snapshot(1));
-        coda.Enqueue(Snapshot(2));
+        buffer.Enqueue(Snapshot(1));
+        buffer.Enqueue(Snapshot(2));
 
-        IReadOnlyList<MachineSnapshot> svuotati = coda.DrainAll();
+        IReadOnlyList<MachineSnapshot> drained = buffer.DrainAll();
 
-        Assert.Equal(2, svuotati.Count);
-        Assert.Equal(Snapshot(1).CapturedAt, svuotati[0].CapturedAt);
-        Assert.Equal(Snapshot(2).CapturedAt, svuotati[1].CapturedAt);
-        Assert.Equal(0L, coda.DroppedCount);
+        Assert.Equal(2, drained.Count);
+        Assert.Equal(Snapshot(1).CapturedAt, drained[0].CapturedAt);
+        Assert.Equal(Snapshot(2).CapturedAt, drained[1].CapturedAt);
+        Assert.Equal(0L, buffer.DroppedCount);
     }
 
     [Fact]
-    public void Accoda_QuandoEPienaScartaIPiuVecchiNonIPiuNuovi()
+    public void Enqueue_WhenFullDropsTheOldestNotTheNewest()
     {
-        SnapshotBuffer coda = new(capacity: 2);
+        SnapshotBuffer buffer = new(capacity: 2);
 
-        coda.Enqueue(Snapshot(1));
-        coda.Enqueue(Snapshot(2));
-        coda.Enqueue(Snapshot(3));
+        buffer.Enqueue(Snapshot(1));
+        buffer.Enqueue(Snapshot(2));
+        buffer.Enqueue(Snapshot(3));
 
-        IReadOnlyList<MachineSnapshot> svuotati = coda.DrainAll();
+        IReadOnlyList<MachineSnapshot> drained = buffer.DrainAll();
 
-        // In un monitor di macchina il campione appena letto vale piu' di quello di prima:
-        // scartare il piu' nuovo lascerebbe la dashboard indietro proprio quando la
-        // macchina e' sotto carico, cioe' l'unico momento in cui qualcuno la guarda.
-        Assert.Equal(2, svuotati.Count);
-        Assert.Equal(Snapshot(2).CapturedAt, svuotati[0].CapturedAt);
-        Assert.Equal(Snapshot(3).CapturedAt, svuotati[1].CapturedAt);
-        Assert.Equal(1L, coda.DroppedCount);
+        // In a machine monitor the sample just read is worth more than the one before it:
+        // dropping the newest would leave the dashboard behind exactly when the machine is
+        // under load, which is the only moment anyone is looking at it.
+        Assert.Equal(2, drained.Count);
+        Assert.Equal(Snapshot(2).CapturedAt, drained[0].CapturedAt);
+        Assert.Equal(Snapshot(3).CapturedAt, drained[1].CapturedAt);
+        Assert.Equal(1L, buffer.DroppedCount);
     }
 
     [Fact]
-    public void Accoda_ContaGliScartiPerRenderliVisibili()
+    public void Enqueue_CountsDroppedSnapshotsSoTheyAreVisible()
     {
-        SnapshotBuffer coda = new(capacity: 4);
+        SnapshotBuffer buffer = new(capacity: 4);
 
         for (int i = 0; i < 1000; i++)
         {
-            // Nessuna di queste chiamate deve bloccare: se una lo facesse, il test non
-            // finirebbe mai invece di fallire. E' il modo piu' diretto di dimostrarlo.
-            coda.Enqueue(Snapshot(i % 60));
+            // None of these calls may block: if one did, the test would never finish
+            // instead of failing. This is the most direct way of showing it.
+            buffer.Enqueue(Snapshot(i % 60));
         }
 
-        Assert.Equal(996L, coda.DroppedCount);
-        Assert.Equal(4, coda.DrainAll().Count);
+        Assert.Equal(996L, buffer.DroppedCount);
+        Assert.Equal(4, buffer.DrainAll().Count);
     }
 
     [Fact]
-    public void Svuota_SuUnaCodaVuotaNonRestituisceNulla()
+    public void DrainAll_OnAnEmptyBufferReturnsNothing()
     {
-        SnapshotBuffer coda = new(capacity: 4);
+        SnapshotBuffer buffer = new(capacity: 4);
 
-        Assert.Empty(coda.DrainAll());
+        Assert.Empty(buffer.DrainAll());
     }
 
     [Fact]
-    public void Svuota_LasciaLaCodaVuota()
+    public void DrainAll_LeavesTheBufferEmpty()
     {
-        SnapshotBuffer coda = new(capacity: 4);
-        coda.Enqueue(Snapshot(1));
+        SnapshotBuffer buffer = new(capacity: 4);
+        buffer.Enqueue(Snapshot(1));
 
-        coda.DrainAll();
+        buffer.DrainAll();
 
-        Assert.Empty(coda.DrainAll());
+        Assert.Empty(buffer.DrainAll());
     }
 
     [Fact]
-    public void Costruttore_RifiutaUnaCapacitaNonPositiva()
+    public void Constructor_RejectsANonPositiveCapacity()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new SnapshotBuffer(capacity: 0));
     }
 
     [Fact]
-    public void Accoda_RifiutaUnoSnapshotNullo()
+    public void Enqueue_RejectsANullSnapshot()
     {
-        SnapshotBuffer coda = new(capacity: 4);
+        SnapshotBuffer buffer = new(capacity: 4);
 
-        Assert.Throws<ArgumentNullException>(() => coda.Enqueue(null!));
+        Assert.Throws<ArgumentNullException>(() => buffer.Enqueue(null!));
     }
 }

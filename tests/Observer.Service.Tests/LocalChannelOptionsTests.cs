@@ -3,71 +3,71 @@ using Observer.Service.LocalChannel;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Le opzioni del canale locale si rifiutano di partire con valori inutilizzabili.
+/// The local channel options refuse to start with unusable values.
 /// </summary>
 /// <remarks>
-/// Nome della pipe e percorso del socket sono CONFIGURABILI, e non e' una comodita': un
-/// endpoint che non si binda abbatte l'INTERO host, endpoint TCP compreso. Con valori fissi,
-/// lanciare il servizio a mano su una macchina dove quello installato gira non fallirebbe piu'
-/// "solo sulla porta": non partirebbe affatto.
+/// The pipe name and the socket path are CONFIGURABLE, and that is not a convenience: an
+/// endpoint that fails to bind brings down the WHOLE host, the TCP endpoint included. With fixed
+/// values, launching the service by hand on a machine where the installed one is running would
+/// no longer fail "only on the port": it would not start at all.
 /// </remarks>
 public class LocalChannelOptionsTests
 {
     [Fact]
-    public void IValoriPredefinitiSonoValidi()
+    public void TheDefaultValuesAreValid()
     {
-        LocalChannelOptions opzioni = new();
+        LocalChannelOptions options = new();
 
-        opzioni.Validate();
+        options.Validate();
 
-        Assert.True(opzioni.Enabled);
-        Assert.False(string.IsNullOrWhiteSpace(opzioni.PipeName));
-        Assert.False(string.IsNullOrWhiteSpace(opzioni.SocketPath));
+        Assert.True(options.Enabled);
+        Assert.False(string.IsNullOrWhiteSpace(options.PipeName));
+        Assert.False(string.IsNullOrWhiteSpace(options.SocketPath));
     }
 
     [Fact]
-    public void UnPercorsoDiSocketTroppoLungoVieneRifiutato()
+    public void ASocketPathThatIsTooLongIsRejected()
     {
-        // Il limite e' 107 byte. La convalida deve scattare all'avvio e non a StartAsync, dove
-        // porterebbe giu' anche l'endpoint TCP.
-        LocalChannelOptions opzioni = new()
+        // The limit is 107 bytes. Validation must fire at start-up and not in StartAsync, where
+        // it would take the TCP endpoint down with it.
+        LocalChannelOptions options = new()
         {
             SocketPath = "/" + new string('a', 200) + "/observer.sock",
         };
 
-        InvalidOperationException errore = Assert.Throws<InvalidOperationException>(opzioni.Validate);
+        InvalidOperationException error = Assert.Throws<InvalidOperationException>(options.Validate);
 
-        Assert.Contains("107", errore.Message, StringComparison.Ordinal);
+        Assert.Contains("107", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void UnPercorsoDiSocketRelativoVieneRifiutato()
+    public void ARelativeSocketPathIsRejected()
     {
-        LocalChannelOptions opzioni = new() { SocketPath = "observer.sock" };
+        LocalChannelOptions options = new() { SocketPath = "observer.sock" };
 
-        Assert.Throws<InvalidOperationException>(opzioni.Validate);
+        Assert.Throws<InvalidOperationException>(options.Validate);
     }
 
     [Fact]
-    public void UnNomeDiPipeVuotoVieneRifiutato()
+    public void AnEmptyPipeNameIsRejected()
     {
-        LocalChannelOptions opzioni = new() { PipeName = "   " };
+        LocalChannelOptions options = new() { PipeName = "   " };
 
-        Assert.Throws<InvalidOperationException>(opzioni.Validate);
+        Assert.Throws<InvalidOperationException>(options.Validate);
     }
 
     [Fact]
-    public void ACanaleSpentoNienteVieneConvalidato()
+    public void NothingIsValidatedWhenTheChannelIsDisabled()
     {
-        // Una macchina che non vuole il canale locale non deve inventarsi un percorso valido
-        // per poter partire.
-        LocalChannelOptions opzioni = new()
+        // A machine that does not want the local channel must not have to invent a valid path
+        // just to be able to start.
+        LocalChannelOptions options = new()
         {
             Enabled = false,
             PipeName = string.Empty,
-            SocketPath = "non-assoluto",
+            SocketPath = "not-absolute",
         };
 
-        opzioni.Validate();
+        options.Validate();
     }
 }

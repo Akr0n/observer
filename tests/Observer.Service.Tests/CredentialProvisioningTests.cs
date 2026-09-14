@@ -3,107 +3,106 @@ using Observer.Service.Credentials;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Da dove il servizio prende il proprio token di macchina, e cosa fa quando non ci riesce.
+/// Where the service gets its own machine token from, and what it does when it cannot.
 /// </summary>
 /// <remarks>
-/// E' il pezzo che rende possibile un installer: finche' il servizio pretende un token in
-/// configurazione, chi installa deve generarne uno, cioe' conoscerlo, tracciarlo nel proprio
-/// log e lasciarselo dietro se fallisce a meta'.
+/// This is the piece that makes an installer possible: as long as the service demands a token in
+/// configuration, whoever installs it has to generate one — which means knowing it, recording it
+/// in their own log, and leaving it behind if the install fails halfway through.
 /// </remarks>
-[Collection(AmbienteDelProcesso.Nome)]
+[Collection(ProcessEnvironment.Name)]
 public class CredentialProvisioningTests : IDisposable
 {
-    private readonly string cartella;
+    private readonly string directory;
 
     public CredentialProvisioningTests()
     {
-        cartella = Path.Combine(Path.GetTempPath(), "obs-prov-" + Guid.NewGuid().ToString("N")[..10]);
-        Directory.CreateDirectory(cartella);
+        directory = Path.Combine(Path.GetTempPath(), "obs-prov-" + Guid.NewGuid().ToString("N")[..10]);
+        Directory.CreateDirectory(directory);
     }
 
-    private string Percorso => Path.Combine(cartella, "credentials.json");
+    private string StorePath => Path.Combine(directory, "credentials.json");
 
     [Fact]
-    public void UnTokenInCONFIGURAZIONEVinceSuTutto()
+    public void ATokenInCONFIGURATIONTakesPrecedence()
     {
-        // Retrocompatibilita', ed e' cio' che tiene in piedi i test e la CI: chi ha gia' un
-        // token in appsettings.Local.json non deve accorgersi di niente.
-        ProvisionedCredentials esito = CredentialProvisioning.Provision(
-            "token-scelto-a-mano", Percorso, runningAsService: false);
+        // Backward compatibility, and it is what keeps the tests and CI working: anyone who
+        // already has a token in appsettings.Local.json should not notice any difference.
+        ProvisionedCredentials result = CredentialProvisioning.Provision(
+            "hand-picked-token", StorePath, runningAsService: false);
 
-        Assert.Equal(CredentialOrigin.Configuration, esito.Origin);
-        Assert.Equal("token-scelto-a-mano", esito.Credentials.Current);
-        Assert.False(File.Exists(Percorso));
-    }
-
-    [Fact]
-    public void SenzaDepositoNeConfigurazione_NeGeneraUnoELoDeposita()
-    {
-        ProvisionedCredentials esito = CredentialProvisioning.Provision(null, Percorso, runningAsService: false);
-
-        Assert.Equal(CredentialOrigin.CreatedAndStored, esito.Origin);
-        Assert.False(string.IsNullOrWhiteSpace(esito.Credentials.Current));
-        Assert.NotNull(CredentialStore.Read(Percorso));
+        Assert.Equal(CredentialOrigin.Configuration, result.Origin);
+        Assert.Equal("hand-picked-token", result.Credentials.Current);
+        Assert.False(File.Exists(StorePath));
     }
 
     [Fact]
-    public void AlSecondoAvvioRIUSALaChiaveInvecediRigenerarla()
+    public void WithNoStoreAndNoConfiguration_ItGeneratesOneAndStoresIt()
     {
-        // Rigenerare a ogni avvio taglierebbe fuori ogni client remoto ogni volta che la
-        // macchina si riavvia, e nessuno collegherebbe le due cose.
-        ProvisionedCredentials primo = CredentialProvisioning.Provision(null, Percorso, runningAsService: false);
-        ProvisionedCredentials secondo = CredentialProvisioning.Provision(null, Percorso, runningAsService: false);
+        ProvisionedCredentials result = CredentialProvisioning.Provision(null, StorePath, runningAsService: false);
 
-        Assert.Equal(CredentialOrigin.Stored, secondo.Origin);
-        Assert.Equal(primo.Credentials.Current, secondo.Credentials.Current);
+        Assert.Equal(CredentialOrigin.CreatedAndStored, result.Origin);
+        Assert.False(string.IsNullOrWhiteSpace(result.Credentials.Current));
+        Assert.NotNull(CredentialStore.Read(StorePath));
     }
 
     [Fact]
-    public void SeIlDepositoNonESicuroEsiGiraCOMESERVIZIO_nonSiParte()
+    public void TheSecondStartREUSESTheKeyInsteadOfRegeneratingIt()
     {
-        // Un servizio che deposita in silenzio un token leggibile da tutti e' peggio di un
-        // servizio che non parte. Un servizio che non parte si nota subito.
+        // Regenerating at every start would cut off every remote client each time the machine
+        // reboots, and nobody would connect the two things.
+        ProvisionedCredentials first = CredentialProvisioning.Provision(null, StorePath, runningAsService: false);
+        ProvisionedCredentials second = CredentialProvisioning.Provision(null, StorePath, runningAsService: false);
+
+        Assert.Equal(CredentialOrigin.Stored, second.Origin);
+        Assert.Equal(first.Credentials.Current, second.Credentials.Current);
+    }
+
+    [Fact]
+    public void IfTheStoreCannotBeSecuredAndRunningASASERVICE_TheServiceRefusesToStart()
+    {
+        // A service that silently stores a token everyone can read is worse than a service
+        // that does not start. A service that does not start gets noticed immediately.
         Assert.Throws<InvalidOperationException>(
-            () => CredentialProvisioning.Provision(null, PercorsoImpossibile(), runningAsService: true));
+            () => CredentialProvisioning.Provision(null, ImpossiblePath(), runningAsService: true));
     }
 
     [Fact]
-    public void SeIlDepositoNonESicuroMaSiGiraAMANO_tokenEFFIMERO()
+    public void IfTheStoreCannotBeSecuredButRunningBYHAND_TheTokenIsEPHEMERAL()
     {
-        // E' il caso di "dotnet run" durante lo sviluppo, e di meta' della CI. Mai un ripiego
-        // per-utente su disco: sposterebbe il segreto in un posto meno protetto facendo
-        // credere di averlo messo al sicuro.
-        string impossibile = PercorsoImpossibile();
+        // This is the "dotnet run" case during development, and half of CI. Never a per-user
+        // fallback on disk: it would move the secret somewhere less protected while making
+        // you believe it had been put somewhere safe.
+        string impossiblePath = ImpossiblePath();
 
-        ProvisionedCredentials esito = CredentialProvisioning.Provision(null, impossibile, runningAsService: false);
+        ProvisionedCredentials result = CredentialProvisioning.Provision(null, impossiblePath, runningAsService: false);
 
-        Assert.Equal(CredentialOrigin.Ephemeral, esito.Origin);
-        Assert.False(string.IsNullOrWhiteSpace(esito.Credentials.Current));
-        Assert.False(File.Exists(impossibile));
+        Assert.Equal(CredentialOrigin.Ephemeral, result.Origin);
+        Assert.False(string.IsNullOrWhiteSpace(result.Credentials.Current));
+        Assert.False(File.Exists(impossiblePath));
     }
 
     [Fact]
-    public void UnDepositoDANNEGGIATONonVieneSovrascrittoInSilenzio()
+    public void ACORRUPTStoreIsNotOverwrittenSilently()
     {
-        // Sovrascriverlo genererebbe una chiave nuova e butterebbe via quella che i client
-        // remoti stanno usando, per un guasto che potrebbe essere una modifica a mano
-        // sbagliata di un minuto prima.
-        File.WriteAllText(Percorso, "non e' JSON {{{");
+        // Overwriting it would generate a new key and throw away the one the remote clients
+        // are using, over a fault that could be a botched hand edit from a minute earlier.
+        File.WriteAllText(StorePath, "not JSON {{{");
 
         Assert.Throws<InvalidOperationException>(
-            () => CredentialProvisioning.Provision(null, Percorso, runningAsService: false));
+            () => CredentialProvisioning.Provision(null, StorePath, runningAsService: false));
     }
 
-    /// <summary>Un percorso in cui nessun utente, su nessun sistema, puo' creare una cartella.</summary>
-    private string PercorsoImpossibile()
+    /// <summary>A path where no user, on any system, can create a directory.</summary>
+    private string ImpossiblePath()
     {
-        // Una cartella non puo' esistere DENTRO un file: vale su Windows come su Linux, per
-        // l'amministratore come per l'utente standard. Serve un caso deterministico, non uno
-        // che dipenda da chi esegue i test — su un runner di CI si e' spesso amministratori.
-        string ostacolo = Path.Combine(cartella, "sono-un-file");
-        File.WriteAllText(ostacolo, "x");
+        // A directory cannot exist INSIDE a file: that holds on Windows as on Linux, for the
+        // administrator as for the standard user. This needs a deterministic case, not one
+        // that depends on who runs the tests — on a CI runner you are often an administrator.
+        string blockingFile = Path.Combine(directory, "blocking-file");
+        File.WriteAllText(blockingFile, "x");
 
-        return Path.Combine(ostacolo, "Observer", "credentials.json");
+        return Path.Combine(blockingFile, "Observer", "credentials.json");
     }
 
     public void Dispose()
@@ -112,7 +111,7 @@ public class CredentialProvisioningTests : IDisposable
 
         try
         {
-            Directory.Delete(cartella, recursive: true);
+            Directory.Delete(directory, recursive: true);
         }
         catch (IOException)
         {

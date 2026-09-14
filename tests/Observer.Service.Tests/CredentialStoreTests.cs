@@ -2,101 +2,101 @@ using Observer.Service.Credentials;
 
 namespace Observer.Service.Tests;
 
-/// <summary>Il deposito su disco del token di macchina.</summary>
-[Collection(AmbienteDelProcesso.Nome)]
+/// <summary>The on-disk store for the machine token.</summary>
+[Collection(ProcessEnvironment.Name)]
 public class CredentialStoreTests : IDisposable
 {
-    private readonly string cartella;
+    private readonly string directory;
 
     public CredentialStoreTests()
     {
-        cartella = Path.Combine(Path.GetTempPath(), "obs-dep-" + Guid.NewGuid().ToString("N")[..10]);
-        Directory.CreateDirectory(cartella);
+        directory = Path.Combine(Path.GetTempPath(), "obs-store-" + Guid.NewGuid().ToString("N")[..10]);
+        Directory.CreateDirectory(directory);
     }
 
-    private string Percorso => Path.Combine(cartella, "credentials.json");
+    private string StorePath => Path.Combine(directory, "credentials.json");
 
     [Fact]
-    public void UnDepositoAssenteNonEUnErrore()
+    public void AMissingStoreIsNotAnError()
     {
-        // Il primo avvio e' il caso normale, non un guasto.
-        Assert.Null(CredentialStore.Read(Percorso));
+        // The first start is the normal case, not a fault.
+        Assert.Null(CredentialStore.Read(StorePath));
     }
 
     [Fact]
-    public void CioCheSiScriveSiRilegge()
+    public void WhatIsWrittenReadsBackToTheSecond()
     {
-        MachineCredentials scritte = MachineCredentials.Create()
+        MachineCredentials written = MachineCredentials.Create()
             .Rotate(DateTimeOffset.UtcNow, TimeSpan.FromHours(24));
 
-        CredentialStore.Write(Percorso, scritte);
+        CredentialStore.Write(StorePath, written);
 
-        MachineCredentials? rilette = CredentialStore.Read(Percorso);
+        MachineCredentials? readBack = CredentialStore.Read(StorePath);
 
-        Assert.NotNull(rilette);
-        Assert.Equal(scritte.Current, rilette.Current);
-        Assert.Equal(scritte.Previous, rilette.Previous);
+        Assert.NotNull(readBack);
+        Assert.Equal(written.Current, readBack.Current);
+        Assert.Equal(written.Previous, readBack.Previous);
         Assert.Equal(
-            scritte.PreviousExpiresAt!.Value.ToUnixTimeSeconds(),
-            rilette.PreviousExpiresAt!.Value.ToUnixTimeSeconds());
+            written.PreviousExpiresAt!.Value.ToUnixTimeSeconds(),
+            readBack.PreviousExpiresAt!.Value.ToUnixTimeSeconds());
     }
 
     [Fact]
-    public void RiscrivereNonLasciaTemporaneiInGiro()
+    public void RewritingLeavesNoTemporaryFilesBehind()
     {
-        // Un temporaneo dimenticato contiene il segreto in chiaro, e con i permessi ereditati
-        // della cartella invece di quelli del deposito. Misurato: capita davvero quando la
-        // sostituzione fallisce.
+        // A forgotten temp file holds the secret in the clear, and with the permissions
+        // inherited from the folder instead of the store's own. Measured: it really does
+        // happen when the replacement fails.
         for (int i = 0; i < 3; i++)
         {
-            CredentialStore.Write(Percorso, MachineCredentials.Create());
+            CredentialStore.Write(StorePath, MachineCredentials.Create());
         }
 
-        string[] rimasti = Directory.GetFiles(cartella);
+        string[] remaining = Directory.GetFiles(directory);
 
-        Assert.Single(rimasti);
-        Assert.Equal(Percorso, rimasti[0]);
+        Assert.Single(remaining);
+        Assert.Equal(StorePath, remaining[0]);
     }
 
     [Fact]
-    public void LaRiscritturaSostituisceDavvero()
+    public void ARewriteReallyReplacesTheStore()
     {
-        MachineCredentials prime = MachineCredentials.Create();
-        CredentialStore.Write(Percorso, prime);
+        MachineCredentials first = MachineCredentials.Create();
+        CredentialStore.Write(StorePath, first);
 
-        MachineCredentials seconde = MachineCredentials.Create();
-        CredentialStore.Write(Percorso, seconde);
+        MachineCredentials second = MachineCredentials.Create();
+        CredentialStore.Write(StorePath, second);
 
-        MachineCredentials? rilette = CredentialStore.Read(Percorso);
+        MachineCredentials? readBack = CredentialStore.Read(StorePath);
 
-        Assert.NotNull(rilette);
-        Assert.Equal(seconde.Current, rilette.Current);
-        Assert.NotEqual(prime.Current, rilette.Current);
+        Assert.NotNull(readBack);
+        Assert.Equal(second.Current, readBack.Current);
+        Assert.NotEqual(first.Current, readBack.Current);
     }
 
     [Fact]
-    public void UnDepositoIlleggibileNonDiventaSilenziosamenteUnDepositoASSENTE()
+    public void AnUnreadableStoreDoesNotSilentlyBecomeAMISSINGStore()
     {
-        // Distinzione portante: "non c'e'" significa generane uno nuovo, "non riesco a
-        // leggerlo" significa fermati. Confonderli farebbe rigenerare la chiave a ogni avvio,
-        // tagliando fuori ogni client remoto senza che nessuno capisca perche'.
-        File.WriteAllText(Percorso, "questo non e' JSON {{{");
+        // Load-bearing distinction: "it is not there" means generate a new one, "I cannot
+        // read it" means stop. Blurring the two would regenerate the key at every start,
+        // cutting off every remote client with nobody able to work out why.
+        File.WriteAllText(StorePath, "this is not JSON {{{");
 
-        Assert.Throws<InvalidOperationException>(() => CredentialStore.Read(Percorso));
+        Assert.Throws<InvalidOperationException>(() => CredentialStore.Read(StorePath));
     }
 
     [Fact]
-    public void IlDepositoNonContieneAltroCheLeChiaviELaScadenza()
+    public void TheStoreTextNamesTheKeysAndNoPassword()
     {
-        // Il file finisce sotto gli occhi di un amministratore che indaga: deve essere ovvio
-        // cosa contiene, e non deve contenere niente di piu'.
-        CredentialStore.Write(Percorso, MachineCredentials.Create().Rotate(DateTimeOffset.UtcNow, TimeSpan.FromHours(1)));
+        // The file ends up in front of an administrator who is investigating: what it holds
+        // must be obvious, and it must hold nothing more.
+        CredentialStore.Write(StorePath, MachineCredentials.Create().Rotate(DateTimeOffset.UtcNow, TimeSpan.FromHours(1)));
 
-        string contenuto = File.ReadAllText(Percorso);
+        string contents = File.ReadAllText(StorePath);
 
-        Assert.Contains("current", contenuto, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("previous", contenuto, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("password", contenuto, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("current", contents, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("previous", contents, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("password", contents, StringComparison.OrdinalIgnoreCase);
     }
 
     public void Dispose()
@@ -105,7 +105,7 @@ public class CredentialStoreTests : IDisposable
 
         try
         {
-            Directory.Delete(cartella, recursive: true);
+            Directory.Delete(directory, recursive: true);
         }
         catch (IOException)
         {

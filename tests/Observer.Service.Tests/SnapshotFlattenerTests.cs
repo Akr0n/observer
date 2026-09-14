@@ -6,79 +6,79 @@ using Observer.Service.Persistence;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Cosa entra nello storico e cosa no. Il rischio qui e' la scrittura di uno zero al posto
-/// di un dato mancante: uno zero inventato in un grafico di CPU non si distingue da una
-/// macchina scarica, e nessuno lo scopre mai.
+/// What goes into the history and what does not. The risk here is writing a zero in place of
+/// missing data: an invented zero in a CPU chart is indistinguishable from an idle machine,
+/// and nobody ever finds out.
 /// </summary>
 public class SnapshotFlattenerTests
 {
-    private static readonly DateTimeOffset Istante =
+    private static readonly DateTimeOffset Instant =
         new(2026, 8, 26, 12, 0, 0, TimeSpan.Zero);
 
-    private static readonly JsonSerializerOptions OpzioniWeb = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions WebOptions = new(JsonSerializerDefaults.Web);
 
-    private static readonly JsonSerializerOptions OpzioniConNaN = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions OptionsAllowingNaN = new(JsonSerializerDefaults.Web)
     {
         NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
     };
 
-    private static MachineSnapshot ConUnPunto(MetricPoint punto) =>
+    private static MachineSnapshot WithOnePoint(MetricPoint point) =>
         new(
             MachineSnapshot.CurrentSchemaVersion,
-            Istante,
-            [new MetricSnapshot("cpu", CollectorStatus.Ok, null, [punto])]);
+            Instant,
+            [new MetricSnapshot("cpu", CollectorStatus.Ok, null, [point])]);
 
     [Fact]
-    public void Appiattisce_UnNumeroConLaTernaCompletaELIstanteDelloSnapshot()
+    public void Flattens_ANumberWithTheFullKeyAndTheSnapshotInstant()
     {
-        MachineSnapshot snapshot = ConUnPunto(
+        MachineSnapshot snapshot = WithOnePoint(
             MetricPoint.Measured("cpu.usage.core", "core0", MetricValue.FromNumber(42.5d)));
 
-        SeriesSample campione = Assert.Single(SnapshotFlattener.Flatten(snapshot));
+        SeriesSample sample = Assert.Single(SnapshotFlattener.Flatten(snapshot));
 
-        Assert.Equal("cpu", campione.Key.CollectorId);
-        Assert.Equal("cpu.usage.core", campione.Key.MetricId);
-        Assert.Equal("core0", campione.Key.Instance);
-        Assert.Equal(42.5d, campione.Value);
-        Assert.Equal(Istante.ToUnixTimeMilliseconds(), campione.TimestampMs);
+        Assert.Equal("cpu", sample.Key.CollectorId);
+        Assert.Equal("cpu.usage.core", sample.Key.MetricId);
+        Assert.Equal("core0", sample.Key.Instance);
+        Assert.Equal(42.5d, sample.Value);
+        Assert.Equal(Instant.ToUnixTimeMilliseconds(), sample.TimestampMs);
     }
 
     [Fact]
-    public void Appiattisce_UnIstanzaAssenteDiventaStringaVuotaNonNull()
+    public void Flattens_AMissingInstanceBecomesAnEmptyStringNotNull()
     {
-        // In SQLite due NULL non sono uguali dentro un indice UNIQUE. Con null qui, la
-        // stessa serie verrebbe reinserita a ogni secondo: migliaia di serie da un punto
-        // ciascuna, uno storico che non si puo' interrogare e un file che esplode. Non
-        // fallisce niente: si vede solo aprendo il database.
-        MachineSnapshot snapshot = ConUnPunto(
+        // In SQLite two NULLs are not equal inside a UNIQUE index. With null here, the same
+        // series would be reinserted every second: thousands of one-point series, a history
+        // that cannot be queried and a file that blows up. Nothing fails: you only see it
+        // by opening the database.
+        MachineSnapshot snapshot = WithOnePoint(
             MetricPoint.Measured("cpu.usage.total", null, MetricValue.FromNumber(7d)));
 
-        SeriesSample campione = Assert.Single(SnapshotFlattener.Flatten(snapshot));
+        SeriesSample sample = Assert.Single(SnapshotFlattener.Flatten(snapshot));
 
-        Assert.Equal(string.Empty, campione.Key.Instance);
+        Assert.Equal(string.Empty, sample.Key.Instance);
     }
 
     [Fact]
-    public void Appiattisce_UnFlagDiventaUnoOZero()
+    public void Flattens_AFlagBecomesOneOrZero()
     {
-        // Un flag conservato come 0/1 rende la media dell'intervallo leggibile: "vero per
-        // meta' del minuto". Buttarlo via renderebbe invisibile in storico l'unica metrica
-        // che conta davvero, il guasto SMART.
-        MachineSnapshot snapshot = ConUnPunto(
+        // A flag kept as 0/1 makes the average over the interval readable: "true for half
+        // the minute". Throwing it away would hide from the history the one metric that
+        // really matters, the SMART failure.
+        MachineSnapshot snapshot = WithOnePoint(
             MetricPoint.Measured("smart.failing", "nvme0", MetricValue.FromFlag(true)));
 
-        SeriesSample campione = Assert.Single(SnapshotFlattener.Flatten(snapshot));
+        SeriesSample sample = Assert.Single(SnapshotFlattener.Flatten(snapshot));
 
-        Assert.Equal(1d, campione.Value);
-        Assert.Equal(MetricValueKind.Flag, campione.Kind);
+        Assert.Equal(1d, sample.Value);
+        Assert.Equal(MetricValueKind.Flag, sample.Kind);
     }
 
     [Fact]
-    public void Appiattisce_IgnoraITestuali()
+    public void Flattens_IgnoresTextValues()
     {
-        // Il modello di un disco non e' una serie temporale: e' una costante ripetuta una
-        // volta al secondo. Metterla nello storico gonfia il file e non aggiunge nulla.
-        MachineSnapshot snapshot = ConUnPunto(
+        // A disk model is not a time series: it is a constant repeated once a second.
+        // Putting it in the history bloats the file and adds nothing.
+        MachineSnapshot snapshot = WithOnePoint(
             MetricPoint.Measured("disk.model", "nvme0", MetricValue.FromText("Samsung 990")));
 
         Assert.Empty(SnapshotFlattener.Flatten(snapshot));
@@ -87,66 +87,66 @@ public class SnapshotFlattenerTests
     [Theory]
     [InlineData(CollectorStatus.Unsupported)]
     [InlineData(CollectorStatus.Unavailable)]
-    public void Appiattisce_IgnoraIPuntiSenzaValore(CollectorStatus stato)
+    public void Flattens_IgnoresPointsWithNoValue(CollectorStatus status)
     {
-        // Un punto mancante NON deve diventare uno zero: nel grafico uno zero e' un dato,
-        // un buco e' un buco. La differenza si vede solo se il buco resta un buco.
-        MetricPoint punto = stato == CollectorStatus.Unsupported
-            ? MetricPoint.Unsupported("cpu.temp", null, "niente sensore qui")
-            : MetricPoint.Unavailable("cpu.temp", null, "driver non caricato");
+        // A missing point must NOT become a zero: in the chart a zero is data, a gap is a
+        // gap. The difference only shows if the gap stays a gap.
+        MetricPoint point = status == CollectorStatus.Unsupported
+            ? MetricPoint.Unsupported("cpu.temp", null, "no sensor here")
+            : MetricPoint.Unavailable("cpu.temp", null, "driver not loaded");
 
-        Assert.Empty(SnapshotFlattener.Flatten(ConUnPunto(punto)));
+        Assert.Empty(SnapshotFlattener.Flatten(WithOnePoint(point)));
     }
 
     [Fact]
-    public void Appiattisce_IgnoraUnValoreDiTipoSconosciuto()
+    public void Flattens_IgnoresAValueOfUnknownKind()
     {
-        // default(MetricValue) e' Kind=Unknown con Number=0: arriva da una
-        // deserializzazione parziale, e scriverlo significherebbe registrare uno zero
-        // perfettamente credibile per una metrica che non e' mai stata misurata.
-        MetricValue valoreVuoto = JsonSerializer.Deserialize<MetricValue>("{}", OpzioniWeb);
+        // default(MetricValue) is Kind=Unknown with Number=0: it comes from a partial
+        // deserialization, and writing it would mean recording a perfectly believable zero
+        // for a metric that was never measured.
+        MetricValue emptyValue = JsonSerializer.Deserialize<MetricValue>("{}", WebOptions);
 
-        Assert.Equal(MetricValueKind.Unknown, valoreVuoto.Kind);
+        Assert.Equal(MetricValueKind.Unknown, emptyValue.Kind);
         Assert.Empty(SnapshotFlattener.Flatten(
-            ConUnPunto(MetricPoint.Measured("cpu.usage.total", null, valoreVuoto))));
+            WithOnePoint(MetricPoint.Measured("cpu.usage.total", null, emptyValue))));
     }
 
     [Fact]
-    public void Appiattisce_IgnoraUnNumeroNonFinito()
+    public void Flattens_IgnoresANonFiniteNumber()
     {
-        // MetricValue.FromNumber rifiuta i non finiti, ma un valore ARRIVATO da JSON no.
-        // Un NaN che entrasse nel rollup farebbe lanciare il servizio di scrittura a ogni
-        // giro, e lo storico si fermerebbe in silenzio mentre gli endpoint continuano a
-        // rispondere.
-        MetricValue valoreRotto = JsonSerializer.Deserialize<MetricValue>(
-            """{"kind":1,"number":"NaN","text":null,"flag":false}""", OpzioniConNaN);
+        // MetricValue.FromNumber rejects non-finite numbers, but a value that ARRIVED from
+        // JSON does not. A NaN that got into the rollup would make the writing service throw
+        // on every round, and the history would stop silently while the endpoints keep
+        // answering.
+        MetricValue brokenValue = JsonSerializer.Deserialize<MetricValue>(
+            """{"kind":1,"number":"NaN","text":null,"flag":false}""", OptionsAllowingNaN);
 
-        Assert.Equal(MetricValueKind.Number, valoreRotto.Kind);
+        Assert.Equal(MetricValueKind.Number, brokenValue.Kind);
         Assert.Empty(SnapshotFlattener.Flatten(
-            ConUnPunto(MetricPoint.Measured("cpu.usage.total", null, valoreRotto))));
+            WithOnePoint(MetricPoint.Measured("cpu.usage.total", null, brokenValue))));
     }
 
     [Fact]
-    public void Appiattisce_TieneIPuntiSaniDeiCollectorSaniQuandoUnAltroEGuasto()
+    public void Flattens_KeepsThePointsOfHealthyCollectorsWhenAnotherIsFaulted()
     {
-        // La degradazione graziosa deve arrivare fino al disco: un collector rotto non deve
-        // svuotare lo storico degli altri.
+        // Graceful degradation has to reach all the way to the disk: a broken collector must
+        // not empty the history of the others.
         MachineSnapshot snapshot = new(
             MachineSnapshot.CurrentSchemaVersion,
-            Istante,
+            Instant,
             [
-                new MetricSnapshot("smart", CollectorStatus.Faulted, "esploso", []),
+                new MetricSnapshot("smart", CollectorStatus.Faulted, "crashed", []),
                 new MetricSnapshot("mem", CollectorStatus.Ok, null,
                     [MetricPoint.Measured("mem.used", null, MetricValue.FromNumber(1024d))]),
             ]);
 
-        SeriesSample campione = Assert.Single(SnapshotFlattener.Flatten(snapshot));
+        SeriesSample sample = Assert.Single(SnapshotFlattener.Flatten(snapshot));
 
-        Assert.Equal("mem", campione.Key.CollectorId);
+        Assert.Equal("mem", sample.Key.CollectorId);
     }
 
     [Fact]
-    public void Appiattisce_RifiutaUnoSnapshotNullo()
+    public void Flattens_RejectsANullSnapshot()
     {
         Assert.Throws<ArgumentNullException>(() => SnapshotFlattener.Flatten(null!));
     }

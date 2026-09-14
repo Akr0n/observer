@@ -3,110 +3,110 @@ using Observer.Service.Credentials;
 namespace Observer.Service.Tests;
 
 /// <summary>
-/// Il token di macchina, la sua rotazione e la finestra in cui la chiave precedente vale ancora.
+/// The machine token, its rotation, and the window in which the previous key is still accepted.
 /// </summary>
 public class MachineCredentialsTests
 {
-    private static readonly DateTimeOffset Adesso =
+    private static readonly DateTimeOffset Now =
         new(2026, 8, 27, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public void UnTokenGeneratoENuovoOgniVolta()
+    public void AGeneratedTokenIsNewEveryTime()
     {
-        // Due chiamate non devono mai coincidere: un generatore che ripete si nota solo il
-        // giorno in cui due macchine hanno la stessa chiave.
-        HashSet<string> visti = [];
+        // Two calls must never match: a generator that repeats is only noticed the day two
+        // machines end up with the same key.
+        HashSet<string> seen = [];
 
         for (int i = 0; i < 200; i++)
         {
-            Assert.True(visti.Add(TokenGenerator.Generate()), "token ripetuto");
+            Assert.True(seen.Add(TokenGenerator.Generate()), "the generator produced the same token twice");
         }
     }
 
     [Fact]
-    public void UnTokenNonContieneCaratteriDaCodificareInUnHeader()
+    public void ATokenContainsNoCharactersThatNeedEncodingInAHeader()
     {
-        // Finisce dentro "Authorization: Bearer ...". Base64 normale userebbe + / =, che in un
-        // header vanno codificati e che chiunque copi-incolli sbaglierebbe.
+        // It ends up inside "Authorization: Bearer ...". Plain Base64 would use + / =, which
+        // have to be encoded in a header and which anyone copying and pasting would get wrong.
         string token = TokenGenerator.Generate();
 
         Assert.DoesNotContain('+', token);
         Assert.DoesNotContain('/', token);
         Assert.DoesNotContain('=', token);
         Assert.DoesNotContain(' ', token);
-        Assert.True(token.Length >= 40, "token troppo corto: " + token.Length);
+        Assert.True(token.Length >= 40, "token too short: " + token.Length);
     }
 
     [Fact]
-    public void LaChiaveCorrenteEAccettata()
+    public void TheCurrentKeyIsAccepted()
     {
-        MachineCredentials credenziali = MachineCredentials.Create();
+        MachineCredentials credentials = MachineCredentials.Create();
 
-        Assert.True(credenziali.Accepts(credenziali.Current, Adesso));
+        Assert.True(credentials.Accepts(credentials.Current, Now));
     }
 
     [Fact]
-    public void UnaChiaveSbagliataERifiutata()
+    public void AWrongKeyIsRejected()
     {
-        MachineCredentials credenziali = MachineCredentials.Create();
+        MachineCredentials credentials = MachineCredentials.Create();
 
-        Assert.False(credenziali.Accepts("non-e-il-token", Adesso));
-        Assert.False(credenziali.Accepts(string.Empty, Adesso));
+        Assert.False(credentials.Accepts("not-the-token", Now));
+        Assert.False(credentials.Accepts(string.Empty, Now));
     }
 
     [Fact]
-    public void DopoLaRotazioneVALGONOENTRAMBE_FinoAllaScadenza()
+    public void AfterARotationBOTHKeysAreAccepted_UntilTheOldOneExpires()
     {
-        // Senza questa finestra, ruotare taglierebbe fuori ogni client remoto all'ISTANTE, e la
-        // rotazione diventerebbe un'operazione che nessuno osa fare.
-        MachineCredentials prima = MachineCredentials.Create();
-        string vecchia = prima.Current;
+        // Without this window, rotating would cut off every remote client INSTANTLY, and
+        // rotation would become an operation nobody dares to perform.
+        MachineCredentials before = MachineCredentials.Create();
+        string oldKey = before.Current;
 
-        MachineCredentials dopo = prima.Rotate(Adesso, MachineCredentials.GracePeriod);
+        MachineCredentials after = before.Rotate(Now, MachineCredentials.GracePeriod);
 
-        Assert.NotEqual(vecchia, dopo.Current);
-        Assert.True(dopo.Accepts(dopo.Current, Adesso));
-        Assert.True(dopo.Accepts(vecchia, Adesso));
+        Assert.NotEqual(oldKey, after.Current);
+        Assert.True(after.Accepts(after.Current, Now));
+        Assert.True(after.Accepts(oldKey, Now));
     }
 
     [Fact]
-    public void LaChiavePrecedenteSmetteDiValereAllaScadenza()
+    public void ThePreviousKeyStopsBeingAcceptedAtItsExpiry()
     {
-        MachineCredentials prima = MachineCredentials.Create();
-        string vecchia = prima.Current;
+        MachineCredentials before = MachineCredentials.Create();
+        string oldKey = before.Current;
 
-        MachineCredentials dopo = prima.Rotate(Adesso, TimeSpan.FromHours(24));
+        MachineCredentials after = before.Rotate(Now, TimeSpan.FromHours(24));
 
-        Assert.True(dopo.Accepts(vecchia, Adesso.AddHours(23)));
-        Assert.False(dopo.Accepts(vecchia, Adesso.AddHours(25)));
+        Assert.True(after.Accepts(oldKey, Now.AddHours(23)));
+        Assert.False(after.Accepts(oldKey, Now.AddHours(25)));
 
-        // La corrente non scade con lei.
-        Assert.True(dopo.Accepts(dopo.Current, Adesso.AddHours(25)));
+        // The current key does not expire along with it.
+        Assert.True(after.Accepts(after.Current, Now.AddHours(25)));
     }
 
     [Fact]
-    public void DueRotazioniDiFilaDimenticanoLaPiuVecchia()
+    public void TwoRotationsInARowForgetTheOldestKey()
     {
-        // Si conserva UNA sola chiave precedente. Tenerne una catena significherebbe che una
-        // chiave compromessa resta valida finche' qualcuno non ruota abbastanza volte.
-        MachineCredentials prima = MachineCredentials.Create();
-        string primissima = prima.Current;
+        // Exactly ONE previous key is kept. Keeping a chain of them would mean a compromised
+        // key stays valid until someone rotates enough times.
+        MachineCredentials before = MachineCredentials.Create();
+        string oldestKey = before.Current;
 
-        MachineCredentials dopo = prima
-            .Rotate(Adesso, TimeSpan.FromHours(24))
-            .Rotate(Adesso, TimeSpan.FromHours(24));
+        MachineCredentials after = before
+            .Rotate(Now, TimeSpan.FromHours(24))
+            .Rotate(Now, TimeSpan.FromHours(24));
 
-        Assert.False(dopo.Accepts(primissima, Adesso));
+        Assert.False(after.Accepts(oldestKey, Now));
     }
 
     [Fact]
-    public void SenzaChiavePrecedenteNonSiAccettaNulla_NemmenoUnaStringaVuota()
+    public void WithNoPreviousKeyAnEmptyStringIsNotAccepted()
     {
-        // Il caso in cui Previous e' null non deve degenerare in "accetta tutto": e' il ramo
-        // che un confronto scritto male trasforma in un passaggio libero.
-        MachineCredentials credenziali = MachineCredentials.Create();
+        // The case where Previous is null must not degenerate into "accept anything": it is
+        // the branch a badly written comparison turns into a free pass.
+        MachineCredentials credentials = MachineCredentials.Create();
 
-        Assert.Null(credenziali.Previous);
-        Assert.False(credenziali.Accepts(string.Empty, Adesso));
+        Assert.Null(credentials.Previous);
+        Assert.False(credentials.Accepts(string.Empty, Now));
     }
 }
