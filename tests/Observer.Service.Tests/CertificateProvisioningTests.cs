@@ -15,17 +15,17 @@ namespace Observer.Service.Tests;
 /// </remarks>
 public class CertificateProvisioningTests : IDisposable
 {
-    private readonly string cartella;
-    private readonly string deposito;
+    private readonly string folder;
+    private readonly string storePath;
 
     public CertificateProvisioningTests()
     {
-        cartella = Path.Combine(
+        folder = Path.Combine(
             Path.GetTempPath(),
             "observer-cert-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
 
-        Directory.CreateDirectory(cartella);
-        deposito = Path.Combine(cartella, CredentialDirectory.FileName);
+        Directory.CreateDirectory(folder);
+        storePath = Path.Combine(folder, CredentialDirectory.FileName);
     }
 
     public void Dispose()
@@ -34,7 +34,7 @@ public class CertificateProvisioningTests : IDisposable
 
         try
         {
-            Directory.Delete(cartella, recursive: true);
+            Directory.Delete(folder, recursive: true);
         }
         catch (IOException)
         {
@@ -45,134 +45,134 @@ public class CertificateProvisioningTests : IDisposable
         }
     }
 
-    private ProvisionedCertificate Provvedi() =>
-        CertificateProvisioning.Provision(deposito, "macchina-di-prova", DateTimeOffset.UtcNow, false);
+    private ProvisionedCertificate ProvisionForTest() =>
+        CertificateProvisioning.Provision(storePath, "macchina-di-prova", DateTimeOffset.UtcNow, false);
 
     [Fact]
-    public void IlSecondoAvvioRIUSAloStessoCertificato()
+    public void TheSecondStartREUSESTheSameCertificate()
     {
         // Il test piu' importante del file. Se questo fallisse, ogni riavvio del servizio
         // taglierebbe fuori tutte le dashboard remote insieme.
-        ProvisionedCertificate primo = Provvedi();
-        ProvisionedCertificate secondo = Provvedi();
+        ProvisionedCertificate first = ProvisionForTest();
+        ProvisionedCertificate second = ProvisionForTest();
 
-        Assert.Equal(primo.Fingerprint, secondo.Fingerprint);
+        Assert.Equal(first.Fingerprint, second.Fingerprint);
 
-        primo.Certificate.Dispose();
-        secondo.Certificate.Dispose();
+        first.Certificate.Dispose();
+        second.Certificate.Dispose();
     }
 
     [Fact]
-    public void IlCertificatoSiPuoUsareComeSERVERETieneLaChiavePrivata()
+    public void TheCertificateWorksAsASERVERAndKeepsThePrivateKey()
     {
-        ProvisionedCertificate provvisto = Provvedi();
+        ProvisionedCertificate provisioned = ProvisionForTest();
 
         try
         {
-            Assert.True(provvisto.Certificate.HasPrivateKey, "senza chiave privata non serve a niente");
+            Assert.True(provisioned.Certificate.HasPrivateKey, "senza chiave privata non serve a niente");
 
-            X509EnhancedKeyUsageExtension uso = provvisto.Certificate.Extensions
+            X509EnhancedKeyUsageExtension keyUsage = provisioned.Certificate.Extensions
                 .OfType<X509EnhancedKeyUsageExtension>()
                 .Single();
 
             Assert.Contains(
-                uso.EnhancedKeyUsages.Cast<Oid>(),
+                keyUsage.EnhancedKeyUsages.Cast<Oid>(),
                 oid => oid.Value == "1.3.6.1.5.5.7.3.1");
         }
         finally
         {
-            provvisto.Certificate.Dispose();
+            provisioned.Certificate.Dispose();
         }
     }
 
     [Fact]
-    public void LaValiditaEabbastanzaLungaDaNonScadereSottoAiClient()
+    public void TheValidityIsLongEnoughNotToExpireOutFromUnderTheClients()
     {
         // Con l'impronta fissata, una scadenza e' un guasto simultaneo di tutte le dashboard
         // remote. Non aggiungerebbe sicurezza: qui la fiducia non viene dalla scadenza.
-        ProvisionedCertificate provvisto = Provvedi();
+        ProvisionedCertificate provisioned = ProvisionForTest();
 
         try
         {
             Assert.True(
-                provvisto.Certificate.NotAfter > DateTime.Now.AddYears(5),
+                provisioned.Certificate.NotAfter > DateTime.Now.AddYears(5),
                 "una scadenza vicina taglierebbe fuori i client senza avvisare nessuno");
 
             Assert.True(
-                provvisto.Certificate.NotBefore < DateTime.Now,
+                provisioned.Certificate.NotBefore < DateTime.Now,
                 "un certificato che vale solo da adesso viene rifiutato da un orologio indietro");
         }
         finally
         {
-            provvisto.Certificate.Dispose();
+            provisioned.Certificate.Dispose();
         }
     }
 
     [Fact]
-    public void UnDepositoDANNEGGIATONonVieneSostituitoDiNascosto()
+    public void ADAMAGEDStoreIsNotReplacedBehindYourBack()
     {
         // Sostituirlo sarebbe la cosa comoda, e sarebbe sbagliata: un certificato nuovo ha
         // un'impronta nuova. Meglio fermarsi e farlo decidere a una persona.
-        File.WriteAllText(MachineCertificate.PathNextTo(deposito), "non sono un PKCS#12");
+        File.WriteAllText(MachineCertificate.PathNextTo(storePath), "non sono un PKCS#12");
 
-        InvalidOperationException errore = Assert.Throws<InvalidOperationException>(
+        InvalidOperationException error = Assert.Throws<InvalidOperationException>(
             () => CertificateProvisioning.Provision(
-                deposito,
+                storePath,
                 "macchina-di-prova",
                 DateTimeOffset.UtcNow,
                 runningAsService: true));
 
-        Assert.Contains("fingerprint", errore.Message, StringComparison.Ordinal);
-        Assert.Equal("non sono un PKCS#12", File.ReadAllText(MachineCertificate.PathNextTo(deposito)));
+        Assert.Contains("fingerprint", error.Message, StringComparison.Ordinal);
+        Assert.Equal("non sono un PKCS#12", File.ReadAllText(MachineCertificate.PathNextTo(storePath)));
     }
 
     [Fact]
-    public void IlCertificatoSiDepositaACCANTOalToken()
+    public void TheCertificateIsStoredNEXTToTheToken()
     {
         // Stesso perimetro, e non per comodita': la chiave privata vale quanto il token.
-        ProvisionedCertificate provvisto = Provvedi();
+        ProvisionedCertificate provisioned = ProvisionForTest();
 
         try
         {
-            Assert.Equal(CertificateOrigin.CreatedAndStored, provvisto.Origin);
-            Assert.Equal(Path.GetDirectoryName(deposito), Path.GetDirectoryName(provvisto.Path));
-            Assert.True(File.Exists(provvisto.Path));
+            Assert.Equal(CertificateOrigin.CreatedAndStored, provisioned.Origin);
+            Assert.Equal(Path.GetDirectoryName(storePath), Path.GetDirectoryName(provisioned.Path));
+            Assert.True(File.Exists(provisioned.Path));
         }
         finally
         {
-            provvisto.Certificate.Dispose();
+            provisioned.Certificate.Dispose();
         }
     }
 
     [Fact]
-    public void NonRestaMaiUnTemporaneoSulDisco()
+    public void NoTempFileIsEverLeftOnDisk()
     {
         // Un temporaneo abbandonato conterrebbe la chiave privata, e con i permessi ereditati
         // della cartella invece di quelli del deposito.
-        ProvisionedCertificate provvisto = Provvedi();
+        ProvisionedCertificate provisioned = ProvisionForTest();
 
         try
         {
-            Assert.Empty(Directory.GetFiles(cartella, "*.new"));
+            Assert.Empty(Directory.GetFiles(folder, "*.new"));
         }
         finally
         {
-            provvisto.Certificate.Dispose();
+            provisioned.Certificate.Dispose();
         }
     }
 
     [Fact]
-    public void UnCertificatoDanneggiatoSiDiceANCHEaChiLanciaIlServizioAMano()
+    public void ADamagedCertificateIsReportedEVENWhenTheServiceIsLaunchedByHand()
     {
         // Il ripiego effimero vale per un deposito che non si riesce a METTERE IN SICUREZZA,
         // non per un certificato che c'e' ed e' illeggibile. Ripiegare in silenzio mostrerebbe
         // un servizio che parte, un'impronta nuova a ogni avvio, e nessun indizio sul file
         // rotto che sta sul disco.
-        File.WriteAllText(MachineCertificate.PathNextTo(deposito), "non sono un PKCS#12");
+        File.WriteAllText(MachineCertificate.PathNextTo(storePath), "non sono un PKCS#12");
 
         Assert.Throws<InvalidOperationException>(
             () => CertificateProvisioning.Provision(
-                deposito,
+                storePath,
                 "macchina-di-prova",
                 DateTimeOffset.UtcNow,
                 runningAsService: false));

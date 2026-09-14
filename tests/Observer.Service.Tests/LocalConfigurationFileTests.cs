@@ -11,60 +11,60 @@ namespace Observer.Service.Tests;
 /// un modo pessimo di scoprire di aver svuotato un file invece di cancellarlo — ed e' la cosa
 /// che uno fa naturalmente quando gli si dice di togliere il token da quel file.
 /// </remarks>
-public class ConfigurazioneLocaleTests : IDisposable
+public class LocalConfigurationFileTests : IDisposable
 {
-    private readonly string cartella;
+    private readonly string folder;
 
-    public ConfigurazioneLocaleTests()
+    public LocalConfigurationFileTests()
     {
-        cartella = Path.Combine(Path.GetTempPath(), "obs-cfg-" + Guid.NewGuid().ToString("N")[..10]);
-        Directory.CreateDirectory(cartella);
+        folder = Path.Combine(Path.GetTempPath(), "obs-cfg-" + Guid.NewGuid().ToString("N")[..10]);
+        Directory.CreateDirectory(folder);
     }
 
     [Fact]
-    public void UnFileASSENTENonVaCaricato()
+    public void AnABSENTFileIsNotLoaded()
     {
-        Assert.False(LocalConfigurationFile.ShouldLoad(Path.Combine(cartella, "non-c-e.json")));
+        Assert.False(LocalConfigurationFile.ShouldLoad(Path.Combine(folder, "non-c-e.json")));
     }
 
     [Fact]
-    public void UnFileVUOTONonVaCaricato()
+    public void AnEMPTYFileIsNotLoaded()
     {
-        string percorso = Path.Combine(cartella, "vuoto.json");
-        File.WriteAllText(percorso, string.Empty);
+        string filePath = Path.Combine(folder, "vuoto.json");
+        File.WriteAllText(filePath, string.Empty);
 
-        Assert.False(LocalConfigurationFile.ShouldLoad(percorso));
+        Assert.False(LocalConfigurationFile.ShouldLoad(filePath));
     }
 
     [Fact]
-    public void UnFileDiSOLOSPAZIONonVaCaricato()
+    public void AFileOfONLYWHITESPACEIsNotLoaded()
     {
         // Un file "svuotato" con un editor spesso resta con un ritorno a capo dentro.
-        string percorso = Path.Combine(cartella, "spazi.json");
-        File.WriteAllText(percorso, "\r\n   \r\n");
+        string filePath = Path.Combine(folder, "spazi.json");
+        File.WriteAllText(filePath, "\r\n   \r\n");
 
-        Assert.False(LocalConfigurationFile.ShouldLoad(percorso));
+        Assert.False(LocalConfigurationFile.ShouldLoad(filePath));
     }
 
     [Fact]
-    public void UnFileCONCONTENUTOVaCaricato()
+    public void AFileWITHCONTENTIsLoaded()
     {
-        string percorso = Path.Combine(cartella, "pieno.json");
-        File.WriteAllText(percorso, "{ \"Observer\": { \"ApiToken\": \"x\" } }");
+        string filePath = Path.Combine(folder, "pieno.json");
+        File.WriteAllText(filePath, "{ \"Observer\": { \"ApiToken\": \"x\" } }");
 
-        Assert.True(LocalConfigurationFile.ShouldLoad(percorso));
+        Assert.True(LocalConfigurationFile.ShouldLoad(filePath));
     }
 
     [Fact]
-    public void UnFileCONTENENTEJSONSBAGLIATOVaCaricatoLoSTESSO()
+    public void AFileWithWRONGJSONIsLoadedALLTHESAME()
     {
         // Qui NON si tollera: un file con dentro qualcosa che non e' JSON e' un errore vero, e
         // farlo fallire e' giusto. La tolleranza vale solo per "non c'e' niente da leggere",
         // che e' indistinguibile dall'assenza.
-        string percorso = Path.Combine(cartella, "rotto.json");
-        File.WriteAllText(percorso, "{{{ non e' json");
+        string filePath = Path.Combine(folder, "rotto.json");
+        File.WriteAllText(filePath, "{{{ non e' json");
 
-        Assert.True(LocalConfigurationFile.ShouldLoad(percorso));
+        Assert.True(LocalConfigurationFile.ShouldLoad(filePath));
     }
 
     public void Dispose()
@@ -73,7 +73,7 @@ public class ConfigurazioneLocaleTests : IDisposable
 
         try
         {
-            Directory.Delete(cartella, recursive: true);
+            Directory.Delete(folder, recursive: true);
         }
         catch (IOException)
         {

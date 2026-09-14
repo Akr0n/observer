@@ -21,38 +21,38 @@ namespace Observer.Service.Tests;
 /// "no such table: series" — un messaggio che non nomina la causa nemmeno da lontano.
 /// Su Windows non si vedeva: una named pipe non ha una cartella da rimuovere.
 /// </para>
-[CollectionDefinition(Nome)]
-public sealed class AmbienteDelProcesso : ICollectionFixture<ServizioInMemoria>
+[CollectionDefinition(Name)]
+public sealed class ProcessEnvironment : ICollectionFixture<InMemoryService>
 {
     /// <summary>Il nome della collezione, per non ripeterlo come stringa in giro.</summary>
-    public const string Nome = "ambiente-del-processo";
+    public const string Name = "ambiente-del-processo";
 }
 
 /// <summary>
 /// Prove sul banco stesso: se il banco sporca il processo, sporca i test degli altri.
 /// </summary>
-[Collection(AmbienteDelProcesso.Nome)]
-public class ServizioInMemoriaTests
+[Collection(ProcessEnvironment.Name)]
+public class InMemoryServiceTests
 {
     [Fact]
-    public void DopoIlDispose_LeVariabiliDAmbienteTornanoComeErano()
+    public void AfterDispose_EnvironmentVariablesAreRestored()
     {
         // La fixture configura il servizio dalle variabili d'ambiente perche' Program.cs legge
         // il token PRIMA di costruire l'host: e' una scelta obbligata, non un difetto. Il
         // difetto e' non rimetterle a posto, perche' quelle variabili sopravvivono alla fixture
         // e restano addosso a chiunque venga dopo.
-        string? tokenPrima = Environment.GetEnvironmentVariable("Observer__ApiToken");
-        string? databasePrima = Environment.GetEnvironmentVariable("Observer__Storage__DatabasePath");
-        string? manutenzionePrima = Environment.GetEnvironmentVariable("Observer__Storage__MaintenanceInterval");
+        string? tokenBefore = Environment.GetEnvironmentVariable("Observer__ApiToken");
+        string? databaseBefore = Environment.GetEnvironmentVariable("Observer__Storage__DatabasePath");
+        string? maintenanceBefore = Environment.GetEnvironmentVariable("Observer__Storage__MaintenanceInterval");
 
-        using (ServizioInMemoria servizio = new())
+        using (InMemoryService service = new())
         {
-            Assert.Equal(ServizioInMemoria.Token, Environment.GetEnvironmentVariable("Observer__ApiToken"));
-            Assert.Equal(servizio.DatabasePath, Environment.GetEnvironmentVariable("Observer__Storage__DatabasePath"));
+            Assert.Equal(InMemoryService.Token, Environment.GetEnvironmentVariable("Observer__ApiToken"));
+            Assert.Equal(service.DatabasePath, Environment.GetEnvironmentVariable("Observer__Storage__DatabasePath"));
         }
 
-        Assert.Equal(tokenPrima, Environment.GetEnvironmentVariable("Observer__ApiToken"));
-        Assert.Equal(databasePrima, Environment.GetEnvironmentVariable("Observer__Storage__DatabasePath"));
-        Assert.Equal(manutenzionePrima, Environment.GetEnvironmentVariable("Observer__Storage__MaintenanceInterval"));
+        Assert.Equal(tokenBefore, Environment.GetEnvironmentVariable("Observer__ApiToken"));
+        Assert.Equal(databaseBefore, Environment.GetEnvironmentVariable("Observer__Storage__DatabasePath"));
+        Assert.Equal(maintenanceBefore, Environment.GetEnvironmentVariable("Observer__Storage__MaintenanceInterval"));
     }
 }

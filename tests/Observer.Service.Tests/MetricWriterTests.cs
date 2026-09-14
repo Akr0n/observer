@@ -10,51 +10,51 @@ namespace Observer.Service.Tests;
 /// </summary>
 public class MetricWriterTests
 {
-    private static DateTimeOffset T(string istanteIso) =>
-        DateTimeOffset.Parse(istanteIso, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+    private static DateTimeOffset T(string isoInstant) =>
+        DateTimeOffset.Parse(isoInstant, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
 
-    private static MachineSnapshot Snapshot(string istanteIso, params MetricPoint[] punti) =>
+    private static MachineSnapshot Snapshot(string isoInstant, params MetricPoint[] points) =>
         new(
             MachineSnapshot.CurrentSchemaVersion,
-            T(istanteIso),
-            [new MetricSnapshot("cpu", CollectorStatus.Ok, null, punti)]);
+            T(isoInstant),
+            [new MetricSnapshot("cpu", CollectorStatus.Ok, null, points)]);
 
     [Fact]
-    public void Svuota_ScriveSoloIValoriNumerici()
+    public void FlushPending_WritesOnlyNumericValues()
     {
-        using TempMetricStore temporaneo = new();
-        SnapshotBuffer coda = new(capacity: 8);
-        MetricWriter scrittore = new(coda, temporaneo.Store);
+        using TempMetricStore temp = new();
+        SnapshotBuffer buffer = new(capacity: 8);
+        MetricWriter writer = new(buffer, temp.Store);
 
-        coda.Enqueue(Snapshot(
+        buffer.Enqueue(Snapshot(
             "2026-08-26T12:00:00Z",
             MetricPoint.Measured("cpu.usage.total", null, MetricValue.FromNumber(42d)),
             MetricPoint.Measured("cpu.model", null, MetricValue.FromText("Ryzen")),
             MetricPoint.Unavailable("cpu.temp", null, "nessun sensore")));
 
-        Assert.Equal(1, scrittore.FlushPending());
+        Assert.Equal(1, writer.FlushPending());
 
-        StoredSeries serie = Assert.Single(temporaneo.Store.ListSeries());
-        Assert.Equal("cpu.usage.total", serie.Key.MetricId);
+        StoredSeries series = Assert.Single(temp.Store.ListSeries());
+        Assert.Equal("cpu.usage.total", series.Key.MetricId);
     }
 
     [Fact]
-    public void Svuota_ScriveInUnaSolaVoltaTuttoCioCheSiEAccumulato()
+    public void FlushPending_WritesEverythingAccumulatedInOnePass()
     {
-        using TempMetricStore temporaneo = new();
-        SnapshotBuffer coda = new(capacity: 8);
-        MetricWriter scrittore = new(coda, temporaneo.Store);
+        using TempMetricStore temp = new();
+        SnapshotBuffer buffer = new(capacity: 8);
+        MetricWriter writer = new(buffer, temp.Store);
 
-        coda.Enqueue(Snapshot("2026-08-26T12:00:00Z",
+        buffer.Enqueue(Snapshot("2026-08-26T12:00:00Z",
             MetricPoint.Measured("cpu.usage.total", null, MetricValue.FromNumber(1d))));
-        coda.Enqueue(Snapshot("2026-08-26T12:00:01Z",
+        buffer.Enqueue(Snapshot("2026-08-26T12:00:01Z",
             MetricPoint.Measured("cpu.usage.total", null, MetricValue.FromNumber(2d))));
 
         // Una transazione per giro, non una per campione: con una transazione al secondo per
         // metrica il disco diventerebbe il collo di bottiglia del campionatore.
-        Assert.Equal(2, scrittore.FlushPending());
+        Assert.Equal(2, writer.FlushPending());
 
-        Assert.Equal(2, temporaneo.Store.ReadHistory(
+        Assert.Equal(2, temp.Store.ReadHistory(
             new SeriesKey("cpu", "cpu.usage.total", string.Empty),
             BucketWidths.RawSeconds,
             T("2026-08-26T12:00:00Z"),
@@ -63,29 +63,29 @@ public class MetricWriterTests
     }
 
     [Fact]
-    public void Svuota_SuCodaVuotaNonScriveNulla()
+    public void FlushPending_OnAnEmptyBufferWritesNothing()
     {
-        using TempMetricStore temporaneo = new();
-        SnapshotBuffer coda = new(capacity: 8);
-        MetricWriter scrittore = new(coda, temporaneo.Store);
+        using TempMetricStore temp = new();
+        SnapshotBuffer buffer = new(capacity: 8);
+        MetricWriter writer = new(buffer, temp.Store);
 
-        Assert.Equal(0, scrittore.FlushPending());
+        Assert.Equal(0, writer.FlushPending());
     }
 
     [Fact]
-    public void Svuota_NonRiscriveDueVolteLoStessoSnapshot()
+    public void FlushPending_DoesNotWriteTheSameSnapshotTwice()
     {
-        using TempMetricStore temporaneo = new();
-        SnapshotBuffer coda = new(capacity: 8);
-        MetricWriter scrittore = new(coda, temporaneo.Store);
+        using TempMetricStore temp = new();
+        SnapshotBuffer buffer = new(capacity: 8);
+        MetricWriter writer = new(buffer, temp.Store);
 
-        coda.Enqueue(Snapshot("2026-08-26T12:00:00Z",
+        buffer.Enqueue(Snapshot("2026-08-26T12:00:00Z",
             MetricPoint.Measured("cpu.usage.total", null, MetricValue.FromNumber(1d))));
 
-        scrittore.FlushPending();
+        writer.FlushPending();
 
         // La coda deve restare svuotata: se lo svuotamento non consumasse davvero, ogni
         // giro riscriverebbe tutta la storia da capo e il file crescerebbe senza motivo.
-        Assert.Equal(0, scrittore.FlushPending());
+        Assert.Equal(0, writer.FlushPending());
     }
 }

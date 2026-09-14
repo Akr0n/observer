@@ -13,60 +13,60 @@ namespace Observer.Service.Tests;
 /// proprietario SYSTEM o Administrators e non e' costruibile senza elevazione — e' coperto
 /// dalla tabella di <see cref="DirectoryTrustTests"/>, che lavora sui fatti.
 /// </remarks>
-[Collection(AmbienteDelProcesso.Nome)]
+[Collection(ProcessEnvironment.Name)]
 [SupportedOSPlatform("windows")]
 public class WindowsDirectoryTrustTests
 {
-    [SoloSuWindows]
-    public void UnaCartellaAssenteVieneVistaComeAssente()
+    [WindowsOnly]
+    public void AMissingDirectoryIsReportedAsMissing()
     {
-        string percorso = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
+        string path = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
 
-        Assert.Equal(DirectoryVerdict.Missing, WindowsDirectoryTrust.VerdictFor(percorso));
+        Assert.Equal(DirectoryVerdict.Missing, WindowsDirectoryTrust.VerdictFor(path));
     }
 
-    [SoloSuWindows]
-    public void UnaCartellaCreataDaUnUtenteNonEFidataPerIlSERVIZIO_maLoEPerChiLaCrea()
+    [WindowsOnly]
+    public void ADirectoryCreatedByAUserIsNotTrustedForTheSERVICEButIsForItsCreator()
     {
         // E' il caso dello sviluppatore, ed e' anche il caso dell'attaccante che prepara la
         // cartella prima che il servizio parta: dall'esterno sono identici, ed e' giusto che
         // entrambi vengano rifiutati.
-        string percorso = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
-        Directory.CreateDirectory(percorso);
+        string path = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
+        Directory.CreateDirectory(path);
 
         try
         {
             // Contro i soli SYSTEM e amministratori NON e' fidata: e' il caso
             // dell'attaccante che prepara la cartella prima che il servizio parta.
-            Assert.False(DirectoryTrust.Evaluate(WindowsDirectoryTrust.Observe(percorso)).CanHoldSecret());
+            Assert.False(DirectoryTrust.Evaluate(WindowsDirectoryTrust.Observe(path)).CanHoldSecret());
 
             // Ma il processo che l'ha creata puo' fidarsene, ed e' il caso dello
             // sviluppatore che lancia il servizio a mano.
-            WindowsDirectoryTrust.Prepare(percorso);
-            Assert.True(WindowsDirectoryTrust.VerdictFor(percorso).CanHoldSecret());
+            WindowsDirectoryTrust.Prepare(path);
+            Assert.True(WindowsDirectoryTrust.VerdictFor(path).CanHoldSecret());
         }
         finally
         {
-            Directory.Delete(percorso, recursive: true);
+            Directory.Delete(path, recursive: true);
         }
     }
 
-    [SoloSuWindows]
-    public void UnaGIUNZIONEVieneRiconosciutaPrimaDiGuardareLeAcl()
+    [WindowsOnly]
+    public void AJUNCTIONIsDetectedBeforeAnyAclIsRead()
     {
         // Una giunzione la crea un utente standard SENZA privilegi: niente
         // SeCreateSymbolicLinkPrivilege, niente modalita' sviluppatore. Se il servizio non la
         // riconoscesse, "metterebbe in sicurezza" la cartella dell'attaccante e ci
         // depositerebbe dentro il token di macchina.
-        string bersaglio = Path.Combine(Path.GetTempPath(), "obs-bersaglio-" + Guid.NewGuid().ToString("N")[..8]);
-        string giunzione = Path.Combine(Path.GetTempPath(), "obs-giunzione-" + Guid.NewGuid().ToString("N")[..8]);
+        string target = Path.Combine(Path.GetTempPath(), "obs-bersaglio-" + Guid.NewGuid().ToString("N")[..8]);
+        string junction = Path.Combine(Path.GetTempPath(), "obs-giunzione-" + Guid.NewGuid().ToString("N")[..8]);
 
-        Directory.CreateDirectory(bersaglio);
+        Directory.CreateDirectory(target);
 
         using Process? mklink = Process.Start(new ProcessStartInfo
         {
             FileName = "cmd.exe",
-            Arguments = $"/c mklink /J \"{giunzione}\" \"{bersaglio}\"",
+            Arguments = $"/c mklink /J \"{junction}\" \"{target}\"",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -79,31 +79,31 @@ public class WindowsDirectoryTrustTests
         {
             Assert.Equal(0, mklink.ExitCode);
 
-            DirectoryFacts fatti = WindowsDirectoryTrust.Observe(giunzione);
+            DirectoryFacts facts = WindowsDirectoryTrust.Observe(junction);
 
-            Assert.True(fatti.IsReparsePoint);
-            Assert.Equal(DirectoryVerdict.ReparsePoint, DirectoryTrust.Evaluate(fatti));
+            Assert.True(facts.IsReparsePoint);
+            Assert.Equal(DirectoryVerdict.ReparsePoint, DirectoryTrust.Evaluate(facts));
 
             // E il servizio si rifiuta, invece di "ripararla".
-            InvalidOperationException errore =
-                Assert.Throws<InvalidOperationException>(() => WindowsDirectoryTrust.Prepare(giunzione));
+            InvalidOperationException error =
+                Assert.Throws<InvalidOperationException>(() => WindowsDirectoryTrust.Prepare(junction));
 
-            Assert.Contains("junction", errore.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("junction", error.Message, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
             // Directory.Delete su una giunzione rimuove il collegamento, non il bersaglio.
-            if (Directory.Exists(giunzione))
+            if (Directory.Exists(junction))
             {
-                Directory.Delete(giunzione);
+                Directory.Delete(junction);
             }
 
-            Directory.Delete(bersaglio, recursive: true);
+            Directory.Delete(target, recursive: true);
         }
     }
 
-    [SoloSuWindows]
-    public void LaSicurezzaPropostaNonNominaNessunoOltreSystemEAmministratori()
+    [WindowsOnly]
+    public void TheProposedSecurityNamesNobodyBesidesSystemAndAdministrators()
     {
         string sddl = WindowsDirectoryTrust.SecurityDescriptor()
             .GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.Access);

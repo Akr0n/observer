@@ -19,7 +19,7 @@ public class EndpointUrlTests
     [InlineData("http://localhost:5057")]
     [InlineData("http://unix:/run/observer/observer.sock")]
     [InlineData("http://pipe:/Observer")]
-    public void UrlValidi_NonProduconoAlcunProblema(string url) =>
+    public void ValidUrls_ReportNoProblem(string url) =>
         Assert.Null(EndpointUrl.Problem(url));
 
     [Theory]
@@ -33,11 +33,11 @@ public class EndpointUrlTests
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("non-un-url")]
-    public void UrlRotti_SpieganoIlProblema(string url) =>
+    public void BrokenUrls_ExplainTheProblem(string url) =>
         Assert.False(string.IsNullOrWhiteSpace(EndpointUrl.Problem(url)));
 
     [Fact]
-    public void PercorsoDelSocketDi107Byte_Accettato_Di108_No()
+    public void SocketPathOf107Bytes_IsAccepted_108_IsNot()
     {
         // Il messaggio d'errore di .NET dice "between 1 and 108 characters" e MENTE: non conta
         // il terminatore NUL. Misurato per bisezione: 107 passa, 108 lancia
@@ -54,14 +54,14 @@ public class EndpointUrlTests
     }
 
     [Fact]
-    public void IlConteggioEInByteNonInCaratteri()
+    public void TheLimitIsCountedInBytesNotCharacters()
     {
         // Un percorso di 81 caratteri, meta' accentati, supera i 107 byte in UTF-8. Contare i
         // caratteri farebbe passare un percorso che il sistema operativo rifiuta.
-        string accentato = "/" + new string('e', 40) + new string('\u00e8', 40);
+        string accented = "/" + new string('e', 40) + new string('\u00e8', 40);
 
-        Assert.True(accentato.Length <= 107);
-        Assert.True(Encoding.UTF8.GetByteCount(accentato) > 107);
-        Assert.NotNull(EndpointUrl.Problem("http://unix:" + accentato));
+        Assert.True(accented.Length <= 107);
+        Assert.True(Encoding.UTF8.GetByteCount(accented) > 107);
+        Assert.NotNull(EndpointUrl.Problem("http://unix:" + accented));
     }
 }

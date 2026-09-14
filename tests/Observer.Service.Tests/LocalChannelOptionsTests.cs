@@ -14,60 +14,60 @@ namespace Observer.Service.Tests;
 public class LocalChannelOptionsTests
 {
     [Fact]
-    public void IValoriPredefinitiSonoValidi()
+    public void TheDefaultValuesAreValid()
     {
-        LocalChannelOptions opzioni = new();
+        LocalChannelOptions options = new();
 
-        opzioni.Validate();
+        options.Validate();
 
-        Assert.True(opzioni.Enabled);
-        Assert.False(string.IsNullOrWhiteSpace(opzioni.PipeName));
-        Assert.False(string.IsNullOrWhiteSpace(opzioni.SocketPath));
+        Assert.True(options.Enabled);
+        Assert.False(string.IsNullOrWhiteSpace(options.PipeName));
+        Assert.False(string.IsNullOrWhiteSpace(options.SocketPath));
     }
 
     [Fact]
-    public void UnPercorsoDiSocketTroppoLungoVieneRifiutato()
+    public void ASocketPathThatIsTooLongIsRejected()
     {
         // Il limite e' 107 byte. La convalida deve scattare all'avvio e non a StartAsync, dove
         // porterebbe giu' anche l'endpoint TCP.
-        LocalChannelOptions opzioni = new()
+        LocalChannelOptions options = new()
         {
             SocketPath = "/" + new string('a', 200) + "/observer.sock",
         };
 
-        InvalidOperationException errore = Assert.Throws<InvalidOperationException>(opzioni.Validate);
+        InvalidOperationException error = Assert.Throws<InvalidOperationException>(options.Validate);
 
-        Assert.Contains("107", errore.Message, StringComparison.Ordinal);
+        Assert.Contains("107", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void UnPercorsoDiSocketRelativoVieneRifiutato()
+    public void ARelativeSocketPathIsRejected()
     {
-        LocalChannelOptions opzioni = new() { SocketPath = "observer.sock" };
+        LocalChannelOptions options = new() { SocketPath = "observer.sock" };
 
-        Assert.Throws<InvalidOperationException>(opzioni.Validate);
+        Assert.Throws<InvalidOperationException>(options.Validate);
     }
 
     [Fact]
-    public void UnNomeDiPipeVuotoVieneRifiutato()
+    public void AnEmptyPipeNameIsRejected()
     {
-        LocalChannelOptions opzioni = new() { PipeName = "   " };
+        LocalChannelOptions options = new() { PipeName = "   " };
 
-        Assert.Throws<InvalidOperationException>(opzioni.Validate);
+        Assert.Throws<InvalidOperationException>(options.Validate);
     }
 
     [Fact]
-    public void ACanaleSpentoNienteVieneConvalidato()
+    public void NothingIsValidatedWhenTheChannelIsDisabled()
     {
         // Una macchina che non vuole il canale locale non deve inventarsi un percorso valido
         // per poter partire.
-        LocalChannelOptions opzioni = new()
+        LocalChannelOptions options = new()
         {
             Enabled = false,
             PipeName = string.Empty,
             SocketPath = "non-assoluto",
         };
 
-        opzioni.Validate();
+        options.Validate();
     }
 }

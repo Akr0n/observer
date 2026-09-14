@@ -24,78 +24,78 @@ namespace Observer.Service.Tests;
 /// e' il percorso del SECONDO avvio, cioe' di tutti gli avvii tranne il primo.
 /// </para>
 /// </remarks>
-public class TrasportoHttpsTests
+public class HttpsTransportTests
 {
-    private const string Risposta = "observer";
+    private const string ProbeBody = "observer";
 
     [Fact]
-    public async Task IlCertificatoRilettoDalDepositoReggeUnaConnessioneTls()
+    public async Task TheCertificateReloadedFromTheStoreCanServeTls()
     {
-        using Certificato certificato = Certificato.Depositato();
+        using CertificateRoundTrip certificate = CertificateRoundTrip.GenerateAndReload();
 
-        Assert.True(certificato.Riletto.HasPrivateKey, "senza chiave privata Kestrel non puo' servirlo");
-        Assert.Equal(certificato.Impronta, MachineCertificate.Fingerprint(certificato.Generato));
+        Assert.True(certificate.Reloaded.HasPrivateKey, "senza chiave privata Kestrel non puo' servirlo");
+        Assert.Equal(certificate.Fingerprint, MachineCertificate.Fingerprint(certificate.Generated));
 
-        await using Servizio servizio = await Servizio.AvviaAsync(certificato.Riletto);
+        await using KestrelHost host = await KestrelHost.StartAsync(certificate.Reloaded);
 
-        using HttpClient client = ClientCheFissa(certificato.Impronta);
-        string corpo = await client.GetStringAsync(new Uri(servizio.Indirizzo, "prova"));
+        using HttpClient client = PinningClient(certificate.Fingerprint);
+        string body = await client.GetStringAsync(new Uri(host.Address, "prova"));
 
-        Assert.Equal(Risposta, corpo);
+        Assert.Equal(ProbeBody, body);
     }
 
     [Fact]
-    public async Task UnImprontaSbagliataFaFallireIlCollegamento()
+    public async Task AWrongFingerprintFailsTheConnection()
     {
         // Il caso che conta: cifrato non basta. Senza questo controllo chi si mette in mezzo
         // presenta il PROPRIO certificato, il collegamento riesce, e il token gli arriva.
-        using Certificato certificato = Certificato.Depositato();
-        using X509Certificate2 estraneo = MachineCertificate.Create("un-altra-macchina", DateTimeOffset.UtcNow);
+        using CertificateRoundTrip certificate = CertificateRoundTrip.GenerateAndReload();
+        using X509Certificate2 foreign = MachineCertificate.Create("un-altra-macchina", DateTimeOffset.UtcNow);
 
-        await using Servizio servizio = await Servizio.AvviaAsync(certificato.Riletto);
+        await using KestrelHost host = await KestrelHost.StartAsync(certificate.Reloaded);
 
-        using HttpClient client = ClientCheFissa(MachineCertificate.Fingerprint(estraneo));
+        using HttpClient client = PinningClient(MachineCertificate.Fingerprint(foreign));
 
         await Assert.ThrowsAsync<HttpRequestException>(
-            () => client.GetStringAsync(new Uri(servizio.Indirizzo, "prova")));
+            () => client.GetStringAsync(new Uri(host.Address, "prova")));
     }
 
     [Fact]
-    public async Task SenzaFissareLImprontaIlCertificatoAutofirmatoVieneRifiutato()
+    public async Task WithoutFingerprintPinningTheSelfSignedCertificateIsRejected()
     {
         // La controprova che l'impronta e' l'UNICA cosa che regge il collegamento: con la
         // validazione ordinaria un certificato autofirmato non passa. Se un giorno questo
         // test cominciasse a fallire vorrebbe dire che il certificato e' finito in un
         // archivio di fiducia della macchina, cioe' che vale per molto piu' del dovuto.
-        using Certificato certificato = Certificato.Depositato();
+        using CertificateRoundTrip certificate = CertificateRoundTrip.GenerateAndReload();
 
-        await using Servizio servizio = await Servizio.AvviaAsync(certificato.Riletto);
+        await using KestrelHost host = await KestrelHost.StartAsync(certificate.Reloaded);
 
         using HttpClient client = new();
 
         await Assert.ThrowsAsync<HttpRequestException>(
-            () => client.GetStringAsync(new Uri(servizio.Indirizzo, "prova")));
+            () => client.GetStringAsync(new Uri(host.Address, "prova")));
     }
 
     [Fact]
-    public async Task LImprontaCalcolataEQuellaCheArrivaSulFilo()
+    public async Task TheComputedFingerprintIsTheOneThatArrivesOnTheWire()
     {
         // Non e' una tautologia: l'impronta si calcola sui byte DER del certificato in
         // memoria, e cio' che il client vede e' cio' che Kestrel gli ha spedito. Se i due
         // insiemi di byte divergessero, il fissaggio non proteggerebbe niente e nessun altro
         // test se ne accorgerebbe.
-        using Certificato certificato = Certificato.Depositato();
+        using CertificateRoundTrip certificate = CertificateRoundTrip.GenerateAndReload();
 
-        await using Servizio servizio = await Servizio.AvviaAsync(certificato.Riletto);
+        await using KestrelHost host = await KestrelHost.StartAsync(certificate.Reloaded);
 
-        string? vistaDalClient = null;
+        string? seenByTheClient = null;
 
         using SocketsHttpHandler handler = new();
 #pragma warning disable CA5359 // Accepts di proposito QUALUNQUE certificato: questo test serve
-        handler.SslOptions.RemoteCertificateValidationCallback = (_, presentato, _, _) =>
+        handler.SslOptions.RemoteCertificateValidationCallback = (_, presented, _, _) =>
         {                      // a osservare cosa arriva sul filo, non a decidere se fidarsi.
-            vistaDalClient = presentato is X509Certificate2 arrivato
-                ? CertificateFingerprint.From(arrivato.RawDataMemory.Span)
+            seenByTheClient = presented is X509Certificate2 arrived
+                ? CertificateFingerprint.From(arrived.RawDataMemory.Span)
                 : null;        // Confrontare qui trasformerebbe una divergenza fra i byte in
                                // memoria e quelli spediti in un errore di rete oscuro, invece
             return true;       // che in un confronto leggibile con un messaggio chiaro.
@@ -103,13 +103,13 @@ public class TrasportoHttpsTests
 #pragma warning restore CA5359
 
         using HttpClient client = new(handler);
-        await client.GetStringAsync(new Uri(servizio.Indirizzo, "prova"));
+        await client.GetStringAsync(new Uri(host.Address, "prova"));
 
-        Assert.Equal(certificato.Impronta, vistaDalClient);
+        Assert.Equal(certificate.Fingerprint, seenByTheClient);
     }
 
     [Fact]
-    public async Task IlCertificatoDelPRIMOAvvioReggeUnaConnessioneTls()
+    public async Task TheFIRSTStartCertificateCanServeTls()
     {
         // Il gemello mancante, e l'assenza costava caro: il primo avvio NON rilegge dal
         // deposito, usa l'oggetto appena generato. Su Windows quella chiave privata sta solo
@@ -121,98 +121,98 @@ public class TrasportoHttpsTests
         // "Service unreachable - check that the machine is on"; e al primo riavvio del
         // servizio spariva tutto, perche' dal secondo avvio in poi si passa dal deposito.
         // Un guasto che sembra un problema di rete e che si ripara da solo.
-        string cartella = Path.Combine(
+        string folder = Path.Combine(
             Path.GetTempPath(),
             "observer-primo-avvio-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
 
-        Directory.CreateDirectory(cartella);
+        Directory.CreateDirectory(folder);
 
         try
         {
-            ProvisionedCertificate provvisto = CertificateProvisioning.Provision(
-                Path.Combine(cartella, CredentialDirectory.FileName),
+            ProvisionedCertificate provisioned = CertificateProvisioning.Provision(
+                Path.Combine(folder, CredentialDirectory.FileName),
                 "primo-avvio",
                 DateTimeOffset.UtcNow,
                 runningAsService: false);
 
-            Assert.Equal(CertificateOrigin.CreatedAndStored, provvisto.Origin);
+            Assert.Equal(CertificateOrigin.CreatedAndStored, provisioned.Origin);
 
             try
             {
-                await using Servizio servizio = await Servizio.AvviaAsync(provvisto.Certificate);
+                await using KestrelHost host = await KestrelHost.StartAsync(provisioned.Certificate);
 
-                using HttpClient client = ClientCheFissa(provvisto.Fingerprint);
+                using HttpClient client = PinningClient(provisioned.Fingerprint);
 
-                Assert.Equal(Risposta, await client.GetStringAsync(new Uri(servizio.Indirizzo, "prova")));
+                Assert.Equal(ProbeBody, await client.GetStringAsync(new Uri(host.Address, "prova")));
             }
             finally
             {
-                provvisto.Certificate.Dispose();
+                provisioned.Certificate.Dispose();
             }
         }
         finally
         {
-            Directory.Delete(cartella, recursive: true);
+            Directory.Delete(folder, recursive: true);
         }
     }
 
-    private static HttpClient ClientCheFissa(string impronta)
+    private static HttpClient PinningClient(string fingerprint)
     {
         SocketsHttpHandler handler = new();
 
-        handler.SslOptions.RemoteCertificateValidationCallback = (_, presentato, _, _) =>
-            presentato is X509Certificate2 certificato
+        handler.SslOptions.RemoteCertificateValidationCallback = (_, presented, _, _) =>
+            presented is X509Certificate2 certificate
             && CertificateFingerprint.Match(
-                impronta,
-                CertificateFingerprint.From(certificato.RawDataMemory.Span));
+                fingerprint,
+                CertificateFingerprint.From(certificate.RawDataMemory.Span));
 
         return new HttpClient(handler, disposeHandler: true);
     }
 
     /// <summary>Il certificato generato, depositato e riletto: il percorso del secondo avvio.</summary>
-    private sealed class Certificato : IDisposable
+    private sealed class CertificateRoundTrip : IDisposable
     {
-        private Certificato(X509Certificate2 generato, X509Certificate2 riletto)
+        private CertificateRoundTrip(X509Certificate2 generated, X509Certificate2 reloaded)
         {
-            Generato = generato;
-            Riletto = riletto;
-            Impronta = MachineCertificate.Fingerprint(riletto);
+            Generated = generated;
+            Reloaded = reloaded;
+            Fingerprint = MachineCertificate.Fingerprint(reloaded);
         }
 
-        public X509Certificate2 Generato { get; }
+        public X509Certificate2 Generated { get; }
 
-        public X509Certificate2 Riletto { get; }
+        public X509Certificate2 Reloaded { get; }
 
-        public string Impronta { get; }
+        public string Fingerprint { get; }
 
-        public static Certificato Depositato()
+        public static CertificateRoundTrip GenerateAndReload()
         {
-            X509Certificate2 generato = MachineCertificate.Create("questa-macchina", DateTimeOffset.UtcNow);
+            X509Certificate2 generated = MachineCertificate.Create("questa-macchina", DateTimeOffset.UtcNow);
 
-            return new Certificato(generato, MachineCertificate.Load(MachineCertificate.Export(generato)));
+            return new CertificateRoundTrip(generated, MachineCertificate.Load(MachineCertificate.Export(generated)));
         }
 
         public void Dispose()
         {
-            Generato.Dispose();
-            Riletto.Dispose();
+            Generated.Dispose();
+            Reloaded.Dispose();
         }
     }
 
     /// <summary>Kestrel VERO, su una porta effimera di localhost.</summary>
-    private sealed class Servizio : IAsyncDisposable
+    private sealed class KestrelHost : IAsyncDisposable
     {
         private readonly WebApplication app;
 
-        private Servizio(WebApplication applicazione, Uri indirizzo)
+        private KestrelHost(WebApplication application, Uri address)
         {
-            app = applicazione;
-            Indirizzo = indirizzo;
+            app = application;
+            Address = address;
         }
 
-        public Uri Indirizzo { get; }
+        public Uri Address { get; }
 
-        public static async Task<Servizio> AvviaAsync(X509Certificate2 certificato)
+        public static async Task<KestrelHost> StartAsync(X509Certificate2 certificate)
         {
             WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
 
@@ -231,15 +231,15 @@ public class TrasportoHttpsTests
             // binding to localhost", perche' localhost sono DUE indirizzi e il sistema ne
             // sceglierebbe una diversa per ciascuno.
             builder.WebHost.ConfigureKestrel(kestrel =>
-                kestrel.Listen(IPAddress.Loopback, 0, porta => porta.UseHttps(certificato)));
+                kestrel.Listen(IPAddress.Loopback, 0, port => port.UseHttps(certificate)));
 
-            WebApplication applicazione = builder.Build();
+            WebApplication application = builder.Build();
 
-            applicazione.MapGet("/prova", () => Risposta);
+            application.MapGet("/prova", () => ProbeBody);
 
-            await applicazione.StartAsync();
+            await application.StartAsync();
 
-            return new Servizio(applicazione, new Uri(applicazione.Urls.First(), UriKind.Absolute));
+            return new KestrelHost(application, new Uri(application.Urls.First(), UriKind.Absolute));
         }
 
         public async ValueTask DisposeAsync()

@@ -17,12 +17,12 @@ namespace Observer.Service.Tests;
 /// "non misurato" un periodo in cui la macchina era accesa e sana. Nessun test fallirebbe:
 /// per questo ce ne vuole uno che guardi il TEMPO.
 /// </remarks>
-public class CampionamentoParalleloTests
+public class ParallelSamplingTests
 {
-    private static readonly TimeSpan Lentezza = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan DefaultDelay = TimeSpan.FromMilliseconds(300);
 
     [Fact]
-    public async Task LeSorgentiSonoInVoloTutteInsieme()
+    public async Task AllSourcesAreInFlightAtTheSameTime()
     {
         // Si CONTA quante raccolte sono aperte nello stesso momento, invece di cronometrare
         // il giro. Un tempo assoluto qui non dimostra niente: su un runner carico 1320 ms
@@ -31,126 +31,126 @@ public class CampionamentoParalleloTests
         // il codice di una cosa che non poteva dimostrare. Il numero di raccolte
         // contemporanee, invece, e' tre oppure uno, e non dipende da quanto va veloce la
         // macchina.
-        Contatore contatore = new();
-        SinkRegistrante sink = new();
+        OverlapCounter counter = new();
+        RecordingSink sink = new();
         MetricSnapshotCache cache = new();
 
-        using MetricSamplingService campionatore = new(
+        using MetricSamplingService sampler = new(
             [
-                new CollettoreLento("uno", contatore: contatore),
-                new CollettoreLento("due", contatore: contatore),
-                new CollettoreLento("tre", contatore: contatore),
+                new SlowCollector("uno", counter: counter),
+                new SlowCollector("due", counter: counter),
+                new SlowCollector("tre", counter: counter),
             ],
             cache,
             sink,
             NullLogger<MetricSamplingService>.Instance);
 
-        await campionatore.StartAsync(CancellationToken.None);
+        await sampler.StartAsync(CancellationToken.None);
 
         try
         {
-            await sink.PrimoSnapshot.WaitAsync(TimeSpan.FromSeconds(30));
+            await sink.FirstSnapshot.WaitAsync(TimeSpan.FromSeconds(30));
 
-            Assert.Equal(3, contatore.Massimo);
+            Assert.Equal(3, counter.Peak);
         }
         finally
         {
-            await campionatore.StopAsync(CancellationToken.None);
+            await sampler.StopAsync(CancellationToken.None);
         }
     }
 
     [Fact]
-    public async Task LOrdineDeiRiquadriNonCambiaDaUnGiroAllAltro()
+    public async Task TheCollectorOrderDoesNotChangeFromOneRoundToTheNext()
     {
         // Interrogare insieme non deve voler dire consegnare in ordine di arrivo: i riquadri
         // a schermo si scambierebbero di posto a ogni secondo, e non ci sarebbe niente a
         // segnalarlo se non l'occhio di chi guarda.
-        SinkRegistrante sink = new();
+        RecordingSink sink = new();
         MetricSnapshotCache cache = new();
 
-        using MetricSamplingService campionatore = new(
+        using MetricSamplingService sampler = new(
             [
-                new CollettoreLento("primo", TimeSpan.FromMilliseconds(250)),
-                new CollettoreLento("secondo", TimeSpan.Zero),
-                new CollettoreLento("terzo", TimeSpan.FromMilliseconds(120)),
+                new SlowCollector("primo", TimeSpan.FromMilliseconds(250)),
+                new SlowCollector("secondo", TimeSpan.Zero),
+                new SlowCollector("terzo", TimeSpan.FromMilliseconds(120)),
             ],
             cache,
             sink,
             NullLogger<MetricSamplingService>.Instance);
 
-        await campionatore.StartAsync(CancellationToken.None);
+        await sampler.StartAsync(CancellationToken.None);
 
         try
         {
-            MachineSnapshot primo = await sink.PrimoSnapshot.WaitAsync(TimeSpan.FromSeconds(15));
+            MachineSnapshot first = await sink.FirstSnapshot.WaitAsync(TimeSpan.FromSeconds(15));
 
             // "secondo" finisce per primo e "primo" per ultimo: se contasse l'ordine di
             // arrivo, l'elenco uscirebbe rovesciato.
             Assert.Equal(
                 ["primo", "secondo", "terzo"],
-                primo.Collectors.Select(collettore => collettore.CollectorId));
+                first.Collectors.Select(collector => collector.CollectorId));
         }
         finally
         {
-            await campionatore.StopAsync(CancellationToken.None);
+            await sampler.StopAsync(CancellationToken.None);
         }
     }
 
     /// <summary>Trattiene il primo campionamento consegnato allo storico.</summary>
-    private sealed class SinkRegistrante : IMetricSnapshotSink
+    private sealed class RecordingSink : IMetricSnapshotSink
     {
-        private readonly TaskCompletionSource<MachineSnapshot> primo =
+        private readonly TaskCompletionSource<MachineSnapshot> first =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public Task<MachineSnapshot> PrimoSnapshot => primo.Task;
+        public Task<MachineSnapshot> FirstSnapshot => first.Task;
 
-        public void Enqueue(MachineSnapshot snapshot) => primo.TrySetResult(snapshot);
+        public void Enqueue(MachineSnapshot snapshot) => first.TrySetResult(snapshot);
     }
 
     /// <summary>Quante raccolte sono state aperte nello stesso momento, al massimo.</summary>
-    private sealed class Contatore
+    private sealed class OverlapCounter
     {
-        private int aperte;
-        private int massimo;
+        private int inFlight;
+        private int peak;
 
-        public int Massimo => Volatile.Read(ref massimo);
+        public int Peak => Volatile.Read(ref peak);
 
-        public IDisposable Entra()
+        public IDisposable Enter()
         {
-            int adesso = Interlocked.Increment(ref aperte);
+            int current = Interlocked.Increment(ref inFlight);
 
             // Alza il massimo finche' qualcun altro non lo alza di piu': senza il ciclo, due
             // raccolte che entrano insieme possono sovrascriversi a vicenda e il conteggio
             // resterebbe indietro proprio nel caso che interessa.
-            int visto = Volatile.Read(ref massimo);
+            int seen = Volatile.Read(ref peak);
 
-            while (adesso > visto)
+            while (current > seen)
             {
-                int precedente = Interlocked.CompareExchange(ref massimo, adesso, visto);
+                int previous = Interlocked.CompareExchange(ref peak, current, seen);
 
-                if (precedente == visto)
+                if (previous == seen)
                 {
                     break;
                 }
 
-                visto = precedente;
+                seen = previous;
             }
 
-            return new Uscita(this);
+            return new Exit(this);
         }
 
-        private void Esce() => Interlocked.Decrement(ref aperte);
+        private void Leave() => Interlocked.Decrement(ref inFlight);
 
-        private sealed class Uscita(Contatore contatore) : IDisposable
+        private sealed class Exit(OverlapCounter counter) : IDisposable
         {
-            public void Dispose() => contatore.Esce();
+            public void Dispose() => counter.Leave();
         }
     }
 
-    private sealed class CollettoreLento(string id, TimeSpan? quanto = null, Contatore? contatore = null)
+    private sealed class SlowCollector(string id, TimeSpan? delay = null, OverlapCounter? counter = null)
         : IMetricCollector
     {
-        private readonly TimeSpan attesa = quanto ?? Lentezza;
+        private readonly TimeSpan wait = delay ?? DefaultDelay;
 
         public string Id { get; } = id;
 
@@ -159,11 +159,11 @@ public class CampionamentoParalleloTests
 
         public async ValueTask<MetricSnapshot> CollectAsync(CancellationToken cancellationToken)
         {
-            using IDisposable? presenza = contatore?.Entra();
+            using IDisposable? scope = counter?.Enter();
 
-            if (attesa > TimeSpan.Zero)
+            if (wait > TimeSpan.Zero)
             {
-                await Task.Delay(attesa, cancellationToken);
+                await Task.Delay(wait, cancellationToken);
             }
 
             return new MetricSnapshot(

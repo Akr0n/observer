@@ -30,15 +30,15 @@ public class AccessPolicyTests
     [InlineData(CallerKind.Unidentified, EndpointScope.Anywhere, false, AccessDecision.Denied)]
     [InlineData(CallerKind.Unidentified, EndpointScope.LocalOnly, true, AccessDecision.NotFound)]
     [InlineData(CallerKind.Unidentified, EndpointScope.LocalOnly, false, AccessDecision.NotFound)]
-    public void LaTabellaCompleta(
-        CallerKind chiamante,
-        EndpointScope portata,
+    public void TheWholeTable(
+        CallerKind caller,
+        EndpointScope scope,
         bool tokenIsValid,
-        AccessDecision atteso) =>
-        Assert.Equal(atteso, AccessPolicy.Decide(chiamante, portata, tokenIsValid));
+        AccessDecision expected) =>
+        Assert.Equal(expected, AccessPolicy.Decide(caller, scope, tokenIsValid));
 
     [Fact]
-    public void UnTokenValidoNonSalvaUnChiamanteNonIdentificabile()
+    public void AValidTokenDoesNotSaveAnUnidentifiableCaller()
     {
         // Il livello di impersonation lo sceglie il CLIENT: con Anonymous un chiamante si rende
         // unilateralmente non identificabile pur restando capace di presentare un token. Se
@@ -49,7 +49,7 @@ public class AccessPolicyTests
     }
 
     [Fact]
-    public void IValoriZeroDegliEnumSonoQuelliCheNegano()
+    public void TheDefaultEnumValuesAreTheOnesThatDeny()
     {
         // Un campo dimenticato, una struct non inizializzata o un ramo aggiunto per distrazione
         // devono NEGARE. Un endpoint a cui si scordasse la portata diventa irraggiungibile dalla
@@ -64,18 +64,18 @@ public class AccessPolicyTests
     }
 
     [Fact]
-    public void OgniCombinazioneEStataDecisa()
+    public void EveryCombinationHasADecision()
     {
         // Nessun caso resta senza risposta, e nessuno cade in un ramo predefinito per caso.
-        foreach (CallerKind chiamante in Enum.GetValues<CallerKind>())
+        foreach (CallerKind caller in Enum.GetValues<CallerKind>())
         {
-            foreach (EndpointScope portata in Enum.GetValues<EndpointScope>())
+            foreach (EndpointScope scope in Enum.GetValues<EndpointScope>())
             {
                 foreach (bool token in new[] { true, false })
                 {
                     Assert.True(
-                        Enum.IsDefined(AccessPolicy.Decide(chiamante, portata, token)),
-                        $"{chiamante}/{portata}/{token} ha prodotto un esito non definito");
+                        Enum.IsDefined(AccessPolicy.Decide(caller, scope, token)),
+                        $"{caller}/{scope}/{token} ha prodotto un esito non definito");
                 }
             }
         }

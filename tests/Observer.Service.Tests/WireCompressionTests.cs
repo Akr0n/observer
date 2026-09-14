@@ -32,10 +32,16 @@ namespace Observer.Service.Tests;
 /// quella riga cancellata, cioe' non proverebbe niente.
 /// </para>
 /// </remarks>
-public class CompressioneSulFiloTests
+// Sta nella collezione perche' costruisce un InMemoryService, che scrive variabili
+// d'ambiente del PROCESSO e cancella la propria cartella temporanea: senza questa riga
+// gira in parallelo alla collezione e cancella il database sotto al servizio condiviso.
+// Non dichiararla era un difetto che restava verde per fortuna - il nome della classe
+// decide l'ordine di xunit, e su main rinominarla E BASTA fa fallire 4 test.
+[Collection(ProcessEnvironment.Name)]
+public class WireCompressionTests
 {
     /// <summary>Un corpo della forma vera: ripetitivo come lo storico, che e' cio' che pesa.</summary>
-    private static readonly string Corpo = JsonSerializer.Serialize(new
+    private static readonly string Body = JsonSerializer.Serialize(new
     {
         resolution = "5m",
         bucketSeconds = 300,
@@ -60,80 +66,80 @@ public class CompressioneSulFiloTests
     /// il percorso vero e' sempre esporta-e-rileggi, che e' anche quello di ogni avvio dopo il
     /// primo.
     /// </remarks>
-    private static X509Certificate2 Depositato()
+    private static X509Certificate2 StoredCertificate()
     {
-        using X509Certificate2 generato = MachineCertificate.Create("banco", DateTimeOffset.UtcNow);
+        using X509Certificate2 generated = MachineCertificate.Create("banco", DateTimeOffset.UtcNow);
 
-        return MachineCertificate.Load(MachineCertificate.Export(generato));
+        return MachineCertificate.Load(MachineCertificate.Export(generated));
     }
 
     [Fact]
-    public async Task SuTlsLaRispostaViaggiaCompressaEArrivaIdentica()
+    public async Task OverTlsTheResponseIsCompressedAndArrivesIntact()
     {
-        using X509Certificate2 certificato = Depositato();
-        string impronta = MachineCertificate.Fingerprint(certificato);
+        using X509Certificate2 certificate = StoredCertificate();
+        string fingerprint = MachineCertificate.Fingerprint(certificate);
 
-        await using Banco banco = await Banco.AvviaAsync(certificato);
+        await using Bench bench = await Bench.StartAsync(certificate);
 
         // Senza Accept-Encoding non si comprime: la codifica si NEGOZIA, quindi un client
         // vecchio continua a ricevere esattamente cio' che riceveva prima.
-        (long inChiaro, string? codificaAssente, string corpoChiaro) = await banco.LeggiAsync(impronta, null);
+        (long plainBytes, string? noEncoding, string plainBody) = await bench.ReadAsync(fingerprint, null);
 
-        Assert.Null(codificaAssente);
-        Assert.Equal(Corpo, corpoChiaro);
+        Assert.Null(noEncoding);
+        Assert.Equal(Body, plainBody);
 
         // Con Accept-Encoding si comprime, E SU HTTPS: e' l'asserzione che diventa rossa se
         // qualcuno toglie EnableForHttps credendo di essere prudente.
-        (long compressi, string? codifica, string corpoCompresso) = await banco.LeggiAsync(impronta, "gzip");
+        (long compressedBytes, string? encoding, string compressedBody) = await bench.ReadAsync(fingerprint, "gzip");
 
-        Assert.Equal("gzip", codifica);
+        Assert.Equal("gzip", encoding);
 
         // Byte per byte identico una volta decompresso: la compressione non deve poter cambiare
         // un numero.
-        Assert.Equal(Corpo, corpoCompresso);
+        Assert.Equal(Body, compressedBody);
 
         // E vale la pena: meno della meta'. La soglia e' larga di proposito, perche' la
         // dimensione esatta dipende dalla versione della libreria; cio' che si pinna e' che la
         // compressione sia AVVENUTA e che serva a qualcosa. Sui corpi veri di questo servizio il
         // rapporto misurato e' fra 4x e 6x.
         Assert.True(
-            compressi * 2 < inChiaro,
-            $"compressa {compressi} byte contro {inChiaro} in chiaro: non vale il lavoro");
+            compressedBytes * 2 < plainBytes,
+            $"compressa {compressedBytes} byte contro {plainBytes} in chiaro: non vale il lavoro");
     }
 
     [Fact]
-    public async Task OffrendoTuttiGliEncoderSiOttieneIlPiuPiccoloSulFilo()
+    public async Task OfferingEveryEncodingYieldsTheSmallestBodyOnTheWire()
     {
         // Il client offre "gzip, deflate, br" e a parita' di preferenza il servizio sceglie il
         // PRIMO provider registrato. Sembra un dettaglio e non lo e': il servizio SERIALIZZA,
         // cioe' lo JSON esce dal writer a pezzi con un flush per segmento, e i flush puniscono
         // Brotli molto piu' di Gzip. Misurato QUI, sul filo vero, non su un buffer compresso in
         // un colpo solo - che e' esattamente l'errore che aveva fatto preferire Brotli.
-        using X509Certificate2 certificato = Depositato();
-        string impronta = MachineCertificate.Fingerprint(certificato);
+        using X509Certificate2 certificate = StoredCertificate();
+        string fingerprint = MachineCertificate.Fingerprint(certificate);
 
-        await using Banco banco = await Banco.AvviaAsync(certificato);
+        await using Bench bench = await Bench.StartAsync(certificate);
 
-        (long conTutti, string? scelto, string corpo) = await banco.LeggiAsync(impronta, "gzip, deflate, br");
-        (long soloBrotli, _, _) = await banco.LeggiAsync(impronta, "br");
-        (long soloGzip, _, _) = await banco.LeggiAsync(impronta, "gzip");
+        (long withEveryEncoding, string? chosen, string body) = await bench.ReadAsync(fingerprint, "gzip, deflate, br");
+        (long brotliOnly, _, _) = await bench.ReadAsync(fingerprint, "br");
+        (long gzipOnly, _, _) = await bench.ReadAsync(fingerprint, "gzip");
 
-        Assert.Equal(Corpo, corpo);
+        Assert.Equal(Body, body);
 
         // La scelta non e' un gusto: deve essere la piu' PICCOLA fra quelle disponibili, e il
         // test la MISURA invece di fidarsi del nome dell'encoder. Confrontare con un encoder
         // solo non proverebbe niente - se il servizio sceglie quello, si confronta con se
         // stesso - quindi si confronta con il minimo dei due.
-        long ilMigliore = Math.Min(soloGzip, soloBrotli);
+        long best = Math.Min(gzipOnly, brotliOnly);
 
         Assert.True(
-            conTutti <= ilMigliore,
-            $"offrendo tutto si ottengono {conTutti} byte (scelto: {scelto}), ma il migliore "
-            + $"disponibile ne fa {ilMigliore} — gzip {soloGzip}, br {soloBrotli}");
+            withEveryEncoding <= best,
+            $"offrendo tutto si ottengono {withEveryEncoding} byte (scelto: {chosen}), ma il migliore "
+            + $"disponibile ne fa {best} — gzip {gzipOnly}, br {brotliOnly}");
     }
 
     [Fact]
-    public async Task LaPipelineVeraComprimeENonSoloIlBanco()
+    public async Task TheRealPipelineCompressesNotJustTheBench()
     {
         // Le prove qui sopra costruiscono una COPIA della registrazione di Program.cs dentro il
         // proprio host: provano che la compressione funziona, non che il servizio la ABBIA.
@@ -141,29 +147,29 @@ public class CompressioneSulFiloTests
         // la funzione in silenzio lasciando in piedi trenta righe di commento che la
         // giustificano. Questa prova monta il servizio VERO - ServizioInMemoria e'
         // WebApplicationFactory<Program> - e guarda due cose che solo li' si vedono.
-        using ServizioInMemoria servizio = new();
-        using HttpClient client = servizio.CreateAuthorizedClient();
+        using InMemoryService service = new();
+        using HttpClient client = service.CreateAuthorizedClient();
 
-        using HttpRequestMessage richiesta = new(HttpMethod.Get, "metrics/catalog");
-        richiesta.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip");
+        using HttpRequestMessage request = new(HttpMethod.Get, "metrics/catalog");
+        request.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip");
 
-        using HttpResponseMessage risposta = await client.SendAsync(richiesta);
+        using HttpResponseMessage response = await client.SendAsync(request);
 
-        risposta.EnsureSuccessStatusCode();
+        response.EnsureSuccessStatusCode();
 
         // Sotto TestServer la richiesta e' http, quindi passa dal compressore comunque: questa
         // asserzione pinna la PRESENZA delle due righe e la loro posizione utile, non l'opzione.
-        Assert.Equal("gzip", risposta.Content.Headers.ContentEncoding.FirstOrDefault());
+        Assert.Equal("gzip", response.Content.Headers.ContentEncoding.FirstOrDefault());
 
         // E l'opzione la si legge dal contenitore del servizio vero, che e' l'unico posto dove
         // EnableForHttps si puo' osservare senza un trasporto TLS.
         Assert.True(
-            servizio.Services.GetRequiredService<IOptions<ResponseCompressionOptions>>().Value.EnableForHttps,
+            service.Services.GetRequiredService<IOptions<ResponseCompressionOptions>>().Value.EnableForHttps,
             "EnableForHttps e' tornato al predefinito: sulla rete non si comprimerebbe piu' niente");
     }
 
     [Fact]
-    public async Task UnaRichiestaRifiutataNonHaNienteDaComprimere()
+    public async Task ARejectedRequestHasNothingToCompress()
     {
         // La precondizione su cui poggia la decisione di sicurezza scritta in Program.cs: chi non
         // ha la credenziale non ottiene alcun corpo, quindi non ottiene nemmeno un corpo
@@ -171,36 +177,36 @@ public class CompressioneSulFiloTests
         // il controllo d'accesso nella pipeline, e per cui BREACH qui non ha da dove cominciare.
         // Se un giorno un rifiuto imparasse a spiegarsi con un corpo, questa prova diventa rossa
         // e la decisione va riaperta.
-        using X509Certificate2 certificato = Depositato();
-        string impronta = MachineCertificate.Fingerprint(certificato);
+        using X509Certificate2 certificate = StoredCertificate();
+        string fingerprint = MachineCertificate.Fingerprint(certificate);
 
-        await using Banco banco = await Banco.AvviaAsync(certificato, conGuardia: true);
+        await using Bench bench = await Bench.StartAsync(certificate, withAccessControl: true);
 
-        using HttpClient client = Banco.ClientCheFissa(impronta);
-        using HttpRequestMessage richiesta = new(HttpMethod.Get, new Uri(banco.Indirizzo, "storia"));
-        richiesta.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip, br");
+        using HttpClient client = Bench.PinningClient(fingerprint);
+        using HttpRequestMessage request = new(HttpMethod.Get, new Uri(bench.Address, "storia"));
+        request.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip, br");
 
-        using HttpResponseMessage risposta = await client.SendAsync(richiesta);
+        using HttpResponseMessage response = await client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, risposta.StatusCode);
-        Assert.Null(risposta.Content.Headers.ContentEncoding.FirstOrDefault());
-        Assert.Empty(await risposta.Content.ReadAsByteArrayAsync());
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Null(response.Content.Headers.ContentEncoding.FirstOrDefault());
+        Assert.Empty(await response.Content.ReadAsByteArrayAsync());
     }
 
     /// <summary>Kestrel vero su porta effimera, con la stessa registrazione del servizio.</summary>
-    private sealed class Banco : IAsyncDisposable
+    private sealed class Bench : IAsyncDisposable
     {
         private readonly WebApplication app;
 
-        private Banco(WebApplication applicazione, Uri indirizzo)
+        private Bench(WebApplication application, Uri address)
         {
-            app = applicazione;
-            Indirizzo = indirizzo;
+            app = application;
+            Address = address;
         }
 
-        public Uri Indirizzo { get; }
+        public Uri Address { get; }
 
-        public static async Task<Banco> AvviaAsync(X509Certificate2 certificato, bool conGuardia = false)
+        public static async Task<Bench> StartAsync(X509Certificate2 certificate, bool withAccessControl = false)
         {
             WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
 
@@ -209,83 +215,83 @@ public class CompressioneSulFiloTests
             // banco proverebbe ad aprire la porta del servizio installato.
             builder.Configuration.Sources.Clear();
             builder.WebHost.ConfigureKestrel(kestrel =>
-                kestrel.Listen(IPAddress.Loopback, 0, porta => porta.UseHttps(certificato)));
+                kestrel.Listen(IPAddress.Loopback, 0, port => port.UseHttps(certificate)));
 
             // La stessa identica registrazione di Program.cs, unica opzione compresa.
-            builder.Services.AddResponseCompression(opzioni =>
+            builder.Services.AddResponseCompression(options =>
             {
-                opzioni.EnableForHttps = true;
-                opzioni.Providers.Add<GzipCompressionProvider>();
-                opzioni.Providers.Add<BrotliCompressionProvider>();
+                options.EnableForHttps = true;
+                options.Providers.Add<GzipCompressionProvider>();
+                options.Providers.Add<BrotliCompressionProvider>();
             });
 
-            WebApplication applicazione = builder.Build();
+            WebApplication application = builder.Build();
 
-            if (conGuardia)
+            if (withAccessControl)
             {
                 // Il middleware VERO, non una copia scritta nel banco: la sua stessa classe
                 // esiste perche' i test possano montarlo invece di riscriverlo, e riscriverlo
                 // qui renderebbe la prova circolare - misurerebbe lo stub, e un 401 che un
                 // giorno imparasse a portare un corpo resterebbe verde. Le credenziali sono
                 // nuove e il test non manda alcun header: cade nel ramo di rifiuto vero.
-                applicazione.UseObserverAccessControl(MachineCredentials.Create());
+                application.UseObserverAccessControl(MachineCredentials.Create());
             }
 
-            applicazione.UseResponseCompression();
-            applicazione.MapGet("/storia", () => Results.Content(Corpo, "application/json"));
+            application.UseResponseCompression();
+            application.MapGet("/storia", () => Results.Content(Body, "application/json"));
 
-            await applicazione.StartAsync();
+            await application.StartAsync();
 
-            return new Banco(applicazione, new Uri(applicazione.Urls.First(), UriKind.Absolute));
+            return new Bench(application, new Uri(application.Urls.First(), UriKind.Absolute));
         }
 
-        public static HttpClient ClientCheFissa(string impronta)
+        public static HttpClient PinningClient(string fingerprint)
         {
             SocketsHttpHandler handler = new();
 
-            handler.SslOptions.RemoteCertificateValidationCallback = (_, presentato, _, _) =>
-                presentato is X509Certificate2 certificato
-                && CertificateFingerprint.Match(impronta, MachineCertificate.Fingerprint(certificato));
+            handler.SslOptions.RemoteCertificateValidationCallback = (_, presented, _, _) =>
+                presented is X509Certificate2 certificate
+                && CertificateFingerprint.Match(fingerprint, MachineCertificate.Fingerprint(certificate));
 
             return new HttpClient(handler, disposeHandler: true);
         }
 
         /// <summary>Legge, e riporta i byte CONTATI SUL FILO, non quelli del corpo decompresso.</summary>
-        public async Task<(long SulFilo, string? Codifica, string Corpo)> LeggiAsync(string impronta, string? codifica)
+        public async Task<(long WireBytes, string? ContentEncoding, string Body)> ReadAsync(string fingerprint, string? encoding)
         {
             // Niente AutomaticDecompression: l'handler non deve decomprimere da se', o i byte
             // misurati sarebbero quelli gia' espansi e la prova non direbbe niente.
-            using HttpClient client = ClientCheFissa(impronta);
-            using HttpRequestMessage richiesta = new(HttpMethod.Get, new Uri(Indirizzo, "storia"));
+            using HttpClient client = PinningClient(fingerprint);
+            using HttpRequestMessage request = new(HttpMethod.Get, new Uri(Address, "storia"));
 
-            if (codifica is not null)
+            if (encoding is not null)
             {
-                richiesta.Headers.TryAddWithoutValidation("Accept-Encoding", codifica);
+                request.Headers.TryAddWithoutValidation("Accept-Encoding", encoding);
             }
 
-            using HttpResponseMessage risposta = await client.SendAsync(richiesta);
+            using HttpResponseMessage response = await client.SendAsync(request);
 
-            risposta.EnsureSuccessStatusCode();
+            response.EnsureSuccessStatusCode();
 
-            byte[] byteSulFilo = await risposta.Content.ReadAsByteArrayAsync();
-            string? codificaRisposta = risposta.Content.Headers.ContentEncoding.FirstOrDefault();
+            byte[] wireBytes = await response.Content.ReadAsByteArrayAsync();
+            string? responseEncoding = response.Content.Headers.ContentEncoding.FirstOrDefault();
 
-            if (codificaRisposta is null)
+            if (responseEncoding is null)
             {
-                return (byteSulFilo.Length, null, Encoding.UTF8.GetString(byteSulFilo));
+                return (wireBytes.Length, null, Encoding.UTF8.GetString(wireBytes));
             }
 
-            using MemoryStream compresso = new(byteSulFilo);
-            using Stream espansore = codificaRisposta switch
+            using MemoryStream compressed = new(wireBytes);
+            using Stream decompressor = responseEncoding switch
             {
-                "gzip" => new GZipStream(compresso, CompressionMode.Decompress),
-                "br" => new BrotliStream(compresso, CompressionMode.Decompress),
-                "deflate" => new DeflateStream(compresso, CompressionMode.Decompress),
-                _ => throw new InvalidOperationException($"codifica inattesa: {codificaRisposta}"),
+                "gzip" => new GZipStream(compressed, CompressionMode.Decompress),
+                "br" => new BrotliStream(compressed, CompressionMode.Decompress),
+                "deflate" => new DeflateStream(compressed, CompressionMode.Decompress),
+                _ => throw new InvalidOperationException($"codifica inattesa: {responseEncoding}"),
             };
-            using StreamReader lettore = new(espansore);
+            using StreamReader reader = new(decompressor);
 
-            return (byteSulFilo.Length, codificaRisposta, await lettore.ReadToEndAsync());
+            return (wireBytes.Length, responseEncoding, await reader.ReadToEndAsync());
         }
 
         public async ValueTask DisposeAsync()

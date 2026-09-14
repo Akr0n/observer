@@ -7,10 +7,10 @@ namespace Observer.Service.Tests;
 /// named pipe che fallisse su ubuntu-latest renderebbe rosso il runner sbagliato e
 /// nasconderebbe i guasti veri.
 /// </remarks>
-public sealed class SoloSuWindowsAttribute : FactAttribute
+public sealed class WindowsOnlyAttribute : FactAttribute
 {
     /// <summary>Salta se il sistema non e' Windows.</summary>
-    public SoloSuWindowsAttribute()
+    public WindowsOnlyAttribute()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -20,10 +20,10 @@ public sealed class SoloSuWindowsAttribute : FactAttribute
 }
 
 /// <summary>Un fatto che fuori da Linux viene SALTATO invece che fallire.</summary>
-public sealed class SoloSuLinuxAttribute : FactAttribute
+public sealed class LinuxOnlyAttribute : FactAttribute
 {
     /// <summary>Salta se il sistema non e' Linux.</summary>
-    public SoloSuLinuxAttribute()
+    public LinuxOnlyAttribute()
     {
         if (!OperatingSystem.IsLinux())
         {

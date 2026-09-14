@@ -15,7 +15,7 @@ namespace Observer.Service.Tests;
 /// legge il token PRIMA di costruire l'host: qualunque cosa aggiunta dal test in fase di
 /// Build arriverebbe troppo tardi, e il servizio si rifiuterebbe di partire.
 /// </remarks>
-public sealed class ServizioInMemoria : WebApplicationFactory<Program>
+public sealed class InMemoryService : WebApplicationFactory<Program>
 {
     /// <summary>Il token con cui i test si autenticano.</summary>
     public const string Token = "token-di-prova";
@@ -26,10 +26,10 @@ public sealed class ServizioInMemoria : WebApplicationFactory<Program>
     // d'ambiente appartengono al PROCESSO, non a questa istanza: lasciarle addosso significa
     // che chiunque venga dopo nasce con un token e un percorso di database che non ha scelto,
     // e un guasto del genere compare a caso su un runner di CI e non sull'altro.
-    private readonly List<(string Nome, string? Precedente)> ambiente = [];
+    private readonly List<(string Name, string? Previous)> savedVariables = [];
 
     /// <summary>Prepara la cartella temporanea e la configurazione del servizio.</summary>
-    public ServizioInMemoria()
+    public InMemoryService()
     {
         directory = Path.Combine(
             Path.GetTempPath(),
@@ -38,19 +38,19 @@ public sealed class ServizioInMemoria : WebApplicationFactory<Program>
         Directory.CreateDirectory(directory);
         DatabasePath = Path.Combine(directory, "storico.db");
 
-        Imposta("Observer__ApiToken", Token);
-        Imposta("Observer__Storage__DatabasePath", DatabasePath);
+        SetVariable("Observer__ApiToken", Token);
+        SetVariable("Observer__Storage__DatabasePath", DatabasePath);
 
         // HTTPS spento: qui il trasporto e' finto, perche' WebApplicationFactory
         // sostituisce Kestrel con un TestServer. Generare una chiave RSA da 3072 bit e
         // provare a depositarla in una cartella di sistema costerebbe secondi a ogni
         // istanza, per una porta che non verra' mai aperta. Il TLS vero ha la sua classe
         // di prove: TrasportoHttpsTests.
-        Imposta("Observer__Network__Https", "false");
+        SetVariable("Observer__Network__Https", "false");
 
         // La manutenzione non deve partire da sola durante i test: consoliderebbe e
         // cancellerebbe sotto ai piedi delle asserzioni.
-        Imposta("Observer__Storage__MaintenanceInterval", "01:00:00");
+        SetVariable("Observer__Storage__MaintenanceInterval", "01:00:00");
     }
 
     /// <summary>Percorso del database usato da questa istanza del servizio.</summary>
@@ -71,10 +71,10 @@ public sealed class ServizioInMemoria : WebApplicationFactory<Program>
     public MetricStore Store() => Services.GetRequiredService<MetricStore>();
 
     /// <summary>Imposta una variabile d'ambiente ricordando cosa c'era prima.</summary>
-    private void Imposta(string nome, string? valore)
+    private void SetVariable(string name, string? value)
     {
-        ambiente.Add((nome, Environment.GetEnvironmentVariable(nome)));
-        Environment.SetEnvironmentVariable(nome, valore);
+        savedVariables.Add((name, Environment.GetEnvironmentVariable(name)));
+        Environment.SetEnvironmentVariable(name, value);
     }
 
     /// <inheritdoc />
@@ -90,9 +90,9 @@ public sealed class ServizioInMemoria : WebApplicationFactory<Program>
         // Dopo base.Dispose: l'host e' fermo, quindi nessuno rileggera' la configurazione.
         // Prima della cancellazione della cartella, che puo' fallire: le variabili vanno
         // rimesse a posto comunque.
-        foreach ((string nome, string? precedente) in ambiente)
+        foreach ((string name, string? previous) in savedVariables)
         {
-            Environment.SetEnvironmentVariable(nome, precedente);
+            Environment.SetEnvironmentVariable(name, previous);
         }
 
         SqliteConnection.ClearAllPools();
