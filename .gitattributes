@@ -1,27 +1,27 @@
-# Gli script che girano su Linux devono avere fine riga LF. Con CRLF il kernel non trova
-# l'interprete e fallisce con "bad interpreter: /bin/sh^M", che e' un errore che non nomina
-# la sua causa. Nell'indice git li tiene gia' in LF, ma quella e' una garanzia che dipende
-# dalla configurazione di chi fa il checkout: qui diventa una proprieta' del repository.
+# Scripts that run on Linux must have LF line endings. With CRLF the kernel cannot find
+# the interpreter and fails with "bad interpreter: /bin/sh^M", an error that does not name
+# its cause. Git already keeps them as LF in the index, but that guarantee depends on the
+# configuration of whoever checks them out: this line makes it a property of the repository.
 *.sh text eol=lf
 
-# Anche i workflow: dentro "run:" ci sono script di shell che girano su Linux, e release.yml
-# contiene un heredoc. Un ritorno a capo di troppo renderebbe il delimitatore finale diverso da
-# se stesso, e lo script fallirebbe in un modo che non nomina la propria causa - lo stesso
-# guasto gia' visto sui file sotto packaging/linux/debian.
+# The workflows too: the "run:" blocks hold shell scripts that run on Linux, and release.yml
+# contains a heredoc. A stray carriage return would stop the closing delimiter from matching
+# the opening one, and the script would fail in a way that does not name its cause - the
+# same failure already seen in the files under packaging/linux/debian.
 .github/workflows/*.yml text eol=lf
 
-# La regola vale sulla CARTELLA, non sui singoli file, ed e' una correzione: l'elenco
-# nominale che stava qui copriva i sette file che esistevano quel giorno, e il giorno dopo
-# ne sono arrivati altri tre - due pagine di manuale e le eccezioni per lintian - che ne
-# sono rimasti fuori in silenzio. Tutto cio' che sta in questa cartella finisce dentro il
-# .deb e lo leggono strumenti Linux: un ritorno a capo di troppo dentro lintian-overrides
-# fa fallire l'analisi del pacchetto, e dentro una pagina di manuale si vede a schermo.
+# The rule applies to the DIRECTORY, not to individual files, and that is a fix: the list
+# of file names that used to be here covered the seven files that existed that day, and the
+# next day three more arrived - two man pages and the lintian overrides - which were
+# silently left out. Everything in this directory ends up inside the .deb and is read by
+# Linux tools: a stray carriage return in lintian-overrides makes the package analysis
+# fail, and in a man page it shows up on screen.
 packaging/linux/debian/** text eol=lf
 
-# Gli script di PowerShell restano CRLF: e' la convenzione del loro mondo, e li' non fa danno.
+# PowerShell scripts stay CRLF: that is the convention on their platform, and there it does no harm.
 *.ps1 text eol=crlf
 
-# Binari: git non deve toccarli, ne' per le fini riga ne' per il diff.
+# Binaries: git must not touch them, either to convert line endings or to diff them.
 *.ico binary
 *.png binary
 *.msi binary
