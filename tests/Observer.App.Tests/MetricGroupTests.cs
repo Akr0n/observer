@@ -28,7 +28,7 @@ public class MetricGroupTests
     public void UpdatingAPanelKeepsTheSameRowObjects()
     {
         // This is the band's precondition: it collects the references once and expects them to
-        // keep holding. Rebuilding the rows on every round would fail nothing here, but it
+        // stay valid. Rebuilding the rows on every round would fail nothing here, but it
         // would make every gauge flicker once a second.
         MetricGroup panel = new(GroupState("cpu", Fraction("cpu.usage.total", "12.0 %", 0.12d)));
 

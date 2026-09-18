@@ -79,7 +79,7 @@ public class MachineToRememberTests
         viewModel.SelectedMachine = viewModel.Machines.Single(row => row.Endpoint == remote);
         Assert.Equal("laptop", viewModel.MachineToRemember);
 
-        // And going back to this computer goes back to remembering nothing, which is what the
+        // And selecting this computer again goes back to remembering nothing, which is what the
         // null in the file means. Without it, whoever moves from the remote machine to the
         // local one would find the remote one reopened for ever.
         viewModel.SelectedMachine = viewModel.Machines[0];
@@ -92,7 +92,7 @@ public class MachineToRememberTests
         // The old single-machine configuration (client.json, Observer__BaseAddress) produces a
         // remote endpoint with NO name. The display name in that case falls back to the
         // ADDRESS, and an address in preferences.json would be network data written where it
-        // must not be, and useless on top of that: it is not a key of machines.json.
+        // does not belong, and useless on top of that: it is not a key of machines.json.
         ObserverEndpoint unnamed = ObserverEndpoint.Remote(
             new Uri("https://10.0.0.9:5058/"), "token", "client.json");
 

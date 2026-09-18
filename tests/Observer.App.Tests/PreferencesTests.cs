@@ -81,9 +81,9 @@ public class PreferencesTests
         string key, int bars, int minutesPerBar)
     {
         // The constraint that holds the table up: about ninety bars over eight hundred pixels
-        // give bars of nine, which is the floor for seeing them apart. Two thousand bars - which
-        // is what seven days at the source step would give - would be below the pixel, that is
-        // a strip that cannot be read.
+        // give bars nine pixels wide, which is the floor for telling them apart. Two thousand
+        // bars - which is what seven days at the source step would give - would each be less
+        // than a pixel wide, in other words a strip that cannot be read.
         HistoryPeriodOption period = new(key);
 
         Assert.Equal(bars, period.BarCount);
@@ -268,7 +268,7 @@ public class PreferencesTests
     {
         // A hand-written file with x = 2147483647: the old X + 120 sum overflowed into the
         // negatives, the comparison passed and the window opened invisible - for ever,
-        // because on close it saved itself identical. A hundred below the maximum too: there
+        // because on close it saved itself back unchanged. A hundred below the maximum too: there
         // the first clause does not overflow yet, and only the second is left defending.
         Assert.Null(new WindowPlacement(x, y, 900, 700, Maximized: false).WithinAnyOf([PrimaryScreen, RightScreen]));
     }
@@ -324,7 +324,7 @@ public class PreferencesTests
         WindowPlacement normal = new(300, 200, 900, 700, Maximized: false);
         WindowPlacement offScreen = new(-32000, -32000, 900, 700, Maximized: false);
 
-        // It was normal before: it is remembered normal, even if the file said maximized.
+        // It was normal before: it is remembered as normal, even if the file said maximized.
         Assert.Equal(normal, WindowPlacement.AtClose(
             minimized: true, maximized: false, lastNormal: normal,
             saved: normal with { Maximized = true }, current: offScreen));
@@ -359,7 +359,7 @@ public class PreferencesTests
         Assert.Equal(1.0d, Preferences.NormalZoom);
 
         // The exact list and not a rule (ascending order, floor): with the rule alone,
-        // removing 0.85 or 1.5 failed nothing, measured with mutants. The floor is 0.75 and
+        // removing 0.85 or 1.5 failed nothing, tested with mutants. The floor is 0.75 and
         // goes no lower: it is the zoom at which a 32 px Fluent control is still 24 px, and
         // the status ring keeps its hole (measured on real captures).
         Assert.Equal([0.75d, 0.85d, 1.0d, 1.15d, 1.3d, 1.5d], Preferences.AllowedZoomLevels);

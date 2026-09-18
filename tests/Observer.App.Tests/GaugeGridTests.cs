@@ -6,9 +6,9 @@ namespace Observer.App.Tests;
 /// The gauge grid: full columns, no holes, cells that grow up to a ceiling.
 /// </summary>
 /// <remarks>
-/// The panel cannot be tested without a window; the arithmetic can. A mistake here fails
-/// nothing at runtime: it leaves a hole at the end of a row or a clipped gauge, which is
-/// exactly what is being removed.
+/// The panel cannot be tested without a window; the arithmetic can. A mistake here breaks
+/// nothing at runtime: it leaves a hole at the end of a row, or a clipped gauge — exactly what
+/// this grid exists to remove.
 /// </remarks>
 public class GaugeGridTests
 {

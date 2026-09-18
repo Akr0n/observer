@@ -64,10 +64,10 @@ public class HistoryCadenceTests
         // as it has covered, so re-reading at the step would mean looking at a newborn bar
         // every time, always at the same fraction. At seven days the right-hand end of the
         // strip - the point the eye reads as "now" - would stay frozen at that width for the
-        // whole session, and with a choice made at the start of an interval that is one pixel.
-        // At one hour the step is already a minute and the floor wins: there the bar does not
-        // grow, and that is a declared give-up (twelve requests every fifteen seconds to
-        // animate thirteen pixels do not pay).
+        // whole session - and if the period was chosen right at the start of an interval, that
+        // width is one pixel. At one hour the step is already a minute and the floor wins: there
+        // the bar does not grow, and that is a deliberate, stated trade-off (twelve requests
+        // every fifteen seconds to animate thirteen pixels are not worth it).
         Assert.True(
             cadence <= period.Step,
             $"{key}: it re-reads every {cadence}, that is LESS often than the step ({period.Step})");
@@ -85,8 +85,8 @@ public class HistoryCadenceTests
     public async Task AFailingHistoryDoesNotFreezeTheStripForAWholeStep()
     {
         // At seven days the step is two hours: if the deadline moved anyway after a fault, the
-        // second read would not start for half an hour of clock. Here the clock advances by
-        // twenty seconds and the second read must already be there.
+        // second read would not start for half an hour of clock time. Here the clock advances
+        // by twenty seconds and the second read must already be there.
         FakeClock clock = new();
         ClientWithoutHistory client = new();
 
@@ -125,7 +125,7 @@ public class HistoryCadenceTests
     public async Task AfterSwitchingMachineTheStripDoesNotWaitForThePreviousDeadline()
     {
         // The history deadline is derived from the watched machine, like the gauges and the
-        // catalog. Without resetting it, the new machine's rows are born with no strip AND no
+        // catalog. Without resetting it, the new machine's rows start out with no strip AND no
         // note - neither bars nor the reason there are none - and stay that way until the
         // inherited deadline: half an hour at seven days, with the gauges above already live.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
@@ -159,8 +159,8 @@ public class HistoryCadenceTests
 
         Assert.Empty(viewModel.Gauges);
 
-        // Without advancing the clock: the new machine's strip must come back within the
-        // loop's seconds, not half an hour from now.
+        // Without advancing the clock: the new machine's strip must come back within a few
+        // seconds of the loop running, not half an hour from now.
         while (!stop.IsCancellationRequested && !viewModel.Gauges.Any(row => row.ShowHistory))
         {
             await Task.Delay(50, CancellationToken.None);

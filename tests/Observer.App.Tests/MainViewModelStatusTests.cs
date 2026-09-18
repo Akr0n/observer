@@ -10,7 +10,7 @@ namespace Observer.App.Tests;
 /// <remarks>
 /// Without this class the escalation table could be perfect and the window still keep opening
 /// red: it would be enough for the view model to always pass zero as the duration, and no pure
-/// test would notice. What is looked at here is what shows on screen.
+/// test would notice. This class checks what actually shows on screen.
 /// </remarks>
 public class MainViewModelStatusTests
 {

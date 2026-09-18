@@ -8,8 +8,8 @@ namespace Observer.App.Tests;
 /// </summary>
 /// <remarks>
 /// The encoding is NEGOTIATED per request: a service that compresses and a client that does not
-/// ask for it exchange exactly the bytes they did before. So the two halves stand together or
-/// not at all, and this test exists because the client half is invisible - no screen changes, no
+/// ask for it exchange exactly the bytes they did before. So the two halves stand or fall
+/// together, and this test exists because the client half is invisible - no screen changes, no
 /// number moves, and deleting it would make nothing else fail.
 /// </remarks>
 public class ClientCompressionTests

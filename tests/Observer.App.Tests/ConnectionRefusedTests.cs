@@ -20,9 +20,9 @@ namespace Observer.App.Tests;
 /// the window advised checking the firewall for a service that was simply down. A test built on
 /// the exceptions alone would have stayed green the whole time.
 /// <para>
-/// It is also the test that failed the first budget. Six seconds passed on an idle machine and
-/// fell over on a busy one, because less than two seconds of margin on 4.1 is not a margin.
-/// Eight gives nearly twice the measured cost.
+/// It is also the test that failed the first budget: a six-second timeout passed on an idle
+/// machine and failed on a busy one, because less than two seconds of margin on 4.1 is not a
+/// margin. Eight seconds gives nearly twice the measured cost.
 /// </para>
 /// </para>
 /// </remarks>

@@ -6,7 +6,7 @@ namespace Observer.App.Tests;
 /// <summary>The version in the title bar.</summary>
 /// <remarks>
 /// The part that can lie is the trimming: the commit hash goes, a pre-release suffix does not,
-/// and a missing version must not produce a title with a dangling space.
+/// and a missing version must not produce a title with a trailing space.
 /// </remarks>
 public class AppVersionTests
 {

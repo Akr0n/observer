@@ -12,7 +12,7 @@ namespace Observer.App.Tests;
 /// last reading arrived. It does not say how the connection was made. Where the token comes
 /// from is a configuration note — it is needed when something goes wrong and you have to know
 /// which file to correct, and that is where it lives, in the fingerprint mismatch message —
-/// but in normal running it is a sentence that gets re-read at every glance and never changes.
+/// but in normal running it is a line you re-read every time you look, and it never changes.
 /// </remarks>
 public class SubheadingTests
 {

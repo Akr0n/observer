@@ -451,7 +451,7 @@ public class MachineStatusTests
         }
 
         // The fault ages. The clock moves only once: it is the later probes that read it, and
-        // the row gets to say half an hour.
+        // the row ends up saying half an hour.
         clock.Advance(TimeSpan.FromMinutes(30));
 
         while (!cancellation.IsCancellationRequested
@@ -538,8 +538,8 @@ public class MachineStatusTests
     public async Task ChoosingAMachineTheProbeAlreadyKnowsIsDownTheBarDoesNotSayConnecting()
     {
         // Bar and dot share one clock: the probe has known for sixteen seconds that the machine
-        // is down, and clicking on it the bar must open red, not "Connecting" for another ten
-        // seconds while the dot beside it is already red.
+        // is down, and when you click on it the bar must open red, not "Connecting" for another
+        // ten seconds while the dot beside it is already red.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         ObserverEndpoint down = RemoteAt("down");
         FakeClock clock = new();

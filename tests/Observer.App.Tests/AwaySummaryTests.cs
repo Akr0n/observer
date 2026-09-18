@@ -111,9 +111,9 @@ public class AwaySummaryTests
     [Fact]
     public async Task AHistoryThatCannotBeReadSaysSoInsteadOfStayingSilent()
     {
-        // This is the point where this route differs from an alert that never appears: when it
-        // cannot be known, it is written down. Silence stays reserved for "I asked and all is
-        // well", and that way silence means something.
+        // This is the point where this route differs from an alert that never appears: when the
+        // answer cannot be known, the line says so. Silence stays reserved for "I asked and all
+        // is well", and that way silence means something.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         FailingHistoryClient client = new();
 
@@ -134,8 +134,8 @@ public class AwaySummaryTests
         Assert.Contains("persistence is off", viewModel.AwaySummaryText, StringComparison.Ordinal);
         Assert.True(viewModel.ShowAwaySummary);
 
-        // The summary asks FURTHER BACK than the window it examines, and that is the fix that
-        // holds up everything else: without that margin the grid, anchored to the last point,
+        // The summary asks FURTHER BACK than the window it examines, and that is the fix
+        // everything else rests on: without that margin the grid, anchored to the last point,
         // overruns on the left and every healthy machine opens with "nothing known before".
         Assert.True(
             client.SummaryQueryCount(TimeSpan.FromHours(1), DateTimeOffset.UtcNow) > 0,
@@ -179,10 +179,11 @@ public class AwaySummaryTests
 
         /// <summary>The SUMMARY's requests alone, told apart by the margin only it asks for.</summary>
         /// <remarks>
-        /// Counting them all would tell nothing apart: the strip queries the same series at
-        /// every step, so a single counter goes up anyway and the test would stay green even
-        /// if the summary never ran. The summary is the only one that looks FURTHER BACK than
-        /// the window, and that is precisely the fix this test has to pin down.
+        /// Counting them all would not tell the summary's requests from the strip's: the strip
+        /// queries the same series at every step, so a single counter goes up anyway and the
+        /// test would stay green even if the summary never ran. The summary is the only one
+        /// that looks FURTHER BACK than the window, and that is precisely the fix this test has
+        /// to pin down.
         /// </remarks>
         public int SummaryQueryCount(TimeSpan window, DateTimeOffset now) =>
             queries.Count(q => q.From < now - window - TimeSpan.FromMinutes(1));

@@ -77,7 +77,7 @@ public class SnapshotProjectionTests
     {
         // On Windows that flag is hardwired to false: that row would say "No" for ever, on
         // every Windows machine. A row that repeats the same answer endlessly teaches the
-        // reader to skip it, and it would be skipped on the day it said something else too.
+        // reader to skip it, and it would be skipped even on the day it said something else.
         IReadOnlyList<MetricGroupState> groups = Project(Ok(
             "memory",
             MetricPoint.Measured("memory.available.bytes", null, MetricValue.FromNumber(17_179_869_184d)),
@@ -94,7 +94,7 @@ public class SnapshotProjectionTests
     {
         // The case that flag exists for: on Linux, when the kernel does not expose MemAvailable,
         // the number is summed from free memory, buffers, cache and reclaimable memory. That is
-        // not wrong, but it is not a measurement, and it must be said WHERE the number is read.
+        // not wrong, but it is not a measurement, and the value itself has to say so.
         IReadOnlyList<MetricGroupState> groups = Project(Ok(
             "memory",
             MetricPoint.Measured("memory.available.bytes", null, MetricValue.FromNumber(3_435_973_836d)),

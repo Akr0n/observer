@@ -215,7 +215,7 @@ public class ProcessPanelTests
     public async Task AClickWhileTheFirstReadIsInFlightIsNotDropped()
     {
         // Slow remote machine: the first read of the list does not come back straight away. In
-        // the meantime whoever clicked clicks again — to close, or to move to another gauge —
+        // the meantime the user clicks again — to close, or to move to another gauge —
         // and that click has to count. It used to be dropped: the command is ONE for all the
         // gauges, and an async command that is running refuses concurrent executions.
         FakeProcessClient client = new() { PendingRead = new TaskCompletionSource<ProcessFetch>() };
@@ -291,9 +291,9 @@ public class ProcessPanelTests
         {
             Requested.Add(by);
 
-            if (PendingRead is { } expected)
+            if (PendingRead is { } pending)
             {
-                return expected.Task;
+                return pending.Task;
             }
 
             return Task.FromResult(new ProcessFetch(

@@ -74,7 +74,7 @@ public class MainViewModelReconnectTests
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.True(newClient.Queries >= 1, "after a 401 the re-read client was never queried");
+        Assert.True(newClient.Queries >= 1, "after a 401 the client from the re-read configuration was never queried");
 
         await stop.CancelAsync();
         await loop.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);

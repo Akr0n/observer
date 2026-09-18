@@ -9,7 +9,7 @@ namespace Observer.App.Tests;
 /// The service does not send the gaps: an interval with no samples does not arrive with zero
 /// samples, it does not arrive at all. Drawing one bar per point received would give a strip
 /// that is continuous and full even from a machine that was down half the day — the gaps
-/// would close up and vanish, and whoever looked at it would read a machine that was never
+/// would close up and vanish, and anyone looking at it would read it as a machine that was never
 /// down. It is a lie told with real data: nothing fails, and no other test would see it.
 /// </remarks>
 public class HistoryStripTests
@@ -121,8 +121,8 @@ public class HistoryStripTests
     [Fact]
     public void APartlyCoveredIntervalIsNotPassedOffAsComplete()
     {
-        // Measured on the real service: stopping it halfway through a minute, that minute
-        // arrives all the same but with 53 samples out of 60, and with an average computed
+        // Measured on the real service: stop it halfway through a minute and that minute
+        // still arrives, but with 53 samples out of 60, and with an average computed
         // over those alone. It is a plausible number for half a minute, and the strip has to
         // say that it is half a minute.
         IReadOnlyList<HistoryBar> strip = HistoryStrip.Build(
@@ -194,8 +194,8 @@ public class HistoryStripTests
     public void ATailWithMoreSamplesBeatsTheLaggingAggregate()
     {
         // Aggregate consolidation has a four-minute grace, so on the most recent intervals
-        // the aggregate is incomplete. Where the two readings overlap the fresher one has to
-        // win, or it would be the aggregate doing the lying.
+        // the aggregate is incomplete. Where the two readings overlap the one with more samples
+        // has to win (here that is the tail), or it would be the aggregate doing the lying.
         IReadOnlyList<HistoryPoint> merged = HistoryStrip.Merge(
             [new(Now, 12, 0.10d, 0.10d, 0.10d, 0.10d)],
             [new(Now, 60, 0.80d, 0.70d, 0.90d, 0.85d)]);

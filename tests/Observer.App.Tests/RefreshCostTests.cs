@@ -25,7 +25,7 @@ public class RefreshCostTests
 
         Assert.Equal(MainViewModel.BackgroundInterval, viewModel.PollInterval);
 
-        // At least five times sparser, or telling it apart would not be worth it; and not
+        // At least five times sparser, or the distinction would not be worth making; and not
         // infinite, because on reopening the window the status bar has to say at once how
         // things stand.
         Assert.True(MainViewModel.BackgroundInterval >= MainViewModel.Interval * 5);

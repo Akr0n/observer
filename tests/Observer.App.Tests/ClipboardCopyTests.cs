@@ -4,7 +4,7 @@ using Observer.App.ViewModels;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Taking a number or an error message away without retyping it by hand.
+/// Getting a number or an error message out of the window without retyping it by hand.
 /// </summary>
 /// <remarks>
 /// No text in the window is selectable, and that is a decision that was taken, not an
@@ -91,7 +91,7 @@ public class ClipboardCopyTests
         // The wiring is optional because a test with no window does not have it. If one day it
         // disappeared from the composition root, a command that simply returns on a null would
         // leave a button that does nothing and that no test would see, because the tests do
-        // have the fake. A disabled button is visible at the first start.
+        // have the fake. A disabled button gets noticed the first time the app runs.
         MainViewModel viewModel = new(client: null, configurationProblem: "something")
         {
             SelectedProcess = new ProcessRowState(1, "x", "0 %", "1 MiB"),
@@ -126,8 +126,8 @@ public class ClipboardCopyTests
     public async Task ASecondClickIsNotDroppedWhileTheFirstIsInFlight()
     {
         // The defect already paid for by the six gauge buttons: an AsyncRelayCommand that is
-        // running disables itself and refuses every other call, so the second click would fall
-        // into nothing with the button flickering disabled.
+        // running disables itself and refuses every other call, so the second click would go
+        // nowhere, with the button flickering to disabled.
         TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
         FakeClipboard clipboard = new();
         MainViewModel viewModel = new(

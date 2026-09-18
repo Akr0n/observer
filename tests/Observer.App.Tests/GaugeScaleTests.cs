@@ -100,8 +100,8 @@ public class GaugeScaleTests
     [Fact]
     public void TheUncoveredArcSitsAtTheBottomAndIsSymmetric()
     {
-        // The piece of circle the needle never crosses must sit at the bottom and centred, or
-        // the gauge looks crooked. It is the 90 degrees between the end and the start.
+        // The arc the needle never crosses must sit at the bottom, centred, or the gauge looks
+        // crooked. It is the 90 degrees between the end and the start.
         double uncovered = 360d - GaugeScale.SweepAngle;
 
         Assert.Equal(90d, uncovered, 9);

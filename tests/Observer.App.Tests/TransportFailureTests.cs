@@ -16,7 +16,7 @@ namespace Observer.App.Tests;
 /// <para>
 /// The remedies are opposite — starting a service versus opening a port — and as long as the
 /// dashboard called them both "Service unreachable" whoever was looking had to guess. It cost
-/// a real afternoon on a domain-joined machine, where the home network was classified as
+/// a whole afternoon on a domain-joined machine, where the home network was classified as
 /// public and the firewall rule applied to another profile.
 /// </para>
 /// </remarks>

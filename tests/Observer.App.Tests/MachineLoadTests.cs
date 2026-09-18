@@ -112,8 +112,8 @@ public class MachineLoadTests
     public void AMachineThatGoesDownLosesTheLoadItHad()
     {
         // The load is cleared inside Record and not in the callers: there are three of them and
-        // one would forget, leaving under the name of a machine that is down the numbers from
-        // when it was answering - real numbers, for a moment that is gone.
+        // one would forget, leaving the numbers from when it was answering under the name of
+        // a machine that is down - real numbers, but from a moment that no longer exists.
         MachineRow row = RemoteRow();
 
         row.Record(
@@ -206,7 +206,7 @@ public class MachineLoadTests
     [Fact]
     public void TheLoadIsAnnouncedEvenWithoutSeeingTheRow()
     {
-        // The tooltip and the accessible name both come from the row's one text, so they
+        // The tooltip and the accessible name both come from the same text on the row, so they
         // cannot diverge. The middle dot separates two facts placed side by side.
         MachineRow row = RemoteRow();
 
@@ -279,7 +279,7 @@ public class MachineLoadTests
             await Task.Delay(20, CancellationToken.None);
         }
 
-        // The probe was holding a CPU at 99 %: had it written, the row would say so.
+        // The probe had a 99 % CPU reading in hand: had it written, the row would say so.
         Assert.Equal(MachineLoad.None, row.MachineLoad);
         Assert.Equal(string.Empty, row.Subtitle);
 

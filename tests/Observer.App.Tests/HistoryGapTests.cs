@@ -40,12 +40,12 @@ public class HistoryGapTests
         // case the summary exists for.
         List<HistoryPoint> points = [.. Series(Noon, 10), .. Series(Noon + TimeSpan.FromMinutes(30), 10)];
 
-        HistoryGap candidate = Assert.Single(HistoryStrip.FindGaps(points, TimeSpan.FromMinutes(40), Minute));
+        HistoryGap gap = Assert.Single(HistoryStrip.FindGaps(points, TimeSpan.FromMinutes(40), Minute));
 
-        Assert.Equal(Noon + TimeSpan.FromMinutes(10), candidate.Start);
-        Assert.Equal(Noon + TimeSpan.FromMinutes(30), candidate.End);
-        Assert.Equal(TimeSpan.FromMinutes(20), candidate.Duration);
-        Assert.False(candidate.AtEdge);
+        Assert.Equal(Noon + TimeSpan.FromMinutes(10), gap.Start);
+        Assert.Equal(Noon + TimeSpan.FromMinutes(30), gap.End);
+        Assert.Equal(TimeSpan.FromMinutes(20), gap.Duration);
+        Assert.False(gap.AtEdge);
     }
 
     [Fact]
@@ -88,12 +88,12 @@ public class HistoryGapTests
     {
         // The real shape, which is the only one that counts and the one the other tests here
         // do NOT have: the aggregate level lags by a few minutes because of consolidation, so
-        // the last point is NOT now; and the caller asks for more than the window it examines,
+        // the last point is NOT now; and the caller asks further back than the window it examines,
         // precisely because the grid anchors to that last point and overruns on the left. With
         // the two together no gap must come out.
         //
-        // Built the way the service would send it: a 60-minute window, a ten-minute margin in
-        // front (TailFor at one hour), and the series ending five minutes before now. Without
+        // Built the way the service would send it: a 60-minute window, ten minutes of margin before
+        // its start (TailFor at one hour), and the series ending five minutes before now. Without
         // the margin in the request an AtEdge gap comes out here and the row becomes "nothing
         // known before" on a machine that measured the whole time.
         TimeSpan window = TimeSpan.FromHours(1);

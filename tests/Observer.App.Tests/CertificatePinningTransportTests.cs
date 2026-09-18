@@ -23,7 +23,7 @@ namespace Observer.App.Tests;
 /// certificate, which is every certificate Observer presents.
 /// <para>
 /// The service-side twin is <c>HttpsTransportTests</c>, written after this very gap had hidden
-/// a real defect: a certificate that loaded perfectly well and then could not carry the
+/// a real defect: a certificate that loaded perfectly well and then could not complete the
 /// handshake. A test that does not touch the wire cannot see that class of fault.
 /// </para>
 /// </remarks>
@@ -77,9 +77,9 @@ public sealed class CertificatePinningTransportTests : IDisposable
     {
         // Whoever sits in the middle presents their own certificate, as valid as the other
         // one. What has to happen is not only that the connection fails: it must fail BEFORE
-        // anything is sent, or the token would already have reached the wrong destination and
-        // rejecting it would no longer be worth anything. The server counts the application
-        // bytes it receives, and they must be zero.
+        // anything is sent, or the token would already have reached the wrong destination, and
+        // rejecting the certificate at that point would be pointless. The server counts the
+        // application bytes it receives, and they must be zero.
         using X509Certificate2 presented = Generate("man-in-the-middle");
         using X509Certificate2 expected = Generate("this-machine");
 

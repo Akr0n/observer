@@ -101,8 +101,8 @@ public class MachineDirectoryTests
     public void WithoutANameThereIsNowhereToLookForTheToken()
     {
         // The name used to be optional and a machine was called after its own address. It is now
-        // the key the token is looked up under in the store, so without it there is nowhere to
-        // go — and that must be said, instead of making the entry disappear.
+        // the key the token is looked up under in the store, so without it the lookup gets
+        // nowhere — and the list has to say so, instead of making the entry disappear.
         MachineListResult result = Read(
             $$"""
               { "machines": [ { "baseAddress": "https://laptop:5058",
@@ -238,7 +238,7 @@ public class MachineDirectoryTests
     [Fact]
     public void TheOldClientJsonWithoutAFingerprintStaysOut()
     {
-        // Same hole, other half: encrypted, but towards nobody in particular.
+        // Same hole, other half: encrypted, but to nobody in particular.
         ObserverEndpoint withoutFingerprint = ObserverEndpoint.Remote(
             new Uri("https://old-machine:5058/"), "token", "from the old client.json");
 

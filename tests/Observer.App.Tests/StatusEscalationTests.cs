@@ -198,13 +198,13 @@ public class StatusEscalationTests
         // starting a service, the other by opening a port. If the title is the same, whoever
         // is looking at the window has nothing else to tell them apart by.
         StatusMessage refusal = MessageFor(ServiceOutcome.ConnectionRefused, TimeSpan.FromMinutes(1), Remote);
-        StatusMessage expired = MessageFor(ServiceOutcome.TimedOut, TimeSpan.FromMinutes(1), Remote);
+        StatusMessage timeout = MessageFor(ServiceOutcome.TimedOut, TimeSpan.FromMinutes(1), Remote);
 
         Assert.Equal(StatusTone.Error, refusal.Tone);
-        Assert.Equal(StatusTone.Error, expired.Tone);
-        Assert.NotEqual(refusal.Title, expired.Title);
+        Assert.Equal(StatusTone.Error, timeout.Tone);
+        Assert.NotEqual(refusal.Title, timeout.Title);
         Assert.NotEqual("Service unreachable", refusal.Title);
-        Assert.NotEqual("Service unreachable", expired.Title);
+        Assert.NotEqual("Service unreachable", timeout.Title);
     }
 
     [Fact]

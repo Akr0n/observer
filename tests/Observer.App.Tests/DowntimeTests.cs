@@ -35,7 +35,7 @@ public class DowntimeTests
     public void MinutesAreTruncatedNotRounded()
     {
         // The property that keeps a late text honest: the number shown is always a lower bound
-        // on the real duration. With rounding, added to the lag of the reading, the row would
+        // on the real duration. With rounding on top of the lag of the reading, the row would
         // say more than it knows.
         Assert.Equal("2 min", Downtime.Describe(TimeSpan.FromSeconds(179)));
         Assert.Equal("59 min", Downtime.Describe(TimeSpan.FromSeconds(3599)));
@@ -91,9 +91,9 @@ public class DowntimeTests
     [Fact]
     public void TheTextNeverShowsAFractionalNumber()
     {
-        // This is not a test about the culture: an integer carries no separators in any
-        // culture, and the culture is guarded by CA1305, which without an explicit format does
-        // not even compile. What is pinned here is that the text never contains a number with
+        // This is not a test about culture: an integer carries no separators in any culture,
+        // and culture is guarded by CA1305, which fails the build on any call without an
+        // explicit format. What is pinned here is that the text never contains a number with
         // a comma, that is, that the units stay whole instead of becoming "1,5 h".
         foreach (TimeSpan duration in new[]
         {
