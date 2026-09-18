@@ -2,200 +2,195 @@
 
 ![build](https://github.com/Akr0n/observer/actions/workflows/build.yml/badge.svg)
 
-Dashboard cross-platform per il monitoraggio dei parametri vitali della macchina
-e dei dispositivi presenti sulla rete locale. Gira su Windows e Linux.
+Cross-platform dashboard for monitoring the vital signs of this machine
+and of the devices on the local network. Runs on Windows and Linux.
 
-> **Stato:** funzionante e installabile. Il servizio campiona una volta al secondo su Windows
-> e su Linux - CPU, memoria, spazio per volume, attivita' per disco - conserva le serie su
-> SQLite, si genera da solo il proprio token di macchina, ed espone i dati sia sulla rete sia
-> su un canale locale che non richiede credenziali. Il client desktop li mostra dal vivo, con
-> lo storico sotto i quadranti - un'ora, un giorno o una settimana - e dal quadrante della CPU,
-> della memoria o dell'attivita'
-> di un disco apre l'elenco dei processi che la stanno consumando, da cui un processo si puo'
-> terminare. Ci sono un
-> pacchetto MSI per Windows e un `.deb` per Linux, che registrano il servizio e installano
-> la dashboard. Mancano la rete e i sensori di temperatura.
->
-> L'interfaccia dell'applicazione è in **inglese**; questa documentazione e i commenti
-> nel codice restano in italiano.
+> **Status:** working and installable. The service samples once a second on Windows and on
+> Linux - CPU, memory, space per volume, activity per disk - keeps the series in SQLite,
+> generates its own machine token, and exposes the data both on the network and on a local
+> channel that needs no credentials. The desktop client shows them live, with the history
+> strip under the gauges - an hour, a day or a week - and the CPU gauge, the memory gauge or
+> a disk's activity gauge opens the list of the processes consuming that resource, from which
+> a process can be ended. There is an MSI package for Windows and a `.deb` for Linux,
+> which register the service and install the dashboard. Network monitoring and temperature
+> sensors are still missing.
 
-## Architettura
+## Architecture
 
-Il progetto è diviso in un servizio headless e un client desktop: su Windows i
-servizi girano in Session 0 e non possono mostrare un'interfaccia grafica, quindi
-raccolta e visualizzazione devono essere due processi distinti.
+The project is split into a headless service and a desktop client: on Windows, services
+run in Session 0 and cannot show a graphical interface, so collection and display must be
+two separate processes.
 
-| Progetto | Ruolo |
+| Project | Role |
 | --- | --- |
-| `src/Observer.Core` | Modelli condivisi, astrazione dei collector e adattatori di piattaforma |
-| `src/Observer.Service` | Servizio headless: campiona a 1 Hz, conserva le serie su SQLite con aggregazione ed espone i dati via HTTP autenticato |
-| `src/Observer.App` | Client desktop Avalonia: si collega al servizio e mostra le metriche dal vivo |
-| `src/Observer.Cli` | Riga di comando `observer`: condivide la chiave, la ruota, diagnostica, e custodisce i token delle altre macchine |
-| `tests/Observer.Core.Tests` | Test su `Observer.Core` |
-| `tests/Observer.Service.Tests` | Test su `Observer.Service`, storico e canale locale compresi |
-| `tests/Observer.App.Tests` | Test sul client HTTP e sulla traduzione delle risposte |
-| `tests/Observer.Cli.Tests` | Test sui messaggi della riga di comando |
+| `src/Observer.Core` | Shared models, the collector abstraction and platform adapters |
+| `src/Observer.Service` | Headless service: samples at 1 Hz, keeps the series in SQLite with aggregation, and exposes the data over authenticated HTTP |
+| `src/Observer.App` | Avalonia desktop client: connects to the service and shows the metrics live |
+| `src/Observer.Cli` | The `observer` command line: shares the key, rotates it, runs diagnostics, and keeps the other machines' tokens |
+| `tests/Observer.Core.Tests` | Tests for `Observer.Core` |
+| `tests/Observer.Service.Tests` | Tests for `Observer.Service`, history and local channel included |
+| `tests/Observer.App.Tests` | Tests for the client: the HTTP client and the mapping of the responses, the view models and their status rules, preferences, and the gauge layout |
+| `tests/Observer.Cli.Tests` | Tests for the command line's messages |
 
-Il client può puntare al servizio in esecuzione sulla stessa macchina o su un'altra.
+The client can point at the service running on the same machine or on another one.
 
-### Cosa misura
+### What it measures
 
-| Metrica | Un'istanza e' | Note |
+| Metric | One instance is | Notes |
 | --- | --- | --- |
-| CPU | la macchina | percentuale di utilizzo, dal delta dei tempi di sistema |
-| Memoria | la macchina | usata, disponibile e totale; "disponibile" e' una stima quando il sistema la fornisce come tale, e lo dice |
-| Spazio disco | un volume (`C:`, `/`) | usato, libero e totale; una capacita' pari a zero e' "sconosciuta", non "vuota" |
-| Attivita' disco | un dispositivo (`Disk 0`, `sda`) | byte letti e scritti al secondo, e percentuale di tempo occupato |
+| CPU | the machine | usage percentage, from the delta of the system times |
+| Memory | the machine | used, available and total; "available" is an estimate when the system does not expose it directly, and it says so |
+| Disk space | a volume (`C:`, `/`) | used, free and total; a capacity of zero is "unknown", not "empty" |
+| Disk activity | a device (`Disk 0`, `sda`) | bytes read and written per second, and percentage of busy time |
 
-Le istanze dell'attivita' disco sono **dispositivi**, non volumi, e di proposito non coincidono
-con quelle dello spazio: un disco porta piu' volumi e un volume puo' estendersi su piu' dischi,
-quindi attribuire il traffico di due volumi a una lettera sarebbe peggio di un nome di
-dispositivo onesto. La percentuale di occupazione si ricava dal tempo **inattivo**, mai sommando
-tempo di lettura e di scrittura: i due si sovrappongono, e su una finestra misurata la somma
-dava 843%.
+Disk-activity instances are **devices**, not volumes, and deliberately do not line up with the
+space ones: a disk carries several volumes and a volume can span several disks, so attributing
+the traffic of two volumes to one drive letter would be worse than an honest device name. The
+busy percentage is derived from **idle** time, never by adding read time and write time: the
+two overlap, and on one measured window the sum came to 843%.
 
-Oltre alle metriche, il servizio espone l'**elenco dei processi** ordinato per CPU, per memoria
-o per I/O, ed e' quello che la dashboard apre cliccando il quadrante corrispondente: la finestra
-scorre da sola fino all'elenco, un secondo clic sullo stesso quadrante lo chiude, un clic su un
-altro quadrante lo cambia. Dal
-quadrante dell'attivita' di un disco si apre l'elenco per I/O, che e' dell'**intera macchina** e
-il titolo lo dice: i contatori sono per processo, e nessuno dei due sistemi dice su quale
-dispositivo sono finiti i byte. I quadranti dello spazio non aprono niente: lo spazio occupato
-su un volume non si attribuisce a un processo in esecuzione.
+Besides the metrics, the service exposes the **process list** sorted by CPU, by memory or by
+I/O, and that is what the dashboard opens when you click the matching gauge: the window
+scrolls down to the list by itself, a second click on the same gauge closes it, and a click on
+another gauge switches it. A disk's activity gauge opens the I/O list, which covers the
+**whole machine**, and its title says so: the counters are per process, and neither system
+says which device the bytes ended up on. The space gauges open nothing: the space used on a
+volume cannot be attributed to a running process.
 
-La finestra ricorda anche **quale macchina si stava guardando** e riapre su quella: chi tiene
-d'occhio un computer in rete non deve piu' sceglierlo a ogni avvio. Si salva il nome, mai
-l'indirizzo e tanto meno il token, ed e' lo stesso nome che sta in `machines.json`; se quella
-voce non c'e' piu' si riparte da questo computer, senza dire niente.
+The window also remembers **which machine you were watching** and reopens on it: anyone
+keeping an eye on a computer on the network no longer has to pick it every time the window
+opens. What is saved is the name, never the address and certainly not the token, and it is
+the same name that is in `machines.json`; if that entry is gone, the window falls back to
+this computer, silently.
 
-La finestra **ricorda dov'era**, quanto era grande e se era a tutto schermo, e riapre li' - a
-meno che quel posto stia su uno schermo che non c'e' piu', nel qual caso apre dove la mette il
-sistema. In alto a destra c'e' lo **zoom** (75, 85, 100, 115, 130, 150 %): scala tutta la
-finestra, quadranti compresi, e viene ricordato anche lui. Sopra il 100 % sono i passi di
-Windows per il testo; sotto si vede di piu' senza scorrere - piu' righe di storico e, nella
-finestra alla misura predefinita, una colonna di quadranti in piu' - al prezzo di scritte
-piu' piccole. Il 75 % e' il pavimento, misurato: i pulsanti vanno da 32 a 24 px e l'anello
-di stato tiene il buco. Accanto
-c'e' il **tema**: System (segue il sistema, come prima), Light o Dark, con cambio immediato,
-tendine comprese e, su Windows 11, anche la barra del titolo. Queste, con la macchina che si
-stava guardando, stanno in
-`preferences.json` accanto a `client.json` - un file a parte, perche' `client.json` puo'
-contenere una credenziale e non va riscritto a ogni chiusura. I quadranti, la striscia e la
-riga selezionata hanno il colore di accento del PC, letto all'avvio: su Windows seguono anche
-un cambio fatto a finestra aperta; su Linux l'accento si legge solo su KDE, LXQt e LXDE, e
-altrove resta il viola predefinito del tema.
+The window **remembers where it was**, how big it was and whether it was maximised, and
+reopens there - unless that place is on a screen that is no longer there, in which case it
+opens wherever the system puts it. Top right is the **zoom** (75, 85, 100, 115, 130, 150 %):
+it scales the whole window, gauges included, and it is remembered too. Above 100 % the steps
+are the ones Windows uses for text; below it you see more without scrolling - more rows of
+history and, in a window at the default size, one more column of gauges - at the price of
+smaller text. 75 % is the floor, and a measured one: buttons go from 32 to 24 px and the
+status ring keeps its hole. Next to it is the **theme**: System (follows the system, as
+before), Light or Dark, which takes effect at once, drop-down lists included and, on
+Windows 11, the title bar too. These settings, together with the machine you were watching,
+live in `preferences.json` next to `client.json` - a separate file, because `client.json` can
+contain a credential and must not be rewritten every time the window closes. The gauges, the
+history strip and the selected row take the PC's accent colour, read at start-up: on Windows
+they also follow a change made while the window is open; on Linux the accent is read only on
+KDE, LXQt and LXDE, and elsewhere it stays the theme's default violet.
 
-"I/O" vuol dire ogni lettura e scrittura che il processo ha chiesto, cache compresa: e' l'unico
-contatore per processo che Windows abbia, e su Linux si leggono `rchar` e `wchar` - non
-`read_bytes` e `write_bytes`, che sarebbero piu' veri per il disco ma diversi da quello che
-dice l'altra macchina sotto lo stesso titolo. Su Linux, poi, `/proc/PID/io` si legge solo con
-il permesso di *ptrace* su quel processo: il servizio gira come utente `observer` e per i
-processi degli altri utenti mostra un trattino. E' voluto - `CAP_SYS_PTRACE` permetterebbe di
-leggere la memoria di qualunque processo - e chi lo vuole togliere aggiunge
-`AmbientCapabilities=CAP_SYS_PTRACE` alla unit di systemd, sapendo cosa concede.
+"I/O" means every read and write the process asked for, cache included: it is the only
+per-process counter Windows has, and on Linux the service reads `rchar` and `wchar` - not
+`read_bytes` and `write_bytes`, which would be truer to the disk but different from what the
+other machine says under the same title. Also, on Linux, `/proc/PID/io` can be read only with
+*ptrace* permission on that process: the service runs as the `observer` user and shows a dash
+for other users' processes. This is deliberate - `CAP_SYS_PTRACE` would allow reading the
+memory of any process - and anyone who wants to lift the restriction adds
+`AmbientCapabilities=CAP_SYS_PTRACE` to the systemd unit, knowing what that grants.
 
-### Aggiungere una metrica
+### Adding a metric
 
-L'unico punto di estensione è `IMetricCollector`. Ogni collector pubblica i propri
-`MetricDescriptor` e restituisce una lista di `MetricPoint`, in un formato uguale per
-tutte le sorgenti. La dimensione per istanza — il core, il disco, l'interfaccia di rete —
-è un campo stringa del punto, non una gerarchia di tipi: per questo per-disco e
-per-processo passano dalla stessa interfaccia senza modificarla. Le unità di misura sono
-un tipo aperto, quindi un sensore in `rpm` o in `V` non richiede di toccare il Core.
+The only extension point is `IMetricCollector`. Each collector publishes its own
+`MetricDescriptor`s and returns a list of `MetricPoint`s, in a format that is the same for
+every source. The per-instance dimension — the core, the disk, the network interface —
+is a string field on the point, not a type hierarchy: that is why per-disk and
+per-process sources can go through the same interface without changing it. Units of
+measure are an open type, so a sensor in `rpm` or in `V` does not require touching the Core.
 
-In pratica si scrive una classe nuova, ma i file da toccare sono cinque, e vale la pena
-saperlo prima:
+In practice you write one new class, but there are five files to touch, and it is worth
+knowing that beforehand:
 
-| file | perche' |
+| file | why |
 |---|---|
-| `src/Observer.Core/Metrics/<Nome>/<Nome>Collector.cs` | il collector |
-| `src/Observer.Core/Composition/ObserverMetrics.cs` | la registrazione |
-| `src/Observer.Core/Platform/HostPlatform.cs` | quale provider su quale sistema |
-| `src/Observer.Core/Platform/Windows/WindowsProviders.cs` | come si misura su Windows |
-| `src/Observer.Core/Platform/Linux/LinuxProviders.cs` | come si misura su Linux |
+| `src/Observer.Core/Metrics/<Name>/<Name>Collector.cs` | the collector |
+| `src/Observer.Core/Composition/ObserverMetrics.cs` | the registration, and which provider on which system |
+| `src/Observer.Core/Platform/HostPlatform.cs` | the `Unsupported` provider, for a system where it cannot be measured |
+| `src/Observer.Core/Platform/Windows/WindowsProviders.cs` | how it is measured on Windows |
+| `src/Observer.Core/Platform/Linux/LinuxProviders.cs` | how it is measured on Linux |
 
-Piu' la tabella dei titoli leggibili in `src/Observer.App/Services/SnapshotProjection.cs`,
-senza la quale il riquadro si intitola `disk` invece di `Disk`.
+Plus the table of human-readable titles in `src/Observer.App/Services/SnapshotProjection.cs`,
+without which the tile is titled `disk` instead of `Disks`.
 
-Quello che **non** va toccato e' l'interfaccia: `IMetricCollector` regge una sorgente nuova
-cosi' com'e', e le due righe che contano - la dimensione per istanza come campo del punto e
-l'unita' come tipo aperto - sono cio' che lo rende vero.
+What must **not** be touched is the interface: `IMetricCollector` handles a new source
+unchanged, and the two lines that matter - the per-instance dimension as a field of the point
+and the unit as an open type - are what make that true.
 
-Una metrica non misurabile su una piattaforma **resta nel catalogo** e si dichiara
-`Unsupported` con il motivo, invece di sparire: "non si può misurare qui" e "me la sono
-dimenticata" devono restare distinguibili in dashboard.
+A metric that cannot be measured on a platform **stays in the catalog** and is reported as
+`Unsupported`, with the reason, instead of disappearing: "it cannot be measured here" and "I
+forgot it" must stay distinguishable in the dashboard.
 
-Lo stesso vale **per singola istanza**. Un punto si costruisce solo dalle fabbriche
-`MetricPoint.Measured`, `.Unsupported` o `.Unavailable`, e porta con sé il proprio stato e
-il proprio motivo. Serve per il caso normale di una sorgente multi-istanza: tre dischi di
-cui uno dietro un bridge USB che non inoltra i comandi SMART deve poter riportare i due
-dischi sani **e** la spiegazione per il terzo. Un collector che legge più istanze deve
-quindi emettere un punto per ognuna, comprese quelle fallite — omettere l'istanza significa
-"non applicabile", non "non ci sono riuscito".
+The same holds **for each individual instance**. A point can be built only through the
+factories `MetricPoint.Measured`, `.Unsupported` or `.Unavailable`, and carries its own state
+and its own reason. This is needed for the ordinary case of a multi-instance source: a source with
+three disks, one of them behind a USB bridge that does not forward SMART commands, must be
+able to report the two healthy disks **and** the explanation for the third. A collector that
+reads several instances must therefore emit one point for each, failed ones included —
+leaving an instance out means "not applicable", not "I failed".
 
-### Vincolo sul campionamento
+### The sampling constraint
 
-**Un solo `BackgroundService` campiona.** Gli endpoint HTTP leggono l'ultimo snapshot
-dalla cache e non chiamano mai `CollectAsync`. Non è una scelta di prestazioni: il
-collector della CPU conserva il campione precedente, e due raccolte simultanee
-produrrebbero percentuali sbagliate in modo intermittente e plausibile.
+**Only one `BackgroundService` samples.** The HTTP endpoints read the latest snapshot from
+the cache and never call `CollectAsync`. This is not a performance choice: the CPU
+collector keeps the previous sample, and two simultaneous collections would produce
+percentages that are intermittently wrong and look plausible.
 
-### Storico e rollup
+### History and rollup
 
-Il servizio conserva le serie su SQLite con tre livelli di dettaglio: il campione grezzo a
-1 s, l'aggregato a 1 minuto e quello a 5 minuti. Senza aggregazione il file crescerebbe
-senza limite.
+The service keeps the series in SQLite at three levels of detail: the raw sample at
+1 s, the 1-minute aggregate and the 5-minute aggregate. Without aggregation the file would
+grow without bound.
 
-Ogni bucket conserva **somma e conteggio**, non la media. Ricombinando bucket con un numero
-diverso di campioni — caso normale dopo un riavvio o il timeout di un collector — la media
-delle medie darebbe un numero credibile e falso.
+Each bucket keeps the **sum and the count**, not the average. When buckets with different
+numbers of samples are recombined — the normal case after a restart or a collector timeout —
+the average of the averages would give a number that is believable and false.
 
-I valori predefiniti, tutti modificabili in `appsettings.json` sotto `Observer:Storage`:
+The defaults, all of which can be changed in `appsettings.json` under `Observer:Storage`:
 
-| Parametro | Predefinito | Cosa copre |
+| Parameter | Default | What it covers |
 | --- | --- | --- |
-| `RawRetention` | 6 ore | il dettaglio al secondo |
-| `MinuteRetention` | 7 giorni | "la settimana scorsa a quest'ora" |
-| `FiveMinuteRetention` | 90 giorni | l'andamento di lungo periodo |
-| `Enabled` | `true` | a `false` il servizio si comporta come se lo storico non esistesse |
+| `RawRetention` | 6 hours | the per-second detail |
+| `MinuteRetention` | 7 days | "this time last week" |
+| `FiveMinuteRetention` | 90 days | the long-term trend |
+| `Enabled` | `true` | when `false`, the service behaves as if the history did not exist |
 
-Un dato non viene mai cancellato prima di essere stato aggregato, anche se la ritenzione lo
-permetterebbe. Un punto mancante resta mancante e non diventa mai uno zero: in un grafico
-uno zero è un dato, un buco è un buco.
+Data is never deleted before it has been aggregated, even when retention would allow it. A
+missing point stays missing and never becomes a zero: in a chart a zero is a value, a gap is
+a gap.
 
-### Endpoint
+### Endpoints
 
-Un chiamante **locale identificato** li raggiunge tutti **senza alcun token**: sulla macchina
-il sistema operativo sa gia' chi sta chiamando, e un segreto condiviso sarebbe lo strumento
-sbagliato. Dalla **rete** il bearer token resta obbligatorio.
+An **identified local** caller reaches all of them **without any token**: on the machine,
+the operating system already knows who is calling, and a shared secret would be the wrong
+tool. From the **network** the bearer token remains mandatory.
 
-| Endpoint | Cosa restituisce |
+| Endpoint | What it returns |
 | --- | --- |
-| `GET /metrics/catalog` | le metriche esistenti, con nome leggibile e unità |
-| `GET /metrics/latest` | l'ultimo campionamento |
-| `GET /metrics/series` | quali serie sono state davvero misurate su questa macchina |
-| `GET /metrics/history` | i punti storici; `resolution` accetta `auto`, `raw`, `1m`, `5m` |
-| `GET /metrics/storage` | dove scrive, quanto occupa, fin dove ha aggregato |
-| `GET /processes` | i processi che consumano di piu'; `by` accetta `cpu` (predefinito), `memory` o `io`, `top` da 1 a 100 (predefinito 15); la risposta ripete il criterio applicato in `by` |
-| `POST /processes/{pid}/kill` | termina quel processo: `204` se e' andata, `404` se il pid non esiste |
+| `GET /metrics/catalog` | the metrics that exist, with a readable name and unit |
+| `GET /metrics/latest` | the latest sample |
+| `GET /metrics/series` | which series have actually been measured on this machine |
+| `GET /metrics/history` | the historical points; `resolution` accepts `auto`, `raw`, `1m`, `5m` |
+| `GET /metrics/storage` | where it writes, how much space it takes up, how far it has aggregated |
+| `GET /processes` | the processes using the most; `by` accepts `cpu` (default), `memory` or `io`, `top` from 1 to 100 (default 15); the response echoes the criterion applied in `by` |
+| `POST /processes/{pid}/kill` | terminates that process: `204` if it worked, `404` if the pid does not exist |
 
-`auto` sceglie la risoluzione più fine ancora disponibile per l'intervallo richiesto: il
-grezzo di ieri è stato cancellato, e restituire un grafico vuoto si leggerebbe come
-"macchina non monitorata".
+`auto` picks the finest resolution still available for the requested interval: yesterday's
+raw data has been deleted, and returning an empty chart would read as "machine not
+monitored".
 
-`/processes/{pid}/kill` e' l'**unica scrittura** del servizio, ed e' ammessa dalla rete col
-token per scelta esplicita: da un'altra macchina si vede un processo impazzito e lo si ferma
-da li'. Ogni tentativo - riuscito o rifiutato dal sistema operativo - finisce nel log del
-servizio con pid, nome e provenienza del chiamante. E' anche il motivo per cui il token non
-sta piu' in un file (vedi "Guardare un'altra macchina"). `GET /processes` risponde `503`
-quando l'elenco non si puo' leggere su quella macchina.
+`/processes/{pid}/kill` is the service's **only write**, and it is allowed from the network
+with the token, by deliberate choice: from another machine you see a runaway process and
+stop it from there. Every attempt, successful or refused by the operating system, ends up in
+the service log with the pid and where the caller came from, and a successful one also
+records the process name. The kill endpoint is also why the token is no longer kept in a file
+(see "Watching another machine"). `GET /processes` returns `503` when the list cannot be
+read on that machine.
 
-## Requisiti
+## Requirements
 
 - .NET SDK 10.0
-- Windows 10/11 oppure una distribuzione Linux con ambiente grafico
+- Windows 10/11 or a Linux distribution with a graphical environment
 
-## Sviluppo
+## Development
 
 ```bash
 dotnet build
@@ -205,14 +200,14 @@ dotnet build
 dotnet test
 ```
 
-**Non serve configurare niente.** Il servizio ascolta in HTTPS su `0.0.0.0:5058` e, in piu', apre un
-canale locale — una named pipe su Windows, un socket unix su Linux — su cui un chiamante
-locale identificato entra senza credenziali. Il token di macchina, che serve solo perche' un
-ALTRO computer possa interrogare questo, se lo genera il servizio al primo avvio e se lo
-custodisce sotto `C:\ProgramData\Observer` oppure `/etc/observer`, con permessi che
-escludono ogni altro account.
+**Nothing needs configuring.** The service listens over HTTPS on `0.0.0.0:5058` and also opens a
+local channel — a named pipe on Windows, a unix socket on Linux — on which an identified
+local caller is served without credentials. As for the machine token, which is needed only so
+that ANOTHER computer can query this one, the service generates it for itself on first start
+and keeps it under `C:\ProgramData\Observer` or `/etc/observer`, with permissions that
+exclude every other account.
 
-Avvio di servizio e client, in due terminali separati:
+Starting the service and the client, in two separate terminals:
 
 ```bash
 dotnet run --project src/Observer.Service
@@ -222,152 +217,153 @@ dotnet run --project src/Observer.Service
 dotnet run --project src/Observer.App
 ```
 
-La dashboard non ha bisogno di sapere niente: senza configurazione va sul canale locale della
-macchina su cui gira.
+The dashboard does not need to know anything: with no configuration it uses the local channel
+of the machine it runs on.
 
-Per leggere le metriche **dalla rete** serve invece il token di quella macchina, che si ottiene
-su quella macchina, da un terminale amministrativo:
+To read the metrics **over the network**, on the other hand, you need that machine's token,
+which you get on that machine, from an elevated terminal:
 
 ```bash
 observer share
 ```
 
-`observer share` stampa **due** valori, e servono entrambi: il token dice che chi chiama e'
-autorizzato, l'impronta del certificato dice che quella macchina e' chi dichiara di essere.
-Senza la seconda, chi riesce a mettersi in mezzo presenta il proprio certificato e il token
-gli arriva addosso.
+`observer share` prints **two** values, and both are needed: the token says the caller is
+authorised, the certificate fingerprint says the machine is who it claims to be. Without the
+second, anyone who manages to put themselves in the middle presents their own certificate
+and the token is handed straight to them.
 
-Il modo normale di usarli e' la dashboard: indirizzo e impronta vanno in `machines.json`, il
-token nel deposito di questa macchina con `observer token set` (vedi "Guardare un'altra
-macchina"), e l'impronta la confronta lei. Da riga di comando il certificato e' autofirmato,
-quindi `curl` non ha un'autorita' a cui appoggiarsi: l'impronta va confrontata **a mano**, e
-solo dopo si procede.
+The normal way to use them is the dashboard: the address and the fingerprint go in
+`machines.json`, the token goes into this machine's credential store with `observer token set`
+(see "Watching another machine"), and the dashboard compares the fingerprint itself. From the
+command line, `curl` has no authority to rely on, because the certificate is self-signed: the
+fingerprint has to be compared **by hand**, and only then do you go ahead.
 
 ```bash
-# 1. che impronta presenta quella macchina, vista da qui
-openssl s_client -connect la-macchina:5058 </dev/null 2>/dev/null   | openssl x509 -noout -fingerprint -sha256
+# 1. which fingerprint that machine presents, as seen from here
+openssl s_client -connect that-machine:5058 </dev/null 2>/dev/null   | openssl x509 -noout -fingerprint -sha256
 
-# 2. se e SOLO se coincide con quella stampata da "observer share" la':
-curl --insecure -H "Authorization: Bearer $Observer__ApiToken"   https://la-macchina:5058/metrics/latest
+# 2. if and ONLY if it matches the one printed by "observer share" on that machine:
+curl --insecure -H "Authorization: Bearer $Observer__ApiToken"   https://that-machine:5058/metrics/latest
 ```
 
-`--insecure` disattiva ogni verifica, quindi da solo non va mai usato: qui vale perche' il
-passo 1 ha gia' fatto a mano il controllo che conta.
+`--insecure` turns off every check, so it must never be used on its own: here it is
+acceptable because step 1 has already done, by hand, the check that matters.
 
-### Riga di comando
+### Command line
 
-Dopo l'installazione con l'MSI, `observer` e' gia' nel `PATH` di sistema: basta aprire un
-terminale **nuovo**. Senza installare, l'eseguibile va invocato col percorso, e in PowerShell
-serve l'operatore di chiamata `&` - un percorso fra virgolette a inizio riga per PowerShell e'
-una stringa, non un comando, e il tentativo ovvio fallisce con un errore di sintassi che non
-nomina la propria causa.
+After installing with the MSI, `observer` is already in the system `PATH`: just open a
+**new** terminal. Without installing, the executable has to be invoked by its path, and in
+PowerShell that needs the call operator `&` - to PowerShell, a quoted path at the start of a
+line is a string, not a command, and the obvious attempt fails with a syntax error that does
+not name its own cause.
 
-| Verbo | Elevazione | Cosa fa |
+| Verb | Elevated | What it does |
 | --- | --- | --- |
-| `observer share` | si | mostra il token di macchina e l'impronta, per configurare un ALTRO computer |
-| `observer rotate-key` | si | genera una chiave nuova; la precedente vale ancora 24 ore, e il servizio usa la vecchia finche' non viene riavviato |
-| `observer doctor` | no | dove sta il deposito, com'e' protetto, e se il canale locale risponde |
-| `observer token set NOME` | no | custodisce il token di un'ALTRA macchina; lo legge da standard input e non lo mostra |
-| `observer token forget NOME` | no | dimentica quel token |
+| `observer share` | yes | shows the machine token and the fingerprint, to configure ANOTHER computer |
+| `observer rotate-key` | yes | generates a new key; the previous one stays valid for another 24 hours, and the service uses the old one until it is restarted |
+| `observer doctor` | no | where the credential store is, how it is protected, and whether the local channel answers |
+| `observer token set NAME` | no | keeps the token of ANOTHER machine; it reads it from standard input and does not show it |
+| `observer token forget NAME` | no | forgets that token |
 
-### Guardare un'altra macchina
+### Watching another machine
 
-La macchina su cui sei seduto non richiede nulla: la dashboard entra dal canale locale, senza
-porta e senza token. Per guardarne un'altra servono **due** valori, e fanno lavori diversi.
+The machine you are sitting at needs nothing: the dashboard connects through the local channel,
+with no port and no token. To watch another one you need **two** values, and they do different
+jobs.
 
 ```bash
 observer share
 ```
 
-su **quella** macchina, da un terminale con privilegi, stampa il token e l'impronta del suo
-certificato. Il token dice che il chiamante puo' entrare; l'impronta dice che la macchina e'
-quella che dichiara di essere.
+run on **that** machine, from an elevated terminal, prints the token and the fingerprint of its
+certificate. The token says the caller is allowed in; the fingerprint says the machine is the
+one it claims to be.
 
-L'impronta e l'indirizzo vanno in `machines.json`, accanto a `client.json`. **Il token no:**
+The fingerprint and the address go in `machines.json`, next to `client.json`. **The token does
+not:**
 
 ```json
 {
   "machines": [
     {
-      "name": "portatile",
-      "baseAddress": "https://portatile:5058/",
+      "name": "laptop",
+      "baseAddress": "https://laptop:5058/",
       "fingerprint": "sha256:..."
     }
   ]
 }
 ```
 
-`name` e' **obbligatorio**: e' la chiave sotto cui viene custodito il token, e viene controllato
-prima di comporre qualsiasi percorso - lettere, cifre, spazio, `.`, `_` e `-`, niente altro -
-perche' un nome come `../../id_rsa` andrebbe altrimenti a leggere e sovrascrivere un file fuori
-dalla cartella.
+`name` is **required**: it is the key the token is kept under, and it is checked before any
+path is built from it - letters, digits, space, `.`, `_` and `-`, nothing else - because a name
+like `../../id_rsa` would otherwise read and overwrite a file outside the folder.
 
-Il token si consegna a questa macchina con un comando, e non si scrive da nessuna parte:
+The token is handed to this machine with a command, and you do not write it anywhere:
 
 ```bash
-observer token set portatile
+observer token set laptop
 ```
 
-Lo legge da standard input e non lo mostra mentre lo digiti. Finisce nel **Credential Manager
-di Windows**, oppure — su Linux — in un file leggibile solo dal proprietario, che Observer si
-rifiuta di usare se i permessi sono piu' larghi.
+The command reads it from standard input and does not show it while you type. It ends up in the
+**Windows Credential Manager**, or — on Linux — in a file readable only by its owner, which
+Observer refuses to use if the permissions are any wider.
 
-Il motivo e' cambiato di recente e vale la pena dirlo: da quando esiste
-`/processes/{pid}/kill`, quel token non serve piu' solo a **leggere** la CPU di un'altra
-macchina, serve anche a **fermarci dei processi**. Un file fatto per essere aperto, copiato e
-incollato non e' il posto giusto per una credenziale del genere, e infatti una voce che se lo
-porta ancora dietro viene rifiutata — anche quando il token e' quello giusto.
+The reason for this changed recently, and it is worth spelling out: since
+`/processes/{pid}/kill` was added, that token no longer just lets you **read** another
+machine's CPU: it also lets you **stop processes** on it. A file meant to be opened, copied and
+pasted is not the place for a credential like that, which is why an entry that still carries one
+is refused — even when the token is the right one.
 
-**Aggiornando da una versione precedente alla 0.6.0**: per ogni macchina remota esegui
-`observer token set NOME` e poi cancella la riga `apiToken` da `machines.json`. Finche' resta,
-quella macchina compare sotto l'elenco come inutilizzabile, con scritto il comando da eseguire.
+**Upgrading from a version before 0.6.0**: for each remote machine run
+`observer token set NAME` and then delete the `apiToken` line from `machines.json`. As long as
+the line is there, that machine appears under the list as unusable, with the command to run
+written next to it.
 
-Accanto a ogni macchina dell'elenco c'e' un **segno di stato** che dice se risponde, senza
-doverci cliccare sopra: un anello grigio vuoto finche' non e' stata sentita, un pallino verde
-pieno se risponde, un anello ambra mentre un guasto dura da meno di dieci secondi, un rombo
-rosso dopo. Pieno o vuoto, cerchio o rombo: si legge anche da chi non distingue i colori,
-perche' nel tema chiaro ambra e rosso, per la forma piu' comune di daltonismo, sono lo stesso
-colore. I colori sono quelli della barra di stato, cosi' un
-segno rosso vuol dire cio' che vuol dire una barra rossa. Sotto il nome, quando c'e' un guasto
-da raccontare, si legge anche **da quanto dura** - "for 3 min", "for 2 h 10 min" - e la stessa
-frase sta nel suggerimento; un token rifiutato o una versione
-incompatibile sono rossi subito. Le macchine che non stai guardando vengono sondate ogni
-quindici secondi, tutte insieme e senza trattenere i quadranti: una macchina spenta costa un
-timeout di otto secondi, e i quadranti non devono pagarlo. Il suggerimento sulla riga dice il
-motivo.
+Next to every machine in the list there is a **status mark** that tells you whether it answers,
+without having to click on it: a hollow grey ring until it has been heard from, a filled green
+dot if it answers, an amber ring while a fault has lasted less than ten seconds, and a red
+diamond after that, except for a service that answers but has not produced a reading yet, which
+stays an amber ring. Filled or hollow, circle or diamond: it can be read even by someone who
+cannot tell the colours apart, because in the light theme amber and red are the same colour for
+the most common form of colour blindness. The colours are the status bar's, so a red mark means
+what a red bar means. Under the name, when there is a fault to report, you can also read **how
+long it has lasted** - "for 3 min", "for 2 h 10 min" - and the same phrase is in the tooltip; a
+rejected token or an incompatible version is red at once. The machines you are not watching are
+probed every fifteen seconds, all together and without holding up the gauges: a machine that is
+switched off costs an eight-second timeout, and the gauges must not pay for it. The tooltip on
+the row gives the reason.
 
-La **barra laterale c'e' sempre**, anche quando la macchina e' una sola: li' dentro trovi il
-percorso esatto di `machines.json` da scrivere. Nasconderla finche' non ci sono due macchine
-significherebbe annunciare la funzione solo a chi sa gia' che esiste.
+The **sidebar is always there**, even when there is only one machine: that is where you find
+the exact path of the `machines.json` you need to write. Hiding it until there are two machines
+would mean announcing the feature only to those who already know it exists.
 
-Quella locale e' sempre la prima: non si elenca e non si puo' togliere. Una voce scritta male
-**non sparisce in silenzio** - compare sotto l'elenco con il motivo, perche' una macchina che
-semplicemente non c'e' e' indistinguibile da una che non e' stata aggiunta.
+The local machine is always the first: you do not list it, and it cannot be removed. A malformed
+entry **does not vanish silently** - it appears under the list with the reason, because a
+machine that is simply not there cannot be told apart from one that was never added.
 
-Quando una macchina non risponde, la barra di stato distingue **connessione rifiutata** - c'e'
-qualcuno a quell'indirizzo ma il servizio non e' in ascolto: va avviato - da **nessuna risposta**
-entro 8 secondi, che di solito e' una porta chiusa o un firewall. I due rimedi sono opposti, e
-confonderli costa un pomeriggio. Nei primi 10 secondi la barra resta gialla, non rossa: un
-servizio che sta ancora partendo rifiuta anche lui. Un token rifiutato, un'impronta diversa o
-un servizio piu' vecchio della dashboard sono rossi da subito, perche' fra un minuto saranno
-identici. Quel messaggio si puo' **copiare**, col pulsante `Copy` sulla barra stessa: un'impronta
-che non corrisponde ne stampa due per intero, e nessuno le ricopia a mano. Anche una riga
-dell'elenco dei processi si copia, dal menu del tasto destro, e porta con se' il PID - che
-identifica il processo quando di "chrome" ce ne sono dodici. Il resto delle scritte non e'
-selezionabile di proposito:
-un testo selezionabile si prende il clic per cominciare la selezione, e trascinare su un
-quadrante ne aprirebbe il pannello invece di scegliere le parole.
+When a machine does not answer, the status bar distinguishes **connection refused** - something
+is at that address but the service is not listening: it needs to be started - from **no answer**
+within 8 seconds, which is usually a closed port or a firewall. The two remedies are opposite,
+and mixing them up costs an afternoon. For the first 10 seconds the bar stays neutral, not red:
+a service that is still starting refuses connections too. A rejected token, a different
+fingerprint or a service older than the dashboard are red at once, because a minute later they
+will be exactly the same. That message can be **copied**, with the `Copy` button on the bar
+itself: a fingerprint mismatch prints both fingerprints in full, and nobody retypes those by hand.
+A row of the process list can be copied too, from the right-click menu, and it carries the PID
+with it - which identifies the process when there are twelve called "chrome". The rest of the
+text is deliberately not selectable: selectable text takes the click to start a selection, and
+dragging over a gauge would open its panel instead of selecting the words.
 
-**Sulla rete il servizio risponde solo in HTTPS.** Prima rispondeva in chiaro, e il token
-attraversava la rete una volta al secondo: una sola cattura di pacchetti consegnava una
-credenziale permanente, e ruotarla non serviva perche' quella nuova era sul filo un secondo
-dopo. Il certificato e' autofirmato e generato dal servizio stesso, quindi nessuna autorita' lo
-garantisce: **e' l'impronta a legare il collegamento a quella macchina**, ed e' per questo che
-senza non si va da nessuna parte. Se un giorno cambia, la dashboard si ferma e mostra la vecchia
-e la nuova. Dopo una reinstallazione e' normale e si aggiorna il file; se non hai reinstallato
-niente, non copiare il valore nuovo.
+**On the network the service answers only over HTTPS.** It used to answer in cleartext, and the
+token crossed the network once a second: a single packet capture handed over a permanent
+credential, and rotating it did not help, because the new one was on the wire a second later.
+The certificate is self-signed and generated by the service itself, so no authority vouches for
+it: **it is the fingerprint that ties the connection to that machine**, and that is why you get
+nowhere without it. If it ever changes, the dashboard stops and shows the old one and the new
+one. After a reinstall that is normal, and you update the file; if you have not reinstalled
+anything, do not copy the new value.
 
-### Pacchetti
+### Packages
 
 ```bash
 ./packaging/windows/pack.ps1
@@ -377,65 +373,63 @@ niente, non copiare il valore nuovo.
 ./packaging/linux/pack.sh
 ```
 
-Il primo produce un MSI, il secondo un `.deb`. Registrano il servizio, installano la dashboard
-e creano il collegamento nel menu.
+The first produces an MSI, the second a `.deb`. They register the service, install the
+dashboard and create the menu shortcut.
 
-**La porta nel firewall.** L'MSI aggiunge a Windows Firewall due regole per la porta `5058/tcp`,
-legate all'eseguibile del servizio: una per le reti **private** e una per quelle di **dominio**,
-entrambe limitate alla **sottorete locale**. Mai sulle reti pubbliche: il Wi-Fi di un bar non e'
-un posto dove esporre le metriche di una macchina, nemmeno dietro un token. Le regole se ne
-vanno con la disinstallazione. Se la macchina remota sta su un'altra sottorete, la regola va
-allargata a mano, sapendo cosa si concede. Fino alla 0.7.0 il servizio ascoltava sulla rete e
-il firewall rifiutava in silenzio ogni connessione: la dashboard remota diceva "no answer" e
-mandava a cercare un guasto di rete che non c'era.
+**The port in the firewall.** The MSI adds two rules to Windows Firewall for port `5058/tcp`,
+bound to the service's executable: one for **private** networks and one for **domain**
+networks, both limited to the **local subnet**. Never on public networks: a café's Wi-Fi is no
+place to expose a machine's metrics, not even behind a token. Uninstalling removes the rules.
+If the remote machine is on another subnet, the rule has to be widened by hand, knowing what
+that grants. Up to 0.7.0 the service listened on the network and the firewall silently refused
+every connection: the remote dashboard said "no answer" and sent you looking for a network
+fault that did not exist.
 
-Il `.deb` invece **non apre niente**, perche' un pacchetto Debian non tocca il firewall di chi lo
-installa: porta un profilo per `ufw`, cosi' che
+The `.deb`, on the other hand, **opens nothing**, because a Debian package does not touch the
+firewall of whoever installs it: it ships a profile for `ufw`, so that
 
 ```bash
 sudo ufw allow Observer
 ```
 
-sia tutto quello che serve, e la nota a fine installazione lo dice. Per guardare la macchina su
-cui si e' seduti non serve in nessuno dei due casi: la dashboard entra dal canale locale.
+is all it takes, and the note at the end of the installation says so. In neither case is this
+needed to watch the machine you are sitting at: the dashboard connects through the local
+channel.
 
-**Se il servizio muore, riparte da solo.** L'MSI imposta le azioni di ripristino di Windows:
-riavvio dopo cinque secondi, al primo guasto come a quelli successivi, con il conteggio azzerato
-dopo un giorno senza guasti. Su Linux lo fa la unit di systemd, che ha `Restart=on-failure` dalla
-prima versione. Prima della 0.14.1 il lato Windows non ne aveva nessuna, e un processo che moriva
-lasciava il servizio fermo fino al riavvio della macchina, senza che niente lo dicesse.
+**If the service dies, it restarts by itself.** The MSI sets Windows' recovery actions: a
+restart after five seconds, on the first failure and on every later one, with the count reset
+after a day without failures. On Linux the systemd unit does it; it has had
+`Restart=on-failure` since the first version. Before 0.14.1 the Windows side had none, and a
+process that died left the service stopped until the machine was restarted, and nothing
+reported it.
 
-**Disinstallando l'MSI dal Pannello di controllo se ne va tutto**: il servizio, i file, il
-deposito delle credenziali sotto `ProgramData` e lo storico, che vive nel profilo dell'account
-di sistema e non e' un posto che qualcuno andrebbe a cercare a mano. Un **aggiornamento** e'
-escluso da questa pulizia, e la distinzione non e' una sottigliezza: Windows disinstalla la
-versione precedente prima di installare la nuova, quindi senza quella condizione ogni
-aggiornamento porterebbe via token e certificato - e con un'impronta nuova ogni dashboard
-remota si fermerebbe mostrando un messaggio che parla di qualcuno in mezzo alla connessione.
-Un aggiornamento non deve somigliare a un attacco. **Nessuno dei due conosce alcun token**: il servizio se lo
-procura da se' al primo avvio, quindi non c'e' alcun segreto da passare all'installazione, da
-registrare in un log, o da lasciarsi dietro se fallisce a meta'.
+**Uninstalling the MSI from Control Panel removes everything**: the service, the files, the
+credential store under `ProgramData` and the history, which lives in the system account's
+profile, a place nobody would go looking in by hand. An **upgrade** is excluded from
+this clean-up, and the distinction is not a fine point: Windows uninstalls the previous version
+before installing the new one, so without that condition every upgrade would take the token and
+the certificate away - and with a new fingerprint every remote dashboard would stop, showing a
+message about someone in the middle of the connection. An upgrade must not look like an attack.
+**Neither package knows any token**: the service obtains one for itself on first start, so there
+is no secret to pass to the installation, to record in a log, or to leave behind if it fails
+halfway.
 
-Il `.deb` installa anche `man observer` e `man observer-dashboard`, ed e' verificato da
-**lintian** dentro la CI: il job `pack-linux` lo esegue con `--fail-on error,warning` sul pacchetto
-appena costruito. L'unico tag sovrascritto e' `embedded-library` - `libSkiaSharp.so` porta
-`freetype`, `libjpeg` e `libpng` compilati dentro, e una variante collegata alle librerie di
-sistema non esiste. La ragione sta scritta in `packaging/linux/debian/lintian-overrides`,
-perche' una vulnerabilita' in una di quelle tre non si chiude aggiornando Debian.
+The `.deb` also installs `man observer` and `man observer-dashboard`, and it is checked by
+**lintian** in CI: the `pack-linux` job runs it with `--fail-on error,warning` on the package it
+has just built. The only overridden tag is `embedded-library` - `libSkiaSharp.so` carries
+`freetype`, `libjpeg` and `libpng` compiled in, and no variant linked against the system
+libraries exists. The reason is written down in `packaging/linux/debian/lintian-overrides`,
+because a vulnerability in one of those three is not closed by updating Debian.
 
-### Nota sulla globalizzazione
+### A note on globalization
 
-`InvariantGlobalization` **non** va in `Directory.Build.props`: verificato che lì spegne
-in silenzio gli analyzer CA1305 e CA1310, cioè proprio quelli che impediscono il parsing
-dipendente dalla cultura in `/proc`. L'invarianza a runtime è garantita dai
-`runtimeconfig.template.json`, che ogni progetto **eseguibile** deve avere.
+`InvariantGlobalization` does **not** go in `Directory.Build.props`: set there, it has been
+verified to silently switch off the CA1305 and CA1310 analyzers, which are precisely the ones
+that prevent culture-dependent parsing of `/proc`. Invariant globalization at runtime is
+guaranteed by the `runtimeconfig.template.json` files, which every **executable** project must
+have.
 
 ## Code signing policy
-
-Questa e' l'unica sezione del README in inglese, e non e' una svista: e' una
-dichiarazione formale, con una parte a testo obbligato, che SignPath Foundation
-richiede a chi chiede la firma gratuita per un progetto open source. Tradurla la
-renderebbe inutile.
 
 The packages published by this project are **not code signed**. Windows will say so
 twice, in two different ways, and the two are not fixed by the same thing:
@@ -469,6 +463,6 @@ its own; the dashboard connects only to the addresses the user writes into its o
 configuration file. There is no telemetry, no usage reporting and no automatic update
 check.
 
-## Licenza
+## License
 
 [MIT](LICENSE)
