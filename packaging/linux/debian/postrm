@@ -1,14 +1,14 @@
 #!/bin/sh
 set -e
 
-# NON si cancellano /etc/observer ne' /var/lib/observer, nemmeno su purge, e nemmeno l'utente
-# observer che li possiede. Dentro ci sono il token di macchina e lo storico: cancellarli
-# sarebbe una sorpresa, e su un aggiornamento andato storto sarebbe una perdita.
-# Chi vuole liberarsene lo fa a mano, sapendo cosa sta facendo.
+# /etc/observer and /var/lib/observer are NOT deleted, not even on purge, and neither is the
+# observer user that owns them. They hold the machine token and the history: deleting them
+# would be a surprise, and after a failed upgrade it would be a loss.
+# Whoever wants to get rid of them does it by hand, knowing what they are doing.
 #
-# Cio' che invece si ripulisce sono i collegamenti di abilitazione, e li ripulisce
-# deb-systemd-helper perche' e' l'unico che sa quali ha creato lui. "systemctl disable" non
-# tiene alcuno stato, quindi dopo un purge lascerebbe dietro di se' cio' che aveva acceso.
+# The enablement links, on the other hand, are cleaned up, and deb-systemd-helper does it
+# because it is the only one that knows which ones it created. "systemctl disable" keeps no
+# state, so after a purge it would leave behind whatever it had switched on.
 
 if [ -d /run/systemd/system ]; then
     systemctl --system daemon-reload >/dev/null || true
@@ -21,11 +21,11 @@ case "$1" in
         fi
         ;;
     purge)
-        # In purge le dipendenze possono essere gia' state rimosse: da qui in poi
-        # deb-systemd-helper potrebbe non esserci piu', e il controllo non e' pedanteria.
-        # "command -v" e non "[ -x /usr/bin/... ]": lintian segnala il percorso fissato
-        # (command-with-path-in-maintainer-script), e ha ragione due volte, perche' quel
-        # percorso e' una promessa che non tocca a noi fare.
+        # On purge the dependencies may already have been removed: from here on
+        # deb-systemd-helper may no longer be there, and the check is not pedantry.
+        # "command -v" and not "[ -x /usr/bin/... ]": lintian flags the hard-coded path
+        # (command-with-path-in-maintainer-script), and it is doubly right, because that
+        # path is a promise that is not ours to make.
         if command -v deb-systemd-helper >/dev/null 2>&1; then
             deb-systemd-helper purge observer.service >/dev/null || true
             deb-systemd-helper unmask observer.service >/dev/null || true

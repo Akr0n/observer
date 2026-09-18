@@ -1,5 +1,5 @@
 Package: observer
-Version: @VERSIONE@
+Version: @VERSION@
 Section: admin
 Priority: optional
 Architecture: amd64

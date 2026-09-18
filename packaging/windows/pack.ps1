@@ -1,98 +1,98 @@
 <#
 .SYNOPSIS
-    Costruisce l'MSI di Observer.
+    Builds the Observer MSI.
 
 .DESCRIPTION
-    Pubblica i tre eseguibili in una cartella di payload e costruisce il pacchetto.
-    Non richiede elevazione: costruire un MSI e' un'operazione ordinaria, installarlo no.
+    Publishes the three executables into a payload folder and builds the package.
+    Needs no elevation: building an MSI is an ordinary operation, installing one is not.
 
-    Il progetto WiX sta DELIBERATAMENTE fuori da Observer.slnx: WixToolset.Sdk porta binari
-    nativi solo per Windows e la validazione ICE gira sempre, quindi dentro la soluzione
-    farebbe fallire per sempre il job "build (ubuntu-latest)" della CI, che e' un check
-    obbligatorio del ruleset.
+    The WiX project stays DELIBERATELY outside Observer.slnx: WixToolset.Sdk ships native
+    binaries for Windows only and ICE validation always runs, so inside the solution it
+    would fail the CI job "build (ubuntu-latest)" for ever, and that job is a required
+    check of the ruleset.
 
-.PARAMETER Configurazione
-    Release oppure Debug.
+.PARAMETER Configuration
+    Release or Debug.
 
 .EXAMPLE
     .\packaging\windows\pack.ps1
 #>
 [CmdletBinding()]
 param(
-    [string] $Configurazione = 'Release'
+    [string] $Configuration = 'Release'
 )
 
 $ErrorActionPreference = 'Stop'
 
-$radice = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $payload = Join-Path $PSScriptRoot 'payload'
 
 if (Test-Path $payload) {
     Remove-Item $payload -Recurse -Force
 }
 
-foreach ($progetto in 'Observer.Service', 'Observer.App', 'Observer.Cli') {
-    Write-Host "Pubblico $progetto..."
+foreach ($project in 'Observer.Service', 'Observer.App', 'Observer.Cli') {
+    Write-Host "Publishing $project..."
 
-    # Mirato a win-x64: senza, SkiaSharp spedisce le librerie native di OGNI piattaforma e il
-    # pacchetto passa da una decina di megabyte a oltre cento.
-    # E --self-contained true, misurato su una macchina vera. Con "false" l'MSI installa
-    # binari che pretendono ASP.NET Core 10 e non verifica che ci sia: su un PC con .NET 8 il
-    # servizio parte, non trova il runtime, muore in silenzio, il gestore servizi aspetta
-    # trenta secondi e riporta un timeout, e Windows Installer traduce tutto in "privilegi
-    # insufficienti". Tre messaggi, e nessuno che nomini la causa. Su Linux non succede,
-    # perche' il .deb dichiara aspnetcore-runtime-10.0 e apt si rifiuta di installare senza;
-    # su Windows non c'e' nessuno che risolva una dipendenza, quindi la si porta dentro.
-    # Costo misurato: payload 242 MB, MSI da 12,8 a 51 MB dopo la compressione. Contropartita
-    # da sapere: le correzioni di sicurezza del runtime non arrivano piu' da Windows Update,
-    # arrivano con una release di Observer.
+    # Targeted at win-x64: without it, SkiaSharp ships the native libraries for EVERY platform
+    # and the package grows from about ten megabytes to over a hundred.
+    # And --self-contained true, measured on a real machine. With "false" the MSI installs
+    # binaries that require ASP.NET Core 10 and does not check that it is there: on a PC with
+    # .NET 8 the service starts, does not find the runtime, dies without a word, the service
+    # manager waits thirty seconds and reports a timeout, and Windows Installer turns all of
+    # it into "insufficient privileges". Three messages, and not one names the cause. On Linux
+    # this does not happen, because the .deb declares aspnetcore-runtime-10.0 and apt refuses
+    # to install without it; on Windows nothing resolves a dependency, so the package carries it.
+    # Measured cost: payload 242 MB, MSI from 12.8 to 51 MB after compression. The trade-off
+    # to know about: runtime security fixes no longer come from Windows Update, they come
+    # with an Observer release.
     #
-    # I commenti stanno QUI e non fra gli argomenti: un commento dentro una continuazione con
-    # il backtick la interrompe, e PowerShell legge la riga seguente come un comando nuovo -
-    # "il termine '-c' non e' riconosciuto". Successo scrivendo proprio questo commento, e il
-    # controllo di sintassi non lo vede: e' un errore di esecuzione, non di analisi.
-    & dotnet publish (Join-Path $radice "src\$progetto") `
-        -c $Configurazione -r win-x64 --self-contained true `
+    # The comments are HERE and not between the arguments: a comment inside a backtick
+    # continuation breaks it, and PowerShell reads the next line as a new command -
+    # "The term '-c' is not recognized". It happened while writing this very comment, and the
+    # syntax check does not see it: it is a run-time error, not a parse error.
+    & dotnet publish (Join-Path $repoRoot "src\$project") `
+        -c $Configuration -r win-x64 --self-contained true `
         -o $payload --nologo | Out-Null
 
     if ($LASTEXITCODE -ne 0) {
-        throw "La pubblicazione di $progetto e' fallita."
+        throw "Publishing $project failed."
     }
 }
 
-# appsettings.Local.json e' il file dove uno sviluppatore tiene il proprio token, e "dotnet
-# publish" lo porta con se'. Va tolto dal payload PRIMA di impacchettare: un MSI finisce su
-# GitHub Releases. Il progetto WiX ha comunque una guardia che fa fallire la build se lo trova,
-# ma trovarselo qui e' il caso normale, non un'anomalia da segnalare.
+# appsettings.Local.json is the file where a developer keeps their own token, and "dotnet
+# publish" takes it along. It must be removed from the payload BEFORE packaging: an MSI
+# ends up on GitHub Releases. The WiX project also has a guard that fails the build if it
+# finds it, but finding it here is the normal case, not an anomaly to report.
 Get-ChildItem $payload -Filter 'appsettings*.Local.json' -ErrorAction SilentlyContinue |
     ForEach-Object {
-        Write-Host "Tolgo dal payload: $($_.Name)"
+        Write-Host "Removing from the payload: $($_.Name)"
         Remove-Item $_.FullName -Force
     }
 
-Write-Host 'Costruisco il pacchetto...'
-& dotnet build (Join-Path $PSScriptRoot 'Observer.wixproj') -c $Configurazione --nologo
+Write-Host 'Building the package...'
+& dotnet build (Join-Path $PSScriptRoot 'Observer.wixproj') -c $Configuration --nologo
 
 if ($LASTEXITCODE -ne 0) {
-    throw 'La costruzione del pacchetto e'' fallita.'
+    throw 'Building the package failed.'
 }
 
 $msi = Get-ChildItem (Join-Path $PSScriptRoot 'bin') -Recurse -Filter 'Observer.msi' |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
 Write-Host ''
-Write-Host ("Pacchetto: {0} ({1:N1} MB)" -f $msi.FullName, ($msi.Length / 1MB))
+Write-Host ("Package: {0} ({1:N1} MB)" -f $msi.FullName, ($msi.Length / 1MB))
 Write-Host ''
-Write-Host 'Per installarlo serve un terminale ELEVATO:'
+Write-Host 'Installing it needs an ELEVATED terminal:'
 Write-Host ("    msiexec /i `"{0}`"" -f $msi.FullName)
 Write-Host ''
-Write-Host 'Se su questa macchina esiste gia'' un servizio Observer registrato a mano con'
-Write-Host 'scripts\servizio-windows.ps1, disinstallalo PRIMA: il pacchetto non lo conosce e'
-Write-Host 'non lo gestisce.'
+Write-Host 'If this machine already has an Observer service registered by hand with'
+Write-Host 'scripts\windows-service.ps1, uninstall it FIRST: the package does not know about it'
+Write-Host 'and does not manage it.'
 Write-Host ''
-Write-Host 'E controlla che la cartella di installazione sia VUOTA. I binari copiati a mano'
-Write-Host 'vengono da un publish senza identificatore di piattaforma, e portano una'
-Write-Host 'System.ServiceProcess.ServiceController.dll che su Windows non funziona: a parita'''
-Write-Host 'di versione Windows Installer NON la sostituisce, il servizio non parte, e'
-Write-Host "l'installazione si ferma con un errore 1920 che parla di privilegi insufficienti"
-Write-Host 'e non nomina la vera causa.'
+Write-Host 'Also check that the installation folder is EMPTY. Binaries copied by hand'
+Write-Host 'come from a publish with no runtime identifier, and carry a'
+Write-Host 'System.ServiceProcess.ServiceController.dll that does not work on Windows: with an'
+Write-Host 'equal version number Windows Installer does NOT replace it, the service does not'
+Write-Host "start, and the installation stops with error 1920, which talks about insufficient"
+Write-Host 'privileges and does not name the real cause.'

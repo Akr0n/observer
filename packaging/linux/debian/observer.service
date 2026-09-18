@@ -4,42 +4,42 @@ Documentation=https://github.com/Akr0n/observer
 After=network.target
 
 [Service]
-# Type=notify e non simple: il servizio segnala la propria prontezza attraverso
-# Microsoft.Extensions.Hosting.Systemd, che e' gia' referenziato. Con simple, systemd
-# considererebbe il servizio pronto appena il processo esiste, cioe' prima che Kestrel abbia
-# legato le porte.
+# Type=notify and not simple: the service reports its own readiness through
+# Microsoft.Extensions.Hosting.Systemd, which is already referenced. With simple, systemd
+# would consider the service ready as soon as the process exists, that is, before Kestrel has
+# bound its ports.
 Type=notify
 
-# NON root. Un utente di sistema dedicato basta e avanza: e' il postinst a creare /etc/observer
-# con il proprietario giusto, e da li' in poi il servizio ci scrive da se'.
+# NOT root. A dedicated system user is more than enough: postinst creates /etc/observer
+# with the right owner, and from then on the service writes there by itself.
 User=observer
 Group=observer
 
-# OBBLIGATORIO, e non e' una rifinitura. Senza, il servizio non trova appsettings.json, perde in
-# SILENZIO la sezione Kestrel e ripiega su localhost:5000: smette di ascoltare sulla rete e
-# nessuno se ne accorge. Misurato.
+# MANDATORY, and not cosmetic. Without it the service cannot find appsettings.json, SILENTLY
+# loses the Kestrel section and falls back to localhost:5000: it stops listening on the
+# network and nobody notices. Measured.
 WorkingDirectory=/usr/lib/observer/service
 ExecStart=/usr/lib/observer/service/Observer.Service
 
-# /run/observer, dove nasce il socket del canale locale. Lo crea systemd col proprietario del
-# servizio, cosi' il servizio non deve avere il permesso di scrivere in /run.
+# /run/observer, where the local channel's socket is created. systemd creates the directory
+# owned by the service's user, so the service needs no permission to write to /run.
 RuntimeDirectory=observer
 RuntimeDirectoryMode=0755
 
-# /var/lib/observer, dove vive lo storico.
+# /var/lib/observer, where the history is kept.
 StateDirectory=observer
 StateDirectoryMode=0750
 
-# ASSOLUTO, di proposito: un percorso relativo farebbe finire il database nella home di root,
-# che ProtectHome=yes poi nasconde, e lo storico sparirebbe senza un errore.
+# ABSOLUTE, on purpose: a relative path would put the database in root's home, which
+# ProtectHome=yes then hides, and the history would vanish without an error.
 Environment=Observer__Storage__DatabasePath=/var/lib/observer/observer.db
 
 Restart=on-failure
 RestartSec=5
 
-# Irrobustimento. ProtectSystem=strict rende /usr e /etc di sola lettura, quindi serve
-# riaprire esplicitamente la sola cartella delle credenziali: e' li' che il servizio genera e
-# custodisce il proprio token al primo avvio.
+# Hardening. ProtectSystem=strict makes /usr and /etc read-only, so the credentials folder
+# alone has to be made writable again explicitly: that is where the service generates and
+# keeps its own token on first start.
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
