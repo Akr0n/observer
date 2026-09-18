@@ -7,318 +7,320 @@ using Observer.Core.Metrics.Memory;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// I due numeri accanto al nome di una macchina che non si sta guardando.
+/// The two numbers next to the name of a machine you are not watching.
 /// </summary>
 /// <remarks>
-/// La barra laterale risponde a una domanda sola - "devo cambiare macchina?" - e i due numeri
-/// esistono per quella. Le regole qui dicono soprattutto cosa succede quando la risposta non si
-/// sa, che e' il caso in cui uno zero inventato fa piu' danno di un vuoto.
+/// The sidebar answers one question only - "should I switch machine?" - and the two numbers
+/// exist for that. The rules here are mostly about what happens when the answer is not known,
+/// which is the case where an invented zero does more damage than a blank.
 /// </remarks>
-public class CaricoTests
+public class MachineLoadTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 9, 12, 9, 0, 0, TimeSpan.Zero);
 
-    private static MachineSnapshot Campionamento(params MetricSnapshot[] collector) =>
-        new(MachineSnapshot.CurrentSchemaVersion, DateTimeOffset.UnixEpoch, collector);
+    private static MachineSnapshot Snapshot(params MetricSnapshot[] collectors) =>
+        new(MachineSnapshot.CurrentSchemaVersion, DateTimeOffset.UnixEpoch, collectors);
 
-    private static MetricSnapshot Gruppo(string id, params MetricPoint[] punti) =>
-        new(id, CollectorStatus.Ok, null, punti);
+    private static MetricSnapshot Group(string id, params MetricPoint[] points) =>
+        new(id, CollectorStatus.Ok, null, points);
 
-    private static MachineRow Voce() => new(ObserverEndpoint.Remote(
-        new Uri("https://altra:5058/"), "token", "machines.json", new string('a', 64), "altra"));
+    private static MachineRow RemoteRow() => new(ObserverEndpoint.Remote(
+        new Uri("https://other:5058/"), "token", "machines.json", new string('a', 64), "other"));
 
     [Fact]
-    public void IDueNumeriSiLeggonoDalCampionamentoCheLaSondaHaGiaInMano()
+    public void BothNumbersComeFromTheSnapshotTheProbeAlreadyHasAndTheCaptionRoundsThem()
     {
-        MachineLoad carico = MachineLoad.From(Campionamento(
-            Gruppo("cpu", MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(42.7d))),
-            Gruppo("memory", MetricPoint.Measured(MemoryCollector.UsedPercentMetricId, null, MetricValue.FromNumber(61.2d)))));
+        MachineLoad load = MachineLoad.From(Snapshot(
+            Group("cpu", MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(42.7d))),
+            Group("memory", MetricPoint.Measured(MemoryCollector.UsedPercentMetricId, null, MetricValue.FromNumber(61.2d)))));
 
-        Assert.Equal(42.7d, carico.Cpu);
-        Assert.Equal(61.2d, carico.Memory);
+        Assert.Equal(42.7d, load.Cpu);
+        Assert.Equal(61.2d, load.Memory);
 
-        // Interi: la domanda e' "quale macchina e' in affanno", e un decimo di punto non ci
-        // aggiunge niente mentre attira l'occhio a ogni lettura.
-        Assert.Equal("CPU 43% · RAM 61%", carico.Caption);
+        // Whole numbers: the question is "which machine is struggling", and a tenth of a point
+        // adds nothing to it while catching the eye at every reading.
+        Assert.Equal("CPU 43% · RAM 61%", load.Caption);
     }
 
     [Fact]
-    public void IlPerCoreNonSiSpacciaPerLaMacchina()
+    public void APerCorePointIsNeverTakenForTheWholeMachine()
     {
-        // Il per-core passa dalla stessa interfaccia, con lo STESSO identificativo e un'istanza
-        // valorizzata. Prendere il primo punto che capita darebbe il carico di un core solo
-        // spacciato per quello della macchina - e sarebbe verosimile, quindi invisibile.
-        // In ENTRAMBI gli ordini, perche' l'ordine dei punti non e' dichiarato da nessuna
-        // parte: con i core solo in coda, un codice che prende il primo punto passerebbe.
-        MachineLoad dopo = MachineLoad.From(Campionamento(Gruppo(
+        // The per-core points come through the same interface, with the SAME identifier and an
+        // instance set. Taking whichever point comes first would pass the load of a single core
+        // off as the machine's - and it would look plausible, so it would go unnoticed.
+        // In BOTH orders, because the order of the points is not declared anywhere: with the
+        // cores only at the end, code that takes the first point would pass.
+        MachineLoad machinePointLast = MachineLoad.From(Snapshot(Group(
             "cpu",
             MetricPoint.Measured(CpuCollector.TotalUsageMetricId, "0", MetricValue.FromNumber(99d)),
             MetricPoint.Measured(CpuCollector.TotalUsageMetricId, "1", MetricValue.FromNumber(97d)),
             MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(12d)))));
 
-        Assert.Equal(12d, dopo.Cpu);
-        Assert.Equal("CPU 12%", dopo.Caption);
+        Assert.Equal(12d, machinePointLast.Cpu);
+        Assert.Equal("CPU 12%", machinePointLast.Caption);
 
-        MachineLoad prima = MachineLoad.From(Campionamento(Gruppo(
+        MachineLoad machinePointFirst = MachineLoad.From(Snapshot(Group(
             "cpu",
             MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(12d)),
             MetricPoint.Measured(CpuCollector.TotalUsageMetricId, "0", MetricValue.FromNumber(99d)))));
 
-        Assert.Equal(12d, prima.Cpu);
+        Assert.Equal(12d, machinePointFirst.Cpu);
     }
 
     [Fact]
-    public void UnaMetricaCheMancaNonPortaViaLAltra()
+    public void AMissingMetricDoesNotHideTheOther()
     {
-        // Su una piattaforma dove la CPU non e' leggibile la memoria lo e' lo stesso, e meta'
-        // risposta e' meglio di nessuna.
-        MachineLoad soloMemoria = MachineLoad.From(Campionamento(
-            Gruppo("cpu", MetricPoint.Unsupported(CpuCollector.TotalUsageMetricId, null, "non misurabile qui")),
-            Gruppo("memory", MetricPoint.Measured(MemoryCollector.UsedPercentMetricId, null, MetricValue.FromNumber(61d)))));
+        // On a platform where the CPU cannot be read the memory still can be, and half an
+        // answer is better than none.
+        MachineLoad memoryOnly = MachineLoad.From(Snapshot(
+            Group("cpu", MetricPoint.Unsupported(CpuCollector.TotalUsageMetricId, null, "not measurable here")),
+            Group("memory", MetricPoint.Measured(MemoryCollector.UsedPercentMetricId, null, MetricValue.FromNumber(61d)))));
 
-        Assert.Null(soloMemoria.Cpu);
-        Assert.Equal("RAM 61%", soloMemoria.Caption);
+        Assert.Null(memoryOnly.Cpu);
+        Assert.Equal("RAM 61%", memoryOnly.Caption);
 
-        MachineLoad soloCpu = MachineLoad.From(Campionamento(
-            Gruppo("cpu", MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(8d)))));
+        MachineLoad cpuOnly = MachineLoad.From(Snapshot(
+            Group("cpu", MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(8d)))));
 
-        Assert.Null(soloCpu.Memory);
-        Assert.Equal("CPU 8%", soloCpu.Caption);
+        Assert.Null(cpuOnly.Memory);
+        Assert.Equal("CPU 8%", cpuOnly.Caption);
     }
 
     [Fact]
-    public void SenzaCampionamentoNonSiInventaUnoZero()
+    public void WithNoSnapshotItDoesNotInventAZero()
     {
-        // Uno zero accanto al nome di una macchina si legge "ferma", che e' l'opposto di "non
-        // si sa". La differenza conta proprio sulle macchine che non rispondono.
+        // A zero next to a machine's name reads as "idle", which is the opposite of "not
+        // known". The difference matters precisely on the machines that do not answer.
         Assert.Equal(MachineLoad.None, MachineLoad.From(null));
         Assert.Equal(string.Empty, MachineLoad.None.Caption);
         Assert.Null(MachineLoad.None.Cpu);
-        Assert.Equal(string.Empty, MachineLoad.From(Campionamento()).Caption);
+        Assert.Equal(string.Empty, MachineLoad.From(Snapshot()).Caption);
     }
 
     [Fact]
-    public void UnValoreCheNonEUnNumeroNonDiventaZero()
+    public void AValueThatIsNotANumberDoesNotBecomeZero()
     {
-        MachineLoad carico = MachineLoad.From(Campionamento(Gruppo(
+        MachineLoad load = MachineLoad.From(Snapshot(Group(
             "cpu",
-            MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromText("parecchio")))));
+            MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromText("quite a lot")))));
 
-        Assert.Null(carico.Cpu);
-        Assert.Equal(string.Empty, carico.Caption);
+        Assert.Null(load.Cpu);
+        Assert.Equal(string.Empty, load.Caption);
     }
 
     [Fact]
-    public void LaMacchinaGiuPerdeIlCaricoCheAveva()
+    public void AMachineThatGoesDownLosesTheLoadItHad()
     {
-        // Il carico si azzera dentro Record e non nei chiamanti: sono tre, e uno si
-        // dimenticherebbe, lasciando sotto il nome di una macchina spenta i numeri di quando
-        // rispondeva - numeri veri, riferiti a un momento che non c'e' piu'.
-        MachineRow voce = Voce();
+        // The load is cleared inside Record and not in the callers: there are three of them and
+        // one would forget, leaving the numbers from when it was answering under the name of
+        // a machine that is down - real numbers, but from a moment that no longer exists.
+        MachineRow row = RemoteRow();
 
-        voce.Record(
+        row.Record(
             ServiceOutcome.Ok,
             string.Empty,
             T0,
-            Campionamento(Gruppo("cpu", MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(50d)))));
+            Snapshot(Group("cpu", MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(50d)))));
 
-        Assert.Equal("CPU 50%", voce.Subtitle);
+        Assert.Equal("CPU 50%", row.Subtitle);
 
-        voce.Record(ServiceOutcome.ConnectionRefused, "refused", T0 + TimeSpan.FromMinutes(1));
+        row.Record(ServiceOutcome.ConnectionRefused, "refused", T0 + TimeSpan.FromMinutes(1));
 
-        // Il carico se ne va SUBITO, mentre la durata non c'e' ancora: dentro i dieci secondi
-        // di tolleranza StatusEscalation non dice niente, di proposito. La riga resta quindi
-        // vuota per un momento, ed e' la ragione per cui lo spazio sotto il nome e' riservato
-        // sempre invece di comparire e sparire - il vuoto non deve far saltare la voce.
-        Assert.Equal(MachineLoad.None, voce.MachineLoad);
-        Assert.Equal(string.Empty, voce.Subtitle);
+        // The load goes AT ONCE, while the duration is not there yet: within the ten seconds of
+        // grace StatusEscalation says nothing, on purpose. So the row stays empty for a moment,
+        // and that is the reason the space under the name is always reserved instead of
+        // appearing and disappearing - the blank must not make the row jump.
+        Assert.Equal(MachineLoad.None, row.MachineLoad);
+        Assert.Equal(string.Empty, row.Subtitle);
 
-        voce.Record(ServiceOutcome.ConnectionRefused, "refused", T0 + TimeSpan.FromMinutes(4));
+        row.Record(ServiceOutcome.ConnectionRefused, "refused", T0 + TimeSpan.FromMinutes(4));
 
-        Assert.Equal(MachineLoad.None, voce.MachineLoad);
-        Assert.Equal("for 3 min", voce.Subtitle);
+        Assert.Equal(MachineLoad.None, row.MachineLoad);
+        Assert.Equal("for 3 min", row.Subtitle);
     }
 
     [Fact]
-    public void LaDurataDelGuastoVinceSulCarico()
+    public void TheFaultDurationTakesPrecedenceOverTheLoad()
     {
-        // La precedenza si prova solo se i due CONVIVONO, e per costruzione non convivono mai:
-        // Record azzera il carico su ogni esito non Ok. Quindi si forza la convivenza dal di
-        // fuori, che e' l'unico modo di mettere alla prova la regola invece del ramo che oggi
-        // la rende irraggiungibile - e di accorgersene se un giorno smettesse di esserlo.
-        MachineRow voce = Voce();
+        // The precedence can only be tested if the two COEXIST, and by construction they never
+        // do: Record clears the load on every outcome that is not Ok. So they are made to
+        // coexist from the outside, which is the only way to test the rule itself instead of
+        // the branch that today makes it unreachable - and to notice if one day it stopped
+        // being unreachable.
+        MachineRow row = RemoteRow();
 
-        voce.Record(ServiceOutcome.TokenRejected, "rejected", T0);
-        voce.Record(ServiceOutcome.TokenRejected, "rejected", T0 + TimeSpan.FromMinutes(2));
+        row.Record(ServiceOutcome.TokenRejected, "rejected", T0);
+        row.Record(ServiceOutcome.TokenRejected, "rejected", T0 + TimeSpan.FromMinutes(2));
 
-        Assert.Equal(MachineLoad.None, voce.MachineLoad);
-        Assert.Equal("for 2 min", voce.Subtitle);
+        Assert.Equal(MachineLoad.None, row.MachineLoad);
+        Assert.Equal("for 2 min", row.Subtitle);
 
-        voce.MachineLoad = new MachineLoad(80d, 90d);
+        row.MachineLoad = new MachineLoad(80d, 90d);
 
-        Assert.Equal("for 2 min", voce.Subtitle);
-        Assert.Contains("for 2 min", voce.ToolTipText, StringComparison.Ordinal);
-        Assert.DoesNotContain("CPU", voce.ToolTipText, StringComparison.Ordinal);
+        Assert.Equal("for 2 min", row.Subtitle);
+        Assert.Contains("for 2 min", row.ToolTipText, StringComparison.Ordinal);
+        Assert.DoesNotContain("CPU", row.ToolTipText, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void LaMacchinaGuardataNonMostraNumeriNellaBarraLaterale()
+    public void TheWatchedMachineShowsNoNumbersInTheSidebar()
     {
-        // E' la decisione che tiene insieme tutto il resto: i numeri della macchina guardata
-        // sono nei quadranti, e ripeterli accanto al nome vorrebbe dire due letture della
-        // stessa macchina a cadenze diverse - quindici secondi contro uno - che si
-        // contraddicono a vista. La voce guardata e' anche l'unica sempre selezionata, cioe'
-        // l'unica che un lettore di schermo riannuncia: con i numeri il suo nome accessibile
-        // cambierebbe a ogni secondo, per sempre.
-        ObserverEndpoint locale = ObserverEndpoint.LocalChannel();
-        ObserverEndpoint altra = ObserverEndpoint.Remote(
-            new Uri("https://altra:5058/"), "token", "machines.json", new string('a', 64), "altra");
+        // This is the decision that holds all the rest together: the numbers for the watched
+        // machine are in the gauges, and repeating them next to the name would mean two
+        // readings of the same machine at different cadences - fifteen seconds against one -
+        // able to contradict each other in plain sight. The watched row is also the only one
+        // that is always selected, that is, the only one a screen reader re-announces: with
+        // the numbers its accessible name would change every second, for ever.
+        ObserverEndpoint local = ObserverEndpoint.LocalChannel();
+        ObserverEndpoint other = ObserverEndpoint.Remote(
+            new Uri("https://other:5058/"), "token", "machines.json", new string('a', 64), "other");
 
         MainViewModel viewModel = new(
             client: null,
             configurationProblem: null,
-            machineList: new MachineListResult([locale, altra], []));
+            machineList: new MachineListResult([local, other], []));
 
-        MachineRow voce = viewModel.Machines.Single(v => v.Endpoint == altra);
+        MachineRow row = viewModel.Machines.Single(v => v.Endpoint == other);
 
-        // La sonda le ha scritto il carico mentre NON era guardata: e' il caso normale.
-        voce.Record(
+        // The probe wrote the load into it while it was NOT being watched: the normal case.
+        row.Record(
             ServiceOutcome.Ok,
             string.Empty,
             T0,
-            Campionamento(
-                Gruppo("cpu", MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(42d))),
-                Gruppo("memory", MetricPoint.Measured(MemoryCollector.UsedPercentMetricId, null, MetricValue.FromNumber(61d)))));
+            Snapshot(
+                Group("cpu", MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(42d))),
+                Group("memory", MetricPoint.Measured(MemoryCollector.UsedPercentMetricId, null, MetricValue.FromNumber(61d)))));
 
-        Assert.Equal("CPU 42% · RAM 61%", voce.Subtitle);
+        Assert.Equal("CPU 42% · RAM 61%", row.Subtitle);
 
-        // Il clic. SUBITO, senza aspettare un giro: fra la selezione e la prima risposta
-        // passano fino a otto secondi di timeout, e in quel tempo la riga evidenziata direbbe
-        // che la macchina sta lavorando mentre la barra di stato dice "Connecting".
-        viewModel.SelectedMachine = voce;
+        // The click. AT ONCE, without waiting for a round: up to eight seconds of timeout pass
+        // between the selection and the first answer, and in that time the highlighted row
+        // would say the machine is working while the status bar says "Connecting".
+        viewModel.SelectedMachine = row;
 
-        Assert.Equal(MachineLoad.None, voce.MachineLoad);
-        Assert.Equal(string.Empty, voce.Subtitle);
-        Assert.DoesNotContain("CPU", voce.AccessibleName, StringComparison.Ordinal);
+        Assert.Equal(MachineLoad.None, row.MachineLoad);
+        Assert.Equal(string.Empty, row.Subtitle);
+        Assert.DoesNotContain("CPU", row.AccessibleName, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void IlCaricoSiSenteAncheSenzaVedereLaRiga()
+    public void TheLoadIsAnnouncedEvenWithoutSeeingTheRow()
     {
-        // Il suggerimento del mouse e il nome accessibile passano dallo stesso testo della
-        // riga, cosi' non possono divergere. Il punto medio separa due fatti accostati.
-        MachineRow voce = Voce();
+        // The tooltip and the accessible name both come from the same text on the row, so they
+        // cannot diverge. The middle dot separates two facts placed side by side.
+        MachineRow row = RemoteRow();
 
-        // Una prima lettura riuscita SENZA carico, cosi' Status e Detail sono gia' al valore
-        // finale: da qui in poi l'unica cosa che cambia e' il carico, e le notifiche che si
-        // osservano possono venire solo da lui. Senza questo passo le tre asserzioni sarebbero
-        // soddisfatte da Detail, che notifica ToolTipText e AccessibleName per conto suo.
-        voce.Record(ServiceOutcome.Ok, string.Empty, T0);
+        // A first successful reading WITHOUT a load, so that Status and Detail are already at
+        // their final value: from here on the only thing that changes is the load, and the
+        // notifications observed can only come from it. Without this step the three assertions
+        // would be satisfied by Detail, which notifies ToolTipText and AccessibleName by itself.
+        row.Record(ServiceOutcome.Ok, string.Empty, T0);
 
-        List<string> notificate = [];
-        voce.PropertyChanged += (_, e) => notificate.Add(e.PropertyName ?? string.Empty);
+        List<string> notified = [];
+        row.PropertyChanged += (_, e) => notified.Add(e.PropertyName ?? string.Empty);
 
-        voce.Record(
+        row.Record(
             ServiceOutcome.Ok,
             string.Empty,
             T0 + TimeSpan.FromSeconds(15),
-            Campionamento(
-                Gruppo("cpu", MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(42d))),
-                Gruppo("memory", MetricPoint.Measured(MemoryCollector.UsedPercentMetricId, null, MetricValue.FromNumber(61d)))));
+            Snapshot(
+                Group("cpu", MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(42d))),
+                Group("memory", MetricPoint.Measured(MemoryCollector.UsedPercentMetricId, null, MetricValue.FromNumber(61d)))));
 
-        Assert.Equal("Reachable · CPU 42% · RAM 61%", voce.ToolTipText);
-        Assert.Contains("CPU 42%", voce.AccessibleName, StringComparison.Ordinal);
+        Assert.Equal("Reachable · CPU 42% · RAM 61%", row.ToolTipText);
+        Assert.Contains("CPU 42%", row.AccessibleName, StringComparison.Ordinal);
 
-        // Senza queste notifiche la riga direbbe ancora la cosa di prima, con la suite verde.
-        Assert.Contains(nameof(MachineRow.Subtitle), notificate);
-        Assert.Contains(nameof(MachineRow.ToolTipText), notificate);
-        Assert.Contains(nameof(MachineRow.AccessibleName), notificate);
+        // Without these notifications the row would still say what it said before, and the
+        // suite would still be green.
+        Assert.Contains(nameof(MachineRow.Subtitle), notified);
+        Assert.Contains(nameof(MachineRow.ToolTipText), notified);
+        Assert.Contains(nameof(MachineRow.AccessibleName), notified);
     }
 
     [Fact]
-    public async Task UnaSondaCheTornaSullaMacchinaDiventataGuardataNonScrive()
+    public async Task AProbeThatReturnsAfterTheMachineBecameWatchedDoesNotWrite()
     {
-        // La sonda PARTE filtrando la macchina guardata, ma TORNA fino a otto secondi dopo, e
-        // in quel tempo un clic basta. Da li' in poi scriverebbero in due sulla stessa voce -
-        // la sonda ogni quindici secondi, il giro principale ogni secondo - e la riga
-        // mostrerebbe a strappi due letture diverse della STESSA macchina.
-        ObserverEndpoint locale = ObserverEndpoint.LocalChannel();
-        ObserverEndpoint altra = ObserverEndpoint.Remote(
-            new Uri("https://altra:5058/"), "token", "machines.json", new string('a', 64), "altra");
+        // The probe STARTS by filtering out the watched machine, but it COMES BACK up to eight
+        // seconds later, and one click in that time is enough. From then on two writers would
+        // be writing into the same row - the probe every fifteen seconds, the main loop every
+        // second - and the row would jerk between two different readings of the SAME machine.
+        ObserverEndpoint local = ObserverEndpoint.LocalChannel();
+        ObserverEndpoint other = ObserverEndpoint.Remote(
+            new Uri("https://other:5058/"), "token", "machines.json", new string('a', 64), "other");
 
-        ClientTrattenuto lenta = new();
+        HeldClient held = new();
 
         MainViewModel viewModel = new(
-            client: new ClientTrattenuto(gia: true),
+            client: new HeldClient(alreadyReleased: true),
             configurationProblem: null,
-            machineList: new MachineListResult([locale, altra], []),
-            openMachine: _ => lenta);
+            machineList: new MachineListResult([local, other], []),
+            openMachine: _ => held);
 
-        using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(20));
-        Task ciclo = viewModel.RunAsync(arresto.Token);
+        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(20));
+        Task loop = viewModel.RunAsync(stop.Token);
 
-        MachineRow voce = viewModel.Machines.Single(v => v.Endpoint == altra);
+        MachineRow row = viewModel.Machines.Single(v => v.Endpoint == other);
 
-        // Si aspetta che la sonda sia DAVVERO in volo, non che sia passato del tempo.
-        while (!arresto.IsCancellationRequested && !lenta.Entrata)
+        // Wait until the probe is REALLY in flight, not until some time has gone by.
+        while (!stop.IsCancellationRequested && !held.HasEntered)
         {
             await Task.Delay(20, CancellationToken.None);
         }
 
-        Assert.True(lenta.Entrata, "la sonda non e' mai partita");
+        Assert.True(held.HasEntered, "the probe never started");
 
-        // Il clic, mentre la risposta e' ancora per aria.
-        viewModel.SelectedMachine = voce;
+        // The click, while the response is still in the air.
+        viewModel.SelectedMachine = row;
 
-        lenta.Libera();
+        held.Release();
 
-        while (!arresto.IsCancellationRequested && !lenta.Uscita)
+        while (!stop.IsCancellationRequested && !held.HasExited)
         {
             await Task.Delay(20, CancellationToken.None);
         }
 
-        // La sonda aveva in mano una CPU al 99 %: se avesse scritto, la riga lo direbbe.
-        Assert.Equal(MachineLoad.None, voce.MachineLoad);
-        Assert.Equal(string.Empty, voce.Subtitle);
+        // The probe had a 99 % CPU reading in hand: had it written, the row would say so.
+        Assert.Equal(MachineLoad.None, row.MachineLoad);
+        Assert.Equal(string.Empty, row.Subtitle);
 
-        await arresto.CancelAsync();
+        await stop.CancelAsync();
 
         try
         {
-            await ciclo;
+            await loop;
         }
         catch (OperationCanceledException)
         {
-            // Fine del test.
+            // End of the test.
         }
     }
 
-    /// <summary>Risponde solo quando il test lo libera, e la prima volta sola.</summary>
-    private sealed class ClientTrattenuto(bool gia = false) : IMetricsClient
+    /// <summary>Answers only when the test releases it, and only the first time.</summary>
+    private sealed class HeldClient(bool alreadyReleased = false) : IMetricsClient
     {
-        private readonly TaskCompletionSource cancello = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int entrate;
+        private readonly TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int entries;
 
-        public bool Entrata => Volatile.Read(ref entrate) > 0;
+        public bool HasEntered => Volatile.Read(ref entries) > 0;
 
-        public bool Uscita { get; private set; }
+        public bool HasExited { get; private set; }
 
         public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.LocalChannel();
 
-        public void Libera() => cancello.TrySetResult();
+        public void Release() => gate.TrySetResult();
 
         public async Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken)
         {
-            if (!gia && Interlocked.Increment(ref entrate) == 1)
+            if (!alreadyReleased && Interlocked.Increment(ref entries) == 1)
             {
-                await cancello.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-                Uscita = true;
+                await gate.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                HasExited = true;
             }
 
             return new SnapshotFetch(
                 ServiceOutcome.Ok,
                 string.Empty,
-                Campionamento(Gruppo(
+                Snapshot(Group(
                     "cpu",
                     MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(99d)))));
         }

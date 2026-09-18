@@ -3,130 +3,129 @@ using Observer.App.Services;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Da dove il client prende indirizzo e token.
+/// Where the client takes its address and token from.
 /// </summary>
 /// <remarks>
-/// La parte che decide e' una funzione PURA sui suoi ingressi: non legge ne' ambiente ne'
-/// disco, quindi si verifica con un test invece che avviando l'applicazione e guardandola.
+/// The part that decides is a PURE function of its inputs: it reads neither the environment nor
+/// the disk, so it is checked with a test instead of by starting the application and watching it.
 /// </remarks>
 public class ClientConfigurationTests
 {
-    private const string Impronta = "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB";
+    private const string Fingerprint = "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB";
 
     [Fact]
-    public void NienteConfigurazione_SiGuardaLaMacchinaSuCuiSiSTA()
+    public void NoConfiguration_WatchesTheMachineYouAreON()
     {
-        // Il caso di una macchina appena installata. Prima questo era "Configuration missing",
-        // e chiedeva un token che il servizio locale non pretende nemmeno.
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null, null);
+        // The case of a freshly installed machine. This used to be "Configuration missing", and
+        // it asked for a token the local service does not even require.
+        ClientConfigurationResult result = ClientConfiguration.Resolve(null, null, null, null);
 
-        Assert.Null(esito.Problem);
-        Assert.Equal(EndpointKind.Local, esito.Endpoint!.Kind);
+        Assert.Null(result.Problem);
+        Assert.Equal(EndpointKind.Local, result.Endpoint!.Kind);
     }
 
     [Fact]
-    public void IndirizzoETokenDallAMBIENTE()
+    public void AddressAndTokenFromTheENVIRONMENT()
     {
-        ClientConfigurationResult esito =
-            ClientConfiguration.Resolve("dal-ambiente", "https://altra:5058", Impronta, null);
+        ClientConfigurationResult result =
+            ClientConfiguration.Resolve("from-the-environment", "https://other:5058", Fingerprint, null);
 
-        Assert.Null(esito.Problem);
-        Assert.Equal(EndpointKind.Remote, esito.Endpoint!.Kind);
-        Assert.Equal("dal-ambiente", esito.Endpoint.ApiToken);
-        Assert.Equal(new Uri("https://altra:5058/"), esito.Endpoint.BaseAddress);
+        Assert.Null(result.Problem);
+        Assert.Equal(EndpointKind.Remote, result.Endpoint!.Kind);
+        Assert.Equal("from-the-environment", result.Endpoint.ApiToken);
+        Assert.Equal(new Uri("https://other:5058/"), result.Endpoint.BaseAddress);
     }
 
     [Fact]
-    public void IndirizzoETokenDalFILE()
+    public void AddressAndTokenFromTheFILE()
     {
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null, """{ "baseAddress": "https://altra:7000/", "apiToken": "dal-file", "fingerprint": "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB" }""");
+        ClientConfigurationResult result = ClientConfiguration.Resolve(null, null, null, """{ "baseAddress": "https://other:7000/", "apiToken": "from-the-file", "fingerprint": "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB" }""");
 
-        Assert.Null(esito.Problem);
-        Assert.Equal("dal-file", esito.Endpoint!.ApiToken);
-        Assert.Equal(new Uri("https://altra:7000/"), esito.Endpoint.BaseAddress);
+        Assert.Null(result.Problem);
+        Assert.Equal("from-the-file", result.Endpoint!.ApiToken);
+        Assert.Equal(new Uri("https://other:7000/"), result.Endpoint.BaseAddress);
     }
 
     [Fact]
-    public void LAMBIENTEVinceSulFile()
+    public void TheENVIRONMENTWinsOverTheFile()
     {
-        // Stesso motivo per cui vince nel servizio: un valore vecchio dimenticato nel file
-        // sovrascriverebbe in silenzio quello nuovo appena esportato, e il sintomo sarebbe un
-        // 401 inspiegabile.
-        ClientConfigurationResult esito = ClientConfiguration.Resolve("vince-questo",
-            "https://vince-questa:9000",
-            Impronta,
-            """{ "baseAddress": "https://vecchia:7000/", "apiToken": "vecchio", "fingerprint": "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB" }""");
+        // Same reason it wins in the service: an old value forgotten in the file would silently
+        // overwrite the new one just exported, and the symptom would be an inexplicable 401.
+        ClientConfigurationResult result = ClientConfiguration.Resolve("the-winning-token",
+            "https://the-winner:9000",
+            Fingerprint,
+            """{ "baseAddress": "https://old-machine:7000/", "apiToken": "old-token", "fingerprint": "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB" }""");
 
-        Assert.Equal("vince-questo", esito.Endpoint!.ApiToken);
-        Assert.Equal(new Uri("https://vince-questa:9000/"), esito.Endpoint.BaseAddress);
+        Assert.Equal("the-winning-token", result.Endpoint!.ApiToken);
+        Assert.Equal(new Uri("https://the-winner:9000/"), result.Endpoint.BaseAddress);
     }
 
     [Fact]
-    public void LaBarraFinaleVieneAggiuntaSeManca()
+    public void TheTrailingSlashIsAddedWhenMissing()
     {
-        // Senza, Uri risolverebbe "metrics/latest" cancellando l'ultimo segmento di un
-        // indirizzo tipo "http://host:5057/observer/", e la richiesta finirebbe altrove.
-        ClientConfigurationResult esito =
-            ClientConfiguration.Resolve("t", "https://altra:5058/observer", Impronta, null);
+        // Without it, Uri would resolve "metrics/latest" by dropping the last segment of an
+        // address such as "http://host:5057/observer/", and the request would end up elsewhere.
+        ClientConfigurationResult result =
+            ClientConfiguration.Resolve("t", "https://other:5058/observer", Fingerprint, null);
 
-        Assert.Equal(new Uri("https://altra:5058/observer/"), esito.Endpoint!.BaseAddress);
+        Assert.Equal(new Uri("https://other:5058/observer/"), result.Endpoint!.BaseAddress);
     }
 
     [Fact]
-    public void GliSpaziVengonoTolti()
+    public void SurroundingSpacesAreTrimmed()
     {
-        ClientConfigurationResult esito =
-            ClientConfiguration.Resolve("  con-spazi  ", "  https://altra:5058  ", Impronta, null);
+        ClientConfigurationResult result =
+            ClientConfiguration.Resolve("  with-spaces  ", "  https://other:5058  ", Fingerprint, null);
 
-        Assert.Equal("con-spazi", esito.Endpoint!.ApiToken);
+        Assert.Equal("with-spaces", result.Endpoint!.ApiToken);
     }
 
     [Fact]
-    public void UnIndirizzoREMOTOSenzaTokenSpiegaCosaFare()
+    public void AREMOTEAddressWithoutATokenSaysWhatToDo()
     {
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, "https://altra:5058", Impronta, null);
+        ClientConfigurationResult result = ClientConfiguration.Resolve(null, "https://other:5058", Fingerprint, null);
 
-        Assert.Null(esito.Endpoint);
-        Assert.Contains("observer share", esito.Problem!, StringComparison.Ordinal);
+        Assert.Null(result.Endpoint);
+        Assert.Contains("observer share", result.Problem!, StringComparison.Ordinal);
     }
 
     [Theory]
-    [InlineData("non-un-indirizzo")]
-    [InlineData("ftp://altra:5057")]
-    [InlineData("://rotto")]
-    public void UnIndirizzoINUTILIZZABILEVieneSpiegato(string indirizzo)
+    [InlineData("not-an-address")]
+    [InlineData("ftp://other:5057")]
+    [InlineData("://broken")]
+    public void AnUNUSABLEAddressIsExplained(string address)
     {
-        ClientConfigurationResult esito = ClientConfiguration.Resolve("t", indirizzo, Impronta, null);
+        ClientConfigurationResult result = ClientConfiguration.Resolve("t", address, Fingerprint, null);
 
-        Assert.Null(esito.Endpoint);
-        Assert.False(string.IsNullOrWhiteSpace(esito.Problem));
+        Assert.Null(result.Endpoint);
+        Assert.False(string.IsNullOrWhiteSpace(result.Problem));
     }
 
     [Fact]
-    public void UnFileDiCONFIGURAZIONERottoVieneSpiegato()
+    public void ABrokenCONFIGURATIONFileIsExplained()
     {
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null, "{ non e' json");
+        ClientConfigurationResult result = ClientConfiguration.Resolve(null, null, null, "{ not json");
 
-        Assert.Null(esito.Endpoint);
-        Assert.Contains("isn't valid JSON", esito.Problem!, StringComparison.Ordinal);
+        Assert.Null(result.Endpoint);
+        Assert.Contains("isn't valid JSON", result.Problem!, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void UnFileVUOTOEquivaleAllAssenzaDiConfigurazione()
+    public void AnEMPTYFileMeansNoConfigurationAtAll()
     {
-        // Cioe' si guarda la macchina su cui si sta: e' il comportamento utile, e non un errore.
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null, "   ");
+        // Meaning it watches the machine you are on: that is the useful behaviour, not an error.
+        ClientConfigurationResult result = ClientConfiguration.Resolve(null, null, null, "   ");
 
-        Assert.Null(esito.Problem);
-        Assert.Equal(EndpointKind.Local, esito.Endpoint!.Kind);
+        Assert.Null(result.Problem);
+        Assert.Equal(EndpointKind.Local, result.Endpoint!.Kind);
     }
 
     [Fact]
-    public void IlPercorsoDelFileSTAFuoriDalRepository()
+    public void TheFilePathLIVESOutsideTheRepository()
     {
-        // Cosi' un token non puo' finire in un commit. E in LocalApplicationData e non in
-        // Roaming: su una macchina di dominio Roaming si sincronizza con un file server, e un
-        // segreto legato a UNA macchina non deve seguire l'utente da un computer all'altro.
+        // That way a token cannot end up in a commit. And in LocalApplicationData, not in
+        // Roaming: on a domain machine Roaming syncs with a file server, and a secret tied to
+        // ONE machine must not follow the user from one computer to another.
         Assert.Contains("Observer", ClientConfiguration.FilePath, StringComparison.Ordinal);
         Assert.EndsWith("client.json", ClientConfiguration.FilePath, StringComparison.Ordinal);
     }

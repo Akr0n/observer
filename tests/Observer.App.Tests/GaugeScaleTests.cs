@@ -4,41 +4,41 @@ using Observer.App.Controls;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// La matematica del tachimetro.
+/// The gauge arithmetic.
 /// </summary>
 /// <remarks>
-/// Sono i test di una cosa che nessun altro test puo' cogliere: il disegno non fallisce mai,
-/// sbaglia soltanto. Una lancetta a meta' corsa quando il valore e' al massimo non rompe
-/// niente, non lancia niente, e chi guarda legge un numero sbagliato credendolo misurato.
+/// These test something no other test can catch: drawing never fails, it only gets things
+/// wrong. A needle halfway along its travel while the value is at the maximum breaks nothing,
+/// throws nothing, and whoever is looking reads a wrong number believing it was measured.
 /// </remarks>
 public class GaugeScaleTests
 {
-    private static readonly Point Centro = new(100d, 100d);
+    private static readonly Point Center = new(100d, 100d);
 
     [Fact]
-    public void LoZeroStaDoveComincaLaScala()
+    public void ZeroSitsWhereTheScaleBegins()
     {
         Assert.Equal(GaugeScale.StartAngle, GaugeScale.AngleFor(0d), 9);
     }
 
     [Fact]
-    public void IlPienoStaAlFondoScala()
+    public void FullSitsWhereTheScaleEnds()
     {
         Assert.Equal(GaugeScale.EndAngle, GaugeScale.AngleFor(1d), 9);
     }
 
     [Fact]
-    public void LaMetaStaInCima()
+    public void HalfSitsAtTheTop()
     {
-        // 135 + 135 = 270 gradi, cioe' dritto in alto: e' il punto in cui l'occhio verifica da
-        // solo se la lancetta e' dove dovrebbe. Se questa cambia, il tachimetro non e' piu'
-        // simmetrico e si legge male senza che nessun altro test se ne accorga.
+        // 135 + 135 = 270 degrees, that is straight up: it is the point where the eye checks
+        // on its own whether the needle is where it should be. If this changes, the gauge is
+        // no longer symmetric and reads badly with no other test noticing.
         Assert.Equal(270d, GaugeScale.AngleFor(0.5d), 9);
 
-        Point cima = GaugeScale.PointAt(Centro, 50d, GaugeScale.AngleFor(0.5d));
+        Point top = GaugeScale.PointAt(Center, 50d, GaugeScale.AngleFor(0.5d));
 
-        Assert.Equal(Centro.X, cima.X, 6);
-        Assert.Equal(Centro.Y - 50d, cima.Y, 6);
+        Assert.Equal(Center.X, top.X, 6);
+        Assert.Equal(Center.Y - 50d, top.Y, 6);
     }
 
     [Theory]
@@ -46,72 +46,72 @@ public class GaugeScaleTests
     [InlineData(1.7d)]
     [InlineData(double.PositiveInfinity)]
     [InlineData(double.NegativeInfinity)]
-    public void FuoriScalaLaLancettaRestaSullArco(double fuori)
+    public void OffScaleTheNeedleStaysOnTheArc(double offScale)
     {
-        double angolo = GaugeScale.AngleFor(fuori);
+        double angle = GaugeScale.AngleFor(offScale);
 
-        Assert.InRange(angolo, GaugeScale.StartAngle, GaugeScale.EndAngle);
+        Assert.InRange(angle, GaugeScale.StartAngle, GaugeScale.EndAngle);
     }
 
     [Fact]
-    public void UnaPercentualeNonMisurabileNonFaSparireIlTachimetro()
+    public void AnUnmeasurablePercentageDoesNotMakeTheGaugeVanish()
     {
-        // Una metrica che non si e' potuta misurare arriva come NaN. Un NaN dentro un seno
-        // esce come NaN nelle coordinate, e Avalonia una geometria con dentro un NaN non la
-        // disegna affatto: il riquadro resterebbe vuoto, senza dire perche'.
-        double angolo = GaugeScale.AngleFor(double.NaN);
+        // A metric that could not be measured arrives as NaN. A NaN inside a sine comes out as
+        // NaN in the coordinates, and Avalonia does not draw a geometry with a NaN in it at
+        // all: the box would stay empty, without saying why.
+        double angle = GaugeScale.AngleFor(double.NaN);
 
-        Assert.False(double.IsNaN(angolo));
-        Assert.Equal(GaugeScale.StartAngle, angolo, 9);
+        Assert.False(double.IsNaN(angle));
+        Assert.Equal(GaugeScale.StartAngle, angle, 9);
 
-        Point punto = GaugeScale.PointAt(Centro, 50d, angolo);
+        Point pointOnArc = GaugeScale.PointAt(Center, 50d, angle);
 
-        Assert.False(double.IsNaN(punto.X));
-        Assert.False(double.IsNaN(punto.Y));
+        Assert.False(double.IsNaN(pointOnArc.X));
+        Assert.False(double.IsNaN(pointOnArc.Y));
     }
 
     [Fact]
-    public void LeTaccheCopronoLArcoDaCimaAFondo()
+    public void TheTicksSpanTheWholeArcWithAConstantStep()
     {
         const int intervals = 10;
 
         Assert.Equal(GaugeScale.StartAngle, GaugeScale.TickAngle(0, intervals), 9);
         Assert.Equal(GaugeScale.EndAngle, GaugeScale.TickAngle(intervals, intervals), 9);
 
-        // Passo costante: una scala a passo variabile si legge come se i valori centrali
-        // fossero piu' vicini fra loro di quanto sono.
-        double passo = GaugeScale.SweepAngle / intervals;
+        // Constant step: a scale with a varying step reads as if the middle values were closer
+        // to each other than they are.
+        double step = GaugeScale.SweepAngle / intervals;
 
         for (int i = 1; i <= intervals; i++)
         {
             double delta = GaugeScale.TickAngle(i, intervals)
                 - GaugeScale.TickAngle(i - 1, intervals);
 
-            Assert.Equal(passo, delta, 9);
+            Assert.Equal(step, delta, 9);
         }
     }
 
     [Fact]
-    public void UnaScalaSenzaIntervalliVieneRifiutata()
+    public void AScaleWithNoIntervalsIsRejected()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => GaugeScale.TickAngle(0, 0));
     }
 
     [Fact]
-    public void LArcoScopertoStaInBassoEStaSimmetrico()
+    public void TheUncoveredArcSitsAtTheBottomAndIsSymmetric()
     {
-        // Il pezzo di cerchio su cui la lancetta non passa mai deve stare in basso e centrato,
-        // altrimenti il tachimetro appare storto. Sono i 90 gradi fra l'arrivo e la partenza.
-        double scoperto = 360d - GaugeScale.SweepAngle;
+        // The arc the needle never crosses must sit at the bottom, centred, or the gauge looks
+        // crooked. It is the 90 degrees between the end and the start.
+        double uncovered = 360d - GaugeScale.SweepAngle;
 
-        Assert.Equal(90d, scoperto, 9);
+        Assert.Equal(90d, uncovered, 9);
 
-        Point zero = GaugeScale.PointAt(Centro, 50d, GaugeScale.StartAngle);
-        Point fondo = GaugeScale.PointAt(Centro, 50d, GaugeScale.EndAngle);
+        Point zero = GaugeScale.PointAt(Center, 50d, GaugeScale.StartAngle);
+        Point fullScale = GaugeScale.PointAt(Center, 50d, GaugeScale.EndAngle);
 
-        // Stessa altezza, sotto il centro, e speculari rispetto all'asse verticale.
-        Assert.Equal(zero.Y, fondo.Y, 6);
-        Assert.True(zero.Y > Centro.Y);
-        Assert.Equal(Centro.X - zero.X, fondo.X - Centro.X, 6);
+        // Same height, below the centre, and mirrored about the vertical axis.
+        Assert.Equal(zero.Y, fullScale.Y, 6);
+        Assert.True(zero.Y > Center.Y);
+        Assert.Equal(Center.X - zero.X, fullScale.X - Center.X, 6);
     }
 }

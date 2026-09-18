@@ -5,107 +5,108 @@ using Observer.App.Services;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Perche' il collegamento non e' riuscito, quando non riesce.
+/// Why the connection did not succeed, when it does not.
 /// </summary>
 /// <remarks>
-/// Due guasti che sul filo si somigliano e nella stanza no. Una connessione <b>rifiutata</b>
-/// torna indietro subito, e dice una cosa precisa: la macchina c'e' ed e' raggiungibile, e' il
-/// servizio che non ascolta su quella porta. Un <b>tempo scaduto</b> dice il contrario: non ha
-/// risposto nessuno, e la causa piu' comune e' qualcosa che scarta i pacchetti senza dirlo.
+/// Two faults that look alike on the wire and nothing alike in the room. A <b>refused</b>
+/// connection comes back at once, and says something precise: the machine is there and it is
+/// reachable, it is the service that is not listening on that port. A <b>timeout</b> says the
+/// opposite: nobody answered, and the commonest cause is something dropping the packets
+/// without saying so.
 /// <para>
-/// I rimedi sono opposti — avviare un servizio contro aprire una porta — e finche' la
-/// dashboard li chiamava tutti e due "Service unreachable" chi guardava doveva indovinare.
-/// E' costato un pomeriggio vero su una macchina in dominio, dove la rete di casa era
-/// classificata come pubblica e la regola del firewall valeva su un altro profilo.
+/// The remedies are opposite — starting a service versus opening a port — and as long as the
+/// dashboard called them both "Service unreachable" whoever was looking had to guess. It cost
+/// a whole afternoon on a domain-joined machine, where the home network was classified as
+/// public and the firewall rule applied to another profile.
 /// </para>
 /// </remarks>
 public class TransportFailureTests
 {
     [Fact]
-    public void UnaConnessioneRifiutataSiRiconosce()
+    public void ARefusedConnectionIsRecognized()
     {
         SocketException socket = new((int)SocketError.ConnectionRefused);
 
-        // Guardia: se questa riga cadesse, il resto del test starebbe misurando un'altra cosa
-        // e passerebbe o fallirebbe per il motivo sbagliato.
+        // Guard: if this line ever failed, the rest of the test would be measuring something
+        // else and would pass or fail for the wrong reason.
         Assert.Equal(SocketError.ConnectionRefused, socket.SocketErrorCode);
 
         Assert.Equal(
             ServiceOutcome.ConnectionRefused,
-            TransportFailure.Classify(new HttpRequestException("rifiutata", socket)));
+            TransportFailure.Classify(new HttpRequestException("refused", socket)));
     }
 
     [Fact]
-    public void UnTempoScadutoSulSocketSiRiconosce()
+    public void ATimeoutOnTheSocketIsRecognized()
     {
-        HttpRequestException guasto = new("scaduta", new SocketException((int)SocketError.TimedOut));
+        HttpRequestException failure = new("timed out", new SocketException((int)SocketError.TimedOut));
 
-        Assert.Equal(ServiceOutcome.TimedOut, TransportFailure.Classify(guasto));
+        Assert.Equal(ServiceOutcome.TimedOut, TransportFailure.Classify(failure));
     }
 
     [Fact]
-    public void IlTimeoutDelClientArrivaComeAnnullamento()
+    public void TheClientTimeoutArrivesAsACancellationAndIsStillATimeout()
     {
-        // Quando scade HttpClient.Timeout non arriva nessuna SocketException: HttpClient
-        // annulla la propria richiesta, e cio' che si vede e' un OperationCanceledException
-        // con dentro un TimeoutException. Chi cercasse solo nel socket non lo troverebbe mai.
-        TaskCanceledException scaduto = new("annullata", new TimeoutException());
+        // When HttpClient.Timeout expires no SocketException arrives: HttpClient cancels its
+        // own request, and what you see is an OperationCanceledException with a
+        // TimeoutException inside. Anything that looked only at the socket would never find it.
+        TaskCanceledException expired = new("canceled", new TimeoutException());
 
-        Assert.Equal(ServiceOutcome.TimedOut, TransportFailure.Classify(scaduto));
+        Assert.Equal(ServiceOutcome.TimedOut, TransportFailure.Classify(expired));
     }
 
     [Fact]
-    public void IlSocketSiCercaInFondoAllaCatena()
+    public void TheSocketIsFoundDeepInTheChain()
     {
-        // .NET non consegna la SocketException al primo livello: la incarta in una
-        // IOException e quella in una HttpRequestException. Guardare solo InnerException
-        // basterebbe oggi e smetterebbe di bastare al primo cambio di runtime.
-        HttpRequestException profonda = new(
-            "rifiutata",
+        // .NET does not deliver the SocketException at the first level: it wraps it in an
+        // IOException and that in an HttpRequestException. Looking only at InnerException would
+        // be enough today and would stop being enough at the first runtime change.
+        HttpRequestException deep = new(
+            "refused",
             new IOException(
-                "connessione interrotta",
+                "connection reset",
                 new SocketException((int)SocketError.ConnectionRefused)));
 
-        Assert.Equal(ServiceOutcome.ConnectionRefused, TransportFailure.Classify(profonda));
+        Assert.Equal(ServiceOutcome.ConnectionRefused, TransportFailure.Classify(deep));
     }
 
     [Fact]
-    public void UnNomeCheNonSiRisolveNonDiventaUnRifiuto()
+    public void ANameThatDoesNotResolveDoesNotBecomeARefusal()
     {
-        // Un nome sbagliato non e' ne' un servizio spento ne' un firewall: dire "il servizio
-        // non e' in esecuzione" manderebbe a cercare su una macchina che non esiste.
-        HttpRequestException nome = new("nome ignoto", new SocketException((int)SocketError.HostNotFound));
+        // A wrong name is neither a service that is down nor a firewall: saying "the service is
+        // not running" would send you looking on a machine that does not exist.
+        HttpRequestException unresolved = new("unknown name", new SocketException((int)SocketError.HostNotFound));
 
-        Assert.Equal(ServiceOutcome.Unreachable, TransportFailure.Classify(nome));
+        Assert.Equal(ServiceOutcome.Unreachable, TransportFailure.Classify(unresolved));
     }
 
     [Fact]
-    public void UnGuastoTlsNonDiventaUnRifiuto()
+    public void ATlsFailureDoesNotBecomeARefusal()
     {
-        // L'impronta che non corrisponde ha un esito suo, deciso prima di arrivare qui. Se
-        // questo classificatore se ne appropriasse, un certificato cambiato — cioe' una
-        // reinstallazione oppure qualcuno in mezzo — si leggerebbe come "servizio spento".
-        HttpRequestException tls = new("handshake", new AuthenticationException("certificato"));
+        // A fingerprint that does not match has an outcome of its own, decided before reaching
+        // here. If this classifier took it over, a changed certificate — that is, a
+        // reinstallation or somebody in the middle — would read as "service down".
+        HttpRequestException tls = new("handshake", new AuthenticationException("certificate"));
 
         Assert.Equal(ServiceOutcome.Unreachable, TransportFailure.Classify(tls));
     }
 
     [Fact]
-    public void UnGuastoSenzaSocketRestaGenerico()
+    public void AFailureWithNoSocketStaysGeneric()
     {
         Assert.Equal(
             ServiceOutcome.Unreachable,
-            TransportFailure.Classify(new HttpRequestException("qualcosa e' andato storto")));
+            TransportFailure.Classify(new HttpRequestException("something went wrong")));
     }
 
     [Fact]
-    public void UnaCatenaSenzaSocketNonBloccaIlClassificatore()
+    public void AChainWithNoSocketDoesNotHangTheClassifier()
     {
-        // Difensivo, ma il costo di sbagliarlo e' un'interfaccia che si pianta invece di
-        // mostrare un errore: la ricerca nella catena deve avere un fondo comunque.
-        InvalidOperationException dentro = new("dentro");
-        HttpRequestException fuori = new("fuori", dentro);
+        // Defensive, but the cost of getting it wrong is an interface that hangs instead of
+        // showing an error: the walk down the chain must have a bottom in any case.
+        InvalidOperationException inner = new("inner");
+        HttpRequestException outer = new("outer", inner);
 
-        Assert.Equal(ServiceOutcome.Unreachable, TransportFailure.Classify(fuori));
+        Assert.Equal(ServiceOutcome.Unreachable, TransportFailure.Classify(outer));
     }
 }
