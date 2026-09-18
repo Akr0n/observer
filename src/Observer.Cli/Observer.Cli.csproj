@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <!-- Riferimento all'eseguibile del servizio, come gia' fanno i test: la logica che protegge
-         il deposito vive li', ed e' l'unica cosa che NON va duplicata. Due copie del codice che
-         decide chi puo' leggere un segreto sono due copie da tenere allineate. -->
+    <!-- References the service executable, as the tests already do: the logic that protects
+         the store lives there, and it is the one thing that must NOT be duplicated. Two copies
+         of the code that decides who can read a secret are two copies to keep in sync. -->
     <ProjectReference Include="..\Observer.Service\Observer.Service.csproj" />
   </ItemGroup>
 
@@ -12,7 +12,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- L'eseguibile si chiama "observer", non "Observer.Cli": e' cio' che l'utente digita. -->
+    <!-- The executable is called "observer", not "Observer.Cli": that is what the user types. -->
     <AssemblyName>observer</AssemblyName>
     <RootNamespace>Observer.Cli</RootNamespace>
   </PropertyGroup>

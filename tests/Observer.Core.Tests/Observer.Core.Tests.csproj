@@ -10,8 +10,8 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
-    <!-- Container concreto, non solo le Abstractions: serve BuildServiceProvider per
-         testare che la radice di composizione registri davvero tutti i collector. -->
+    <!-- The concrete container, not just the Abstractions: BuildServiceProvider is needed
+         to test that the composition root really registers every collector. -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
   </ItemGroup>
 

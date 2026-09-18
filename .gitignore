@@ -481,12 +481,12 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
-# SQLite locale
+# Local SQLite databases
 *.db
 *.db-shm
 *.db-wal
 
-# configurazioni locali
+# Local configuration
 appsettings.Local.json
 appsettings.*.Local.json
 
@@ -494,32 +494,32 @@ appsettings.*.Local.json
 .idea/
 .vs/
 
-# Istruzioni locali per agenti (non pubbliche, scelta di Federico 2026-08-26)
+# Local instructions for agents (not public; Federico's decision, 2026-08-26)
 CLAUDE.md
 
-# I due file che portano un token vivono fuori dal repo - il deposito di macchina sotto
-# ProgramData o /etc, la configurazione del client sotto LocalAppData - ma se qualcuno ne
-# copiasse uno qui per guardarlo non deve finire in un commit.
+# The two files that carry a token live outside the repo - the machine-wide store under
+# ProgramData or /etc, the client configuration under LocalAppData - but if someone copies
+# one here to look at it, the copy must not end up in a commit.
 credentials.json
 client.json
 machines.json
 preferences.json
 
-# Payload dell'installer: e' output di dotnet publish, si rigenera.
+# Installer payload: dotnet publish output, which can be regenerated.
 packaging/windows/payload/
 
-# Alberi di costruzione dei pacchetti: output rigenerabile.
+# Package build trees: output that can be regenerated.
 packaging/linux/root/
 packaging/linux/out/
 
-# I piani di lavoro restano LOCALI, come CLAUDE.md. Contengono l'impalcatura di un lavoro
-# gia' fatto - elenchi di task, ordini di esecuzione - mescolata a misure che valgono ancora,
-# e in qualche punto descrivono uno stato ormai superato. Cio' che di quelle misure serve a
-# chi tocca il codice sta nei commenti del codice stesso, che sono versionati.
+# Work plans stay LOCAL, like CLAUDE.md. They hold the scaffolding of work already done -
+# task lists, the order to do them in - mixed with measurements that still hold, and in places
+# they describe a state that no longer exists. The part of those measurements that matters
+# to whoever changes the code is in the code's own comments, which are versioned.
 docs/
 
-# L'indice locale di CodeGraph: un database SQLite ricostruibile, mai da versionare.
+# CodeGraph's local index: a SQLite database that can be rebuilt, never to be committed.
 .codegraph/
 
-# graphify: grafo della conoscenza, output locale
+# graphify: knowledge graph, local output
 graphify-out/

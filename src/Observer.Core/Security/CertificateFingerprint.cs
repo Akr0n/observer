@@ -20,16 +20,16 @@ namespace Observer.Core.Security;
 public static class CertificateFingerprint
 {
     /// <summary>The prefix that declares the algorithm. Always present on output.</summary>
-    public const string Prefisso = "sha256:";
+    public const string Prefix = "sha256:";
 
     /// <summary>How many hexadecimal characters an SHA-256 has.</summary>
-    public const int CifreEsadecimali = 64;
+    public const int HexDigitCount = 64;
 
     /// <summary>Computes the fingerprint of a certificate's DER encoding.</summary>
     /// <param name="derCertificate">The certificate encoded in DER.</param>
     /// <returns>The fingerprint in canonical form, with the prefix.</returns>
     public static string From(ReadOnlySpan<byte> derCertificate) =>
-        Prefisso + Convert.ToHexString(SHA256.HashData(derCertificate));
+        Prefix + Convert.ToHexString(SHA256.HashData(derCertificate));
 
     /// <summary>
     /// Reduces to canonical form what a human copied by hand.
@@ -51,12 +51,12 @@ public static class CertificateFingerprint
 
         ReadOnlySpan<char> rest = text.AsSpan().Trim();
 
-        if (rest.StartsWith(Prefisso, StringComparison.OrdinalIgnoreCase))
+        if (rest.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase))
         {
-            rest = rest[Prefisso.Length..];
+            rest = rest[Prefix.Length..];
         }
 
-        Span<char> digits = stackalloc char[CifreEsadecimali];
+        Span<char> digits = stackalloc char[HexDigitCount];
         int count = 0;
 
         foreach (char character in rest)
@@ -66,7 +66,7 @@ public static class CertificateFingerprint
                 continue;
             }
 
-            if (count == CifreEsadecimali || !Uri.IsHexDigit(character))
+            if (count == HexDigitCount || !Uri.IsHexDigit(character))
             {
                 return null;
             }
@@ -74,7 +74,7 @@ public static class CertificateFingerprint
             digits[count++] = char.ToUpperInvariant(character);
         }
 
-        return count == CifreEsadecimali ? new string(digits) : null;
+        return count == HexDigitCount ? new string(digits) : null;
     }
 
     /// <summary>Says whether two fingerprints designate the same certificate.</summary>
@@ -100,7 +100,7 @@ public static class CertificateFingerprint
             return fingerprint;
         }
 
-        string[] pairs = new string[CifreEsadecimali / 2];
+        string[] pairs = new string[HexDigitCount / 2];
 
         for (int i = 0; i < pairs.Length; i++)
         {
@@ -113,5 +113,5 @@ public static class CertificateFingerprint
     /// <summary>The digit count, for error messages.</summary>
     /// <returns>The count as text.</returns>
     public static string DigitCount() =>
-        CifreEsadecimali.ToString(CultureInfo.InvariantCulture);
+        HexDigitCount.ToString(CultureInfo.InvariantCulture);
 }

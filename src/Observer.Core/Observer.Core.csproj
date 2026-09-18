@@ -3,18 +3,18 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
 
-    <!-- Obbligatorio per [LibraryImport], il generatore di source per le P/Invoke usato
-         dagli adattatori Windows (GetSystemTimes, GlobalMemoryStatusEx). Senza, la build
-         fallisce con SYSLIB1062. Il vecchio [DllImport] non e' un'alternativa: con
-         TreatWarningsAsErrors romperebbe con SYSLIB1054.
-         Nota: vale su tutto il progetto, non solo sui due file che ne hanno bisogno. -->
+    <!-- Required by [LibraryImport], the P/Invoke source generator used by the Windows
+         adapters (GetSystemTimes, GlobalMemoryStatusEx). Without it the build fails with
+         SYSLIB1062. The old [DllImport] is not an option: with TreatWarningsAsErrors it
+         would break the build with SYSLIB1054.
+         Note: it applies to the whole project, not only to the two files that need it. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Solo le Abstractions: sono cross-platform e non tirano dentro un container DI.
-         La radice di composizione vive qui perche' Service e App registrano gli stessi
-         collector. -->
+    <!-- Only the Abstractions: they are cross-platform and do not pull in a DI container.
+         The composition root lives here because Service and App register the same
+         collectors. -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
   </ItemGroup>
 

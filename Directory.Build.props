@@ -7,33 +7,33 @@
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <LangVersion>latest</LangVersion>
 
-    <!-- LA versione, in un posto solo. Prima era scritta a mano in tre file - il .wxs, il
-         control del .deb e il nome del pacchetto in pack.sh - e alzarla voleva dire ricordarsi
-         di tutti e tre. Da qui raggiunge anche i metadati dei binari, che prima dichiaravano
-         tutti 1.0.0.0 qualunque fosse la versione del pacchetto che li conteneva.
-         Il .wixproj la riceve perche' questo file si applica anche a lui. -->
+    <!-- THE version, in one place. It used to be written by hand in three files - the .wxs,
+         the .deb's control file and the package name in pack.sh - and bumping it meant
+         remembering all three. From here it also reaches the binaries' metadata, which all
+         used to declare 1.0.0.0 whatever the version of the package that carried them.
+         The .wixproj receives it because this file applies to it too. -->
     <Version>0.21.0</Version>
 
-    <!-- Il titolare del copyright, in un posto solo. Da qui finisce nei metadati di OGNI
-         eseguibile prodotto: le proprieta' del file su Windows, e le stesse informazioni
-         dentro i binari che il .deb installa. L'MSI e il pacchetto Debian lo ripetono nei
-         propri formati - Manufacturer nel .wxs, Maintainer e copyright sotto
-         packaging/linux/debian - perche' nessuno dei due sa leggere questo file: se cambia
-         qui, va cambiato anche li'. -->
+    <!-- The copyright holder, in one place. From here it ends up in the metadata of EVERY
+         executable the build produces: the file properties on Windows, and the same
+         information inside the binaries the .deb installs. The MSI and the Debian package
+         repeat it in their own formats - Manufacturer in the .wxs, Maintainer and copyright
+         under packaging/linux/debian - because neither of them can read this file: if it
+         changes here, it has to be changed there too. -->
     <Authors>Federico Cardinali</Authors>
     <Company>Federico Cardinali</Company>
     <Product>Observer</Product>
     <Copyright>Copyright (c) 2026 Federico Cardinali</Copyright>
 
-    <!-- NON rimettere qui <InvariantGlobalization>true</InvariantGlobalization>.
-         Verificato sperimentalmente il 2026-08-26: quella property viene passata agli
-         analyzer (build_property.InvariantGlobalization) e SPEGNE in silenzio CA1305
-         (Parse senza IFormatProvider) e CA1310 (StartsWith senza StringComparison).
-         Nemmeno dotnet_diagnostic.CA1305.severity=error in .editorconfig li recupera.
-         Siccome qui si parsa /proc/stat e /proc/meminfo, e' esattamente la classe di bug
-         che non vogliamo lasciar passare.
-         L'invarianza a runtime resta garantita dai runtimeconfig.template.json dei
-         progetti ESEGUIBILI: ogni nuovo eseguibile deve averne uno, altrimenti su Linux
-         servono i pacchetti ICU per avviarsi. -->
+    <!-- Do NOT put <InvariantGlobalization>true</InvariantGlobalization> back here.
+         Verified by experiment on 2026-08-26: that property is passed to the analyzers
+         (build_property.InvariantGlobalization) and silently SWITCHES OFF CA1305
+         (Parse without an IFormatProvider) and CA1310 (StartsWith without a StringComparison).
+         Not even dotnet_diagnostic.CA1305.severity=error in .editorconfig brings them back.
+         Since this repository parses /proc/stat and /proc/meminfo, that is exactly the class
+         of bug we do not want to let through.
+         Invariant globalization at run time is still guaranteed by the
+         runtimeconfig.template.json of each EXECUTABLE project: every new executable must
+         have one, or on Linux it will not start without the ICU packages. -->
   </PropertyGroup>
 </Project>
