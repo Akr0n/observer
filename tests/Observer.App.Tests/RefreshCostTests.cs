@@ -12,10 +12,10 @@ namespace Observer.App.Tests;
 /// numero che mostra. Le due regole qui sono le uniche che riducono quel costo senza togliere
 /// niente a chi guarda.
 /// </remarks>
-public class LeggerezzaTests
+public class RefreshCostTests
 {
     [Fact]
-    public void RidottaAIconaLaFinestraLeggeMenoSpesso()
+    public void WhenMinimizedTheWindowPollsLessOften()
     {
         MainViewModel viewModel = new(client: null, configurationProblem: null);
 
@@ -32,45 +32,45 @@ public class LeggerezzaTests
     }
 
     [Fact]
-    public async Task LoStoricoDiDueQuadrantiSiLeggeInParallelo()
+    public async Task TheHistoryOfTwoGaugesIsReadInParallel()
     {
         // Due quadranti, quattro richieste di storico. In fila il giro dura la SOMMA delle
         // latenze; in parallelo il massimo. Il banco misura quante richieste sono in volo
         // insieme: in fila non supera mai una.
-        ClientLento cliente = new();
-        MainViewModel viewModel = new(cliente, configurationProblem: null);
+        SlowClient client = new();
+        MainViewModel viewModel = new(client, configurationProblem: null);
 
-        using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(15));
-        Task ciclo = viewModel.RunAsync(arresto.Token);
+        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(15));
+        Task loop = viewModel.RunAsync(stop.Token);
 
-        while (!arresto.IsCancellationRequested && cliente.Completate < 4)
+        while (!stop.IsCancellationRequested && client.Completed < 4)
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
         Assert.True(
-            cliente.MassimoInVolo >= 2,
-            $"al massimo {cliente.MassimoInVolo} richieste di storico in volo insieme: sono partite in fila");
+            client.PeakInFlight >= 2,
+            $"al massimo {client.PeakInFlight} richieste di storico in volo insieme: sono partite in fila");
 
         // E ogni risposta deve tornare alla SUA riga: leggere in parallelo e poi abbinare per
         // posizione e' esattamente il punto in cui uno storico finirebbe sotto il quadrante
         // sbagliato. Qui la memoria risponde con un guasto e la CPU no.
-        MetricRow cpu = viewModel.Gauges.Single(riga => riga.Key.StartsWith("cpu|", StringComparison.Ordinal));
-        MetricRow memoria = viewModel.Gauges.Single(riga => riga.Key.StartsWith("memory|", StringComparison.Ordinal));
+        MetricRow cpu = viewModel.Gauges.Single(row => row.Key.StartsWith("cpu|", StringComparison.Ordinal));
+        MetricRow memory = viewModel.Gauges.Single(row => row.Key.StartsWith("memory|", StringComparison.Ordinal));
 
-        while (!arresto.IsCancellationRequested && !memoria.HistoryNote.Contains("guasto", StringComparison.Ordinal))
+        while (!stop.IsCancellationRequested && !memory.HistoryNote.Contains("guasto", StringComparison.Ordinal))
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.Contains("storico della memoria guasto", memoria.HistoryNote, StringComparison.Ordinal);
+        Assert.Contains("storico della memoria guasto", memory.HistoryNote, StringComparison.Ordinal);
         Assert.DoesNotContain("guasto", cpu.HistoryNote, StringComparison.Ordinal);
 
-        await arresto.CancelAsync();
+        await stop.CancelAsync();
 
         try
         {
-            await ciclo;
+            await loop;
         }
         catch (OperationCanceledException)
         {
@@ -79,15 +79,15 @@ public class LeggerezzaTests
     }
 
     /// <summary>Un client con due percentuali e uno storico che risponde con calma.</summary>
-    private sealed class ClientLento : IMetricsClient
+    private sealed class SlowClient : IMetricsClient
     {
-        private int inVolo;
-        private int massimo;
-        private int completate;
+        private int inFlight;
+        private int peak;
+        private int completedCount;
 
-        public int MassimoInVolo => massimo;
+        public int PeakInFlight => peak;
 
-        public int Completate => completate;
+        public int Completed => completedCount;
 
         public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.LocalChannel();
 
@@ -127,25 +127,25 @@ public class LeggerezzaTests
 
         public async Task<HistoryFetch> GetHistoryAsync(HistoryQuery query, CancellationToken cancellationToken)
         {
-            int adesso = Interlocked.Increment(ref inVolo);
+            int current = Interlocked.Increment(ref inFlight);
 
-            int letto;
+            int seen;
 
             do
             {
-                letto = massimo;
+                seen = peak;
 
-                if (adesso <= letto)
+                if (current <= seen)
                 {
                     break;
                 }
             }
-            while (Interlocked.CompareExchange(ref massimo, adesso, letto) != letto);
+            while (Interlocked.CompareExchange(ref peak, current, seen) != seen);
 
             await Task.Delay(150, cancellationToken);
 
-            Interlocked.Decrement(ref inVolo);
-            Interlocked.Increment(ref completate);
+            Interlocked.Decrement(ref inFlight);
+            Interlocked.Increment(ref completedCount);
 
             return string.Equals(query.Collector, "memory", StringComparison.Ordinal)
                 ? new HistoryFetch(ServiceOutcome.Unreachable, "storico della memoria guasto", null)

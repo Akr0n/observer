@@ -15,33 +15,33 @@ namespace Observer.App.Tests;
 /// un comando esplicito, in due punti soli: la barra di stato, che e' il caso che pesa perche'
 /// un'impronta sbagliata stampa due impronte intere, e la riga di processo selezionata.
 /// </remarks>
-public class CopiaTests
+public class ClipboardCopyTests
 {
     [Fact]
-    public async Task CopiareLaBarraDiStatoPrendeTitoloEMessaggio()
+    public async Task CopyingTheStatusBarTakesTitleAndMessage()
     {
-        Appunti appunti = new();
+        FakeClipboard clipboard = new();
         MainViewModel viewModel = new(
             client: null,
             configurationProblem: "client.json is missing",
-            copyToClipboard: appunti.Write);
+            copyToClipboard: clipboard.Write);
 
         await viewModel.CopyStatusCommand.ExecuteAsync(null);
 
         Assert.Equal(
             viewModel.StatusTitle + Environment.NewLine + viewModel.StatusText,
-            appunti.Ultimo);
-        Assert.Contains("client.json", appunti.Ultimo, StringComparison.Ordinal);
+            clipboard.LastText);
+        Assert.Contains("client.json", clipboard.LastText, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task CopiareLaRigaDiProcessoPrendeIlSuoPid()
+    public async Task CopyingTheProcessRowTakesItsPid()
     {
-        Appunti appunti = new();
+        FakeClipboard clipboard = new();
         MainViewModel viewModel = new(
             client: null,
             configurationProblem: null,
-            copyToClipboard: appunti.Write)
+            copyToClipboard: clipboard.Write)
         {
             SelectedProcess = new ProcessRowState(22, "tranquillo", "1.0 %", "10 MiB"),
         };
@@ -50,42 +50,42 @@ public class CopiaTests
 
         // La stringa intera, non un Contains: con "22" il numero potrebbe arrivare da una
         // percentuale o da un conteggio di megabyte, e la prova resterebbe verde col PID fuori.
-        Assert.Equal("tranquillo (pid 22), CPU 1.0 %, memory 10 MiB, I/O —", appunti.Ultimo);
+        Assert.Equal("tranquillo (pid 22), CPU 1.0 %, memory 10 MiB, I/O —", clipboard.LastText);
     }
 
     [Fact]
-    public void IlPidNonEntraNelNomeAccessibileDellaRiga()
+    public void ThePidIsInTheClipboardTextButNotInTheAccessibleName()
     {
         // Cio' che un lettore di schermo pronuncia a OGNI freccia sull'elenco: un numero di
         // cinque cifre letto cifra per cifra a ogni riga e' rumore fra chi scorre e cio' che
         // sta cercando. Due frasi quasi identiche, e la differenza e' voluta.
-        ProcessRowState riga = new(31337, "claude", "15.1 %", "228.5 MiB", "1.1 MiB/s");
+        ProcessRowState row = new(31337, "claude", "15.1 %", "228.5 MiB", "1.1 MiB/s");
 
-        Assert.DoesNotContain("pid", riga.AccessibleName, StringComparison.Ordinal);
-        Assert.DoesNotContain("31337", riga.AccessibleName, StringComparison.Ordinal);
-        Assert.Contains("31337", riga.ForClipboard, StringComparison.Ordinal);
+        Assert.DoesNotContain("pid", row.AccessibleName, StringComparison.Ordinal);
+        Assert.DoesNotContain("31337", row.AccessibleName, StringComparison.Ordinal);
+        Assert.Contains("31337", row.ForClipboard, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task SenzaRigaSelezionataLaCopiaNonToccaGliAppunti()
+    public async Task WithNoRowSelectedCopyDoesNotTouchTheClipboard()
     {
         // Ctrl+C su un elenco senza selezione non deve svuotare gli appunti di chi stava
         // copiando qualcos'altro.
-        Appunti appunti = new();
+        FakeClipboard clipboard = new();
         MainViewModel viewModel = new(
             client: null,
             configurationProblem: null,
-            copyToClipboard: appunti.Write);
+            copyToClipboard: clipboard.Write);
 
         Assert.False(viewModel.CopyProcessRowCommand.CanExecute(null));
 
         await viewModel.CopyProcessRowCommand.ExecuteAsync(null);
 
-        Assert.Equal(0, appunti.Quante);
+        Assert.Equal(0, clipboard.WriteCount);
     }
 
     [Fact]
-    public void SenzaAppuntiCollegatiIComandiSonoSpenti()
+    public void WithNoClipboardWiredTheCommandsAreDisabled()
     {
         // La cucitura e' opzionale perche' una prova senza finestra non ce l'ha. Se un giorno
         // sparisse dalla radice di composizione, un comando che esce da se' sul null
@@ -102,7 +102,7 @@ public class CopiaTests
     }
 
     [Fact]
-    public async Task UnGuastoDegliAppuntiNonCancellaIlMessaggioCheSiStavaCopiando()
+    public async Task AClipboardFailureDoesNotEraseTheMessageBeingCopied()
     {
         // Gli appunti possono essere tenuti da un altro programma. L'unico posto dove dirlo
         // sarebbe la barra di stato, cioe' proprio cio' che si sta copiando: raccontare il
@@ -112,55 +112,55 @@ public class CopiaTests
             configurationProblem: "client.json is missing",
             copyToClipboard: _ => throw new InvalidOperationException("appunti occupati"));
 
-        string titolo = viewModel.StatusTitle;
-        string messaggio = viewModel.StatusText;
+        string title = viewModel.StatusTitle;
+        string message = viewModel.StatusText;
 
         await viewModel.CopyStatusCommand.ExecuteAsync(null);
 
-        Assert.Equal(titolo, viewModel.StatusTitle);
-        Assert.Equal(messaggio, viewModel.StatusText);
+        Assert.Equal(title, viewModel.StatusTitle);
+        Assert.Equal(message, viewModel.StatusText);
     }
 
     [Fact]
-    public async Task UnSecondoClicNonVieneScartatoMentreIlPrimoEInVolo()
+    public async Task ASecondClickIsNotDroppedWhileTheFirstIsInFlight()
     {
         // Il difetto gia' pagato dai sei pulsanti dei quadranti: un AsyncRelayCommand in
         // esecuzione si disabilita e rifiuta ogni altra chiamata, quindi il secondo clic
         // cadrebbe nel vuoto con il pulsante che lampeggia spento.
-        TaskCompletionSource appeso = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Appunti appunti = new();
+        TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        FakeClipboard clipboard = new();
         MainViewModel viewModel = new(
             client: null,
             configurationProblem: "qualcosa",
-            copyToClipboard: async testo =>
+            copyToClipboard: async text =>
             {
-                await appeso.Task;
-                await appunti.Write(testo);
+                await gate.Task;
+                await clipboard.Write(text);
             });
 
-        Task primo = viewModel.CopyStatusCommand.ExecuteAsync(null);
+        Task first = viewModel.CopyStatusCommand.ExecuteAsync(null);
 
         Assert.True(viewModel.CopyStatusCommand.CanExecute(null));
 
-        Task secondo = viewModel.CopyStatusCommand.ExecuteAsync(null);
+        Task second = viewModel.CopyStatusCommand.ExecuteAsync(null);
 
-        appeso.SetResult();
-        await primo;
-        await secondo;
+        gate.SetResult();
+        await first;
+        await second;
 
-        Assert.Equal(2, appunti.Quante);
+        Assert.Equal(2, clipboard.WriteCount);
     }
 
-    private sealed class Appunti
+    private sealed class FakeClipboard
     {
-        public string Ultimo { get; private set; } = string.Empty;
+        public string LastText { get; private set; } = string.Empty;
 
-        public int Quante { get; private set; }
+        public int WriteCount { get; private set; }
 
-        public Task Write(string testo)
+        public Task Write(string text)
         {
-            Ultimo = testo;
-            Quante++;
+            LastText = text;
+            WriteCount++;
 
             return Task.CompletedTask;
         }

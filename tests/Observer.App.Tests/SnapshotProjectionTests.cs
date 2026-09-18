@@ -14,7 +14,7 @@ public class SnapshotProjectionTests
 {
     private static readonly JsonSerializerOptions Wire = new(JsonSerializerDefaults.Web);
 
-    private static readonly MetricCatalog Catalogo = new(
+    private static readonly MetricCatalog Catalog = new(
     [
         new CollectorCatalogEntry("cpu",
         [
@@ -29,99 +29,99 @@ public class SnapshotProjectionTests
     ]);
 
     [Fact]
-    public void Project_ConUnaPercentuale_LaFormattaEriempieLaBarra()
+    public void Project_WithAPercentage_FormatsItAndFillsTheBar()
     {
-        IReadOnlyList<MetricGroupState> gruppi = Proietta(
+        IReadOnlyList<MetricGroupState> groups = Project(
             Ok("cpu", MetricPoint.Measured("cpu.usage.total", null, MetricValue.FromNumber(64.25d))));
 
-        MetricRowState riga = Assert.Single(gruppi[0].Rows);
+        MetricRowState row = Assert.Single(groups[0].Rows);
 
-        Assert.Equal("CPU", gruppi[0].Title);
-        Assert.Equal("CPU usage", riga.Label);
+        Assert.Equal("CPU", groups[0].Title);
+        Assert.Equal("CPU usage", row.Label);
 
         // 64.2 e non 64.3: "F1" arrotonda il mezzo al pari. Su una percentuale di CPU la
         // differenza e' irrilevante, ma vale la pena che sia scritta invece che scoperta.
         // Il punto come separatore decimale e' voluto: gli eseguibili girano in modalita'
         // di globalizzazione invariante (vedi runtimeconfig.template.json).
-        Assert.Equal("64.2 %", riga.Display);
-        Assert.Equal(0.6425d, riga.Fraction!.Value, precision: 6);
-        Assert.Equal(MetricSeverity.Ok, riga.Severity);
+        Assert.Equal("64.2 %", row.Display);
+        Assert.Equal(0.6425d, row.Fraction!.Value, precision: 6);
+        Assert.Equal(MetricSeverity.Ok, row.Severity);
     }
 
     [Fact]
-    public void Project_ConUnValoreInByte_UsaIPrefissiBinari()
+    public void Project_WithAByteValue_UsesBinaryPrefixes()
     {
-        IReadOnlyList<MetricGroupState> gruppi = Proietta(
+        IReadOnlyList<MetricGroupState> groups = Project(
             Ok("memory", MetricPoint.Measured("memory.used.bytes", null, MetricValue.FromNumber(34122366976d))));
 
-        MetricRowState riga = Assert.Single(gruppi[0].Rows);
+        MetricRowState row = Assert.Single(groups[0].Rows);
 
-        Assert.Equal("Memory", gruppi[0].Title);
-        Assert.Equal("31.8 GiB", riga.Display);
-        Assert.Null(riga.Fraction);
+        Assert.Equal("Memory", groups[0].Title);
+        Assert.Equal("31.8 GiB", row.Display);
+        Assert.Null(row.Fraction);
     }
 
     [Fact]
-    public void Project_ConUnFlag_LoScriveAParole()
+    public void Project_WithAFlag_WritesItInWords()
     {
         // Una metrica a bandiera QUALUNQUE: memory.available.estimated non serve piu' come
         // esempio, perche' quella ha un trattamento suo (vedi i test qui sotto).
-        IReadOnlyList<MetricGroupState> gruppi = Proietta(
+        IReadOnlyList<MetricGroupState> groups = Project(
             Ok("memory", MetricPoint.Measured("memory.swap.enabled", null, MetricValue.FromFlag(true))));
 
-        Assert.Equal("Yes", Assert.Single(gruppi[0].Rows).Display);
+        Assert.Equal("Yes", Assert.Single(groups[0].Rows).Display);
     }
 
     [Fact]
-    public void Project_QuandoLaMemoriaDisponibileEMisurata_NonScriveUnaRigaPerDirlo()
+    public void Project_WhenAvailableMemoryIsMeasured_DoesNotAddARowToSaySo()
     {
         // Su Windows quel flag e' cablato a falso: quella riga direbbe "No" per sempre, su
         // qualunque macchina Windows. Una riga che ripete all'infinito la stessa risposta
         // insegna a saltarla, e verrebbe saltata anche il giorno in cui dicesse altro.
-        IReadOnlyList<MetricGroupState> gruppi = Proietta(Ok(
+        IReadOnlyList<MetricGroupState> groups = Project(Ok(
             "memory",
             MetricPoint.Measured("memory.available.bytes", null, MetricValue.FromNumber(17_179_869_184d)),
             MetricPoint.Measured("memory.available.estimated", null, MetricValue.FromFlag(false))));
 
-        MetricRowState riga = Assert.Single(gruppi[0].Rows);
+        MetricRowState row = Assert.Single(groups[0].Rows);
 
-        Assert.Equal("memory|memory.available.bytes|", riga.Key);
-        Assert.DoesNotContain("estimate", riga.Display, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("memory|memory.available.bytes|", row.Key);
+        Assert.DoesNotContain("estimate", row.Display, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Project_QuandoLaMemoriaDisponibileERicostruita_LoDiceSulValore()
+    public void Project_WhenAvailableMemoryIsEstimated_SaysSoOnTheValue()
     {
         // Il caso per cui quel flag esiste: su Linux, se il kernel non espone MemAvailable,
         // il numero viene sommato da memoria libera, buffer, cache e memoria recuperabile.
         // Non e' sbagliato, ma non e' una misura, e va detto DOVE si legge il numero.
-        IReadOnlyList<MetricGroupState> gruppi = Proietta(Ok(
+        IReadOnlyList<MetricGroupState> groups = Project(Ok(
             "memory",
             MetricPoint.Measured("memory.available.bytes", null, MetricValue.FromNumber(3_435_973_836d)),
             MetricPoint.Measured("memory.available.estimated", null, MetricValue.FromFlag(true))));
 
-        MetricRowState riga = Assert.Single(gruppi[0].Rows);
+        MetricRowState row = Assert.Single(groups[0].Rows);
 
-        Assert.Equal("memory|memory.available.bytes|", riga.Key);
-        Assert.EndsWith("(estimated)", riga.Display, StringComparison.Ordinal);
+        Assert.Equal("memory|memory.available.bytes|", row.Key);
+        Assert.EndsWith("(estimated)", row.Display, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Project_SeLaLetturaDelFlagEfallita_LaRigaResta()
+    public void Project_WhenReadingTheFlagFailed_TheRowStays()
     {
         // Non e' ne' si' ne' no: e' un guasto, e un guasto che sparisce dallo schermo e'
         // peggio di una riga di troppo.
-        IReadOnlyList<MetricGroupState> gruppi = Proietta(Ok(
+        IReadOnlyList<MetricGroupState> groups = Project(Ok(
             "memory",
             MetricPoint.Unavailable("memory.available.estimated", null, "the reading failed")));
 
-        MetricRowState riga = Assert.Single(gruppi[0].Rows);
+        MetricRowState row = Assert.Single(groups[0].Rows);
 
-        Assert.Contains("failed", riga.Display, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("failed", row.Display, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Project_ConCollectorInWarmup_MostraLaSpiegazioneENonLaChiamaGuasto()
+    public void Project_WithACollectorInWarmup_ShowsTheExplanationAndDoesNotCallItAFault()
     {
         // Il Warmup all'avvio e' normale: manca il secondo campione per calcolare la
         // percentuale. Un riquadro vuoto qui sarebbe indiagnosticabile, e un errore rosso
@@ -131,29 +131,29 @@ public class SnapshotProjectionTests
             DateTimeOffset.UnixEpoch,
             [new MetricSnapshot("cpu", CollectorStatus.Warmup, "primo campione: manca il precedente", [])]);
 
-        MetricGroupState gruppo = Assert.Single(SnapshotProjection.Project(snapshot, Catalogo));
+        MetricGroupState group = Assert.Single(SnapshotProjection.Project(snapshot, Catalog));
 
-        Assert.Empty(gruppo.Rows);
-        Assert.Equal("primo campione: manca il precedente", gruppo.Note);
-        Assert.Equal(MetricSeverity.Warmup, gruppo.Severity);
+        Assert.Empty(group.Rows);
+        Assert.Equal("primo campione: manca il precedente", group.Note);
+        Assert.Equal(MetricSeverity.Warmup, group.Severity);
     }
 
     [Fact]
-    public void Project_ConCollectorNonSupportato_LoDistingueDaUnGuasto()
+    public void Project_WithAnUnsupportedCollector_TellsItApartFromAFault()
     {
         MachineSnapshot snapshot = new(
             MachineSnapshot.CurrentSchemaVersion,
             DateTimeOffset.UnixEpoch,
             [new MetricSnapshot("cpu", CollectorStatus.Unsupported, "niente ntdll qui", [])]);
 
-        MetricGroupState gruppo = Assert.Single(SnapshotProjection.Project(snapshot, Catalogo));
+        MetricGroupState group = Assert.Single(SnapshotProjection.Project(snapshot, Catalog));
 
-        Assert.Equal(MetricSeverity.Unsupported, gruppo.Severity);
-        Assert.Equal("niente ntdll qui", gruppo.Note);
+        Assert.Equal(MetricSeverity.Unsupported, group.Severity);
+        Assert.Equal("niente ntdll qui", group.Note);
     }
 
     [Fact]
-    public void Project_ConCollectorDegradatoSenzaMessaggio_MetteComunqueUnaFrase()
+    public void Project_WithAFaultedCollectorAndNoMessage_StillPutsASentence()
     {
         // Un riquadro vuoto e muto e' esattamente cio' che non deve capitare a chi non legge
         // i log.
@@ -162,54 +162,54 @@ public class SnapshotProjectionTests
             DateTimeOffset.UnixEpoch,
             [new MetricSnapshot("cpu", CollectorStatus.Faulted, null, [])]);
 
-        MetricGroupState gruppo = Assert.Single(SnapshotProjection.Project(snapshot, Catalogo));
+        MetricGroupState group = Assert.Single(SnapshotProjection.Project(snapshot, Catalog));
 
-        Assert.False(string.IsNullOrWhiteSpace(gruppo.Note));
-        Assert.Equal(MetricSeverity.Problem, gruppo.Severity);
+        Assert.False(string.IsNullOrWhiteSpace(group.Note));
+        Assert.Equal(MetricSeverity.Problem, group.Severity);
     }
 
     [Fact]
-    public void Project_ConCollectorOkMaSenzaPunti_NonLasciaIlRiquadroMuto()
+    public void Project_WithAnOkCollectorButNoPoints_DoesNotLeaveThePanelSilent()
     {
         MachineSnapshot snapshot = new(
             MachineSnapshot.CurrentSchemaVersion,
             DateTimeOffset.UnixEpoch,
             [new MetricSnapshot("cpu", CollectorStatus.Ok, null, [])]);
 
-        MetricGroupState gruppo = Assert.Single(SnapshotProjection.Project(snapshot, Catalogo));
+        MetricGroupState group = Assert.Single(SnapshotProjection.Project(snapshot, Catalog));
 
-        Assert.False(string.IsNullOrWhiteSpace(gruppo.Note));
+        Assert.False(string.IsNullOrWhiteSpace(group.Note));
     }
 
     [Fact]
-    public void Project_ConPuntoDegradato_MostraIlMessaggioAlPostoDelNumero()
+    public void Project_WithAnUnavailablePoint_ShowsTheMessageInsteadOfTheNumber()
     {
-        IReadOnlyList<MetricGroupState> gruppi = Proietta(
+        IReadOnlyList<MetricGroupState> groups = Project(
             Ok("smart", MetricPoint.Unavailable("smart.temp", "nvme1", "il bridge USB non inoltra i comandi SMART")));
 
-        MetricRowState riga = Assert.Single(gruppi[0].Rows);
+        MetricRowState row = Assert.Single(groups[0].Rows);
 
-        Assert.Equal("smart.temp (nvme1)", riga.Label);
-        Assert.Equal("il bridge USB non inoltra i comandi SMART", riga.Display);
-        Assert.Null(riga.Fraction);
-        Assert.Equal(MetricSeverity.Problem, riga.Severity);
+        Assert.Equal("smart.temp (nvme1)", row.Label);
+        Assert.Equal("il bridge USB non inoltra i comandi SMART", row.Display);
+        Assert.Null(row.Fraction);
+        Assert.Equal(MetricSeverity.Problem, row.Severity);
     }
 
     [Fact]
-    public void Project_ConMetricaFuoriCatalogo_MostraLidentificatoreGrezzoInvecediSparire()
+    public void Project_WithAMetricOutsideTheCatalog_ShowsTheRawIdentifierInsteadOfVanishing()
     {
-        IReadOnlyList<MetricGroupState> gruppi = Proietta(
+        IReadOnlyList<MetricGroupState> groups = Project(
             Ok("gpu", MetricPoint.Measured("gpu.temp", null, MetricValue.FromNumber(61d))));
 
-        MetricRowState riga = Assert.Single(gruppi[0].Rows);
+        MetricRowState row = Assert.Single(groups[0].Rows);
 
-        Assert.Equal("gpu.temp", riga.Label);
-        Assert.Equal("gpu", gruppi[0].Title);
-        Assert.Equal("61", riga.Display);
+        Assert.Equal("gpu.temp", row.Label);
+        Assert.Equal("gpu", groups[0].Title);
+        Assert.Equal("61", row.Display);
     }
 
     [Fact]
-    public void Project_ConPuntoOkMaSenzaValore_LoDiceInvecediMostrareZero()
+    public void Project_WithAnOkPointButNoValue_SaysSoInsteadOfShowingZero()
     {
         // Questo caso non e' costruibile dalle fabbriche di MetricPoint: arriva solo dal filo,
         // ed e' proprio il difetto che i commenti di Observer.Core temono. Mostrare "0" qui
@@ -222,14 +222,14 @@ public class SnapshotProjectionTests
             """,
             Wire);
 
-        MetricRowState riga = Assert.Single(SnapshotProjection.Project(snapshot!, Catalogo)[0].Rows);
+        MetricRowState row = Assert.Single(SnapshotProjection.Project(snapshot!, Catalog)[0].Rows);
 
-        Assert.Equal(MetricSeverity.Problem, riga.Severity);
-        Assert.DoesNotContain("0", riga.Display, StringComparison.Ordinal);
+        Assert.Equal(MetricSeverity.Problem, row.Severity);
+        Assert.DoesNotContain("0", row.Display, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Project_ConValoreDiTipoSconosciuto_LoDiceInvecediMostrareZero()
+    public void Project_WithAValueOfUnknownKind_SaysSoInsteadOfShowingZero()
     {
         // kind = 0 significa che la deserializzazione non ha agganciato il costruttore: il
         // numero sarebbe zero e sembrerebbe una misura valida.
@@ -243,14 +243,14 @@ public class SnapshotProjectionTests
             """,
             Wire);
 
-        MetricRowState riga = Assert.Single(SnapshotProjection.Project(snapshot!, Catalogo)[0].Rows);
+        MetricRowState row = Assert.Single(SnapshotProjection.Project(snapshot!, Catalog)[0].Rows);
 
-        Assert.Equal(MetricSeverity.Problem, riga.Severity);
-        Assert.Contains("unrecognized", riga.Display, StringComparison.Ordinal);
+        Assert.Equal(MetricSeverity.Problem, row.Severity);
+        Assert.Contains("unrecognized", row.Display, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Project_SenzaCatalogo_MostraTuttoConGliIdentificatoriGrezzi()
+    public void Project_WithNoCatalog_ShowsEverythingWithRawIdentifiers()
     {
         // Se /metrics/catalog non risponde, le metriche non devono sparire.
         MachineSnapshot snapshot = new(
@@ -261,30 +261,30 @@ public class SnapshotProjectionTests
                     [MetricPoint.Measured("cpu.usage.total", null, MetricValue.FromNumber(12d))]),
             ]);
 
-        MetricRowState riga = Assert.Single(SnapshotProjection.Project(snapshot, MetricCatalog.Empty)[0].Rows);
+        MetricRowState row = Assert.Single(SnapshotProjection.Project(snapshot, MetricCatalog.Empty)[0].Rows);
 
-        Assert.Equal("cpu.usage.total", riga.Label);
-        Assert.Equal("12", riga.Display);
-        Assert.Null(riga.Fraction);
+        Assert.Equal("cpu.usage.total", row.Label);
+        Assert.Equal("12", row.Display);
+        Assert.Null(row.Fraction);
     }
 
     [Fact]
-    public void Project_LeChiaviDelleRigheSonoStabiliTraDueLetture()
+    public void Project_RowKeysAreStableAcrossTwoReadings()
     {
         // Le chiavi servono ad aggiornare le righe sul posto: se cambiassero a ogni giro, la
         // finestra ricostruirebbe l'elenco ogni secondo e lampeggerebbe.
-        MetricRowState prima = Proietta(
+        MetricRowState before = Project(
             Ok("cpu", MetricPoint.Measured("cpu.usage.total", null, MetricValue.FromNumber(10d))))[0].Rows[0];
 
-        MetricRowState dopo = Proietta(
+        MetricRowState after = Project(
             Ok("cpu", MetricPoint.Measured("cpu.usage.total", null, MetricValue.FromNumber(90d))))[0].Rows[0];
 
-        Assert.Equal(prima.Key, dopo.Key);
-        Assert.NotEqual(prima.Display, dopo.Display);
+        Assert.Equal(before.Key, after.Key);
+        Assert.NotEqual(before.Display, after.Display);
     }
 
     [Fact]
-    public void Project_ConDueMetricheDalNomeIdentico_LeDistingueConLunita()
+    public void Project_WithTwoMetricsSharingAName_TellsThemApartByTheUnit()
     {
         // Il collector della memoria chiama "Memoria usata" sia i byte sia la percentuale:
         // due righe con lo stesso nome e numeri diversi sembrano una contraddizione.
@@ -299,19 +299,19 @@ public class SnapshotProjectionTests
                 ]),
             ]);
 
-        IReadOnlyList<MetricRowState> righe = SnapshotProjection.Project(snapshot, Catalogo)[0].Rows;
+        IReadOnlyList<MetricRowState> rows = SnapshotProjection.Project(snapshot, Catalog)[0].Rows;
 
-        Assert.Equal("Used memory (B)", righe[0].Label);
-        Assert.Equal("Used memory (%)", righe[1].Label);
+        Assert.Equal("Used memory (B)", rows[0].Label);
+        Assert.Equal("Used memory (%)", rows[1].Label);
     }
 
     [Fact]
-    public void Project_ConNomiGiaDistinti_NonAggiungeNulla()
+    public void Project_WithNamesAlreadyDistinct_AddsNothing()
     {
-        MetricRowState riga = Assert.Single(Proietta(
+        MetricRowState row = Assert.Single(Project(
             Ok("cpu", MetricPoint.Measured("cpu.usage.total", null, MetricValue.FromNumber(10d)))).Single().Rows);
 
-        Assert.Equal("CPU usage", riga.Label);
+        Assert.Equal("CPU usage", row.Label);
     }
 
     [Theory]
@@ -320,29 +320,29 @@ public class SnapshotProjectionTests
     [InlineData(1024d, "1.0 KiB")]
     [InlineData(1048576d, "1.0 MiB")]
     [InlineData(34122366976d, "31.8 GiB")]
-    public void DescribeBytes_UsaIPrefissiBinari(double byteTotali, string atteso) =>
-        Assert.Equal(atteso, MetricFormatting.DescribeBytes(byteTotali));
+    public void DescribeBytes_UsesBinaryPrefixes(double totalBytes, string expected) =>
+        Assert.Equal(expected, MetricFormatting.DescribeBytes(totalBytes));
 
     [Theory]
     [InlineData(0d, "0 B/s")]
     [InlineData(449852d, "439.3 KiB/s")]
     [InlineData(1073741824d, "1.0 GiB/s")]
-    public void UnaVelocitaUsaGliStessiPrefissiDeiByte(double alSecondo, string atteso) =>
+    public void ARateUsesTheSamePrefixesAsBytes(double perSecond, string expected) =>
         // I byte al secondo sono l'unita' nuova portata dall'attivita' dei dischi. Senza un
         // ramo suo finiscono nel formato generico e a schermo si legge "449852 B/s", con il
         // formattatore dei byte li' accanto a non fare niente.
         Assert.Equal(
-            atteso,
-            MetricFormatting.Describe(MetricValue.FromNumber(alSecondo), new MetricUnit("B/s")));
+            expected,
+            MetricFormatting.Describe(MetricValue.FromNumber(perSecond), new MetricUnit("B/s")));
 
-    private static IReadOnlyList<MetricGroupState> Proietta(MetricSnapshot collector) =>
+    private static IReadOnlyList<MetricGroupState> Project(MetricSnapshot collector) =>
         SnapshotProjection.Project(
             new MachineSnapshot(MachineSnapshot.CurrentSchemaVersion, DateTimeOffset.UnixEpoch, [collector]),
-            Catalogo);
+            Catalog);
 
-    private static MetricSnapshot Ok(string collectorId, MetricPoint punto) =>
-        new(collectorId, CollectorStatus.Ok, null, [punto]);
+    private static MetricSnapshot Ok(string collectorId, MetricPoint point) =>
+        new(collectorId, CollectorStatus.Ok, null, [point]);
 
-    private static MetricSnapshot Ok(string collectorId, params MetricPoint[] punti) =>
-        new(collectorId, CollectorStatus.Ok, null, punti);
+    private static MetricSnapshot Ok(string collectorId, params MetricPoint[] points) =>
+        new(collectorId, CollectorStatus.Ok, null, points);
 }

@@ -13,72 +13,72 @@ namespace Observer.App.Tests;
 public class GaugeGridTests
 {
     [Fact]
-    public void SeiQuadrantiInUnaFinestraMediaStannoSuDueRigheDaTre()
+    public void SixGaugesInAMediumWindowFitTwoRowsOfThree()
     {
         // 600 px: alla misura minima ce ne stanno 3 (3x148 + 2x18 = 480, la quarta non entra),
         // e i tre si allargano a riempire la riga.
-        (int colonne, double larghezza) = GaugeGridLayout.Plan(600d, 6);
+        (int columns, double cellWidth) = GaugeGridLayout.Plan(600d, 6);
 
-        Assert.Equal(3, colonne);
-        Assert.Equal(188d, larghezza, precision: 6);
+        Assert.Equal(3, columns);
+        Assert.Equal(188d, cellWidth, precision: 6);
     }
 
     [Fact]
-    public void ConTantoSpazioLeColonneNonSuperanoIQuadranti()
+    public void WithPlentyOfSpaceTheColumnsNeverOutnumberTheGauges()
     {
         // 1240 px ne conterrebbe sette, ma sono sei: sei colonne, una riga, e la cella cresce
         // fino a riempirla.
-        (int colonne, double larghezza) = GaugeGridLayout.Plan(1240d, 6);
+        (int columns, double cellWidth) = GaugeGridLayout.Plan(1240d, 6);
 
-        Assert.Equal(6, colonne);
-        Assert.Equal((1240d - (5 * 18d)) / 6d, larghezza, precision: 6);
+        Assert.Equal(6, columns);
+        Assert.Equal((1240d - (5 * 18d)) / 6d, cellWidth, precision: 6);
     }
 
     [Fact]
-    public void DueQuadrantiInUnaFinestraLargaNonDiventanoManifesti()
+    public void TwoGaugesInAWideWindowDoNotGrowIntoPosters()
     {
-        (int colonne, double larghezza) = GaugeGridLayout.Plan(1240d, 2);
+        (int columns, double cellWidth) = GaugeGridLayout.Plan(1240d, 2);
 
-        Assert.Equal(2, colonne);
-        Assert.Equal(GaugeGridLayout.MaxCellWidth, larghezza);
+        Assert.Equal(2, columns);
+        Assert.Equal(GaugeGridLayout.MaxCellWidth, cellWidth);
     }
 
     [Fact]
-    public void SottoLaMisuraMinimaUnaColonnaSolaEUnQuadrantePiccoloInveceCheTagliato()
+    public void BelowTheMinimumWidthOneColumnAndASmallGaugeRatherThanAClippedOne()
     {
-        (int colonne, double larghezza) = GaugeGridLayout.Plan(100d, 3);
+        (int columns, double cellWidth) = GaugeGridLayout.Plan(100d, 3);
 
-        Assert.Equal(1, colonne);
-        Assert.Equal(100d, larghezza);
+        Assert.Equal(1, columns);
+        Assert.Equal(100d, cellWidth);
     }
 
     [Fact]
-    public void SenzaUnLimiteTuttiInFilaAllaMisuraMinima()
+    public void WithNoWidthLimitAllInOneRowAtTheMinimumWidth()
     {
-        (int colonne, double larghezza) = GaugeGridLayout.Plan(double.PositiveInfinity, 3);
+        (int columns, double cellWidth) = GaugeGridLayout.Plan(double.PositiveInfinity, 3);
 
-        Assert.Equal(3, colonne);
-        Assert.Equal(GaugeGridLayout.MinCellWidth, larghezza);
+        Assert.Equal(3, columns);
+        Assert.Equal(GaugeGridLayout.MinCellWidth, cellWidth);
     }
 
     [Fact]
-    public void SenzaQuadrantiNonCEGriglia() =>
+    public void WithNoGaugesThereIsNoGrid() =>
         Assert.Equal((0, 0d), GaugeGridLayout.Plan(900d, 0));
 
     [Fact]
-    public void LeColonneSonoSempreQuanteNeEntranoAllaMisuraMinima()
+    public void TheColumnsAreAlwaysAsManyAsFitAtTheMinimumWidth()
     {
         // La proprieta' che rende la griglia "senza buchi": con N colonne, N celle alla misura
         // minima piu' gli spazi entrano nella larghezza, e N+1 no.
-        for (double larghezza = 150d; larghezza <= 2000d; larghezza += 37d)
+        for (double cellWidth = 150d; cellWidth <= 2000d; cellWidth += 37d)
         {
-            (int colonne, _) = GaugeGridLayout.Plan(larghezza, 12);
+            (int columns, _) = GaugeGridLayout.Plan(cellWidth, 12);
 
-            double occupato = (colonne * GaugeGridLayout.MinCellWidth) + ((colonne - 1) * GaugeGridLayout.ColumnGap);
-            double conUnaInPiu = occupato + GaugeGridLayout.MinCellWidth + GaugeGridLayout.ColumnGap;
+            double used = (columns * GaugeGridLayout.MinCellWidth) + ((columns - 1) * GaugeGridLayout.ColumnGap);
+            double withOneMore = used + GaugeGridLayout.MinCellWidth + GaugeGridLayout.ColumnGap;
 
-            Assert.True(occupato <= larghezza, $"a {larghezza}: {colonne} colonne non entrano");
-            Assert.True(conUnaInPiu > larghezza || colonne == 12, $"a {larghezza}: ci stava una colonna in piu'");
+            Assert.True(used <= cellWidth, $"a {cellWidth}: {columns} colonne non entrano");
+            Assert.True(withOneMore > cellWidth || columns == 12, $"a {cellWidth}: ci stava una colonna in piu'");
         }
     }
 }

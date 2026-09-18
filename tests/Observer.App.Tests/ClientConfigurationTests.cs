@@ -11,118 +11,118 @@ namespace Observer.App.Tests;
 /// </remarks>
 public class ClientConfigurationTests
 {
-    private const string Impronta = "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB";
+    private const string Fingerprint = "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB";
 
     [Fact]
-    public void NienteConfigurazione_SiGuardaLaMacchinaSuCuiSiSTA()
+    public void NoConfiguration_WatchesTheMachineYouAreON()
     {
         // Il caso di una macchina appena installata. Prima questo era "Configuration missing",
         // e chiedeva un token che il servizio locale non pretende nemmeno.
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null, null);
+        ClientConfigurationResult result = ClientConfiguration.Resolve(null, null, null, null);
 
-        Assert.Null(esito.Problem);
-        Assert.Equal(EndpointKind.Local, esito.Endpoint!.Kind);
+        Assert.Null(result.Problem);
+        Assert.Equal(EndpointKind.Local, result.Endpoint!.Kind);
     }
 
     [Fact]
-    public void IndirizzoETokenDallAMBIENTE()
+    public void AddressAndTokenFromTheENVIRONMENT()
     {
-        ClientConfigurationResult esito =
-            ClientConfiguration.Resolve("dal-ambiente", "https://altra:5058", Impronta, null);
+        ClientConfigurationResult result =
+            ClientConfiguration.Resolve("dal-ambiente", "https://altra:5058", Fingerprint, null);
 
-        Assert.Null(esito.Problem);
-        Assert.Equal(EndpointKind.Remote, esito.Endpoint!.Kind);
-        Assert.Equal("dal-ambiente", esito.Endpoint.ApiToken);
-        Assert.Equal(new Uri("https://altra:5058/"), esito.Endpoint.BaseAddress);
+        Assert.Null(result.Problem);
+        Assert.Equal(EndpointKind.Remote, result.Endpoint!.Kind);
+        Assert.Equal("dal-ambiente", result.Endpoint.ApiToken);
+        Assert.Equal(new Uri("https://altra:5058/"), result.Endpoint.BaseAddress);
     }
 
     [Fact]
-    public void IndirizzoETokenDalFILE()
+    public void AddressAndTokenFromTheFILE()
     {
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null, """{ "baseAddress": "https://altra:7000/", "apiToken": "dal-file", "fingerprint": "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB" }""");
+        ClientConfigurationResult result = ClientConfiguration.Resolve(null, null, null, """{ "baseAddress": "https://altra:7000/", "apiToken": "dal-file", "fingerprint": "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB" }""");
 
-        Assert.Null(esito.Problem);
-        Assert.Equal("dal-file", esito.Endpoint!.ApiToken);
-        Assert.Equal(new Uri("https://altra:7000/"), esito.Endpoint.BaseAddress);
+        Assert.Null(result.Problem);
+        Assert.Equal("dal-file", result.Endpoint!.ApiToken);
+        Assert.Equal(new Uri("https://altra:7000/"), result.Endpoint.BaseAddress);
     }
 
     [Fact]
-    public void LAMBIENTEVinceSulFile()
+    public void TheENVIRONMENTWinsOverTheFile()
     {
         // Stesso motivo per cui vince nel servizio: un valore vecchio dimenticato nel file
         // sovrascriverebbe in silenzio quello nuovo appena esportato, e il sintomo sarebbe un
         // 401 inspiegabile.
-        ClientConfigurationResult esito = ClientConfiguration.Resolve("vince-questo",
+        ClientConfigurationResult result = ClientConfiguration.Resolve("vince-questo",
             "https://vince-questa:9000",
-            Impronta,
+            Fingerprint,
             """{ "baseAddress": "https://vecchia:7000/", "apiToken": "vecchio", "fingerprint": "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB" }""");
 
-        Assert.Equal("vince-questo", esito.Endpoint!.ApiToken);
-        Assert.Equal(new Uri("https://vince-questa:9000/"), esito.Endpoint.BaseAddress);
+        Assert.Equal("vince-questo", result.Endpoint!.ApiToken);
+        Assert.Equal(new Uri("https://vince-questa:9000/"), result.Endpoint.BaseAddress);
     }
 
     [Fact]
-    public void LaBarraFinaleVieneAggiuntaSeManca()
+    public void TheTrailingSlashIsAddedWhenMissing()
     {
         // Senza, Uri risolverebbe "metrics/latest" cancellando l'ultimo segmento di un
         // indirizzo tipo "http://host:5057/observer/", e la richiesta finirebbe altrove.
-        ClientConfigurationResult esito =
-            ClientConfiguration.Resolve("t", "https://altra:5058/observer", Impronta, null);
+        ClientConfigurationResult result =
+            ClientConfiguration.Resolve("t", "https://altra:5058/observer", Fingerprint, null);
 
-        Assert.Equal(new Uri("https://altra:5058/observer/"), esito.Endpoint!.BaseAddress);
+        Assert.Equal(new Uri("https://altra:5058/observer/"), result.Endpoint!.BaseAddress);
     }
 
     [Fact]
-    public void GliSpaziVengonoTolti()
+    public void SurroundingSpacesAreTrimmed()
     {
-        ClientConfigurationResult esito =
-            ClientConfiguration.Resolve("  con-spazi  ", "  https://altra:5058  ", Impronta, null);
+        ClientConfigurationResult result =
+            ClientConfiguration.Resolve("  con-spazi  ", "  https://altra:5058  ", Fingerprint, null);
 
-        Assert.Equal("con-spazi", esito.Endpoint!.ApiToken);
+        Assert.Equal("con-spazi", result.Endpoint!.ApiToken);
     }
 
     [Fact]
-    public void UnIndirizzoREMOTOSenzaTokenSpiegaCosaFare()
+    public void AREMOTEAddressWithoutATokenSaysWhatToDo()
     {
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, "https://altra:5058", Impronta, null);
+        ClientConfigurationResult result = ClientConfiguration.Resolve(null, "https://altra:5058", Fingerprint, null);
 
-        Assert.Null(esito.Endpoint);
-        Assert.Contains("observer share", esito.Problem!, StringComparison.Ordinal);
+        Assert.Null(result.Endpoint);
+        Assert.Contains("observer share", result.Problem!, StringComparison.Ordinal);
     }
 
     [Theory]
     [InlineData("non-un-indirizzo")]
     [InlineData("ftp://altra:5057")]
     [InlineData("://rotto")]
-    public void UnIndirizzoINUTILIZZABILEVieneSpiegato(string indirizzo)
+    public void AnUNUSABLEAddressIsExplained(string address)
     {
-        ClientConfigurationResult esito = ClientConfiguration.Resolve("t", indirizzo, Impronta, null);
+        ClientConfigurationResult result = ClientConfiguration.Resolve("t", address, Fingerprint, null);
 
-        Assert.Null(esito.Endpoint);
-        Assert.False(string.IsNullOrWhiteSpace(esito.Problem));
+        Assert.Null(result.Endpoint);
+        Assert.False(string.IsNullOrWhiteSpace(result.Problem));
     }
 
     [Fact]
-    public void UnFileDiCONFIGURAZIONERottoVieneSpiegato()
+    public void ABrokenCONFIGURATIONFileIsExplained()
     {
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null, "{ non e' json");
+        ClientConfigurationResult result = ClientConfiguration.Resolve(null, null, null, "{ non e' json");
 
-        Assert.Null(esito.Endpoint);
-        Assert.Contains("isn't valid JSON", esito.Problem!, StringComparison.Ordinal);
+        Assert.Null(result.Endpoint);
+        Assert.Contains("isn't valid JSON", result.Problem!, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void UnFileVUOTOEquivaleAllAssenzaDiConfigurazione()
+    public void AnEMPTYFileMeansNoConfigurationAtAll()
     {
         // Cioe' si guarda la macchina su cui si sta: e' il comportamento utile, e non un errore.
-        ClientConfigurationResult esito = ClientConfiguration.Resolve(null, null, null, "   ");
+        ClientConfigurationResult result = ClientConfiguration.Resolve(null, null, null, "   ");
 
-        Assert.Null(esito.Problem);
-        Assert.Equal(EndpointKind.Local, esito.Endpoint!.Kind);
+        Assert.Null(result.Problem);
+        Assert.Equal(EndpointKind.Local, result.Endpoint!.Kind);
     }
 
     [Fact]
-    public void IlPercorsoDelFileSTAFuoriDalRepository()
+    public void TheFilePathLIVESOutsideTheRepository()
     {
         // Cosi' un token non puo' finire in un commit. E in LocalApplicationData e non in
         // Roaming: su una macchina di dominio Roaming si sincronizza con un file server, e un

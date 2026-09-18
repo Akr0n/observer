@@ -22,7 +22,7 @@ namespace Observer.App.Tests;
 public class TransportFailureTests
 {
     [Fact]
-    public void UnaConnessioneRifiutataSiRiconosce()
+    public void ARefusedConnectionIsRecognized()
     {
         SocketException socket = new((int)SocketError.ConnectionRefused);
 
@@ -36,51 +36,51 @@ public class TransportFailureTests
     }
 
     [Fact]
-    public void UnTempoScadutoSulSocketSiRiconosce()
+    public void ATimeoutOnTheSocketIsRecognized()
     {
-        HttpRequestException guasto = new("scaduta", new SocketException((int)SocketError.TimedOut));
+        HttpRequestException failure = new("scaduta", new SocketException((int)SocketError.TimedOut));
 
-        Assert.Equal(ServiceOutcome.TimedOut, TransportFailure.Classify(guasto));
+        Assert.Equal(ServiceOutcome.TimedOut, TransportFailure.Classify(failure));
     }
 
     [Fact]
-    public void IlTimeoutDelClientArrivaComeAnnullamento()
+    public void TheClientTimeoutArrivesAsACancellationAndIsStillATimeout()
     {
         // Quando scade HttpClient.Timeout non arriva nessuna SocketException: HttpClient
         // annulla la propria richiesta, e cio' che si vede e' un OperationCanceledException
         // con dentro un TimeoutException. Chi cercasse solo nel socket non lo troverebbe mai.
-        TaskCanceledException scaduto = new("annullata", new TimeoutException());
+        TaskCanceledException expired = new("annullata", new TimeoutException());
 
-        Assert.Equal(ServiceOutcome.TimedOut, TransportFailure.Classify(scaduto));
+        Assert.Equal(ServiceOutcome.TimedOut, TransportFailure.Classify(expired));
     }
 
     [Fact]
-    public void IlSocketSiCercaInFondoAllaCatena()
+    public void TheSocketIsFoundDeepInTheChain()
     {
         // .NET non consegna la SocketException al primo livello: la incarta in una
         // IOException e quella in una HttpRequestException. Guardare solo InnerException
         // basterebbe oggi e smetterebbe di bastare al primo cambio di runtime.
-        HttpRequestException profonda = new(
+        HttpRequestException deep = new(
             "rifiutata",
             new IOException(
                 "connessione interrotta",
                 new SocketException((int)SocketError.ConnectionRefused)));
 
-        Assert.Equal(ServiceOutcome.ConnectionRefused, TransportFailure.Classify(profonda));
+        Assert.Equal(ServiceOutcome.ConnectionRefused, TransportFailure.Classify(deep));
     }
 
     [Fact]
-    public void UnNomeCheNonSiRisolveNonDiventaUnRifiuto()
+    public void ANameThatDoesNotResolveDoesNotBecomeARefusal()
     {
         // Un nome sbagliato non e' ne' un servizio spento ne' un firewall: dire "il servizio
         // non e' in esecuzione" manderebbe a cercare su una macchina che non esiste.
-        HttpRequestException nome = new("nome ignoto", new SocketException((int)SocketError.HostNotFound));
+        HttpRequestException unresolved = new("nome ignoto", new SocketException((int)SocketError.HostNotFound));
 
-        Assert.Equal(ServiceOutcome.Unreachable, TransportFailure.Classify(nome));
+        Assert.Equal(ServiceOutcome.Unreachable, TransportFailure.Classify(unresolved));
     }
 
     [Fact]
-    public void UnGuastoTlsNonDiventaUnRifiuto()
+    public void ATlsFailureDoesNotBecomeARefusal()
     {
         // L'impronta che non corrisponde ha un esito suo, deciso prima di arrivare qui. Se
         // questo classificatore se ne appropriasse, un certificato cambiato — cioe' una
@@ -91,7 +91,7 @@ public class TransportFailureTests
     }
 
     [Fact]
-    public void UnGuastoSenzaSocketRestaGenerico()
+    public void AFailureWithNoSocketStaysGeneric()
     {
         Assert.Equal(
             ServiceOutcome.Unreachable,
@@ -99,13 +99,13 @@ public class TransportFailureTests
     }
 
     [Fact]
-    public void UnaCatenaSenzaSocketNonBloccaIlClassificatore()
+    public void AChainWithNoSocketDoesNotHangTheClassifier()
     {
         // Difensivo, ma il costo di sbagliarlo e' un'interfaccia che si pianta invece di
         // mostrare un errore: la ricerca nella catena deve avere un fondo comunque.
-        InvalidOperationException dentro = new("dentro");
-        HttpRequestException fuori = new("fuori", dentro);
+        InvalidOperationException inner = new("dentro");
+        HttpRequestException outer = new("fuori", inner);
 
-        Assert.Equal(ServiceOutcome.Unreachable, TransportFailure.Classify(fuori));
+        Assert.Equal(ServiceOutcome.Unreachable, TransportFailure.Classify(outer));
     }
 }

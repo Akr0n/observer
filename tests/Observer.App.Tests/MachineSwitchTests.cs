@@ -19,28 +19,28 @@ namespace Observer.App.Tests;
 /// posto, e questo test e' cio' che glielo dira'.
 /// </para>
 /// </remarks>
-public class CambioMacchinaTests
+public class MachineSwitchTests
 {
     [Fact]
-    public async Task CambiandoMacchinaINumeriDellaPrecedenteSpariscono()
+    public async Task ChangingMachineClearsThePreviousReadings()
     {
-        ObserverEndpoint locale = ObserverEndpoint.LocalChannel();
-        ObserverEndpoint altra = ObserverEndpoint.Remote(
+        ObserverEndpoint local = ObserverEndpoint.LocalChannel();
+        ObserverEndpoint other = ObserverEndpoint.Remote(
             new Uri("https://altra:5058/"), "token", "altra", new string('a', 64));
 
         MainViewModel viewModel = new(
-            client: new ClientConDati(locale),
+            client: new ClientWithData(local),
             configurationProblem: null,
-            machineList: new MachineListResult([locale, altra], []),
+            machineList: new MachineListResult([local, other], []),
 
             // La seconda macchina non risponde: e' proprio il caso in cui i numeri vecchi
             // resterebbero a schermo, perche' non arriva niente che li sostituisca.
-            openMachine: punto => new ClientMuto(punto));
+            openMachine: endpoint => new SilentClient(endpoint));
 
-        using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(15));
-        Task ciclo = viewModel.RunAsync(arresto.Token);
+        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(15));
+        Task loop = viewModel.RunAsync(stop.Token);
 
-        while (!arresto.IsCancellationRequested && viewModel.Gauges.Count == 0)
+        while (!stop.IsCancellationRequested && viewModel.Gauges.Count == 0)
         {
             await Task.Delay(50, CancellationToken.None);
         }
@@ -48,7 +48,7 @@ public class CambioMacchinaTests
         Assert.NotEmpty(viewModel.Gauges);
         Assert.True(viewModel.HasGauges);
 
-        viewModel.SelectedMachine = viewModel.Machines.Single(voce => voce.Endpoint == altra);
+        viewModel.SelectedMachine = viewModel.Machines.Single(entry => entry.Endpoint == other);
 
         // Subito, senza aspettare un giro: fra la scelta e la prima risposta della macchina
         // nuova passa almeno un secondo, e in quel secondo non deve esserci niente da leggere.
@@ -56,11 +56,11 @@ public class CambioMacchinaTests
         Assert.False(viewModel.HasGauges);
         Assert.Empty(viewModel.Groups);
 
-        await arresto.CancelAsync();
+        await stop.CancelAsync();
 
         try
         {
-            await ciclo;
+            await loop;
         }
         catch (OperationCanceledException)
         {
@@ -69,7 +69,7 @@ public class CambioMacchinaTests
     }
 
     /// <summary>Un client che risponde con una misura sola, buona.</summary>
-    private sealed class ClientConDati(ObserverEndpoint endpoint) : IMetricsClient
+    private sealed class ClientWithData(ObserverEndpoint endpoint) : IMetricsClient
     {
         public ObserverEndpoint Endpoint { get; } = endpoint;
 
@@ -110,7 +110,7 @@ public class CambioMacchinaTests
     }
 
     /// <summary>Un client che non risponde mai, come una macchina spenta.</summary>
-    private sealed class ClientMuto(ObserverEndpoint endpoint) : IMetricsClient
+    private sealed class SilentClient(ObserverEndpoint endpoint) : IMetricsClient
     {
         public ObserverEndpoint Endpoint { get; } = endpoint;
 

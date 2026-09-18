@@ -26,50 +26,50 @@ namespace Observer.App.Tests;
 /// </para>
 /// </para>
 /// </remarks>
-public class TrasportoRifiutatoTests
+public class ConnectionRefusedTests
 {
     [Fact]
-    public async Task UnaPortaChiusaSuIndirizzoLetteraleSiPresentaComeRifiuto()
+    public async Task AClosedPortOnALiteralAddressComesBackAsARefusal()
     {
-        using MetricsClient client = new(Verso($"http://127.0.0.1:{PortaChiusa()}/"));
+        using MetricsClient client = new(EndpointFor($"http://127.0.0.1:{ClosedPort()}/"));
 
-        SnapshotFetch esito = await client.GetLatestAsync(CancellationToken.None);
+        SnapshotFetch fetch = await client.GetLatestAsync(CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.ConnectionRefused, esito.Outcome);
+        Assert.Equal(ServiceOutcome.ConnectionRefused, fetch.Outcome);
     }
 
     [Fact]
-    public async Task UnaPortaChiusaSuUnNomeADoppiaPilaSiPresentaComeRifiuto()
+    public async Task AClosedPortOnADualStackNameComesBackAsARefusalAndDoesNotBlameTheFirewall()
     {
         // Il caso che il budget precedente non copriva. Se un giorno qualcuno riabbassasse
         // RequestTimeout, questo test tornerebbe rosso — ed e' l'unico posto in cui quel
         // numero e' legato a cio' che protegge.
-        using MetricsClient client = new(Verso($"http://localhost:{PortaChiusa()}/"));
+        using MetricsClient client = new(EndpointFor($"http://localhost:{ClosedPort()}/"));
 
-        SnapshotFetch esito = await client.GetLatestAsync(CancellationToken.None);
+        SnapshotFetch fetch = await client.GetLatestAsync(CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.ConnectionRefused, esito.Outcome);
+        Assert.Equal(ServiceOutcome.ConnectionRefused, fetch.Outcome);
 
         // Il danno vero non era l'etichetta: era il consiglio. Mandare a cercare un firewall
         // mentre il servizio e' spento costa il pomeriggio di chi lo segue.
-        Assert.DoesNotContain("dropping the packets", esito.Problem, StringComparison.Ordinal);
+        Assert.DoesNotContain("dropping the packets", fetch.Problem, StringComparison.Ordinal);
     }
 
-    private static ObserverEndpoint Verso(string indirizzo) =>
-        ObserverEndpoint.Remote(new Uri(indirizzo), "il-token", "dalla prova");
+    private static ObserverEndpoint EndpointFor(string address) =>
+        ObserverEndpoint.Remote(new Uri(address), "il-token", "dalla prova");
 
     /// <summary>Una porta su cui si e' sicuri che non ascolti nessuno.</summary>
     /// <remarks>
     /// Si fa aprire al sistema una porta effimera e la si chiude subito: e' l'unico modo di
     /// avere un numero libero senza sceglierlo a caso e sperare.
     /// </remarks>
-    private static int PortaChiusa()
+    private static int ClosedPort()
     {
-        TcpListener ascoltatore = new(IPAddress.Loopback, 0);
-        ascoltatore.Start();
-        int porta = ((IPEndPoint)ascoltatore.LocalEndpoint).Port;
-        ascoltatore.Stop();
+        TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
 
-        return porta;
+        return port;
     }
 }

@@ -8,12 +8,12 @@ namespace Observer.App.Tests;
 /// aggiornamento gira su un thread del pool, il test avanza l'orologio dal proprio, e una
 /// struttura da sedici byte si potrebbe leggere a meta' scrittura.
 /// </remarks>
-internal sealed class OrologioFinto
+internal sealed class FakeClock
 {
-    private long istante = new DateTimeOffset(2026, 8, 27, 12, 0, 0, TimeSpan.Zero).UtcTicks;
+    private long utcTicks = new DateTimeOffset(2026, 8, 27, 12, 0, 0, TimeSpan.Zero).UtcTicks;
 
-    public DateTimeOffset Adesso() => new(Volatile.Read(ref istante), TimeSpan.Zero);
+    public DateTimeOffset Now() => new(Volatile.Read(ref utcTicks), TimeSpan.Zero);
 
-    public void Avanza(TimeSpan quanto) =>
-        Volatile.Write(ref istante, Volatile.Read(ref istante) + quanto.Ticks);
+    public void Advance(TimeSpan amount) =>
+        Volatile.Write(ref utcTicks, Volatile.Read(ref utcTicks) + amount.Ticks);
 }

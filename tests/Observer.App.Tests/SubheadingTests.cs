@@ -14,20 +14,20 @@ namespace Observer.App.Tests;
 /// li' che sta, nel messaggio dell'impronta che non corrisponde — ma a regime e' una frase che
 /// si rilegge a ogni sguardo senza mai cambiare.
 /// </remarks>
-public class IntestazioneTests
+public class SubheadingTests
 {
     [Fact]
-    public async Task GuardandoUnaMacchinaRemotaLIntestazioneNonNominaIlToken()
+    public async Task WatchingARemoteMachineTheSubheadingShowsOnlyTheTimeAndNeverTheToken()
     {
-        ObserverEndpoint remota = ObserverEndpoint.Remote(
+        ObserverEndpoint remote = ObserverEndpoint.Remote(
             new Uri("https://altra:5058/"), "il-token", "dal file delle macchine", new string('a', 64));
 
-        MainViewModel viewModel = new(new ClientCheRisponde(remota), configurationProblem: null);
+        MainViewModel viewModel = new(new AnsweringClient(remote), configurationProblem: null);
 
-        using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(15));
-        Task ciclo = viewModel.RunAsync(arresto.Token);
+        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(15));
+        Task loop = viewModel.RunAsync(stop.Token);
 
-        while (!arresto.IsCancellationRequested
+        while (!stop.IsCancellationRequested
             && !viewModel.Subheading.StartsWith("Last Reading:", StringComparison.Ordinal))
         {
             await Task.Delay(50, CancellationToken.None);
@@ -40,11 +40,11 @@ public class IntestazioneTests
         Assert.Matches(@"^Last Reading: \d{2}:\d{2}:\d{2}$", viewModel.Subheading);
         Assert.DoesNotContain("token", viewModel.Subheading, StringComparison.OrdinalIgnoreCase);
 
-        await arresto.CancelAsync();
+        await stop.CancelAsync();
 
         try
         {
-            await ciclo;
+            await loop;
         }
         catch (OperationCanceledException)
         {
@@ -52,7 +52,7 @@ public class IntestazioneTests
         }
     }
 
-    private sealed class ClientCheRisponde(ObserverEndpoint endpoint) : IMetricsClient
+    private sealed class AnsweringClient(ObserverEndpoint endpoint) : IMetricsClient
     {
         public ObserverEndpoint Endpoint { get; } = endpoint;
 

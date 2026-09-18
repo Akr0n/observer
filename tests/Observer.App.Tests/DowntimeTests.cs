@@ -16,15 +16,15 @@ public class DowntimeTests
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(59)]
-    public void SottoUnMinutoNonSiContanoISecondi(int secondi)
+    public void UnderAMinuteSecondsAreNotCounted(int seconds)
     {
         // "0 min" sembrerebbe un guasto di durata nulla, e i secondi sarebbero una precisione
         // che una lettura ogni dieci o quindici secondi non ha.
-        Assert.Equal("under 1 min", Downtime.Describe(TimeSpan.FromSeconds(secondi)));
+        Assert.Equal("under 1 min", Downtime.Describe(TimeSpan.FromSeconds(seconds)));
     }
 
     [Fact]
-    public void UnOrologioCheTornaIndietroNonProduceUnNumeroStrano()
+    public void AClockGoingBackwardsDoesNotShowANegativeDuration()
     {
         // L'ora di sistema puo' cambiare fra una lettura e l'altra: senza questo ramo la
         // sottrazione darebbe una durata negativa e la frase un numero col segno meno.
@@ -32,7 +32,7 @@ public class DowntimeTests
     }
 
     [Fact]
-    public void IMinutiSiTronconoENonSiArrotondano()
+    public void MinutesAreTruncatedNotRounded()
     {
         // La proprieta' che rende onesto un testo in ritardo: il numero mostrato e' sempre un
         // limite inferiore della durata vera. Arrotondando, sommato al ritardo della lettura,
@@ -42,7 +42,7 @@ public class DowntimeTests
     }
 
     [Fact]
-    public void IlConfineDelMinutoNonLasciaBuchi()
+    public void TheMinuteBoundaryLeavesNoGap()
     {
         // L'altro capo di "under 1 min": a cinquantanove secondi non si conta, a sessanta si.
         Assert.Equal("under 1 min", Downtime.Describe(TimeSpan.FromSeconds(59)));
@@ -50,7 +50,7 @@ public class DowntimeTests
     }
 
     [Fact]
-    public void DallOraInSuSiLeggonoDueUnita()
+    public void AnHourOrMoreShowsTwoUnits()
     {
         Assert.Equal("1 h", Downtime.Describe(TimeSpan.FromHours(1)));
         Assert.Equal("2 h 10 min", Downtime.Describe(new TimeSpan(2, 10, 30)));
@@ -58,7 +58,7 @@ public class DowntimeTests
     }
 
     [Fact]
-    public void IlConfineDelGiornoNonLasciaBuchi()
+    public void TheDayBoundaryLeavesNoGap()
     {
         // Un secondo prima delle ventiquattro ore si contano ancora le ore; un secondo dopo
         // si contano i giorni, e le ore ripartono da zero senza sparire.
@@ -68,7 +68,7 @@ public class DowntimeTests
     }
 
     [Fact]
-    public void OltreIlGiornoSiContanoIGiorniEPoiLeOre()
+    public void PastADayTheUnitsAreDaysAndHours()
     {
         Assert.Equal("1 day", Downtime.Describe(TimeSpan.FromDays(1)));
         Assert.Equal("1 day 23 h", Downtime.Describe(new TimeSpan(1, 23, 30, 0)));
@@ -77,7 +77,7 @@ public class DowntimeTests
     }
 
     [Fact]
-    public void LaSecondaUnitaSparisceQuandoEZero()
+    public void TheSecondUnitDisappearsWhenItIsZero()
     {
         // "2 h 0 min" e "3 days 0 h" chiedono di leggere uno zero che non aggiunge niente.
         Assert.Equal("2 h", Downtime.Describe(TimeSpan.FromHours(2)));
@@ -85,25 +85,25 @@ public class DowntimeTests
     }
 
     [Fact]
-    public void UnSoloGiornoNonEPlurale() =>
+    public void ASingleDayIsNotPlural() =>
         Assert.Equal("1 day", Downtime.Describe(TimeSpan.FromHours(24)));
 
     [Fact]
-    public void LaFraseNonPortaMaiUnNumeroFrazionario()
+    public void TheTextNeverShowsAFractionalNumber()
     {
         // Non e' una prova sulla cultura: un intero non porta separatori in nessuna cultura,
         // e a proteggere la cultura c'e' CA1305, che senza il formato esplicito non fa
         // nemmeno compilare. Qui si pinna che la frase non contenga mai un numero con la
         // virgola, cioe' che le unita' restino intere invece di diventare "1,5 h".
-        foreach (TimeSpan durata in new[]
+        foreach (TimeSpan duration in new[]
         {
             TimeSpan.FromMinutes(90),
             TimeSpan.FromHours(36),
             TimeSpan.FromDays(400),
         })
         {
-            Assert.DoesNotContain(",", Downtime.Describe(durata), StringComparison.Ordinal);
-            Assert.DoesNotContain(".", Downtime.Describe(durata), StringComparison.Ordinal);
+            Assert.DoesNotContain(",", Downtime.Describe(duration), StringComparison.Ordinal);
+            Assert.DoesNotContain(".", Downtime.Describe(duration), StringComparison.Ordinal);
         }
     }
 }

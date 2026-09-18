@@ -13,20 +13,20 @@ namespace Observer.App.Tests;
 /// mentre non guardo": l'avviso vero non e' consegnabile senza poter fallire in silenzio, questo
 /// non puo' fallire in silenzio perche' non promette niente mentre nessuno guarda.
 /// </remarks>
-public class RiepilogoTests
+public class AwaySummaryTests
 {
     /// <remarks>
     /// Mezzogiorno LOCALE, non UTC: la frase mostra l'ora della macchina di chi guarda (come
     /// <c>HistoryStrip.Describe</c>), quindi un istante UTC renderebbe il test dipendente dal
     /// fuso di chi lo esegue - verde qui e rosso sul runner, o viceversa.
     /// </remarks>
-    private static readonly DateTimeOffset Mezzogiorno = new(new DateTime(2026, 9, 12, 12, 0, 0, DateTimeKind.Local));
+    private static readonly DateTimeOffset Noon = new(new DateTime(2026, 9, 12, 12, 0, 0, DateTimeKind.Local));
 
-    private static HistoryGap Vuoto(int daMinuto, int aMinuto, bool dalBordo = false) =>
-        new(Mezzogiorno.AddMinutes(daMinuto), Mezzogiorno.AddMinutes(aMinuto), dalBordo);
+    private static HistoryGap Gap(int startMinute, int endMinute, bool atEdge = false) =>
+        new(Noon.AddMinutes(startMinute), Noon.AddMinutes(endMinute), atEdge);
 
     [Fact]
-    public void NienteDaDireNonEUnaRiga()
+    public void NoGapsMeansNoLine()
     {
         // Il silenzio e' un risultato: "ho chiesto e non c'era niente". Una riga "all good" per
         // ogni macchina sana riempirebbe il riquadro proprio nel caso in cui non serve, e lo si
@@ -35,63 +35,63 @@ public class RiepilogoTests
     }
 
     [Fact]
-    public void UnaSolaInterruzioneDiceQuantoEQuando()
+    public void ASingleOutageSaysHowLongAndWhen()
     {
-        string riga = AwaySummary.LineFor("lavoro", [Vuoto(20, 200)], withDay: false);
+        string line = AwaySummary.LineFor("lavoro", [Gap(20, 200)], withDay: false);
 
-        Assert.Equal("lavoro: not measured for 3 h (12:20 – 15:20)", riga);
+        Assert.Equal("lavoro: not measured for 3 h (12:20 – 15:20)", line);
 
         // Con una sola, "in 1 period" sarebbe rumore: il totale E' quella.
-        Assert.DoesNotContain("period", riga, StringComparison.Ordinal);
+        Assert.DoesNotContain("period", line, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void PiuInterruzioniDiconoQuanteSonoEQualEraLaPiuLunga()
+    public void SeveralOutagesSayHowManyAndWhichWasLongest()
     {
         // Il totale da solo mentirebbe per omissione: tre ore in un colpo e tre ore in dieci
         // singhiozzi sono due macchine diverse, e la piu' lunga e' quella che decide se alzarsi
         // dalla sedia.
-        string riga = AwaySummary.LineFor("lavoro", [Vuoto(10, 20), Vuoto(60, 240), Vuoto(300, 310)], withDay: false);
+        string line = AwaySummary.LineFor("lavoro", [Gap(10, 20), Gap(60, 240), Gap(300, 310)], withDay: false);
 
-        Assert.Contains("in 3 periods", riga, StringComparison.Ordinal);
-        Assert.Contains("longest 13:00 – 16:00", riga, StringComparison.Ordinal);
-        Assert.Contains("3 h 20 min", riga, StringComparison.Ordinal);
+        Assert.Contains("in 3 periods", line, StringComparison.Ordinal);
+        Assert.Contains("longest 13:00 – 16:00", line, StringComparison.Ordinal);
+        Assert.Contains("3 h 20 min", line, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void IlVuotoSulBordoNonSiConteggiaFraLeInterruzioni()
+    public void TheGapAtTheEdgeIsNotCountedAsAnOutage()
     {
         // La ritenzione cancella un PREFISSO, indistinguibile da una macchina accesa a meta'
         // finestra: chiamarlo interruzione sarebbe inventare, e una frase inventata insegna a
         // non fidarsi delle altre.
-        string solo = AwaySummary.LineFor("casa", [Vuoto(0, 45, dalBordo: true)], withDay: false);
+        string edgeOnly = AwaySummary.LineFor("casa", [Gap(0, 45, atEdge: true)], withDay: false);
 
-        Assert.Equal("casa: nothing known before 12:45", solo);
-        Assert.DoesNotContain("not measured", solo, StringComparison.Ordinal);
+        Assert.Equal("casa: nothing known before 12:45", edgeOnly);
+        Assert.DoesNotContain("not measured", edgeOnly, StringComparison.Ordinal);
 
         // E quando c'e' anche un'interruzione vera, il bordo resta una nota in coda e NON entra
         // nel totale: venti minuti, non sessantacinque.
-        string insieme = AwaySummary.LineFor("casa", [Vuoto(0, 45, dalBordo: true), Vuoto(60, 80)], withDay: false);
+        string edgeAndOutage = AwaySummary.LineFor("casa", [Gap(0, 45, atEdge: true), Gap(60, 80)], withDay: false);
 
-        Assert.Contains("not measured for 20 min", insieme, StringComparison.Ordinal);
-        Assert.Contains("nothing known before 12:45", insieme, StringComparison.Ordinal);
-        Assert.DoesNotContain("periods", insieme, StringComparison.Ordinal);
+        Assert.Contains("not measured for 20 min", edgeAndOutage, StringComparison.Ordinal);
+        Assert.Contains("nothing known before 12:45", edgeAndOutage, StringComparison.Ordinal);
+        Assert.DoesNotContain("periods", edgeAndOutage, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void OltreLaGiornataGliIstantiPortanoIlGiorno()
+    public void TheDayFlagAddsTheWeekdayToBothTimes()
     {
         // Stessa soglia e stessa ragione di HistoryStrip.Describe: a sette giorni "14:20" puo'
         // essere uno qualunque di sette pomeriggi.
-        string senza = AwaySummary.LineFor("lavoro", [Vuoto(20, 200)], withDay: false);
-        string con = AwaySummary.LineFor("lavoro", [Vuoto(20, 200)], withDay: true);
+        string plain = AwaySummary.LineFor("lavoro", [Gap(20, 200)], withDay: false);
+        string dated = AwaySummary.LineFor("lavoro", [Gap(20, 200)], withDay: true);
 
-        Assert.Matches(@"\(\d{2}:\d{2} – \d{2}:\d{2}\)", senza);
-        Assert.Matches(@"\([A-Za-z]{3} \d{2}:\d{2} – [A-Za-z]{3} \d{2}:\d{2}\)", con);
+        Assert.Matches(@"\(\d{2}:\d{2} – \d{2}:\d{2}\)", plain);
+        Assert.Matches(@"\([A-Za-z]{3} \d{2}:\d{2} – [A-Za-z]{3} \d{2}:\d{2}\)", dated);
     }
 
     [Fact]
-    public void UnInterruzioneCheAttraversaLaMezzanotteNonSiLeggeAllIndietro()
+    public void AnOutageAcrossMidnightDoesNotReadBackwards()
     {
         // A ventiquattro ore un'assenza puo' durare quasi l'intera finestra, e i due estremi
         // cadono allora sullo stesso orario di due giorni diversi: senza il giorno la riga
@@ -99,33 +99,33 @@ public class RiepilogoTests
         // giorno accanto a un intervallo che si legge come un quarto d'ora all'indietro.
         // Succede anche a un'ora, su una macchina spenta a cavallo di mezzanotte: per questo la
         // regola guarda la COPPIA e non la soglia della finestra.
-        string riga = AwaySummary.LineFor("lavoro", [Vuoto(-755, -710)], withDay: false);
+        string line = AwaySummary.LineFor("lavoro", [Gap(-755, -710)], withDay: false);
 
-        Assert.Matches(@"\([A-Za-z]{3} \d{2}:\d{2} – [A-Za-z]{3} \d{2}:\d{2}\)", riga);
+        Assert.Matches(@"\([A-Za-z]{3} \d{2}:\d{2} – [A-Za-z]{3} \d{2}:\d{2}\)", line);
 
         // E quando i due estremi stanno nella stessa giornata il giorno NON compare: aggiungerlo
         // sempre allungherebbe la frase dove non serve.
-        Assert.DoesNotMatch(@"[A-Za-z]{3} \d{2}:\d{2}", AwaySummary.LineFor("lavoro", [Vuoto(10, 20)], withDay: false));
+        Assert.DoesNotMatch(@"[A-Za-z]{3} \d{2}:\d{2}", AwaySummary.LineFor("lavoro", [Gap(10, 20)], withDay: false));
     }
 
     [Fact]
-    public async Task UnoStoricoCheNonSiPuoLeggereLoDiceInveceDiTacere()
+    public async Task AHistoryThatCannotBeReadSaysSoInsteadOfStayingSilent()
     {
         // E' il punto in cui questa strada si distingue da un avviso che non compare: quando non
         // si puo' sapere, lo si scrive. Il silenzio resta riservato a "ho chiesto e va tutto
         // bene", e cosi' il silenzio significa qualcosa.
-        ObserverEndpoint locale = ObserverEndpoint.LocalChannel();
-        ClientConStoricoGuasto cliente = new();
+        ObserverEndpoint local = ObserverEndpoint.LocalChannel();
+        FailingHistoryClient client = new();
 
         MainViewModel viewModel = new(
-            cliente,
+            client,
             configurationProblem: null,
-            machineList: new MachineListResult([locale], []));
+            machineList: new MachineListResult([local], []));
 
-        using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(25));
-        Task ciclo = viewModel.RunAsync(arresto.Token);
+        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(25));
+        Task loop = viewModel.RunAsync(stop.Token);
 
-        while (!arresto.IsCancellationRequested && viewModel.AwaySummaryText.Length == 0)
+        while (!stop.IsCancellationRequested && viewModel.AwaySummaryText.Length == 0)
         {
             await Task.Delay(50, CancellationToken.None);
         }
@@ -138,33 +138,33 @@ public class RiepilogoTests
         // tiene in piedi tutto il resto: senza quel margine la griglia, ancorata all'ultimo
         // punto, sfora a sinistra e ogni macchina sana apre con "nothing known before".
         Assert.True(
-            cliente.Riepiloghi(TimeSpan.FromHours(1), DateTimeOffset.UtcNow) > 0,
+            client.SummaryQueryCount(TimeSpan.FromHours(1), DateTimeOffset.UtcNow) > 0,
             "il riepilogo non ha chiesto oltre la finestra: la griglia sforerebbe a sinistra");
 
         // Cambiando periodo cambia la domanda, quindi si ricomincia da capo.
-        int aUnOra = cliente.Riepiloghi(TimeSpan.FromHours(1), DateTimeOffset.UtcNow);
+        int queriesAtOneHour = client.SummaryQueryCount(TimeSpan.FromHours(1), DateTimeOffset.UtcNow);
 
         viewModel.HistoryPeriod = "24h";
 
         Assert.Equal(string.Empty, viewModel.AwaySummaryText);
         Assert.False(viewModel.ShowAwaySummary);
 
-        while (!arresto.IsCancellationRequested
-            && cliente.Riepiloghi(TimeSpan.FromHours(24), DateTimeOffset.UtcNow) == 0)
+        while (!stop.IsCancellationRequested
+            && client.SummaryQueryCount(TimeSpan.FromHours(24), DateTimeOffset.UtcNow) == 0)
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
         Assert.True(
-            cliente.Riepiloghi(TimeSpan.FromHours(24), DateTimeOffset.UtcNow) > 0,
+            client.SummaryQueryCount(TimeSpan.FromHours(24), DateTimeOffset.UtcNow) > 0,
             "cambiando periodo il riepilogo non e' stato rifatto sulla finestra nuova");
-        Assert.True(aUnOra > 0, "la prima query non era quella del riepilogo");
+        Assert.True(queriesAtOneHour > 0, "la prima query non era quella del riepilogo");
 
-        await arresto.CancelAsync();
+        await stop.CancelAsync();
 
         try
         {
-            await ciclo;
+            await loop;
         }
         catch (OperationCanceledException)
         {
@@ -173,9 +173,9 @@ public class RiepilogoTests
     }
 
     /// <summary>Campiona benissimo, e lo storico non c'e'.</summary>
-    private sealed class ClientConStoricoGuasto : IMetricsClient
+    private sealed class FailingHistoryClient : IMetricsClient
     {
-        private readonly System.Collections.Concurrent.ConcurrentBag<HistoryQuery> chieste = [];
+        private readonly System.Collections.Concurrent.ConcurrentBag<HistoryQuery> queries = [];
 
         /// <summary>Le sole richieste del RIEPILOGO, riconosciute dal margine che solo lui chiede.</summary>
         /// <remarks>
@@ -184,8 +184,8 @@ public class RiepilogoTests
         /// se il riepilogo non partisse mai. Il riepilogo e' l'unico che guarda PIU' indietro
         /// della finestra, ed e' proprio la correzione che questo test deve inchiodare.
         /// </remarks>
-        public int Riepiloghi(TimeSpan finestra, DateTimeOffset adesso) =>
-            chieste.Count(q => q.From < adesso - finestra - TimeSpan.FromMinutes(1));
+        public int SummaryQueryCount(TimeSpan window, DateTimeOffset now) =>
+            queries.Count(q => q.From < now - window - TimeSpan.FromMinutes(1));
 
         public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.LocalChannel();
 
@@ -217,7 +217,7 @@ public class RiepilogoTests
 
         public Task<HistoryFetch> GetHistoryAsync(HistoryQuery query, CancellationToken cancellationToken)
         {
-            chieste.Add(query);
+            queries.Add(query);
 
             return Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "persistenza spenta", null));
         }

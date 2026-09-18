@@ -12,23 +12,23 @@ namespace Observer.App.Tests;
 /// questa prova esiste perche' la meta' client e' invisibile - nessuna schermata cambia, nessun
 /// numero si muove, e cancellarla non farebbe fallire niente altro.
 /// </remarks>
-public class CompressioneChiestaTests
+public class ClientCompressionTests
 {
-    private const string ImprontaFinta =
+    private const string FakeFingerprint =
         "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
 
     [Fact]
-    public void SulFiloSiChiedeLaCompressione()
+    public void OnTheWireCompressionIsRequested()
     {
         // E' il percorso che paga i byte: la coda grezza dello storico pesa 76 kB a un'ora e
         // 114 a ventiquattro, una volta per quadrante.
-        using SocketsHttpHandler handler = new CertificatePinning(ImprontaFinta).Handler();
+        using SocketsHttpHandler handler = new CertificatePinning(FakeFingerprint).Handler();
 
         Assert.Equal(DecompressionMethods.All, handler.AutomaticDecompression);
     }
 
     [Fact]
-    public void SulCanaleLocaleNoEQuestaEUnaScelta()
+    public void OnTheLocalChannelItIsNotAskedForOnPurpose()
     {
         // Sulla pipe (o sul socket unix) i byte non attraversano niente. Chiederla li'
         // significherebbe far comprimere e decomprimere la macchina che questo programma STA

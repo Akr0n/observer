@@ -17,22 +17,22 @@ public class AppVersionTests
     [InlineData(" 0.8.0 ", "0.8.0")]
     [InlineData("", "")]
     [InlineData(null, "")]
-    public void LaVersioneCortaTieneCioCheStaPrimaDelPiu(string? informativa, string attesa) =>
-        Assert.Equal(attesa, AppVersion.Shorten(informativa));
+    public void TheShortVersionKeepsWhatComesBeforeThePlus(string? informationalVersion, string expected) =>
+        Assert.Equal(expected, AppVersion.Shorten(informationalVersion));
 
     [Fact]
-    public void QuestoProgrammaHaUnaVersioneCheSembraUnaVersione()
+    public void ThisProgramHasAVersionThatLooksLikeAVersion()
     {
         // I metadati arrivano da Directory.Build.props attraverso l'SDK: se questo test
         // fallisce, il titolo della finestra dira' "Observer" e basta, e nessuno se ne accorge.
-        string versione = AppVersion.OfThisProgram();
+        string version = AppVersion.OfThisProgram();
 
-        Assert.Matches(@"^\d+\.\d+\.\d+", versione);
-        Assert.DoesNotContain("+", versione, StringComparison.Ordinal);
+        Assert.Matches(@"^\d+\.\d+\.\d+", version);
+        Assert.DoesNotContain("+", version, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void IlTitoloDellaFinestraPortaNomeEVersione()
+    public void TheWindowTitleCarriesNameAndVersion()
     {
         MainViewModel viewModel = new(client: null, configurationProblem: null);
 
@@ -41,6 +41,6 @@ public class AppVersionTests
     }
 
     [Fact]
-    public void SenzaVersioneIlTitoloEIlSoloNome() =>
+    public void WithNoVersionTheTitleIsJustTheName() =>
         Assert.Equal("Observer", MainViewModel.Title(string.Empty));
 }

@@ -12,7 +12,7 @@ namespace Observer.App.Tests;
 /// </summary>
 public class MetricsClientTests
 {
-    private const string RispostaValida =
+    private const string ValidResponse =
         """
         {"schemaVersion":1,"capturedAt":"2026-08-26T09:15:49.34Z","collectors":[
           {"collectorId":"cpu","status":1,"message":null,"points":[
@@ -22,177 +22,177 @@ public class MetricsClientTests
         """;
 
     [Fact]
-    public async Task GetLatestAsync_ConRispostaValida_RestituisceIlCampionamento()
+    public async Task GetLatestAsync_WithAValidResponse_ReturnsTheSnapshot()
     {
-        using MetricsClient client = Crea(new FintoHandler(_ => Json(HttpStatusCode.OK, RispostaValida)));
+        using MetricsClient client = Create(new FakeHandler(_ => Json(HttpStatusCode.OK, ValidResponse)));
 
-        SnapshotFetch esito = await client.GetLatestAsync(CancellationToken.None);
+        SnapshotFetch fetch = await client.GetLatestAsync(CancellationToken.None);
 
-        Assert.True(esito.IsOk);
-        Assert.Equal(ServiceOutcome.Ok, esito.Outcome);
-        Assert.Equal(1, esito.Snapshot!.SchemaVersion);
+        Assert.True(fetch.IsOk);
+        Assert.Equal(ServiceOutcome.Ok, fetch.Outcome);
+        Assert.Equal(1, fetch.Snapshot!.SchemaVersion);
 
-        MetricPoint punto = esito.Snapshot.Collectors[0].Points[0];
+        MetricPoint point = fetch.Snapshot.Collectors[0].Points[0];
 
         // Il difetto piu' pericoloso di tutto il progetto e' un valore che si serializza e non
         // si rideserializza: il client mostrerebbe zeri marcati "Ok". Qui si verifica che il
         // numero vero arrivi fino in fondo.
-        Assert.Equal(CollectorStatus.Ok, punto.Status);
-        Assert.Equal(MetricValueKind.Number, punto.Value!.Value.Kind);
-        Assert.Equal(64.25d, punto.Value.Value.Number);
+        Assert.Equal(CollectorStatus.Ok, point.Status);
+        Assert.Equal(MetricValueKind.Number, point.Value!.Value.Kind);
+        Assert.Equal(64.25d, point.Value.Value.Number);
     }
 
     [Fact]
-    public async Task GetLatestAsync_MandaLAuthorizationBearer()
+    public async Task GetLatestAsync_SendsTheBearerTokenToTheConfiguredAddress()
     {
-        HttpRequestMessage? vista = null;
+        HttpRequestMessage? captured = null;
 
-        using MetricsClient client = Crea(new FintoHandler(richiesta =>
+        using MetricsClient client = Create(new FakeHandler(request =>
         {
-            vista = richiesta;
-            return Json(HttpStatusCode.OK, RispostaValida);
+            captured = request;
+            return Json(HttpStatusCode.OK, ValidResponse);
         }));
 
         await client.GetLatestAsync(CancellationToken.None);
 
-        Assert.NotNull(vista);
-        Assert.Equal("Bearer", vista.Headers.Authorization!.Scheme);
-        Assert.Equal("il-token", vista.Headers.Authorization.Parameter);
-        Assert.Equal("http://altra-macchina:5057/metrics/latest", vista.RequestUri!.AbsoluteUri);
+        Assert.NotNull(captured);
+        Assert.Equal("Bearer", captured.Headers.Authorization!.Scheme);
+        Assert.Equal("il-token", captured.Headers.Authorization.Parameter);
+        Assert.Equal("http://altra-macchina:5057/metrics/latest", captured.RequestUri!.AbsoluteUri);
     }
 
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized)]
     [InlineData(HttpStatusCode.Forbidden)]
-    public async Task GetLatestAsync_QuandoIlServizioRifiutaIlToken_LoDiceEIndicaDaDoveArriva(HttpStatusCode codice)
+    public async Task GetLatestAsync_WhenTheServiceRejectsTheToken_SaysWhereItCameFromWithoutPrintingIt(HttpStatusCode code)
     {
-        using MetricsClient client = Crea(new FintoHandler(_ => new HttpResponseMessage(codice)));
+        using MetricsClient client = Create(new FakeHandler(_ => new HttpResponseMessage(code)));
 
-        SnapshotFetch esito = await client.GetLatestAsync(CancellationToken.None);
+        SnapshotFetch fetch = await client.GetLatestAsync(CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.TokenRejected, esito.Outcome);
-        Assert.Null(esito.Snapshot);
-        Assert.Contains("dai test", esito.Problem, StringComparison.Ordinal);
-        Assert.DoesNotContain("il-token", esito.Problem, StringComparison.Ordinal);
+        Assert.Equal(ServiceOutcome.TokenRejected, fetch.Outcome);
+        Assert.Null(fetch.Snapshot);
+        Assert.Contains("dai test", fetch.Problem, StringComparison.Ordinal);
+        Assert.DoesNotContain("il-token", fetch.Problem, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task GetLatestAsync_QuandoIlServizioNonHaAncoraCampionato_NonLoChiamaErrore()
+    public async Task GetLatestAsync_WhenTheServiceHasNotSampledYet_DoesNotCallItAnError()
     {
         // 503 all'avvio e' normale: il campionatore non ha ancora pubblicato nulla.
         using MetricsClient client =
-            Crea(new FintoHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
+            Create(new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
 
-        SnapshotFetch esito = await client.GetLatestAsync(CancellationToken.None);
+        SnapshotFetch fetch = await client.GetLatestAsync(CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.NotReadyYet, esito.Outcome);
-        Assert.NotEmpty(esito.Problem);
+        Assert.Equal(ServiceOutcome.NotReadyYet, fetch.Outcome);
+        Assert.NotEmpty(fetch.Problem);
     }
 
     [Fact]
-    public async Task GetProcessesAsync_SuUnServizioVecchio_DiceCheEVecchioENonCheNonCapisce()
+    public async Task GetProcessesAsync_OnAnOldService_SaysItIsOldNotThatTheResponseWasUnexpected()
     {
         // Successo davvero, su questa macchina: la dashboard nuova ha interrogato un servizio
         // 0.4.1, che quell'endpoint non ce l'ha, e ha risposto 404. Il messaggio diceva "non
         // so come interpretarlo" e mandava a cercare un difetto che non c'era. La causa e'
         // nota e il rimedio pure: aggiornare il servizio su quella macchina.
         using MetricsClient client =
-            Crea(new FintoHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound)));
+            Create(new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound)));
 
-        ProcessFetch esito = await client.GetProcessesAsync("cpu", 15, CancellationToken.None);
+        ProcessFetch fetch = await client.GetProcessesAsync("cpu", 15, CancellationToken.None);
 
         // IncompatibleVersion e non UnexpectedResponse: aspettare non aggiorna un servizio, e
         // la barra di stato deve dirlo subito invece di restare in attesa.
-        Assert.Equal(ServiceOutcome.IncompatibleVersion, esito.Outcome);
-        Assert.Contains("older than this dashboard", esito.Problem, StringComparison.Ordinal);
-        Assert.Empty(esito.Processes);
+        Assert.Equal(ServiceOutcome.IncompatibleVersion, fetch.Outcome);
+        Assert.Contains("older than this dashboard", fetch.Problem, StringComparison.Ordinal);
+        Assert.Empty(fetch.Processes);
     }
 
     [Fact]
-    public async Task GetProcessesAsync_PerIoSuUnServizioCheNonLoConosce_DiceCheEVecchio()
+    public async Task GetProcessesAsync_ForIoOnAServiceThatDoesNotKnowIt_SaysItIsOld()
     {
         // Un servizio 0.6 non conosce "io": risponde 200 con l'elenco della CPU, e senza il
         // campo "by". Mostrare quell'elenco sotto il titolo dell'I/O sarebbe una bugia.
-        using MetricsClient client = Crea(new FintoHandler(_ => Json(HttpStatusCode.OK,
+        using MetricsClient client = Create(new FakeHandler(_ => Json(HttpStatusCode.OK,
             """{"capturedAt":"2026-09-03T08:00:00Z","processes":[{"pid":1,"name":"x","cpuPercent":null,"workingSetBytes":10}]}""")));
 
-        ProcessFetch esito = await client.GetProcessesAsync("io", 15, CancellationToken.None);
+        ProcessFetch fetch = await client.GetProcessesAsync("io", 15, CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.IncompatibleVersion, esito.Outcome);
-        Assert.Contains("older than this dashboard", esito.Problem, StringComparison.Ordinal);
-        Assert.Empty(esito.Processes);
+        Assert.Equal(ServiceOutcome.IncompatibleVersion, fetch.Outcome);
+        Assert.Contains("older than this dashboard", fetch.Problem, StringComparison.Ordinal);
+        Assert.Empty(fetch.Processes);
     }
 
     [Fact]
-    public async Task GetProcessesAsync_PerCpuSuUnServizioCheNonRipeteIlCriterio_FunzionaLoStesso()
+    public async Task GetProcessesAsync_ForCpuOnAServiceThatDoesNotEchoTheCriterion_StillWorks()
     {
         // Lo stesso servizio vecchio sa ordinare per CPU: l'assenza di "by" non deve
         // rifiutare un elenco che e' giusto.
-        using MetricsClient client = Crea(new FintoHandler(_ => Json(HttpStatusCode.OK,
+        using MetricsClient client = Create(new FakeHandler(_ => Json(HttpStatusCode.OK,
             """{"capturedAt":"2026-09-03T08:00:00Z","processes":[{"pid":1,"name":"x","cpuPercent":null,"workingSetBytes":10}]}""")));
 
-        ProcessFetch esito = await client.GetProcessesAsync("cpu", 15, CancellationToken.None);
+        ProcessFetch fetch = await client.GetProcessesAsync("cpu", 15, CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.Ok, esito.Outcome);
-        Assert.Single(esito.Processes);
-        Assert.Equal("—", esito.Processes[0].Io);
+        Assert.Equal(ServiceOutcome.Ok, fetch.Outcome);
+        Assert.Single(fetch.Processes);
+        Assert.Equal("—", fetch.Processes[0].Io);
     }
 
     [Fact]
-    public async Task GetProcessesAsync_LeggeIlTassoDiIo()
+    public async Task GetProcessesAsync_ReadsTheIoRateAndShowsADashWhenItIsMissing()
     {
-        using MetricsClient client = Crea(new FintoHandler(_ => Json(HttpStatusCode.OK,
+        using MetricsClient client = Create(new FakeHandler(_ => Json(HttpStatusCode.OK,
             """{"capturedAt":"2026-09-03T08:00:00Z","by":"io","processes":[{"pid":1,"name":"copia","cpuPercent":2.5,"workingSetBytes":10,"ioBytesPerSecond":1572864},{"pid":2,"name":"ignoto","cpuPercent":null,"workingSetBytes":10,"ioBytesPerSecond":null}]}""")));
 
-        ProcessFetch esito = await client.GetProcessesAsync("io", 15, CancellationToken.None);
+        ProcessFetch fetch = await client.GetProcessesAsync("io", 15, CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.Ok, esito.Outcome);
-        Assert.Equal(["1.5 MiB/s", "—"], esito.Processes.Select(riga => riga.Io));
+        Assert.Equal(ServiceOutcome.Ok, fetch.Outcome);
+        Assert.Equal(["1.5 MiB/s", "—"], fetch.Processes.Select(row => row.Io));
     }
 
     [Fact]
-    public async Task GetLatestAsync_QuandoIlServizioEspento_DiceCheNonEraggiungibile()
+    public async Task GetLatestAsync_WhenTheServiceIsDown_SaysItIsUnreachable()
     {
-        using MetricsClient client = Crea(new FintoHandler(_ =>
+        using MetricsClient client = Create(new FakeHandler(_ =>
             throw new HttpRequestException("Connessione rifiutata")));
 
-        SnapshotFetch esito = await client.GetLatestAsync(CancellationToken.None);
+        SnapshotFetch fetch = await client.GetLatestAsync(CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.Unreachable, esito.Outcome);
-        Assert.Contains("altra-macchina:5057", esito.Problem, StringComparison.Ordinal);
+        Assert.Equal(ServiceOutcome.Unreachable, fetch.Outcome);
+        Assert.Contains("altra-macchina:5057", fetch.Problem, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task GetLatestAsync_ConRispostaCheNonEunCampionamento_LoDiceInvecediLanciare()
+    public async Task GetLatestAsync_WithAResponseThatIsNotASnapshot_SaysSoInsteadOfThrowing()
     {
         using MetricsClient client =
-            Crea(new FintoHandler(_ => Json(HttpStatusCode.OK, "<html>ciao</html>")));
+            Create(new FakeHandler(_ => Json(HttpStatusCode.OK, "<html>ciao</html>")));
 
-        SnapshotFetch esito = await client.GetLatestAsync(CancellationToken.None);
+        SnapshotFetch fetch = await client.GetLatestAsync(CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.UnreadableResponse, esito.Outcome);
-        Assert.Null(esito.Snapshot);
+        Assert.Equal(ServiceOutcome.UnreadableResponse, fetch.Outcome);
+        Assert.Null(fetch.Snapshot);
     }
 
     [Fact]
-    public async Task GetLatestAsync_ConVersioneDiSchemaDiversa_RifiutaInvecediMostrareZeri()
+    public async Task GetLatestAsync_WithADifferentSchemaVersion_RefusesInsteadOfShowingZeros()
     {
         // Un servizio piu' recente riempirebbe la finestra di campi a zero marcati "Ok".
-        using MetricsClient client = Crea(new FintoHandler(_ => Json(
+        using MetricsClient client = Create(new FakeHandler(_ => Json(
             HttpStatusCode.OK,
             """{"schemaVersion":99,"capturedAt":"2026-08-26T09:15:49.34Z","collectors":[]}""")));
 
-        SnapshotFetch esito = await client.GetLatestAsync(CancellationToken.None);
+        SnapshotFetch fetch = await client.GetLatestAsync(CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.IncompatibleVersion, esito.Outcome);
-        Assert.Null(esito.Snapshot);
-        Assert.Contains("99", esito.Problem, StringComparison.Ordinal);
+        Assert.Equal(ServiceOutcome.IncompatibleVersion, fetch.Outcome);
+        Assert.Null(fetch.Snapshot);
+        Assert.Contains("99", fetch.Problem, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task GetCatalogAsync_LeggeNomiLeggibiliEUnita()
+    public async Task GetCatalogAsync_ReadsDisplayNamesAndUnits()
     {
-        using MetricsClient client = Crea(new FintoHandler(_ => Json(
+        using MetricsClient client = Create(new FakeHandler(_ => Json(
             HttpStatusCode.OK,
             """
             [{"collectorId":"cpu","descriptors":[
@@ -200,69 +200,69 @@ public class MetricsClientTests
                 "unit":{"symbol":"%"},"isPerInstance":false}]}]
             """)));
 
-        CatalogFetch esito = await client.GetCatalogAsync(CancellationToken.None);
+        CatalogFetch fetch = await client.GetCatalogAsync(CancellationToken.None);
 
-        Assert.True(esito.IsOk);
+        Assert.True(fetch.IsOk);
 
-        MetricDescriptor? descrittore = esito.Catalog!.Find("cpu.usage.total");
+        MetricDescriptor? descriptor = fetch.Catalog!.Find("cpu.usage.total");
 
-        Assert.NotNull(descrittore);
-        Assert.Equal("CPU usage", descrittore.DisplayName);
-        Assert.Equal("%", descrittore.Unit.Symbol);
+        Assert.NotNull(descriptor);
+        Assert.Equal("CPU usage", descriptor.DisplayName);
+        Assert.Equal("%", descriptor.Unit.Symbol);
     }
 
     [Fact]
-    public async Task GetCatalogAsync_QuandoIlTokenEsbagliato_RestituisceLoStessoEsitoDelloSnapshot()
+    public async Task GetCatalogAsync_WhenTheTokenIsWrong_ReturnsTheSameOutcomeAsGetLatestAsync()
     {
         using MetricsClient client =
-            Crea(new FintoHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)));
+            Create(new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)));
 
-        CatalogFetch esito = await client.GetCatalogAsync(CancellationToken.None);
+        CatalogFetch fetch = await client.GetCatalogAsync(CancellationToken.None);
 
-        Assert.Equal(ServiceOutcome.TokenRejected, esito.Outcome);
-        Assert.Null(esito.Catalog);
+        Assert.Equal(ServiceOutcome.TokenRejected, fetch.Outcome);
+        Assert.Null(fetch.Catalog);
     }
 
     [Fact]
-    public async Task SulCanaleLOCALENonVieneMandataAlcunaCredenziale()
+    public async Task OnTheLOCALChannelNoCredentialIsSent()
     {
         // Mandare il token dove non serve significa continuare a esporlo senza guadagnarci
         // niente: il servizio, sul canale locale, non lo guarda nemmeno.
-        HttpRequestMessage? vista = null;
+        HttpRequestMessage? captured = null;
 
-        using FintoHandler handler = new(richiesta =>
+        using FakeHandler handler = new(request =>
         {
-            vista = richiesta;
+            captured = request;
             return Json(HttpStatusCode.OK, "[]");
         });
 
-        using MetricsClient client = CreaLocale(handler);
+        using MetricsClient client = CreateLocal(handler);
         await client.GetCatalogAsync(CancellationToken.None);
 
-        Assert.NotNull(vista);
-        Assert.Null(vista.Headers.Authorization);
+        Assert.NotNull(captured);
+        Assert.Null(captured.Headers.Authorization);
     }
 
-    private static MetricsClient Crea(HttpMessageHandler handler) =>
+    private static MetricsClient Create(HttpMessageHandler handler) =>
         new(
             ObserverEndpoint.Remote(new Uri("http://altra-macchina:5057/"), "il-token", "dai test"),
             handler);
 
     /// <summary>Un client sul canale locale, che NON deve mandare alcuna credenziale.</summary>
-    private static MetricsClient CreaLocale(HttpMessageHandler handler) =>
+    private static MetricsClient CreateLocal(HttpMessageHandler handler) =>
         new(ObserverEndpoint.LocalChannel(), handler);
 
-    private static HttpResponseMessage Json(HttpStatusCode codice, string corpo) =>
-        new(codice)
+    private static HttpResponseMessage Json(HttpStatusCode code, string body) =>
+        new(code)
         {
-            Content = new StringContent(corpo, Encoding.UTF8, "application/json"),
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
         };
 
-    private sealed class FintoHandler(Func<HttpRequestMessage, HttpResponseMessage> risposta) : HttpMessageHandler
+    private sealed class FakeHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken) =>
-            Task.FromResult(risposta(request));
+            Task.FromResult(respond(request));
     }
 }

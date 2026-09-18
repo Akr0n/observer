@@ -13,32 +13,32 @@ namespace Observer.App.Tests;
 /// </remarks>
 public class GaugeScaleTests
 {
-    private static readonly Point Centro = new(100d, 100d);
+    private static readonly Point Center = new(100d, 100d);
 
     [Fact]
-    public void LoZeroStaDoveComincaLaScala()
+    public void ZeroSitsWhereTheScaleBegins()
     {
         Assert.Equal(GaugeScale.StartAngle, GaugeScale.AngleFor(0d), 9);
     }
 
     [Fact]
-    public void IlPienoStaAlFondoScala()
+    public void FullSitsWhereTheScaleEnds()
     {
         Assert.Equal(GaugeScale.EndAngle, GaugeScale.AngleFor(1d), 9);
     }
 
     [Fact]
-    public void LaMetaStaInCima()
+    public void HalfSitsAtTheTop()
     {
         // 135 + 135 = 270 gradi, cioe' dritto in alto: e' il punto in cui l'occhio verifica da
         // solo se la lancetta e' dove dovrebbe. Se questa cambia, il tachimetro non e' piu'
         // simmetrico e si legge male senza che nessun altro test se ne accorga.
         Assert.Equal(270d, GaugeScale.AngleFor(0.5d), 9);
 
-        Point cima = GaugeScale.PointAt(Centro, 50d, GaugeScale.AngleFor(0.5d));
+        Point top = GaugeScale.PointAt(Center, 50d, GaugeScale.AngleFor(0.5d));
 
-        Assert.Equal(Centro.X, cima.X, 6);
-        Assert.Equal(Centro.Y - 50d, cima.Y, 6);
+        Assert.Equal(Center.X, top.X, 6);
+        Assert.Equal(Center.Y - 50d, top.Y, 6);
     }
 
     [Theory]
@@ -46,32 +46,32 @@ public class GaugeScaleTests
     [InlineData(1.7d)]
     [InlineData(double.PositiveInfinity)]
     [InlineData(double.NegativeInfinity)]
-    public void FuoriScalaLaLancettaRestaSullArco(double fuori)
+    public void OffScaleTheNeedleStaysOnTheArc(double offScale)
     {
-        double angolo = GaugeScale.AngleFor(fuori);
+        double angle = GaugeScale.AngleFor(offScale);
 
-        Assert.InRange(angolo, GaugeScale.StartAngle, GaugeScale.EndAngle);
+        Assert.InRange(angle, GaugeScale.StartAngle, GaugeScale.EndAngle);
     }
 
     [Fact]
-    public void UnaPercentualeNonMisurabileNonFaSparireIlTachimetro()
+    public void AnUnmeasurablePercentageDoesNotMakeTheGaugeVanish()
     {
         // Una metrica che non si e' potuta misurare arriva come NaN. Un NaN dentro un seno
         // esce come NaN nelle coordinate, e Avalonia una geometria con dentro un NaN non la
         // disegna affatto: il riquadro resterebbe vuoto, senza dire perche'.
-        double angolo = GaugeScale.AngleFor(double.NaN);
+        double angle = GaugeScale.AngleFor(double.NaN);
 
-        Assert.False(double.IsNaN(angolo));
-        Assert.Equal(GaugeScale.StartAngle, angolo, 9);
+        Assert.False(double.IsNaN(angle));
+        Assert.Equal(GaugeScale.StartAngle, angle, 9);
 
-        Point punto = GaugeScale.PointAt(Centro, 50d, angolo);
+        Point pointOnArc = GaugeScale.PointAt(Center, 50d, angle);
 
-        Assert.False(double.IsNaN(punto.X));
-        Assert.False(double.IsNaN(punto.Y));
+        Assert.False(double.IsNaN(pointOnArc.X));
+        Assert.False(double.IsNaN(pointOnArc.Y));
     }
 
     [Fact]
-    public void LeTaccheCopronoLArcoDaCimaAFondo()
+    public void TheTicksSpanTheWholeArcWithAConstantStep()
     {
         const int intervals = 10;
 
@@ -80,38 +80,38 @@ public class GaugeScaleTests
 
         // Passo costante: una scala a passo variabile si legge come se i valori centrali
         // fossero piu' vicini fra loro di quanto sono.
-        double passo = GaugeScale.SweepAngle / intervals;
+        double step = GaugeScale.SweepAngle / intervals;
 
         for (int i = 1; i <= intervals; i++)
         {
             double delta = GaugeScale.TickAngle(i, intervals)
                 - GaugeScale.TickAngle(i - 1, intervals);
 
-            Assert.Equal(passo, delta, 9);
+            Assert.Equal(step, delta, 9);
         }
     }
 
     [Fact]
-    public void UnaScalaSenzaIntervalliVieneRifiutata()
+    public void AScaleWithNoIntervalsIsRejected()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => GaugeScale.TickAngle(0, 0));
     }
 
     [Fact]
-    public void LArcoScopertoStaInBassoEStaSimmetrico()
+    public void TheUncoveredArcSitsAtTheBottomAndIsSymmetric()
     {
         // Il pezzo di cerchio su cui la lancetta non passa mai deve stare in basso e centrato,
         // altrimenti il tachimetro appare storto. Sono i 90 gradi fra l'arrivo e la partenza.
-        double scoperto = 360d - GaugeScale.SweepAngle;
+        double uncovered = 360d - GaugeScale.SweepAngle;
 
-        Assert.Equal(90d, scoperto, 9);
+        Assert.Equal(90d, uncovered, 9);
 
-        Point zero = GaugeScale.PointAt(Centro, 50d, GaugeScale.StartAngle);
-        Point fondo = GaugeScale.PointAt(Centro, 50d, GaugeScale.EndAngle);
+        Point zero = GaugeScale.PointAt(Center, 50d, GaugeScale.StartAngle);
+        Point fullScale = GaugeScale.PointAt(Center, 50d, GaugeScale.EndAngle);
 
         // Stessa altezza, sotto il centro, e speculari rispetto all'asse verticale.
-        Assert.Equal(zero.Y, fondo.Y, 6);
-        Assert.True(zero.Y > Centro.Y);
-        Assert.Equal(Centro.X - zero.X, fondo.X - Centro.X, 6);
+        Assert.Equal(zero.Y, fullScale.Y, 6);
+        Assert.True(zero.Y > Center.Y);
+        Assert.Equal(Center.X - zero.X, fullScale.X - Center.X, 6);
     }
 }

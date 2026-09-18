@@ -15,73 +15,73 @@ namespace Observer.App.Tests;
 public class MainViewModelReconnectTests
 {
     [Fact]
-    public async Task ConfigurazioneCompareDopoLAvvio_LApplicazioneSiCollegaSenzaRiavvio()
+    public async Task ConfigurationAppearsAfterStartup_TheApplicationConnectsWithoutARestart()
     {
         // All'avvio non c'e' configurazione; alla prima rilettura ne compare una valida.
         FakeMetricsClient client = new();
-        int letture = 0;
+        int rereads = 0;
 
         MainViewModel viewModel = new(
             client: null,
             configurationProblem: "manca il token",
             rereadConfiguration: () =>
             {
-                letture++;
+                rereads++;
                 return client;
             });
 
-        using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(10));
-        Task ciclo = viewModel.RunAsync(arresto.Token);
+        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(10));
+        Task loop = viewModel.RunAsync(stop.Token);
 
         // Attende che il client comparso venga davvero INTERROGATO, senza dipendere da un
         // ritardo fisso: e' la prova che il view model lo ha adottato.
-        while (!arresto.IsCancellationRequested && client.Interrogazioni == 0)
+        while (!stop.IsCancellationRequested && client.Queries == 0)
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.True(client.Interrogazioni >= 1, "il client comparso deve essere interrogato");
-        Assert.True(letture >= 1);
+        Assert.True(client.Queries >= 1, "il client comparso deve essere interrogato");
+        Assert.True(rereads >= 1);
 
-        await arresto.CancelAsync();
-        await ciclo.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+        await stop.CancelAsync();
+        await loop.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
     }
 
     [Fact]
-    public async Task TokenRifiutatoSuUnaFinestraGiaCollegata_RileggeLaConfigurazione()
+    public async Task TokenRejectedOnAnAlreadyConnectedWindow_TheConfigurationIsReread()
     {
         // Il gemello del caso sopra, e finora scoperto: la rilettura avveniva SOLO all'avvio.
         // Una finestra gia' collegata che riceve 401 — perche' il token e' stato ruotato —
         // restava bloccata su "Token rejected" fino al riavvio, e nessun messaggio lo diceva.
         // E' lo stesso incidente di "Configuration missing", su un altro percorso.
-        FakeMetricsClient vecchio = new(
+        FakeMetricsClient oldClient = new(
             ObserverEndpoint.Remote(new Uri("http://vecchia:5057/"), "t", "dalla prova"),
             ServiceOutcome.TokenRejected);
-        FakeMetricsClient nuovo = new(
+        FakeMetricsClient newClient = new(
             ObserverEndpoint.Remote(new Uri("http://nuova:9999/"), "t", "dalla prova"),
             ServiceOutcome.Unreachable);
 
         MainViewModel viewModel = new(
-            vecchio,
+            oldClient,
             configurationProblem: null,
-            rereadConfiguration: () => nuovo);
+            rereadConfiguration: () => newClient);
 
-        using CancellationTokenSource arresto = new(TimeSpan.FromSeconds(15));
-        Task ciclo = viewModel.RunAsync(arresto.Token);
+        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(15));
+        Task loop = viewModel.RunAsync(stop.Token);
 
-        while (!arresto.IsCancellationRequested && nuovo.Interrogazioni == 0)
+        while (!stop.IsCancellationRequested && newClient.Queries == 0)
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.True(nuovo.Interrogazioni >= 1, "dopo un 401 il client riletto deve essere interrogato");
+        Assert.True(newClient.Queries >= 1, "dopo un 401 il client riletto deve essere interrogato");
 
-        await arresto.CancelAsync();
-        await ciclo.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+        await stop.CancelAsync();
+        await loop.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
     }
 
     [Fact]
-    public async Task SenzaConfigurazioneESenzaRilettura_IlCicloEsceSubito()
+    public async Task WithNoConfigurationAndNoReread_TheLoopExitsAtOnce()
     {
         // Il comportamento precedente resta valido quando non c'e' modo di rileggere:
         // martellare il servizio con richieste destinate al 401 non aiuterebbe nessuno.
@@ -92,7 +92,7 @@ public class MainViewModelReconnectTests
         Assert.Equal("Observer", viewModel.Heading);
     }
 
-    private sealed class FakeMetricsClient(ObserverEndpoint endpoint, ServiceOutcome esito) : IMetricsClient
+    private sealed class FakeMetricsClient(ObserverEndpoint endpoint, ServiceOutcome outcome) : IMetricsClient
     {
         public FakeMetricsClient()
             : this(ObserverEndpoint.LocalChannel(), ServiceOutcome.Unreachable)
@@ -101,7 +101,7 @@ public class MainViewModelReconnectTests
 
         public ObserverEndpoint Endpoint { get; } = endpoint;
 
-        private int interrogazioni;
+        private int queryCount;
 
         /// <summary>Quante volte questo client e' stato interrogato.</summary>
         /// <remarks>
@@ -110,23 +110,23 @@ public class MainViewModelReconnectTests
         /// l'intestazione e' sempre "Observer", e comunque era un indizio indiretto: diceva
         /// che una stringa era cambiata, non che il client nuovo venisse davvero usato.
         /// </remarks>
-        public int Interrogazioni => Volatile.Read(ref interrogazioni);
+        public int Queries => Volatile.Read(ref queryCount);
 
         public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken)
         {
-            Interlocked.Increment(ref interrogazioni);
+            Interlocked.Increment(ref queryCount);
 
-            return Task.FromResult(new SnapshotFetch(esito, "no service in this test", null));
+            return Task.FromResult(new SnapshotFetch(outcome, "no service in this test", null));
         }
 
         // Lo storico NON incrementa il contatore: quel contatore dice se il view model ha
         // adottato questo client per il CAMPIONAMENTO, e mescolarci dentro una seconda
         // chiamata renderebbe il segnale ambiguo proprio nei test della riconnessione.
         public Task<HistoryFetch> GetHistoryAsync(HistoryQuery query, CancellationToken cancellationToken) =>
-            Task.FromResult(new HistoryFetch(esito, "no service in this test", null));
+            Task.FromResult(new HistoryFetch(outcome, "no service in this test", null));
 
         public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new CatalogFetch(esito, "no service in this test", null));
+            Task.FromResult(new CatalogFetch(outcome, "no service in this test", null));
 
         /// <summary>Vero dopo Dispose: rende il metodo non statico e documenta l'esito.</summary>
         public bool Disposed { get; private set; }

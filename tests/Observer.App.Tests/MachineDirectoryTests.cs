@@ -20,294 +20,294 @@ namespace Observer.App.Tests;
 /// </remarks>
 public class MachineDirectoryTests
 {
-    private static readonly string Impronta =
+    private static readonly string Fingerprint =
         CertificateFingerprint.From(SHA256.HashData("una macchina"u8.ToArray()));
 
-    private static ClientConfigurationResult NienteAltro() =>
+    private static ClientConfigurationResult NoOtherConfiguration() =>
         new(ObserverEndpoint.LocalChannel(), null);
 
-    private static MachineListResult Leggi(string json, ISecretStore? store = null) =>
-        MachineDirectory.Resolve(json, NienteAltro(), store ?? DepositoFinto.Con("laptop", "il-token"));
+    private static MachineListResult Read(string json, ISecretStore? store = null) =>
+        MachineDirectory.Resolve(json, NoOtherConfiguration(), store ?? FakeSecretStore.With("laptop", "il-token"));
 
     /// <summary>Una voce del file. Il token si passa solo per provare che viene rifiutato.</summary>
-    private static string Voce(
-        string? indirizzo, string? impronta, string nome = "laptop", string? tokenNelFile = null) =>
+    private static string Entry(
+        string? address, string? fingerprint, string name = "laptop", string? tokenInFile = null) =>
         $$"""
-          { "machines": [ { "name": {{Testo(nome)}}, "baseAddress": {{Testo(indirizzo)}},
-            {{(tokenNelFile is null ? string.Empty : "\"apiToken\": " + Testo(tokenNelFile) + ",")}}
-            "fingerprint": {{Testo(impronta)}} } ] }
+          { "machines": [ { "name": {{JsonValue(name)}}, "baseAddress": {{JsonValue(address)}},
+            {{(tokenInFile is null ? string.Empty : "\"apiToken\": " + JsonValue(tokenInFile) + ",")}}
+            "fingerprint": {{JsonValue(fingerprint)}} } ] }
           """;
 
-    private static string Testo(string? valore) =>
-        valore is null ? "null" : "\"" + valore + "\"";
+    private static string JsonValue(string? value) =>
+        value is null ? "null" : "\"" + value + "\"";
 
     [Fact]
-    public void QuestaMacchinaCEsempreEStaPerPrima()
+    public void ThisMachineIsAlwaysThereAndComesFirst()
     {
         // Non si elenca e non si puo' togliere: non ha bisogno di niente per funzionare,
         // quindi non c'e' modo di sbagliarne la configurazione.
-        MachineListResult elenco = MachineDirectory.Resolve(null, NienteAltro(), DepositoFinto.Vuoto());
+        MachineListResult result = MachineDirectory.Resolve(null, NoOtherConfiguration(), FakeSecretStore.Empty());
 
-        ObserverEndpoint prima = Assert.Single(elenco.Machines);
+        ObserverEndpoint first = Assert.Single(result.Machines);
 
-        Assert.Equal(EndpointKind.Local, prima.Kind);
-        Assert.Empty(elenco.Problems);
+        Assert.Equal(EndpointKind.Local, first.Kind);
+        Assert.Empty(result.Problems);
     }
 
     [Fact]
-    public void UnaVoceCompletaEntraNellElenco()
+    public void ACompleteEntryJoinsTheList()
     {
-        MachineListResult elenco = Leggi(Voce("https://laptop:5058", Impronta));
+        MachineListResult result = Read(Entry("https://laptop:5058", Fingerprint));
 
-        Assert.Empty(elenco.Problems);
-        Assert.Equal(2, elenco.Machines.Count);
+        Assert.Empty(result.Problems);
+        Assert.Equal(2, result.Machines.Count);
 
-        ObserverEndpoint remota = elenco.Machines[1];
+        ObserverEndpoint remoteMachine = result.Machines[1];
 
-        Assert.Equal(EndpointKind.Remote, remota.Kind);
-        Assert.Equal("laptop", remota.DisplayName);
-        Assert.True(remota.IsFingerprintPinned);
-        Assert.EndsWith("/", remota.BaseAddress.ToString(), StringComparison.Ordinal);
+        Assert.Equal(EndpointKind.Remote, remoteMachine.Kind);
+        Assert.Equal("laptop", remoteMachine.DisplayName);
+        Assert.True(remoteMachine.IsFingerprintPinned);
+        Assert.EndsWith("/", remoteMachine.BaseAddress.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
-    public void UnTokenScrittoNelFileNonVieneUsato()
+    public void ATokenWrittenInTheFileIsRefused()
     {
         // Il cuore della modifica. Il token qui sotto e' quello giusto, e non basta: se una
         // voce col token nel file continuasse a funzionare, nessuno lo toglierebbe mai da li'.
-        MachineListResult elenco = Leggi(
-            Voce("https://laptop:5058", Impronta, tokenNelFile: "il-token"),
-            DepositoFinto.Vuoto());
+        MachineListResult result = Read(
+            Entry("https://laptop:5058", Fingerprint, tokenInFile: "il-token"),
+            FakeSecretStore.Empty());
 
-        Assert.Single(elenco.Machines);
+        Assert.Single(result.Machines);
 
-        string problema = Assert.Single(elenco.Problems);
+        string problem = Assert.Single(result.Problems);
 
-        Assert.Contains("observer token set laptop", problema, StringComparison.Ordinal);
-        Assert.Contains("ending processes", problema, StringComparison.Ordinal);
+        Assert.Contains("observer token set laptop", problem, StringComparison.Ordinal);
+        Assert.Contains("ending processes", problem, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void SenzaTokenNelDepositoNonEntraEDiceComeMetterceLo()
+    public void WithoutATokenInTheStoreItStaysOutAndSaysHowToAddOne()
     {
-        MachineListResult elenco = Leggi(Voce("https://laptop:5058", Impronta), DepositoFinto.Vuoto());
+        MachineListResult result = Read(Entry("https://laptop:5058", Fingerprint), FakeSecretStore.Empty());
 
-        Assert.Single(elenco.Machines);
+        Assert.Single(result.Machines);
         Assert.Contains(
-            "observer token set laptop", Assert.Single(elenco.Problems), StringComparison.Ordinal);
+            "observer token set laptop", Assert.Single(result.Problems), StringComparison.Ordinal);
     }
 
     [Fact]
-    public void SenzaNomeNonSiSaDoveCercareIlToken()
+    public void WithoutANameThereIsNowhereToLookForTheToken()
     {
         // Prima il nome era facoltativo e la macchina si chiamava col proprio indirizzo. Ora e'
         // la chiave con cui il token si cerca nel deposito, quindi senza non si va da nessuna
         // parte — e va detto, invece di far sparire la voce.
-        MachineListResult elenco = Leggi(
+        MachineListResult result = Read(
             $$"""
               { "machines": [ { "baseAddress": "https://laptop:5058",
-                "fingerprint": "{{Impronta}}" } ] }
+                "fingerprint": "{{Fingerprint}}" } ] }
               """);
 
-        Assert.Single(elenco.Machines);
-        Assert.Contains("\"name\"", Assert.Single(elenco.Problems), StringComparison.Ordinal);
+        Assert.Single(result.Machines);
+        Assert.Contains("\"name\"", Assert.Single(result.Problems), StringComparison.Ordinal);
     }
 
     [Fact]
-    public void UnDepositoDiCuiNonFidarsiFaSaltareSoloQuellaVoce()
+    public void AnUntrustedStoreDropsOnlyThatEntry()
     {
         // Un file di segreti leggibile da altri non deve far cadere l'intero elenco: le altre
         // macchine non c'entrano, e la finestra deve restare utilizzabile.
-        MachineListResult elenco = Leggi(
-            Voce("https://laptop:5058", Impronta),
-            DepositoFinto.CheProtesta("chmod 600 e riprova"));
+        MachineListResult result = Read(
+            Entry("https://laptop:5058", Fingerprint),
+            FakeSecretStore.ThatFails("chmod 600 e riprova"));
 
-        Assert.Single(elenco.Machines);
-        Assert.Contains("chmod 600", Assert.Single(elenco.Problems), StringComparison.Ordinal);
+        Assert.Single(result.Machines);
+        Assert.Contains("chmod 600", Assert.Single(result.Problems), StringComparison.Ordinal);
     }
 
     [Fact]
-    public void UnIndirizzoInChiaroNonEntraELoSpiega()
+    public void ACleartextAddressStaysOutAndSaysWhy()
     {
         // Il caso di gran lunga piu' probabile: una configurazione che era giusta ieri. Il
         // servizio non risponde piu' in chiaro sulla rete, e va detto perche'.
-        MachineListResult elenco = Leggi(Voce("http://laptop:5057", Impronta));
+        MachineListResult result = Read(Entry("http://laptop:5057", Fingerprint));
 
-        Assert.Single(elenco.Machines);
+        Assert.Single(result.Machines);
 
-        string problema = Assert.Single(elenco.Problems);
+        string problem = Assert.Single(result.Problems);
 
-        Assert.Contains("https://", problema, StringComparison.Ordinal);
-        Assert.Contains("packet capture", problema, StringComparison.Ordinal);
+        Assert.Contains("https://", problem, StringComparison.Ordinal);
+        Assert.Contains("packet capture", problem, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void SenzaImprontaNonEntra()
+    public void WithoutAFingerprintItStaysOut()
     {
         // Cifrato non basta. Senza impronta, chi si mette in mezzo presenta il proprio
         // certificato e il collegamento riesce lo stesso.
-        MachineListResult elenco = Leggi(Voce("https://laptop:5058", null));
+        MachineListResult result = Read(Entry("https://laptop:5058", null));
 
-        Assert.Single(elenco.Machines);
-        Assert.Contains("fingerprint", Assert.Single(elenco.Problems), StringComparison.Ordinal);
+        Assert.Single(result.Machines);
+        Assert.Contains("fingerprint", Assert.Single(result.Problems), StringComparison.Ordinal);
     }
 
     [Fact]
-    public void UnImprontaMalScrittaNonPassaPerBuona()
+    public void AMalformedFingerprintIsRejected()
     {
         // Un'impronta con dentro un errore di battitura non va aggiustata: verrebbe confrontata
         // con successo contro nessun certificato al mondo, e il messaggio parlerebbe di un
         // attacco.
-        MachineListResult elenco = Leggi(Voce("https://laptop:5058", "sha256:non-sono-esadecimale"));
+        MachineListResult result = Read(Entry("https://laptop:5058", "sha256:non-sono-esadecimale"));
 
-        Assert.Single(elenco.Machines);
-        Assert.Contains("hex digits", Assert.Single(elenco.Problems), StringComparison.Ordinal);
+        Assert.Single(result.Machines);
+        Assert.Contains("hex digits", Assert.Single(result.Problems), StringComparison.Ordinal);
     }
 
     [Fact]
-    public void UnFileRottoNonFaSparireQuestaMacchina()
+    public void ABrokenFileDoesNotHideThisMachine()
     {
         // La finestra deve restare utilizzabile: un elenco malscritto non puo' impedire di
         // guardare la macchina su cui si e' seduti.
-        MachineListResult elenco = Leggi("{ non sono json");
+        MachineListResult result = Read("{ non sono json");
 
-        Assert.Single(elenco.Machines);
-        Assert.Equal(EndpointKind.Local, elenco.Machines[0].Kind);
-        Assert.Single(elenco.Problems);
+        Assert.Single(result.Machines);
+        Assert.Equal(EndpointKind.Local, result.Machines[0].Kind);
+        Assert.Single(result.Problems);
     }
 
     [Fact]
-    public void SenzaElencoValeAncoraLaVecchiaConfigurazioneAMacchinaSingola()
+    public void WithNoListTheOldSingleMachineConfigurationStillApplies()
     {
         // Chi aveva gia' configurato una macchina non deve rifare niente solo perche' adesso
         // se ne possono elencare tante.
-        ObserverEndpoint vecchia = ObserverEndpoint.Remote(
-            new Uri("https://altra:5058/"), "token", "dal vecchio client.json", Impronta);
+        ObserverEndpoint previous = ObserverEndpoint.Remote(
+            new Uri("https://altra:5058/"), "token", "dal vecchio client.json", Fingerprint);
 
-        MachineListResult elenco = MachineDirectory.Resolve(
-            null, new ClientConfigurationResult(vecchia, null), DepositoFinto.Vuoto());
+        MachineListResult result = MachineDirectory.Resolve(
+            null, new ClientConfigurationResult(previous, null), FakeSecretStore.Empty());
 
-        Assert.Equal(2, elenco.Machines.Count);
-        Assert.Equal(vecchia, elenco.Machines[1]);
+        Assert.Equal(2, result.Machines.Count);
+        Assert.Equal(previous, result.Machines[1]);
     }
 
     [Fact]
-    public void LaSpiegazioneDellImprontaSbagliataDiceEntrambeLeImpronte()
+    public void TheFingerprintMismatchExplanationNamesExpectedAndReceived()
     {
         // Un messaggio che si limita a "non corrisponde" lascia l'utente senza il valore nuovo,
         // cioe' senza il modo di distinguere una reinstallazione da un attacco e senza il dato
         // da incollare per rimettere le cose a posto.
-        CertificatePinning fissaggio = new(Impronta);
+        CertificatePinning pinning = new(Fingerprint);
 
-        string spiegazione = fissaggio.DescribeMismatch("laptop");
+        string explanation = pinning.DescribeMismatch("laptop");
 
-        Assert.Contains("Expected:", spiegazione, StringComparison.Ordinal);
-        Assert.Contains("Received:", spiegazione, StringComparison.Ordinal);
-        Assert.Contains("reinstalled", spiegazione, StringComparison.Ordinal);
+        Assert.Contains("Expected:", explanation, StringComparison.Ordinal);
+        Assert.Contains("Received:", explanation, StringComparison.Ordinal);
+        Assert.Contains("reinstalled", explanation, StringComparison.Ordinal);
 
         // Nessun certificato e' ancora arrivato: dirlo e' meglio che lasciare la riga vuota.
-        Assert.Contains("none", spiegazione, StringComparison.Ordinal);
+        Assert.Contains("none", explanation, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void LaSpiegazioneDiceCheIlTokenNonEUscito()
+    public void TheExplanationSaysTheTokenNeverLeftThisMachine()
     {
         // E' la prima domanda che si fa chi vede quel messaggio, e la risposta e' buona: il
         // collegamento viene rifiutato durante l'handshake, prima di spedire qualsiasi cosa.
-        CertificatePinning fissaggio = new(Impronta);
+        CertificatePinning pinning = new(Fingerprint);
 
-        Assert.Contains("never left this machine", fissaggio.DescribeMismatch("laptop"), StringComparison.Ordinal);
+        Assert.Contains("never left this machine", pinning.DescribeMismatch("laptop"), StringComparison.Ordinal);
     }
 
     [Fact]
-    public void IlVecchioClientJsonNonPuoRiaprireLaStradaInChiaro()
+    public void TheOldClientJsonCannotReopenTheCleartextRoute()
     {
         // La porta di servizio piu' facile da lasciare aperta: l'elenco rifiuta http://, ma il
         // ripiego a macchina singola entrava senza passare da alcun controllo. Il risultato
         // sarebbe stato il token spedito in chiaro una volta al secondo, cioe' esattamente cio'
         // che la chiusura della porta doveva impedire.
-        ObserverEndpoint inChiaro = ObserverEndpoint.Remote(
-            new Uri("http://vecchia:5057/"), "token", "dal vecchio client.json", Impronta);
+        ObserverEndpoint cleartext = ObserverEndpoint.Remote(
+            new Uri("http://vecchia:5057/"), "token", "dal vecchio client.json", Fingerprint);
 
-        MachineListResult elenco = MachineDirectory.Resolve(
-            null, new ClientConfigurationResult(inChiaro, null), DepositoFinto.Vuoto());
+        MachineListResult result = MachineDirectory.Resolve(
+            null, new ClientConfigurationResult(cleartext, null), FakeSecretStore.Empty());
 
-        Assert.Single(elenco.Machines);
-        Assert.Contains("https", Assert.Single(elenco.Problems), StringComparison.Ordinal);
+        Assert.Single(result.Machines);
+        Assert.Contains("https", Assert.Single(result.Problems), StringComparison.Ordinal);
     }
 
     [Fact]
-    public void IlVecchioClientJsonSenzaImprontaNonEntra()
+    public void TheOldClientJsonWithoutAFingerprintStaysOut()
     {
         // Stesso buco, altra meta': cifrato ma verso nessuno in particolare.
-        ObserverEndpoint senzaImpronta = ObserverEndpoint.Remote(
+        ObserverEndpoint withoutFingerprint = ObserverEndpoint.Remote(
             new Uri("https://vecchia:5058/"), "token", "dal vecchio client.json");
 
-        MachineListResult elenco = MachineDirectory.Resolve(
-            null, new ClientConfigurationResult(senzaImpronta, null), DepositoFinto.Vuoto());
+        MachineListResult result = MachineDirectory.Resolve(
+            null, new ClientConfigurationResult(withoutFingerprint, null), FakeSecretStore.Empty());
 
-        Assert.Single(elenco.Machines);
-        Assert.Contains("fingerprint", Assert.Single(elenco.Problems), StringComparison.Ordinal);
+        Assert.Single(result.Machines);
+        Assert.Contains("fingerprint", Assert.Single(result.Problems), StringComparison.Ordinal);
     }
 
     [Fact]
-    public void UnFileSenzaLElencoNonFaSparireLaVecchiaConfigurazione()
+    public void AFileWithoutTheListDoesNotDropTheOldConfiguration()
     {
         // JSON valido ma senza "machines": non e' un file vuoto che va bene, e' un file che
         // qualcuno credeva di aver scritto. Azzerare tutto in silenzio farebbe sparire anche la
         // configurazione precedente, e chi guarda vedrebbe una macchina sparire senza motivo.
-        ObserverEndpoint vecchia = ObserverEndpoint.Remote(
-            new Uri("https://altra:5058/"), "token", "dal vecchio client.json", Impronta);
+        ObserverEndpoint previous = ObserverEndpoint.Remote(
+            new Uri("https://altra:5058/"), "token", "dal vecchio client.json", Fingerprint);
 
-        MachineListResult elenco = MachineDirectory.Resolve(
-            """{ "altro": 1 }""", new ClientConfigurationResult(vecchia, null), DepositoFinto.Vuoto());
+        MachineListResult result = MachineDirectory.Resolve(
+            """{ "altro": 1 }""", new ClientConfigurationResult(previous, null), FakeSecretStore.Empty());
 
-        Assert.Equal(2, elenco.Machines.Count);
-        Assert.Contains("machines", Assert.Single(elenco.Problems), StringComparison.Ordinal);
+        Assert.Equal(2, result.Machines.Count);
+        Assert.Contains("machines", Assert.Single(result.Problems), StringComparison.Ordinal);
     }
 
-    private sealed class DepositoFinto : ISecretStore
+    private sealed class FakeSecretStore : ISecretStore
     {
-        private readonly Dictionary<string, string> segreti = new(StringComparer.Ordinal);
-        private readonly string? protesta;
+        private readonly Dictionary<string, string> secrets = new(StringComparer.Ordinal);
+        private readonly string? failure;
 
-        private DepositoFinto(string? protesta) => this.protesta = protesta;
+        private FakeSecretStore(string? failure) => this.failure = failure;
 
         public string Description => "the pretend store";
 
-        public static DepositoFinto Vuoto() => new(protesta: null);
+        public static FakeSecretStore Empty() => new(failure: null);
 
-        public static DepositoFinto Con(string nome, string segreto)
+        public static FakeSecretStore With(string name, string secret)
         {
-            DepositoFinto store = new(protesta: null);
-            store.segreti[nome] = segreto;
+            FakeSecretStore store = new(failure: null);
+            store.secrets[name] = secret;
 
             return store;
         }
 
-        public static DepositoFinto CheProtesta(string motivo) => new(motivo);
+        public static FakeSecretStore ThatFails(string reason) => new(reason);
 
-        public bool TryRead(string nome, out string segreto)
+        public bool TryRead(string name, out string secret)
         {
-            if (protesta is not null)
+            if (failure is not null)
             {
-                throw new SecretStoreException(protesta);
+                throw new SecretStoreException(failure);
             }
 
-            if (segreti.TryGetValue(nome, out string? trovato))
+            if (secrets.TryGetValue(name, out string? found))
             {
-                segreto = trovato;
+                secret = found;
 
                 return true;
             }
 
-            segreto = string.Empty;
+            secret = string.Empty;
 
             return false;
         }
 
-        public void Write(string nome, string segreto) => segreti[nome] = segreto;
+        public void Write(string name, string secret) => secrets[name] = secret;
 
-        public bool Delete(string nome) => segreti.Remove(nome);
+        public bool Delete(string name) => secrets.Remove(name);
     }
 }

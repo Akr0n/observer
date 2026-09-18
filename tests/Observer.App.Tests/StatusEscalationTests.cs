@@ -19,94 +19,94 @@ namespace Observer.App.Tests;
 /// </remarks>
 public class StatusEscalationTests
 {
-    private static readonly ObserverEndpoint Locale = ObserverEndpoint.LocalChannel();
+    private static readonly ObserverEndpoint Local = ObserverEndpoint.LocalChannel();
 
     private static readonly ObserverEndpoint Remote =
         ObserverEndpoint.Remote(new Uri("http://altra:5057/"), "t", "dalla prova");
 
     private static StatusMessage MessageFor(
-        ServiceOutcome esito,
-        TimeSpan durata,
-        ObserverEndpoint punto,
-        bool valoriGiaMostrati = false) =>
-        StatusEscalation.MessageFor(esito, "dettaglio tecnico dalla prova", durata, punto, valoriGiaMostrati);
+        ServiceOutcome outcome,
+        TimeSpan failingFor,
+        ObserverEndpoint endpoint,
+        bool hasValuesOnScreen = false) =>
+        StatusEscalation.MessageFor(outcome, "dettaglio tecnico dalla prova", failingFor, endpoint, hasValuesOnScreen);
 
     [Fact]
-    public void PrimoTentativoAndatoAVuoto_NonEUnErrore()
+    public void TheFirstFailedAttempt_IsNotAnError()
     {
         // Il caso misurato: la finestra si apre mentre il servizio sta ancora partendo.
-        StatusMessage messaggio = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Locale);
+        StatusMessage message = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Local);
 
-        Assert.Equal(StatusTone.Informational, messaggio.Tone);
+        Assert.Equal(StatusTone.Informational, message.Tone);
     }
 
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(9)]
-    public void ServizioIrraggiungibileDaPocoEUnServizioCheSiStaAvviando(int secondi)
+    public void AServiceUnreachableForAShortTimeIsAServiceThatIsStarting(int seconds)
     {
-        StatusMessage messaggio = MessageFor(ServiceOutcome.Unreachable, TimeSpan.FromSeconds(secondi), Locale);
+        StatusMessage message = MessageFor(ServiceOutcome.Unreachable, TimeSpan.FromSeconds(seconds), Local);
 
-        Assert.Equal(StatusTone.Informational, messaggio.Tone);
-        Assert.Equal("Connecting", messaggio.Title);
+        Assert.Equal(StatusTone.Informational, message.Tone);
+        Assert.Equal("Connecting", message.Title);
     }
 
     [Theory]
     [InlineData(10)]
     [InlineData(60)]
     [InlineData(3600)]
-    public void ServizioIrraggiungibileDaUnPezzoEUnGuasto(int secondi)
+    public void AServiceUnreachableForAWhileIsAFault(int seconds)
     {
-        StatusMessage messaggio = MessageFor(ServiceOutcome.Unreachable, TimeSpan.FromSeconds(secondi), Locale);
+        StatusMessage message = MessageFor(ServiceOutcome.Unreachable, TimeSpan.FromSeconds(seconds), Local);
 
-        Assert.Equal(StatusTone.Error, messaggio.Tone);
-        Assert.Equal("Service unreachable", messaggio.Title);
+        Assert.Equal(StatusTone.Error, message.Tone);
+        Assert.Equal("Service unreachable", message.Title);
     }
 
     [Fact]
-    public void ScadutaLaTolleranza_IlDettaglioTecnicoTornaAGalla()
+    public void OnceTheGraceHasExpired_TheTechnicalDetailComesBack()
     {
         // Durante l'attesa il dettaglio si tace perche' e' rumore. Quando il guasto diventa
         // vero il dettaglio serve, ed e' l'unica cosa con cui si diagnostica.
-        StatusMessage attesa = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Locale);
-        StatusMessage guasto = MessageFor(ServiceOutcome.Unreachable, StatusEscalation.GracePeriod, Locale);
+        StatusMessage waiting = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Local);
+        StatusMessage fault = MessageFor(ServiceOutcome.Unreachable, StatusEscalation.GracePeriod, Local);
 
-        Assert.DoesNotContain("dettaglio tecnico", attesa.Text, StringComparison.Ordinal);
-        Assert.Contains("dettaglio tecnico", guasto.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("dettaglio tecnico", waiting.Text, StringComparison.Ordinal);
+        Assert.Contains("dettaglio tecnico", fault.Text, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void SuUnaMacchinaRemota_LAttesaNonDiceCheIlServizioStaPartendo()
+    public void OnARemoteMachine_TheWaitNamesThatMachineAndNotThisOne()
     {
         // Di una macchina altrui non si sa se stia partendo: e' un'affermazione che non si
         // puo' fare. Si dice cio' che si sta facendo — contattarla — e basta.
-        StatusMessage messaggio = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Remote);
+        StatusMessage message = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Remote);
 
-        Assert.Equal(StatusTone.Informational, messaggio.Tone);
-        Assert.Contains("altra:5057", messaggio.Text, StringComparison.Ordinal);
-        Assert.DoesNotContain("this machine", messaggio.Text, StringComparison.Ordinal);
+        Assert.Equal(StatusTone.Informational, message.Tone);
+        Assert.Contains("altra:5057", message.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("this machine", message.Text, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void ServizioCheAscoltaMaNonHaAncoraCampionato_AllInizioENormale()
+    public void AServiceThatListensButHasNotSampledYet_IsNormalAtFirst()
     {
-        StatusMessage messaggio = MessageFor(ServiceOutcome.NotReadyYet, TimeSpan.Zero, Locale);
+        StatusMessage message = MessageFor(ServiceOutcome.NotReadyYet, TimeSpan.Zero, Local);
 
-        Assert.Equal(StatusTone.Informational, messaggio.Tone);
+        Assert.Equal(StatusTone.Informational, message.Tone);
     }
 
     [Fact]
-    public void ServizioCheAscoltaMaNonCampionaMai_DiventaUnAvvertimento()
+    public void AServiceThatListensButNeverSamples_BecomesAWarning()
     {
         // Il gemello silenzioso della barra rossa, e altrettanto sbagliato: un servizio vivo
         // che non produce un campione restava "Service is starting" PER SEMPRE, con un testo
         // che promette "questo di solito si risolve da solo in un secondo o due". Se non si
         // risolve, quella frase e' una bugia che nessuno smentisce mai.
-        StatusMessage messaggio = MessageFor(ServiceOutcome.NotReadyYet, TimeSpan.FromMinutes(5), Locale);
+        StatusMessage message = MessageFor(ServiceOutcome.NotReadyYet, TimeSpan.FromMinutes(5), Local);
 
-        Assert.Equal(StatusTone.Warning, messaggio.Tone);
-        Assert.DoesNotContain("second or two", messaggio.Text, StringComparison.Ordinal);
+        Assert.Equal(StatusTone.Warning, message.Tone);
+        Assert.DoesNotContain("second or two", message.Text, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -115,63 +115,63 @@ public class StatusEscalationTests
     [InlineData(ServiceOutcome.UnreadableResponse)]
     [InlineData(ServiceOutcome.UnexpectedResponse)]
     [InlineData(ServiceOutcome.Unknown)]
-    public void CioCheNonSiRisolveAspettando_ERossoSubito(ServiceOutcome esito)
+    public void WhatWaitingCannotFix_IsRedStraightAway(ServiceOutcome outcome)
     {
         // Aspettare aiuta solo dove aspettare puo' cambiare l'esito. Un token sbagliato, una
         // versione incompatibile o una risposta illeggibile saranno identici fra un minuto:
         // rimandare l'allarme rimanderebbe solo il momento in cui l'utente puo' agire.
-        StatusMessage subito = MessageFor(esito, TimeSpan.Zero, Remote);
+        StatusMessage immediate = MessageFor(outcome, TimeSpan.Zero, Remote);
 
-        Assert.Equal(StatusTone.Error, subito.Tone);
-        Assert.Contains("dettaglio tecnico", subito.Text, StringComparison.Ordinal);
+        Assert.Equal(StatusTone.Error, immediate.Tone);
+        Assert.Contains("dettaglio tecnico", immediate.Text, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void SenzaValoriASchermo_LaRigaSottoIlTitoloNonNeInventa()
+    public void WithNoValuesOnScreen_TheSubheadingDoesNotInventAny()
     {
-        StatusMessage attesa = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Locale);
-        StatusMessage guasto = MessageFor(ServiceOutcome.Unreachable, TimeSpan.FromMinutes(1), Locale);
+        StatusMessage waiting = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Local);
+        StatusMessage fault = MessageFor(ServiceOutcome.Unreachable, TimeSpan.FromMinutes(1), Local);
 
-        Assert.DoesNotContain("last successful reading", attesa.Subheading, StringComparison.Ordinal);
-        Assert.DoesNotContain("last successful reading", guasto.Subheading, StringComparison.Ordinal);
-        Assert.Equal("Not connected.", guasto.Subheading);
+        Assert.DoesNotContain("last successful reading", waiting.Subheading, StringComparison.Ordinal);
+        Assert.DoesNotContain("last successful reading", fault.Subheading, StringComparison.Ordinal);
+        Assert.Equal("Not connected.", fault.Subheading);
     }
 
     [Fact]
-    public void ConValoriASchermo_LaRigaSottoIlTitoloDiceCheSonoFermi()
+    public void WithValuesOnScreen_TheSubheadingSaysTheyAreStale()
     {
         // Lasciare i valori a schermo senza dirlo li farebbe leggere come attuali: e' il modo
         // piu' facile di far credere che una macchina stia bene mentre e' spenta.
-        StatusMessage guasto = MessageFor(
+        StatusMessage fault = MessageFor(
             ServiceOutcome.Unreachable,
             TimeSpan.FromMinutes(1),
-            Locale,
-            valoriGiaMostrati: true);
+            Local,
+            hasValuesOnScreen: true);
 
-        Assert.Contains("last successful reading", guasto.Subheading, StringComparison.Ordinal);
+        Assert.Contains("last successful reading", fault.Subheading, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void NessunEsitoProduceUnaBarraVuota()
+    public void NoOutcomeProducesAnEmptyBar()
     {
         // Una barra visibile senza titolo o senza testo e' un riquadro colorato che non dice
         // niente, ed e' peggio di nessuna barra.
-        foreach (ServiceOutcome esito in Enum.GetValues<ServiceOutcome>())
+        foreach (ServiceOutcome outcome in Enum.GetValues<ServiceOutcome>())
         {
-            if (esito == ServiceOutcome.Ok)
+            if (outcome == ServiceOutcome.Ok)
             {
                 continue;
             }
 
-            foreach (TimeSpan durata in new[] { TimeSpan.Zero, TimeSpan.FromHours(1) })
+            foreach (TimeSpan failingFor in new[] { TimeSpan.Zero, TimeSpan.FromHours(1) })
             {
-                StatusMessage messaggio = MessageFor(esito, durata, Locale);
+                StatusMessage message = MessageFor(outcome, failingFor, Local);
 
-                Assert.False(string.IsNullOrWhiteSpace(messaggio.Title), $"{esito} a {durata}: titolo vuoto");
-                Assert.False(string.IsNullOrWhiteSpace(messaggio.Text), $"{esito} a {durata}: testo vuoto");
+                Assert.False(string.IsNullOrWhiteSpace(message.Title), $"{outcome} a {failingFor}: titolo vuoto");
+                Assert.False(string.IsNullOrWhiteSpace(message.Text), $"{outcome} a {failingFor}: testo vuoto");
                 Assert.False(
-                    string.IsNullOrWhiteSpace(messaggio.Subheading),
-                    $"{esito} a {durata}: sottotitolo vuoto");
+                    string.IsNullOrWhiteSpace(message.Subheading),
+                    $"{outcome} a {failingFor}: sottotitolo vuoto");
             }
         }
     }
@@ -179,59 +179,59 @@ public class StatusEscalationTests
     [Theory]
     [InlineData(ServiceOutcome.ConnectionRefused)]
     [InlineData(ServiceOutcome.TimedOut)]
-    public void AncheIDueModiDiNonRispondereMeritanoLaTolleranza(ServiceOutcome esito)
+    public void BothWaysOfNotAnsweringDeserveTheGraceToo(ServiceOutcome outcome)
     {
         // Appena avviata, una macchina rifiuta la connessione perche' la porta non e' ancora
         // aperta, e piu' avanti nell'avvio la accetta. Togliere la tolleranza a questi due
         // rimetterebbe la barra rossa all'apertura della finestra, che e' il difetto che
         // questa classe esiste per chiudere.
-        StatusMessage messaggio = MessageFor(esito, TimeSpan.Zero, Remote);
+        StatusMessage message = MessageFor(outcome, TimeSpan.Zero, Remote);
 
-        Assert.Equal(StatusTone.Informational, messaggio.Tone);
-        Assert.Equal("Connecting", messaggio.Title);
+        Assert.Equal(StatusTone.Informational, message.Tone);
+        Assert.Equal("Connecting", message.Title);
     }
 
     [Fact]
-    public void UnRifiutoEUnTempoScadutoNonSiLeggonoUguali()
+    public void ARefusalAndATimeoutDoNotReadTheSame()
     {
         // Il cuore di questa correzione. I due guasti hanno rimedi opposti: uno si risolve
         // avviando un servizio, l'altro aprendo una porta. Se il titolo e' lo stesso, chi
         // guarda la finestra non ha nient'altro da cui capirlo.
-        StatusMessage rifiuto = MessageFor(ServiceOutcome.ConnectionRefused, TimeSpan.FromMinutes(1), Remote);
-        StatusMessage scaduto = MessageFor(ServiceOutcome.TimedOut, TimeSpan.FromMinutes(1), Remote);
+        StatusMessage refusal = MessageFor(ServiceOutcome.ConnectionRefused, TimeSpan.FromMinutes(1), Remote);
+        StatusMessage expired = MessageFor(ServiceOutcome.TimedOut, TimeSpan.FromMinutes(1), Remote);
 
-        Assert.Equal(StatusTone.Error, rifiuto.Tone);
-        Assert.Equal(StatusTone.Error, scaduto.Tone);
-        Assert.NotEqual(rifiuto.Title, scaduto.Title);
-        Assert.NotEqual("Service unreachable", rifiuto.Title);
-        Assert.NotEqual("Service unreachable", scaduto.Title);
+        Assert.Equal(StatusTone.Error, refusal.Tone);
+        Assert.Equal(StatusTone.Error, expired.Tone);
+        Assert.NotEqual(refusal.Title, expired.Title);
+        Assert.NotEqual("Service unreachable", refusal.Title);
+        Assert.NotEqual("Service unreachable", expired.Title);
     }
 
     [Fact]
-    public void OgniModoDiFallireHaUnTitoloSuo()
+    public void EveryWayOfFailingHasATitleOfItsOwn()
     {
         // La falla che questo test chiude non si vede a schermo: e' l'arm di scarto in fondo
         // allo switch. Aggiungere un valore all'enum COMPILA, e il guasto nuovo finisce in
         // silenzio sotto un titolo generico, con la tolleranza tolta senza che nessuno lo
         // abbia deciso. Nessun test falliva. Ora fallisce questo.
-        List<string> generici = [];
+        List<string> withGenericTitle = [];
 
-        foreach (ServiceOutcome esito in Enum.GetValues<ServiceOutcome>())
+        foreach (ServiceOutcome outcome in Enum.GetValues<ServiceOutcome>())
         {
-            if (esito is ServiceOutcome.Ok or ServiceOutcome.Unknown)
+            if (outcome is ServiceOutcome.Ok or ServiceOutcome.Unknown)
             {
                 continue;
             }
 
-            if (MessageFor(esito, TimeSpan.FromHours(1), Remote).Title == "Reading failed")
+            if (MessageFor(outcome, TimeSpan.FromHours(1), Remote).Title == "Reading failed")
             {
-                generici.Add(esito.ToString());
+                withGenericTitle.Add(outcome.ToString());
             }
         }
 
         Assert.True(
-            generici.Count == 0,
+            withGenericTitle.Count == 0,
             "questi esiti finiscono sotto il titolo generico invece di avere il proprio: "
-                + string.Join(", ", generici));
+                + string.Join(", ", withGenericTitle));
     }
 }
