@@ -129,12 +129,12 @@ public class SnapshotProjectionTests
         MachineSnapshot snapshot = new(
             MachineSnapshot.CurrentSchemaVersion,
             DateTimeOffset.UnixEpoch,
-            [new MetricSnapshot("cpu", CollectorStatus.Warmup, "primo campione: manca il precedente", [])]);
+            [new MetricSnapshot("cpu", CollectorStatus.Warmup, "first sample: the previous one is missing", [])]);
 
         MetricGroupState group = Assert.Single(SnapshotProjection.Project(snapshot, Catalog));
 
         Assert.Empty(group.Rows);
-        Assert.Equal("primo campione: manca il precedente", group.Note);
+        Assert.Equal("first sample: the previous one is missing", group.Note);
         Assert.Equal(MetricSeverity.Warmup, group.Severity);
     }
 
@@ -144,12 +144,12 @@ public class SnapshotProjectionTests
         MachineSnapshot snapshot = new(
             MachineSnapshot.CurrentSchemaVersion,
             DateTimeOffset.UnixEpoch,
-            [new MetricSnapshot("cpu", CollectorStatus.Unsupported, "niente ntdll qui", [])]);
+            [new MetricSnapshot("cpu", CollectorStatus.Unsupported, "no ntdll here", [])]);
 
         MetricGroupState group = Assert.Single(SnapshotProjection.Project(snapshot, Catalog));
 
         Assert.Equal(MetricSeverity.Unsupported, group.Severity);
-        Assert.Equal("niente ntdll qui", group.Note);
+        Assert.Equal("no ntdll here", group.Note);
     }
 
     [Fact]
@@ -185,12 +185,12 @@ public class SnapshotProjectionTests
     public void Project_WithAnUnavailablePoint_ShowsTheMessageInsteadOfTheNumber()
     {
         IReadOnlyList<MetricGroupState> groups = Project(
-            Ok("smart", MetricPoint.Unavailable("smart.temp", "nvme1", "il bridge USB non inoltra i comandi SMART")));
+            Ok("smart", MetricPoint.Unavailable("smart.temp", "nvme1", "the USB bridge does not forward SMART commands")));
 
         MetricRowState row = Assert.Single(groups[0].Rows);
 
         Assert.Equal("smart.temp (nvme1)", row.Label);
-        Assert.Equal("il bridge USB non inoltra i comandi SMART", row.Display);
+        Assert.Equal("the USB bridge does not forward SMART commands", row.Display);
         Assert.Null(row.Fraction);
         Assert.Equal(MetricSeverity.Problem, row.Severity);
     }

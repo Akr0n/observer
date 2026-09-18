@@ -21,13 +21,13 @@ namespace Observer.App.Tests;
 public class MachineDirectoryTests
 {
     private static readonly string Fingerprint =
-        CertificateFingerprint.From(SHA256.HashData("una macchina"u8.ToArray()));
+        CertificateFingerprint.From(SHA256.HashData("a machine"u8.ToArray()));
 
     private static ClientConfigurationResult NoOtherConfiguration() =>
         new(ObserverEndpoint.LocalChannel(), null);
 
     private static MachineListResult Read(string json, ISecretStore? store = null) =>
-        MachineDirectory.Resolve(json, NoOtherConfiguration(), store ?? FakeSecretStore.With("laptop", "il-token"));
+        MachineDirectory.Resolve(json, NoOtherConfiguration(), store ?? FakeSecretStore.With("laptop", "the-token"));
 
     /// <summary>One entry of the file. The token is passed only to prove it gets refused.</summary>
     private static string Entry(
@@ -76,7 +76,7 @@ public class MachineDirectoryTests
         // The heart of the change. The token below is the right one, and that is not enough: if
         // an entry with the token in the file went on working, nobody would ever take it out.
         MachineListResult result = Read(
-            Entry("https://laptop:5058", Fingerprint, tokenInFile: "il-token"),
+            Entry("https://laptop:5058", Fingerprint, tokenInFile: "the-token"),
             FakeSecretStore.Empty());
 
         Assert.Single(result.Machines);
@@ -120,7 +120,7 @@ public class MachineDirectoryTests
         // machines have nothing to do with it, and the window must stay usable.
         MachineListResult result = Read(
             Entry("https://laptop:5058", Fingerprint),
-            FakeSecretStore.ThatFails("chmod 600 e riprova"));
+            FakeSecretStore.ThatFails("chmod 600 and try again"));
 
         Assert.Single(result.Machines);
         Assert.Contains("chmod 600", Assert.Single(result.Problems), StringComparison.Ordinal);
@@ -157,7 +157,7 @@ public class MachineDirectoryTests
     {
         // A fingerprint with a typo in it must not be patched up: it would match no certificate
         // in the world, and the message would then talk about an attack.
-        MachineListResult result = Read(Entry("https://laptop:5058", "sha256:non-sono-esadecimale"));
+        MachineListResult result = Read(Entry("https://laptop:5058", "sha256:not-hexadecimal-here"));
 
         Assert.Single(result.Machines);
         Assert.Contains("hex digits", Assert.Single(result.Problems), StringComparison.Ordinal);
@@ -168,7 +168,7 @@ public class MachineDirectoryTests
     {
         // The window must stay usable: a malformed list cannot stop you watching the machine
         // you are sitting at.
-        MachineListResult result = Read("{ non sono json");
+        MachineListResult result = Read("{ not json at all");
 
         Assert.Single(result.Machines);
         Assert.Equal(EndpointKind.Local, result.Machines[0].Kind);
@@ -181,7 +181,7 @@ public class MachineDirectoryTests
         // Anyone who had already configured a machine has nothing to redo just because several
         // of them can now be listed.
         ObserverEndpoint previous = ObserverEndpoint.Remote(
-            new Uri("https://altra:5058/"), "token", "dal vecchio client.json", Fingerprint);
+            new Uri("https://other:5058/"), "token", "from the old client.json", Fingerprint);
 
         MachineListResult result = MachineDirectory.Resolve(
             null, new ClientConfigurationResult(previous, null), FakeSecretStore.Empty());
@@ -226,7 +226,7 @@ public class MachineDirectoryTests
         // the token sent in cleartext once a second, which is exactly what closing that door
         // was meant to prevent.
         ObserverEndpoint cleartext = ObserverEndpoint.Remote(
-            new Uri("http://vecchia:5057/"), "token", "dal vecchio client.json", Fingerprint);
+            new Uri("http://old-machine:5057/"), "token", "from the old client.json", Fingerprint);
 
         MachineListResult result = MachineDirectory.Resolve(
             null, new ClientConfigurationResult(cleartext, null), FakeSecretStore.Empty());
@@ -240,7 +240,7 @@ public class MachineDirectoryTests
     {
         // Same hole, other half: encrypted, but towards nobody in particular.
         ObserverEndpoint withoutFingerprint = ObserverEndpoint.Remote(
-            new Uri("https://vecchia:5058/"), "token", "dal vecchio client.json");
+            new Uri("https://old-machine:5058/"), "token", "from the old client.json");
 
         MachineListResult result = MachineDirectory.Resolve(
             null, new ClientConfigurationResult(withoutFingerprint, null), FakeSecretStore.Empty());
@@ -257,10 +257,10 @@ public class MachineDirectoryTests
         // the previous configuration away too, and whoever is watching would see a machine
         // vanish for no reason.
         ObserverEndpoint previous = ObserverEndpoint.Remote(
-            new Uri("https://altra:5058/"), "token", "dal vecchio client.json", Fingerprint);
+            new Uri("https://other:5058/"), "token", "from the old client.json", Fingerprint);
 
         MachineListResult result = MachineDirectory.Resolve(
-            """{ "altro": 1 }""", new ClientConfigurationResult(previous, null), FakeSecretStore.Empty());
+            """{ "other": 1 }""", new ClientConfigurationResult(previous, null), FakeSecretStore.Empty());
 
         Assert.Equal(2, result.Machines.Count);
         Assert.Contains("machines", Assert.Single(result.Problems), StringComparison.Ordinal);

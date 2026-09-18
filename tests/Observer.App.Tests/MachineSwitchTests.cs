@@ -25,7 +25,7 @@ public class MachineSwitchTests
     {
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         ObserverEndpoint other = ObserverEndpoint.Remote(
-            new Uri("https://altra:5058/"), "token", "altra", new string('a', 64));
+            new Uri("https://other:5058/"), "token", "other", new string('a', 64));
 
         MainViewModel viewModel = new(
             client: new ClientWithData(local),
@@ -115,14 +115,14 @@ public class MachineSwitchTests
         public ObserverEndpoint Endpoint { get; } = endpoint;
 
         public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new SnapshotFetch(ServiceOutcome.Unreachable, "spenta", null));
+            Task.FromResult(new SnapshotFetch(ServiceOutcome.Unreachable, "down", null));
 
         public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new CatalogFetch(ServiceOutcome.Unreachable, "spenta", null));
+            Task.FromResult(new CatalogFetch(ServiceOutcome.Unreachable, "down", null));
 
         public Task<HistoryFetch> GetHistoryAsync(
             HistoryQuery query,
             CancellationToken cancellationToken) =>
-            Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "spenta", null));
+            Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "down", null));
     }
 }

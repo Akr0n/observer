@@ -22,14 +22,14 @@ public class StatusEscalationTests
     private static readonly ObserverEndpoint Local = ObserverEndpoint.LocalChannel();
 
     private static readonly ObserverEndpoint Remote =
-        ObserverEndpoint.Remote(new Uri("http://altra:5057/"), "t", "dalla prova");
+        ObserverEndpoint.Remote(new Uri("http://other:5057/"), "t", "from the test");
 
     private static StatusMessage MessageFor(
         ServiceOutcome outcome,
         TimeSpan failingFor,
         ObserverEndpoint endpoint,
         bool hasValuesOnScreen = false) =>
-        StatusEscalation.MessageFor(outcome, "dettaglio tecnico dalla prova", failingFor, endpoint, hasValuesOnScreen);
+        StatusEscalation.MessageFor(outcome, "technical detail from the test", failingFor, endpoint, hasValuesOnScreen);
 
     [Fact]
     public void TheFirstFailedAttempt_IsNotAnError()
@@ -72,8 +72,8 @@ public class StatusEscalationTests
         StatusMessage waiting = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Local);
         StatusMessage fault = MessageFor(ServiceOutcome.Unreachable, StatusEscalation.GracePeriod, Local);
 
-        Assert.DoesNotContain("dettaglio tecnico", waiting.Text, StringComparison.Ordinal);
-        Assert.Contains("dettaglio tecnico", fault.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("technical detail", waiting.Text, StringComparison.Ordinal);
+        Assert.Contains("technical detail", fault.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -84,7 +84,7 @@ public class StatusEscalationTests
         StatusMessage message = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Remote);
 
         Assert.Equal(StatusTone.Informational, message.Tone);
-        Assert.Contains("altra:5057", message.Text, StringComparison.Ordinal);
+        Assert.Contains("other:5057", message.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("this machine", message.Text, StringComparison.Ordinal);
     }
 
@@ -123,7 +123,7 @@ public class StatusEscalationTests
         StatusMessage immediate = MessageFor(outcome, TimeSpan.Zero, Remote);
 
         Assert.Equal(StatusTone.Error, immediate.Tone);
-        Assert.Contains("dettaglio tecnico", immediate.Text, StringComparison.Ordinal);
+        Assert.Contains("technical detail", immediate.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -167,11 +167,11 @@ public class StatusEscalationTests
             {
                 StatusMessage message = MessageFor(outcome, failingFor, Local);
 
-                Assert.False(string.IsNullOrWhiteSpace(message.Title), $"{outcome} a {failingFor}: titolo vuoto");
-                Assert.False(string.IsNullOrWhiteSpace(message.Text), $"{outcome} a {failingFor}: testo vuoto");
+                Assert.False(string.IsNullOrWhiteSpace(message.Title), $"{outcome} at {failingFor}: the title is empty");
+                Assert.False(string.IsNullOrWhiteSpace(message.Text), $"{outcome} at {failingFor}: the text is empty");
                 Assert.False(
                     string.IsNullOrWhiteSpace(message.Subheading),
-                    $"{outcome} a {failingFor}: sottotitolo vuoto");
+                    $"{outcome} at {failingFor}: the subheading is empty");
             }
         }
     }
@@ -231,7 +231,7 @@ public class StatusEscalationTests
 
         Assert.True(
             withGenericTitle.Count == 0,
-            "questi esiti finiscono sotto il titolo generico invece di avere il proprio: "
+            "these outcomes end up under the generic title instead of having one of their own: "
                 + string.Join(", ", withGenericTitle));
     }
 }

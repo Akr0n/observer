@@ -57,8 +57,8 @@ public class MetricsClientTests
 
         Assert.NotNull(captured);
         Assert.Equal("Bearer", captured.Headers.Authorization!.Scheme);
-        Assert.Equal("il-token", captured.Headers.Authorization.Parameter);
-        Assert.Equal("http://altra-macchina:5057/metrics/latest", captured.RequestUri!.AbsoluteUri);
+        Assert.Equal("the-token", captured.Headers.Authorization.Parameter);
+        Assert.Equal("http://other-machine:5057/metrics/latest", captured.RequestUri!.AbsoluteUri);
     }
 
     [Theory]
@@ -72,8 +72,8 @@ public class MetricsClientTests
 
         Assert.Equal(ServiceOutcome.TokenRejected, fetch.Outcome);
         Assert.Null(fetch.Snapshot);
-        Assert.Contains("dai test", fetch.Problem, StringComparison.Ordinal);
-        Assert.DoesNotContain("il-token", fetch.Problem, StringComparison.Ordinal);
+        Assert.Contains("from the tests", fetch.Problem, StringComparison.Ordinal);
+        Assert.DoesNotContain("the-token", fetch.Problem, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -142,7 +142,7 @@ public class MetricsClientTests
     public async Task GetProcessesAsync_ReadsTheIoRateAndShowsADashWhenItIsMissing()
     {
         using MetricsClient client = Create(new FakeHandler(_ => Json(HttpStatusCode.OK,
-            """{"capturedAt":"2026-09-03T08:00:00Z","by":"io","processes":[{"pid":1,"name":"copia","cpuPercent":2.5,"workingSetBytes":10,"ioBytesPerSecond":1572864},{"pid":2,"name":"ignoto","cpuPercent":null,"workingSetBytes":10,"ioBytesPerSecond":null}]}""")));
+            """{"capturedAt":"2026-09-03T08:00:00Z","by":"io","processes":[{"pid":1,"name":"copy","cpuPercent":2.5,"workingSetBytes":10,"ioBytesPerSecond":1572864},{"pid":2,"name":"unknown","cpuPercent":null,"workingSetBytes":10,"ioBytesPerSecond":null}]}""")));
 
         ProcessFetch fetch = await client.GetProcessesAsync("io", 15, CancellationToken.None);
 
@@ -154,19 +154,19 @@ public class MetricsClientTests
     public async Task GetLatestAsync_WhenTheServiceIsDown_SaysItIsUnreachable()
     {
         using MetricsClient client = Create(new FakeHandler(_ =>
-            throw new HttpRequestException("Connessione rifiutata")));
+            throw new HttpRequestException("Connection refused")));
 
         SnapshotFetch fetch = await client.GetLatestAsync(CancellationToken.None);
 
         Assert.Equal(ServiceOutcome.Unreachable, fetch.Outcome);
-        Assert.Contains("altra-macchina:5057", fetch.Problem, StringComparison.Ordinal);
+        Assert.Contains("other-machine:5057", fetch.Problem, StringComparison.Ordinal);
     }
 
     [Fact]
     public async Task GetLatestAsync_WithAResponseThatIsNotASnapshot_SaysSoInsteadOfThrowing()
     {
         using MetricsClient client =
-            Create(new FakeHandler(_ => Json(HttpStatusCode.OK, "<html>ciao</html>")));
+            Create(new FakeHandler(_ => Json(HttpStatusCode.OK, "<html>hello</html>")));
 
         SnapshotFetch fetch = await client.GetLatestAsync(CancellationToken.None);
 
@@ -245,7 +245,7 @@ public class MetricsClientTests
 
     private static MetricsClient Create(HttpMessageHandler handler) =>
         new(
-            ObserverEndpoint.Remote(new Uri("http://altra-macchina:5057/"), "il-token", "dai test"),
+            ObserverEndpoint.Remote(new Uri("http://other-machine:5057/"), "the-token", "from the tests"),
             handler);
 
     /// <summary>A client on the local channel, which must NOT send any credential.</summary>

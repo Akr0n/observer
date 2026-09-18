@@ -27,7 +27,7 @@ public class PreferencesTests
 
     [Fact]
     public void ABrokenFileDoesNotStopTheWindow() =>
-        Assert.Equal(Preferences.Defaults, Preferences.From("{ questo non e' json"));
+        Assert.Equal(Preferences.Defaults, Preferences.From("{ this is not json"));
 
     [Fact]
     public void ADisallowedZoomFallsBackToNormal()
@@ -144,7 +144,7 @@ public class PreferencesTests
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         ObserverEndpoint remote = RemoteEndpoint("laptop");
 
-        Assert.Equal(local, Preferences.RememberedMachine([local, remote], "sparita"));
+        Assert.Equal(local, Preferences.RememberedMachine([local, remote], "vanished"));
         Assert.Equal(local, Preferences.RememberedMachine([local, remote], null));
         Assert.Equal(local, Preferences.RememberedMachine([local, remote], "   "));
     }
@@ -180,7 +180,7 @@ public class PreferencesTests
     [Theory]
     [InlineData("""{}""", "system")]
     [InlineData("""{"theme": null}""", "system")]
-    [InlineData("""{"theme": "nero"}""", "system")]
+    [InlineData("""{"theme": "black"}""", "system")]
     [InlineData("""{"theme": "dark"}""", "dark")]
     [InlineData("""{"theme": "Dark"}""", "dark")]
     [InlineData("""{"theme": "light"}""", "light")]

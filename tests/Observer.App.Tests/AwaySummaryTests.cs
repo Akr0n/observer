@@ -31,15 +31,15 @@ public class AwaySummaryTests
         // Silence is a result: "I asked and there was nothing". An "all good" line for every
         // healthy machine would fill the panel in exactly the case where it is not needed, and
         // people would learn to close it without reading it.
-        Assert.Equal(string.Empty, AwaySummary.LineFor("lavoro", [], withDay: false));
+        Assert.Equal(string.Empty, AwaySummary.LineFor("work", [], withDay: false));
     }
 
     [Fact]
     public void ASingleOutageSaysHowLongAndWhen()
     {
-        string line = AwaySummary.LineFor("lavoro", [Gap(20, 200)], withDay: false);
+        string line = AwaySummary.LineFor("work", [Gap(20, 200)], withDay: false);
 
-        Assert.Equal("lavoro: not measured for 3 h (12:20 – 15:20)", line);
+        Assert.Equal("work: not measured for 3 h (12:20 – 15:20)", line);
 
         // With only one, "in 1 period" would be noise: the total IS that one.
         Assert.DoesNotContain("period", line, StringComparison.Ordinal);
@@ -51,7 +51,7 @@ public class AwaySummaryTests
         // The total on its own would lie by omission: three hours in one go and three hours in
         // ten hiccups are two different machines, and the longest one is what decides whether
         // you get out of your chair.
-        string line = AwaySummary.LineFor("lavoro", [Gap(10, 20), Gap(60, 240), Gap(300, 310)], withDay: false);
+        string line = AwaySummary.LineFor("work", [Gap(10, 20), Gap(60, 240), Gap(300, 310)], withDay: false);
 
         Assert.Contains("in 3 periods", line, StringComparison.Ordinal);
         Assert.Contains("longest 13:00 – 16:00", line, StringComparison.Ordinal);
@@ -64,14 +64,14 @@ public class AwaySummaryTests
         // Retention deletes a PREFIX, indistinguishable from a machine switched on halfway
         // through the window: calling it an outage would be inventing, and one invented line
         // teaches you not to trust the rest.
-        string edgeOnly = AwaySummary.LineFor("casa", [Gap(0, 45, atEdge: true)], withDay: false);
+        string edgeOnly = AwaySummary.LineFor("home", [Gap(0, 45, atEdge: true)], withDay: false);
 
-        Assert.Equal("casa: nothing known before 12:45", edgeOnly);
+        Assert.Equal("home: nothing known before 12:45", edgeOnly);
         Assert.DoesNotContain("not measured", edgeOnly, StringComparison.Ordinal);
 
         // And when there is a real outage too, the edge stays a note at the end and does NOT go
         // into the total: twenty minutes, not sixty-five.
-        string edgeAndOutage = AwaySummary.LineFor("casa", [Gap(0, 45, atEdge: true), Gap(60, 80)], withDay: false);
+        string edgeAndOutage = AwaySummary.LineFor("home", [Gap(0, 45, atEdge: true), Gap(60, 80)], withDay: false);
 
         Assert.Contains("not measured for 20 min", edgeAndOutage, StringComparison.Ordinal);
         Assert.Contains("nothing known before 12:45", edgeAndOutage, StringComparison.Ordinal);
@@ -83,8 +83,8 @@ public class AwaySummaryTests
     {
         // Same threshold and same reason as HistoryStrip.Describe: at seven days "14:20" can be
         // any one of seven afternoons.
-        string plain = AwaySummary.LineFor("lavoro", [Gap(20, 200)], withDay: false);
-        string dated = AwaySummary.LineFor("lavoro", [Gap(20, 200)], withDay: true);
+        string plain = AwaySummary.LineFor("work", [Gap(20, 200)], withDay: false);
+        string dated = AwaySummary.LineFor("work", [Gap(20, 200)], withDay: true);
 
         Assert.Matches(@"\(\d{2}:\d{2} – \d{2}:\d{2}\)", plain);
         Assert.Matches(@"\([A-Za-z]{3} \d{2}:\d{2} – [A-Za-z]{3} \d{2}:\d{2}\)", dated);
@@ -99,13 +99,13 @@ public class AwaySummaryTests
         // to an interval that reads as a quarter of an hour backwards. It happens at one hour
         // too, on a machine that is down across midnight: that is why the rule looks at the
         // PAIR and not at the window's threshold.
-        string line = AwaySummary.LineFor("lavoro", [Gap(-755, -710)], withDay: false);
+        string line = AwaySummary.LineFor("work", [Gap(-755, -710)], withDay: false);
 
         Assert.Matches(@"\([A-Za-z]{3} \d{2}:\d{2} – [A-Za-z]{3} \d{2}:\d{2}\)", line);
 
         // And when the two ends are in the same day, the day does NOT appear: always adding it
         // would make the line longer where it is not needed.
-        Assert.DoesNotMatch(@"[A-Za-z]{3} \d{2}:\d{2}", AwaySummary.LineFor("lavoro", [Gap(10, 20)], withDay: false));
+        Assert.DoesNotMatch(@"[A-Za-z]{3} \d{2}:\d{2}", AwaySummary.LineFor("work", [Gap(10, 20)], withDay: false));
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class AwaySummaryTests
         }
 
         Assert.Contains("history could not be read", viewModel.AwaySummaryText, StringComparison.Ordinal);
-        Assert.Contains("persistenza spenta", viewModel.AwaySummaryText, StringComparison.Ordinal);
+        Assert.Contains("persistence is off", viewModel.AwaySummaryText, StringComparison.Ordinal);
         Assert.True(viewModel.ShowAwaySummary);
 
         // The summary asks FURTHER BACK than the window it examines, and that is the fix that
@@ -139,7 +139,7 @@ public class AwaySummaryTests
         // overruns on the left and every healthy machine opens with "nothing known before".
         Assert.True(
             client.SummaryQueryCount(TimeSpan.FromHours(1), DateTimeOffset.UtcNow) > 0,
-            "il riepilogo non ha chiesto oltre la finestra: la griglia sforerebbe a sinistra");
+            "the summary did not ask further back than the window: the grid would overrun on the left");
 
         // Changing the period changes the question, so it starts again from scratch.
         int queriesAtOneHour = client.SummaryQueryCount(TimeSpan.FromHours(1), DateTimeOffset.UtcNow);
@@ -157,8 +157,8 @@ public class AwaySummaryTests
 
         Assert.True(
             client.SummaryQueryCount(TimeSpan.FromHours(24), DateTimeOffset.UtcNow) > 0,
-            "cambiando periodo il riepilogo non e' stato rifatto sulla finestra nuova");
-        Assert.True(queriesAtOneHour > 0, "la prima query non era quella del riepilogo");
+            "changing the period did not redo the summary over the new window");
+        Assert.True(queriesAtOneHour > 0, "the first query was not the summary's");
 
         await stop.CancelAsync();
 
@@ -219,7 +219,7 @@ public class AwaySummaryTests
         {
             queries.Add(query);
 
-            return Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "persistenza spenta", null));
+            return Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "persistence is off", null));
         }
     }
 }

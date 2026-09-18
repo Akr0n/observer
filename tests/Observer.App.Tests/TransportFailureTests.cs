@@ -33,13 +33,13 @@ public class TransportFailureTests
 
         Assert.Equal(
             ServiceOutcome.ConnectionRefused,
-            TransportFailure.Classify(new HttpRequestException("rifiutata", socket)));
+            TransportFailure.Classify(new HttpRequestException("refused", socket)));
     }
 
     [Fact]
     public void ATimeoutOnTheSocketIsRecognized()
     {
-        HttpRequestException failure = new("scaduta", new SocketException((int)SocketError.TimedOut));
+        HttpRequestException failure = new("timed out", new SocketException((int)SocketError.TimedOut));
 
         Assert.Equal(ServiceOutcome.TimedOut, TransportFailure.Classify(failure));
     }
@@ -50,7 +50,7 @@ public class TransportFailureTests
         // When HttpClient.Timeout expires no SocketException arrives: HttpClient cancels its
         // own request, and what you see is an OperationCanceledException with a
         // TimeoutException inside. Anything that looked only at the socket would never find it.
-        TaskCanceledException expired = new("annullata", new TimeoutException());
+        TaskCanceledException expired = new("canceled", new TimeoutException());
 
         Assert.Equal(ServiceOutcome.TimedOut, TransportFailure.Classify(expired));
     }
@@ -62,9 +62,9 @@ public class TransportFailureTests
         // IOException and that in an HttpRequestException. Looking only at InnerException would
         // be enough today and would stop being enough at the first runtime change.
         HttpRequestException deep = new(
-            "rifiutata",
+            "refused",
             new IOException(
-                "connessione interrotta",
+                "connection reset",
                 new SocketException((int)SocketError.ConnectionRefused)));
 
         Assert.Equal(ServiceOutcome.ConnectionRefused, TransportFailure.Classify(deep));
@@ -75,7 +75,7 @@ public class TransportFailureTests
     {
         // A wrong name is neither a service that is down nor a firewall: saying "the service is
         // not running" would send you looking on a machine that does not exist.
-        HttpRequestException unresolved = new("nome ignoto", new SocketException((int)SocketError.HostNotFound));
+        HttpRequestException unresolved = new("unknown name", new SocketException((int)SocketError.HostNotFound));
 
         Assert.Equal(ServiceOutcome.Unreachable, TransportFailure.Classify(unresolved));
     }
@@ -86,7 +86,7 @@ public class TransportFailureTests
         // A fingerprint that does not match has an outcome of its own, decided before reaching
         // here. If this classifier took it over, a changed certificate — that is, a
         // reinstallation or somebody in the middle — would read as "service down".
-        HttpRequestException tls = new("handshake", new AuthenticationException("certificato"));
+        HttpRequestException tls = new("handshake", new AuthenticationException("certificate"));
 
         Assert.Equal(ServiceOutcome.Unreachable, TransportFailure.Classify(tls));
     }
@@ -96,7 +96,7 @@ public class TransportFailureTests
     {
         Assert.Equal(
             ServiceOutcome.Unreachable,
-            TransportFailure.Classify(new HttpRequestException("qualcosa e' andato storto")));
+            TransportFailure.Classify(new HttpRequestException("something went wrong")));
     }
 
     [Fact]
@@ -104,8 +104,8 @@ public class TransportFailureTests
     {
         // Defensive, but the cost of getting it wrong is an interface that hangs instead of
         // showing an error: the walk down the chain must have a bottom in any case.
-        InvalidOperationException inner = new("dentro");
-        HttpRequestException outer = new("fuori", inner);
+        InvalidOperationException inner = new("inner");
+        HttpRequestException outer = new("outer", inner);
 
         Assert.Equal(ServiceOutcome.Unreachable, TransportFailure.Classify(outer));
     }

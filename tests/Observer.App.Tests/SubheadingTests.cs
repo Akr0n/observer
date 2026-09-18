@@ -20,7 +20,7 @@ public class SubheadingTests
     public async Task WatchingARemoteMachineTheSubheadingShowsOnlyTheTimeAndNeverTheToken()
     {
         ObserverEndpoint remote = ObserverEndpoint.Remote(
-            new Uri("https://altra:5058/"), "il-token", "dal file delle macchine", new string('a', 64));
+            new Uri("https://other:5058/"), "the-token", "from the machines file", new string('a', 64));
 
         MainViewModel viewModel = new(new AnsweringClient(remote), configurationProblem: null);
 

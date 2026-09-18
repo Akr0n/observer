@@ -43,14 +43,14 @@ public class ClipboardCopyTests
             configurationProblem: null,
             copyToClipboard: clipboard.Write)
         {
-            SelectedProcess = new ProcessRowState(22, "tranquillo", "1.0 %", "10 MiB"),
+            SelectedProcess = new ProcessRowState(22, "quiet", "1.0 %", "10 MiB"),
         };
 
         await viewModel.CopyProcessRowCommand.ExecuteAsync(null);
 
         // The whole string, not a Contains: with "22" the number could come from a percentage
         // or from a megabyte count, and the test would stay green with the PID left out.
-        Assert.Equal("tranquillo (pid 22), CPU 1.0 %, memory 10 MiB, I/O —", clipboard.LastText);
+        Assert.Equal("quiet (pid 22), CPU 1.0 %, memory 10 MiB, I/O —", clipboard.LastText);
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public class ClipboardCopyTests
         // disappeared from the composition root, a command that simply returns on a null would
         // leave a button that does nothing and that no test would see, because the tests do
         // have the fake. A disabled button is visible at the first start.
-        MainViewModel viewModel = new(client: null, configurationProblem: "qualcosa")
+        MainViewModel viewModel = new(client: null, configurationProblem: "something")
         {
             SelectedProcess = new ProcessRowState(1, "x", "0 %", "1 MiB"),
         };
@@ -111,7 +111,7 @@ public class ClipboardCopyTests
         MainViewModel viewModel = new(
             client: null,
             configurationProblem: "client.json is missing",
-            copyToClipboard: _ => throw new InvalidOperationException("appunti occupati"));
+            copyToClipboard: _ => throw new InvalidOperationException("clipboard busy"));
 
         string title = viewModel.StatusTitle;
         string message = viewModel.StatusText;
@@ -132,7 +132,7 @@ public class ClipboardCopyTests
         FakeClipboard clipboard = new();
         MainViewModel viewModel = new(
             client: null,
-            configurationProblem: "qualcosa",
+            configurationProblem: "something",
             copyToClipboard: async text =>
             {
                 await gate.Task;

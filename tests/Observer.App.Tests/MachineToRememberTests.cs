@@ -118,12 +118,12 @@ public class MachineToRememberTests
         public ObserverEndpoint Endpoint { get; } = endpoint;
 
         public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new SnapshotFetch(ServiceOutcome.Unreachable, "muto", null));
+            Task.FromResult(new SnapshotFetch(ServiceOutcome.Unreachable, "silent", null));
 
         public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new CatalogFetch(ServiceOutcome.Unreachable, "muto", null));
+            Task.FromResult(new CatalogFetch(ServiceOutcome.Unreachable, "silent", null));
 
         public Task<HistoryFetch> GetHistoryAsync(HistoryQuery query, CancellationToken cancellationToken) =>
-            Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "muto", null));
+            Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "silent", null));
     }
 }

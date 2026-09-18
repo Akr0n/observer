@@ -31,7 +31,7 @@ public class ThemeAndZoomSelectorTests
         Assert.Equal(ThemeVariant.Default, ThemeOption.VariantFor("system"));
 
         // A key that does not exist follows the system, never a variant at random.
-        Assert.Equal(ThemeVariant.Default, ThemeOption.VariantFor("nero"));
+        Assert.Equal(ThemeVariant.Default, ThemeOption.VariantFor("black"));
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class ThemeAndZoomSelectorTests
         viewModel.Theme = "dark";
         Assert.Equal(new ThemeOption("dark"), viewModel.SelectedTheme);
 
-        viewModel.Theme = "nero";
+        viewModel.Theme = "black";
         Assert.Equal("system", viewModel.Theme);
 
         // The selector can assign null while the list changes: the theme stays as it is.

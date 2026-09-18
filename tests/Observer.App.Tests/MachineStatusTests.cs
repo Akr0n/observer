@@ -24,7 +24,7 @@ public class MachineStatusTests
     [Fact]
     public void AFreshRowHasNoStatusYet()
     {
-        MachineRow row = new(RemoteAt("altra"));
+        MachineRow row = new(RemoteAt("other"));
 
         Assert.True(row.IsUnknown);
         Assert.False(row.IsReachable);
@@ -34,7 +34,7 @@ public class MachineStatusTests
     [Fact]
     public void AGoodAnswerMarksTheMachineReachable()
     {
-        MachineRow row = new(RemoteAt("altra"));
+        MachineRow row = new(RemoteAt("other"));
 
         row.Record(ServiceOutcome.Ok, string.Empty, T0);
 
@@ -48,7 +48,7 @@ public class MachineStatusTests
     {
         // The same rule as the status bar: a service that is still starting refuses, and for ten
         // seconds that is normal. After that, it is not.
-        MachineRow row = new(RemoteAt("altra"));
+        MachineRow row = new(RemoteAt("other"));
 
         row.Record(ServiceOutcome.ConnectionRefused, "refused", T0);
         Assert.True(row.IsWarning);
@@ -67,7 +67,7 @@ public class MachineStatusTests
     {
         // A counter that starts on every hiccup teaches you to ignore it, and that is exactly
         // what the ten seconds of grace exist to prevent.
-        MachineRow row = new(RemoteAt("altra"));
+        MachineRow row = new(RemoteAt("other"));
 
         row.Record(ServiceOutcome.ConnectionRefused, "refused", T0);
 
@@ -79,7 +79,7 @@ public class MachineStatusTests
     [Fact]
     public void PastTheGraceTheRowSaysHowLongTheFaultHasLasted()
     {
-        MachineRow row = new(RemoteAt("altra"));
+        MachineRow row = new(RemoteAt("other"));
 
         row.Record(ServiceOutcome.ConnectionRefused, "refused", T0);
         row.Record(ServiceOutcome.ConnectionRefused, "refused", T0 + TimeSpan.FromMinutes(3));
@@ -101,7 +101,7 @@ public class MachineStatusTests
         // state: a reachable service that has not sampled yet stays a warning, never a red, and
         // it can last for days. A gate written on red would leave it with no duration precisely
         // when it is the thing that lasts longest.
-        MachineRow row = new(RemoteAt("altra"));
+        MachineRow row = new(RemoteAt("other"));
 
         row.Record(ServiceOutcome.NotReadyYet, "warming up", T0);
         row.Record(ServiceOutcome.NotReadyYet, "warming up", T0 + TimeSpan.FromMinutes(7));
@@ -116,7 +116,7 @@ public class MachineStatusTests
     {
         // Subtitle is the Text of the second line: without its notification the duration would
         // change and the row would go on saying what it said before, with the suite green.
-        MachineRow row = new(RemoteAt("altra"));
+        MachineRow row = new(RemoteAt("other"));
         List<string> notified = [];
         row.PropertyChanged += (_, e) => notified.Add(e.PropertyName ?? string.Empty);
 
@@ -130,7 +130,7 @@ public class MachineStatusTests
     [Fact]
     public void AMachineThatComesBackNoLongerShowsTheDuration()
     {
-        MachineRow row = new(RemoteAt("altra"));
+        MachineRow row = new(RemoteAt("other"));
 
         row.Record(ServiceOutcome.ConnectionRefused, "refused", T0);
         row.Record(ServiceOutcome.ConnectionRefused, "refused", T0 + TimeSpan.FromMinutes(3));
@@ -146,7 +146,7 @@ public class MachineStatusTests
     public void ARejectedTokenSaysForHowLongFromTheFirstReading()
     {
         // It gets no grace: in a minute it will be identical, so the duration starts at once.
-        MachineRow row = new(RemoteAt("altra"));
+        MachineRow row = new(RemoteAt("other"));
 
         row.Record(ServiceOutcome.TokenRejected, "rejected", T0);
 
@@ -158,7 +158,7 @@ public class MachineStatusTests
     public void ARejectedTokenIsAFaultWithNoGrace()
     {
         // In a minute it will be identical: no grace period can change that.
-        MachineRow row = new(RemoteAt("altra"));
+        MachineRow row = new(RemoteAt("other"));
 
         row.Record(ServiceOutcome.TokenRejected, "rejected", T0);
 
@@ -169,8 +169,8 @@ public class MachineStatusTests
     public async Task TheMachinesNotBeingWatchedAreProbedOnTheirOwn()
     {
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
-        ObserverEndpoint alive = RemoteAt("viva");
-        ObserverEndpoint down = RemoteAt("spenta");
+        ObserverEndpoint alive = RemoteAt("alive");
+        ObserverEndpoint down = RemoteAt("down");
 
         List<ObserverEndpoint> opened = [];
 
@@ -220,7 +220,7 @@ public class MachineStatusTests
     {
         // These are the names the Ellipse's Classes are bound to: dropping one from the
         // attribute would leave the dot grey for ever, and no test would say so.
-        MachineRow row = new(RemoteAt("altra"));
+        MachineRow row = new(RemoteAt("other"));
         List<string> notified = [];
         row.PropertyChanged += (_, e) => notified.Add(e.PropertyName ?? string.Empty);
 
@@ -240,8 +240,8 @@ public class MachineStatusTests
         // watched machine is the first in the list. Here the watched machine is the second,
         // and remote.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
-        ObserverEndpoint alive = RemoteAt("viva");
-        ObserverEndpoint down = RemoteAt("spenta");
+        ObserverEndpoint alive = RemoteAt("alive");
+        ObserverEndpoint down = RemoteAt("down");
         List<ObserverEndpoint> opened = [];
 
         MainViewModel viewModel = new(
@@ -278,7 +278,7 @@ public class MachineStatusTests
         // loop goes on reading the same machine, and the probe must NOT read it a second time:
         // what counts is the watched entry, not the selection.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
-        ObserverEndpoint other = RemoteAt("altra");
+        ObserverEndpoint other = RemoteAt("other");
         FakeClock clock = new();
         List<ObserverEndpoint> opened = [];
 
@@ -310,7 +310,7 @@ public class MachineStatusTests
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.True(opened.Count(endpoint => endpoint == other) >= 2, "la seconda sonda non e' partita");
+        Assert.True(opened.Count(endpoint => endpoint == other) >= 2, "the second probe never started");
         Assert.DoesNotContain(local, opened);
         Assert.True(viewModel.Machines[0].IsReachable);
 
@@ -323,7 +323,7 @@ public class MachineStatusTests
         // The two promises the probes make, tested with a client that does NOT answer until the
         // test says so: a client that answered straight away would leave both of them mutable.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
-        ObserverEndpoint slow = RemoteAt("lenta");
+        ObserverEndpoint slow = RemoteAt("slow");
         FakeClock clock = new();
         CountingClient watched = new(local);
         HangingClient hanging = new(slow);
@@ -350,7 +350,7 @@ public class MachineStatusTests
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.True(watched.Reads >= 3, "il giro principale ha aspettato la sonda");
+        Assert.True(watched.Reads >= 3, "the main loop waited for the probe");
         Assert.Equal(1, openCount);
         Assert.True(viewModel.Machines[1].IsProbing);
         Assert.True(viewModel.Machines[1].IsUnknown);
@@ -367,7 +367,7 @@ public class MachineStatusTests
         Assert.Equal(1, openCount);
 
         // When it comes back, the dot changes and the row can be probed again.
-        hanging.Respond(new SnapshotFetch(ServiceOutcome.Unreachable, "spenta", null));
+        hanging.Respond(new SnapshotFetch(ServiceOutcome.Unreachable, "down", null));
 
         while (!cancellation.IsCancellationRequested && viewModel.Machines[1].IsUnknown)
         {
@@ -384,7 +384,7 @@ public class MachineStatusTests
     public async Task AProbeThatThrowsBecomesARedDotAndTheLoopGoesOn()
     {
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
-        ObserverEndpoint broken = RemoteAt("rotta");
+        ObserverEndpoint broken = RemoteAt("broken");
         CountingClient watched = new(local);
 
         MainViewModel viewModel = new(
@@ -413,7 +413,7 @@ public class MachineStatusTests
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.True(watched.Reads > before, "il giro principale si e' fermato");
+        Assert.True(watched.Reads > before, "the main loop stopped");
 
         await Stop(cancellation, loop);
     }
@@ -428,8 +428,8 @@ public class MachineStatusTests
         // The client rejects the new credential TOO, otherwise a good reading would clear
         // everything by another route and the test would pass even without the reset.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
-        ObserverEndpoint oldEndpoint = RemoteAt("ruotata");
-        ObserverEndpoint newEndpoint = oldEndpoint with { ApiToken = "nuovo" };
+        ObserverEndpoint oldEndpoint = RemoteAt("rotated");
+        ObserverEndpoint newEndpoint = oldEndpoint with { ApiToken = "new-token" };
         FakeClock clock = new();
         bool rotate = false;
 
@@ -481,7 +481,7 @@ public class MachineStatusTests
         // after it. Without the reset it would be the earlier half hour, which keeps growing:
         // an assertion on one exact value would not be enough to tell them apart.
         string after = viewModel.Machines[1].DowntimeText;
-        Assert.True(after.Length == 0 || after == "for under 1 min", $"durata dopo la rilettura: '{after}'");
+        Assert.True(after.Length == 0 || after == "for under 1 min", $"duration after the re-read: '{after}'");
 
         await Stop(cancellation, loop);
     }
@@ -492,8 +492,8 @@ public class MachineStatusTests
         // "observer token set" with the window open, on a machine that is NOT being watched: the
         // next probe has to start with the new credential, not with the one read at start-up.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
-        ObserverEndpoint oldEndpoint = RemoteAt("ruotata");
-        ObserverEndpoint newEndpoint = oldEndpoint with { ApiToken = "nuovo" };
+        ObserverEndpoint oldEndpoint = RemoteAt("rotated");
+        ObserverEndpoint newEndpoint = oldEndpoint with { ApiToken = "new-token" };
         FakeClock clock = new();
         List<ObserverEndpoint> opened = [];
 
@@ -541,7 +541,7 @@ public class MachineStatusTests
         // is down, and clicking on it the bar must open red, not "Connecting" for another ten
         // seconds while the dot beside it is already red.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
-        ObserverEndpoint down = RemoteAt("spenta");
+        ObserverEndpoint down = RemoteAt("down");
         FakeClock clock = new();
 
         MainViewModel viewModel = new(
@@ -692,10 +692,10 @@ public class MachineStatusTests
         public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) => pending.Task;
 
         public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new CatalogFetch(ServiceOutcome.Unreachable, "lenta", null));
+            Task.FromResult(new CatalogFetch(ServiceOutcome.Unreachable, "slow", null));
 
         public Task<HistoryFetch> GetHistoryAsync(HistoryQuery query, CancellationToken cancellationToken) =>
-            Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "lenta", null));
+            Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "slow", null));
     }
 
     /// <summary>Throws instead of answering: a client that fails to build, a DNS that blows up.</summary>
@@ -733,12 +733,12 @@ public class MachineStatusTests
         public ObserverEndpoint Endpoint { get; } = endpoint;
 
         public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new SnapshotFetch(ServiceOutcome.Unreachable, "spenta", null));
+            Task.FromResult(new SnapshotFetch(ServiceOutcome.Unreachable, "down", null));
 
         public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new CatalogFetch(ServiceOutcome.Unreachable, "spenta", null));
+            Task.FromResult(new CatalogFetch(ServiceOutcome.Unreachable, "down", null));
 
         public Task<HistoryFetch> GetHistoryAsync(HistoryQuery query, CancellationToken cancellationToken) =>
-            Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "spenta", null));
+            Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "down", null));
     }
 }

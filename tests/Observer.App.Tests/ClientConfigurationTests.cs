@@ -28,22 +28,22 @@ public class ClientConfigurationTests
     public void AddressAndTokenFromTheENVIRONMENT()
     {
         ClientConfigurationResult result =
-            ClientConfiguration.Resolve("dal-ambiente", "https://altra:5058", Fingerprint, null);
+            ClientConfiguration.Resolve("from-the-environment", "https://other:5058", Fingerprint, null);
 
         Assert.Null(result.Problem);
         Assert.Equal(EndpointKind.Remote, result.Endpoint!.Kind);
-        Assert.Equal("dal-ambiente", result.Endpoint.ApiToken);
-        Assert.Equal(new Uri("https://altra:5058/"), result.Endpoint.BaseAddress);
+        Assert.Equal("from-the-environment", result.Endpoint.ApiToken);
+        Assert.Equal(new Uri("https://other:5058/"), result.Endpoint.BaseAddress);
     }
 
     [Fact]
     public void AddressAndTokenFromTheFILE()
     {
-        ClientConfigurationResult result = ClientConfiguration.Resolve(null, null, null, """{ "baseAddress": "https://altra:7000/", "apiToken": "dal-file", "fingerprint": "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB" }""");
+        ClientConfigurationResult result = ClientConfiguration.Resolve(null, null, null, """{ "baseAddress": "https://other:7000/", "apiToken": "from-the-file", "fingerprint": "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB" }""");
 
         Assert.Null(result.Problem);
-        Assert.Equal("dal-file", result.Endpoint!.ApiToken);
-        Assert.Equal(new Uri("https://altra:7000/"), result.Endpoint.BaseAddress);
+        Assert.Equal("from-the-file", result.Endpoint!.ApiToken);
+        Assert.Equal(new Uri("https://other:7000/"), result.Endpoint.BaseAddress);
     }
 
     [Fact]
@@ -51,13 +51,13 @@ public class ClientConfigurationTests
     {
         // Same reason it wins in the service: an old value forgotten in the file would silently
         // overwrite the new one just exported, and the symptom would be an inexplicable 401.
-        ClientConfigurationResult result = ClientConfiguration.Resolve("vince-questo",
-            "https://vince-questa:9000",
+        ClientConfigurationResult result = ClientConfiguration.Resolve("the-winning-token",
+            "https://the-winner:9000",
             Fingerprint,
-            """{ "baseAddress": "https://vecchia:7000/", "apiToken": "vecchio", "fingerprint": "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB" }""");
+            """{ "baseAddress": "https://old-machine:7000/", "apiToken": "old-token", "fingerprint": "sha256:ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB" }""");
 
-        Assert.Equal("vince-questo", result.Endpoint!.ApiToken);
-        Assert.Equal(new Uri("https://vince-questa:9000/"), result.Endpoint.BaseAddress);
+        Assert.Equal("the-winning-token", result.Endpoint!.ApiToken);
+        Assert.Equal(new Uri("https://the-winner:9000/"), result.Endpoint.BaseAddress);
     }
 
     [Fact]
@@ -66,33 +66,33 @@ public class ClientConfigurationTests
         // Without it, Uri would resolve "metrics/latest" by dropping the last segment of an
         // address such as "http://host:5057/observer/", and the request would end up elsewhere.
         ClientConfigurationResult result =
-            ClientConfiguration.Resolve("t", "https://altra:5058/observer", Fingerprint, null);
+            ClientConfiguration.Resolve("t", "https://other:5058/observer", Fingerprint, null);
 
-        Assert.Equal(new Uri("https://altra:5058/observer/"), result.Endpoint!.BaseAddress);
+        Assert.Equal(new Uri("https://other:5058/observer/"), result.Endpoint!.BaseAddress);
     }
 
     [Fact]
     public void SurroundingSpacesAreTrimmed()
     {
         ClientConfigurationResult result =
-            ClientConfiguration.Resolve("  con-spazi  ", "  https://altra:5058  ", Fingerprint, null);
+            ClientConfiguration.Resolve("  with-spaces  ", "  https://other:5058  ", Fingerprint, null);
 
-        Assert.Equal("con-spazi", result.Endpoint!.ApiToken);
+        Assert.Equal("with-spaces", result.Endpoint!.ApiToken);
     }
 
     [Fact]
     public void AREMOTEAddressWithoutATokenSaysWhatToDo()
     {
-        ClientConfigurationResult result = ClientConfiguration.Resolve(null, "https://altra:5058", Fingerprint, null);
+        ClientConfigurationResult result = ClientConfiguration.Resolve(null, "https://other:5058", Fingerprint, null);
 
         Assert.Null(result.Endpoint);
         Assert.Contains("observer share", result.Problem!, StringComparison.Ordinal);
     }
 
     [Theory]
-    [InlineData("non-un-indirizzo")]
-    [InlineData("ftp://altra:5057")]
-    [InlineData("://rotto")]
+    [InlineData("not-an-address")]
+    [InlineData("ftp://other:5057")]
+    [InlineData("://broken")]
     public void AnUNUSABLEAddressIsExplained(string address)
     {
         ClientConfigurationResult result = ClientConfiguration.Resolve("t", address, Fingerprint, null);
@@ -104,7 +104,7 @@ public class ClientConfigurationTests
     [Fact]
     public void ABrokenCONFIGURATIONFileIsExplained()
     {
-        ClientConfigurationResult result = ClientConfiguration.Resolve(null, null, null, "{ non e' json");
+        ClientConfigurationResult result = ClientConfiguration.Resolve(null, null, null, "{ not json");
 
         Assert.Null(result.Endpoint);
         Assert.Contains("isn't valid JSON", result.Problem!, StringComparison.Ordinal);

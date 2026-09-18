@@ -16,7 +16,7 @@ namespace Observer.App.Tests;
 public class ProcessPanelTests
 {
     private static MetricRow RowFor(string key) =>
-        new(new MetricRowState(key, "etichetta", "valore", 0.5d, MetricSeverity.Ok));
+        new(new MetricRowState(key, "label", "value", 0.5d, MetricSeverity.Ok));
 
     [Theory]
     [InlineData("cpu|cpu.usage.total|", "cpu")]
@@ -66,8 +66,8 @@ public class ProcessPanelTests
     {
         // A dash and not "0 B/s": they are two different claims, and the second one, on a list
         // sorted by I/O, would move attention to the wrong program.
-        Assert.Equal("1.5 MiB/s", ProcessRowState.From(new ProcessWire(1, "copia", 0d, 10, 1_572_864d)).Io);
-        Assert.Equal("—", ProcessRowState.From(new ProcessWire(1, "ignoto", 0d, 10, null)).Io);
+        Assert.Equal("1.5 MiB/s", ProcessRowState.From(new ProcessWire(1, "copy", 0d, 10, 1_572_864d)).Io);
+        Assert.Equal("—", ProcessRowState.From(new ProcessWire(1, "unknown", 0d, 10, null)).Io);
     }
 
     [Fact]
@@ -232,7 +232,7 @@ public class ProcessPanelTests
 
         // And a response that arrives late for a panel that is closed by now does not fill it.
         client.PendingRead.SetResult(new ProcessFetch(
-            ServiceOutcome.Ok, string.Empty, [new ProcessRowState(99, "in ritardo", "99 %", "1 MiB")]));
+            ServiceOutcome.Ok, string.Empty, [new ProcessRowState(99, "late", "99 %", "1 MiB")]));
         await first;
 
         Assert.False(viewModel.IsProcessPanelOpen);
@@ -254,13 +254,13 @@ public class ProcessPanelTests
         await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("memory|memory.used.percent|"));
 
         Assert.Contains("memory", viewModel.ProcessesTitle, StringComparison.Ordinal);
-        Assert.Equal(["affamato", "tranquillo"], viewModel.Processes.Select(row => row.Name));
+        Assert.Equal(["greedy", "quiet"], viewModel.Processes.Select(row => row.Name));
 
         inFlight.SetResult(new ProcessFetch(
-            ServiceOutcome.Ok, string.Empty, [new ProcessRowState(99, "in ritardo", "99 %", "1 MiB")]));
+            ServiceOutcome.Ok, string.Empty, [new ProcessRowState(99, "late", "99 %", "1 MiB")]));
         await cpu;
 
-        Assert.Equal(["affamato", "tranquillo"], viewModel.Processes.Select(row => row.Name));
+        Assert.Equal(["greedy", "quiet"], viewModel.Processes.Select(row => row.Name));
     }
 
     private sealed class FakeProcessClient : IMetricsClient
@@ -277,7 +277,7 @@ public class ProcessPanelTests
         public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.LocalChannel();
 
         public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new SnapshotFetch(ServiceOutcome.Unreachable, "spenta", null));
+            Task.FromResult(new SnapshotFetch(ServiceOutcome.Unreachable, "down", null));
 
         public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new CatalogFetch(ServiceOutcome.Ok, string.Empty, MetricCatalog.Empty));
@@ -300,8 +300,8 @@ public class ProcessPanelTests
                 ServiceOutcome.Ok,
                 string.Empty,
                 [
-                    new ProcessRowState(11, "affamato", Cpu[0], "100 MiB"),
-                    new ProcessRowState(22, "tranquillo", Cpu[1], "10 MiB"),
+                    new ProcessRowState(11, "greedy", Cpu[0], "100 MiB"),
+                    new ProcessRowState(22, "quiet", Cpu[1], "10 MiB"),
                 ]));
         }
 

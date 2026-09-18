@@ -32,10 +32,10 @@ public class HistoryCadenceTests
         // went back to serving a second later.
         Assert.True(
             retryDelay < period.Step,
-            $"{key}: dopo un guasto si aspetta {retryDelay}, cioe' quanto un passo ({period.Step})");
+            $"{key}: after a fault it waits {retryDelay}, that is as long as a whole step ({period.Step})");
 
         // And soon means soon, not "a bit less": half a minute is the ceiling.
-        Assert.True(retryDelay <= TimeSpan.FromSeconds(30), $"{key}: si riprova dopo {retryDelay}");
+        Assert.True(retryDelay <= TimeSpan.FromSeconds(30), $"{key}: it retries after {retryDelay}");
     }
 
     /// <summary>Each period with the exact cadence it gets, in seconds.</summary>
@@ -70,15 +70,15 @@ public class HistoryCadenceTests
         // animate thirteen pixels do not pay).
         Assert.True(
             cadence <= period.Step,
-            $"{key}: si rilegge ogni {cadence}, cioe' MENO spesso del passo ({period.Step})");
+            $"{key}: it re-reads every {cadence}, that is LESS often than the step ({period.Step})");
 
         Assert.True(
             key == "1h" || cadence <= period.Step / 2,
-            $"{key}: si rilegge ogni {cadence} su barre da {period.Step}: la barra in corso non cresce");
+            $"{key}: it re-reads every {cadence} on bars of {period.Step}: the bar in progress does not grow");
 
         // And not continuously either: this is a window that measures the machine it is
         // querying, and what it spends on refreshing itself lands in the number it shows.
-        Assert.True(cadence >= TimeSpan.FromMinutes(1), $"{key}: si rilegge ogni {cadence}");
+        Assert.True(cadence >= TimeSpan.FromMinutes(1), $"{key}: it re-reads every {cadence}");
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public class HistoryCadenceTests
 
         int afterFirstRound = client.Reads;
 
-        Assert.True(afterFirstRound > 0, "la prima lettura di storico non e' mai partita");
+        Assert.True(afterFirstRound > 0, "the first history read never started");
 
         clock.Advance(TimeSpan.FromSeconds(20));
 
@@ -116,7 +116,7 @@ public class HistoryCadenceTests
 
         Assert.True(
             client.Reads > afterFirstRound,
-            "venti secondi dopo un guasto nessuno ha riprovato: la striscia resta ferma un passo intero");
+            "twenty seconds after a fault nobody retried: the strip stays frozen for a whole step");
 
         await End(stop, loop);
     }
@@ -130,7 +130,7 @@ public class HistoryCadenceTests
         // inherited deadline: half an hour at seven days, with the gauges above already live.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         ObserverEndpoint other = ObserverEndpoint.Remote(
-            new Uri("https://altra:5058/"), "token", "altra", new string('a', 64));
+            new Uri("https://other:5058/"), "token", "other", new string('a', 64));
 
         FakeClock clock = new();
         ClientWithHistory secondClient = new(other);
@@ -234,7 +234,7 @@ public class HistoryCadenceTests
         {
             Interlocked.Increment(ref readCount);
 
-            return Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "persistenza spenta", null));
+            return Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "persistence is off", null));
         }
     }
 
@@ -259,13 +259,13 @@ public class HistoryCadenceTests
         public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.LocalChannel();
 
         public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new SnapshotFetch(ServiceOutcome.Unreachable, "spenta", null));
+            Task.FromResult(new SnapshotFetch(ServiceOutcome.Unreachable, "down", null));
 
         public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new CatalogFetch(ServiceOutcome.Unreachable, "spenta", null));
+            Task.FromResult(new CatalogFetch(ServiceOutcome.Unreachable, "down", null));
 
         public Task<HistoryFetch> GetHistoryAsync(HistoryQuery query, CancellationToken cancellationToken) =>
-            Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "spenta", null));
+            Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "down", null));
     }
 
     /// <summary>One CPU, which is all it takes to get a gauge.</summary>

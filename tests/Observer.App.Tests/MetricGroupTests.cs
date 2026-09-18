@@ -111,8 +111,8 @@ public class MetricGroupTests
         // an instant - it would only ever show something in between.
         Assert.True(
             Gauge.NeedleTravelTime < MainViewModel.Interval,
-            $"La corsa della lancetta ({Gauge.NeedleTravelTime.TotalMilliseconds} ms) deve restare piu' "
-                + $"breve dell'intervallo di campionamento ({MainViewModel.Interval.TotalMilliseconds} ms).");
+            $"The needle travel ({Gauge.NeedleTravelTime.TotalMilliseconds} ms) must stay shorter "
+                + $"than the sampling interval ({MainViewModel.Interval.TotalMilliseconds} ms).");
 
         // And with a real margin: right at the limit the needle would arrive just as the next
         // sample starts, and would stand still for no time at all.

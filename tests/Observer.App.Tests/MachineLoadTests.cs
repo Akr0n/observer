@@ -25,7 +25,7 @@ public class MachineLoadTests
         new(id, CollectorStatus.Ok, null, points);
 
     private static MachineRow RemoteRow() => new(ObserverEndpoint.Remote(
-        new Uri("https://altra:5058/"), "token", "machines.json", new string('a', 64), "altra"));
+        new Uri("https://other:5058/"), "token", "machines.json", new string('a', 64), "other"));
 
     [Fact]
     public void BothNumbersComeFromTheSnapshotTheProbeAlreadyHasAndTheCaptionRoundsThem()
@@ -73,7 +73,7 @@ public class MachineLoadTests
         // On a platform where the CPU cannot be read the memory still can be, and half an
         // answer is better than none.
         MachineLoad memoryOnly = MachineLoad.From(Snapshot(
-            Group("cpu", MetricPoint.Unsupported(CpuCollector.TotalUsageMetricId, null, "non misurabile qui")),
+            Group("cpu", MetricPoint.Unsupported(CpuCollector.TotalUsageMetricId, null, "not measurable here")),
             Group("memory", MetricPoint.Measured(MemoryCollector.UsedPercentMetricId, null, MetricValue.FromNumber(61d)))));
 
         Assert.Null(memoryOnly.Cpu);
@@ -102,7 +102,7 @@ public class MachineLoadTests
     {
         MachineLoad load = MachineLoad.From(Snapshot(Group(
             "cpu",
-            MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromText("parecchio")))));
+            MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromText("quite a lot")))));
 
         Assert.Null(load.Cpu);
         Assert.Equal(string.Empty, load.Caption);
@@ -173,7 +173,7 @@ public class MachineLoadTests
         // the numbers its accessible name would change every second, for ever.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         ObserverEndpoint other = ObserverEndpoint.Remote(
-            new Uri("https://altra:5058/"), "token", "machines.json", new string('a', 64), "altra");
+            new Uri("https://other:5058/"), "token", "machines.json", new string('a', 64), "other");
 
         MainViewModel viewModel = new(
             client: null,
@@ -246,7 +246,7 @@ public class MachineLoadTests
         // second - and the row would jerk between two different readings of the SAME machine.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         ObserverEndpoint other = ObserverEndpoint.Remote(
-            new Uri("https://altra:5058/"), "token", "machines.json", new string('a', 64), "altra");
+            new Uri("https://other:5058/"), "token", "machines.json", new string('a', 64), "other");
 
         HeldClient held = new();
 
@@ -267,7 +267,7 @@ public class MachineLoadTests
             await Task.Delay(20, CancellationToken.None);
         }
 
-        Assert.True(held.HasEntered, "la sonda non e' mai partita");
+        Assert.True(held.HasEntered, "the probe never started");
 
         // The click, while the response is still in the air.
         viewModel.SelectedMachine = row;

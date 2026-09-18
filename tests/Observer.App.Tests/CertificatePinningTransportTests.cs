@@ -41,7 +41,7 @@ public sealed class CertificatePinningTransportTests : IDisposable
     [Fact]
     public async Task WithTheRightFingerprintTheConnectionSucceeds()
     {
-        using X509Certificate2 certificate = Generate("questa-macchina");
+        using X509Certificate2 certificate = Generate("this-machine");
         TestServer server = StartServer(certificate);
 
         CertificatePinning pinning = new(CertificateFingerprint.From(certificate.RawDataMemory.Span));
@@ -58,11 +58,11 @@ public sealed class CertificatePinningTransportTests : IDisposable
     public async Task TheConnectionSucceedsWhenTheHostNameDoesNotMatchTheCertificate()
     {
         // THE rule that makes it possible to query a machine by address. The certificate says
-        // "un-altro-nome" and the client connects to 127.0.0.1: ordinary TLS validation would
+        // "another-name" and the client connects to 127.0.0.1: ordinary TLS validation would
         // reject that as a name mismatch, and the certificate carries no iPAddress SAN that
         // could rescue it. Here it passes, because what identifies the machine is the
         // fingerprint.
-        using X509Certificate2 certificate = Generate("un-altro-nome");
+        using X509Certificate2 certificate = Generate("another-name");
         TestServer server = StartServer(certificate);
 
         CertificatePinning pinning = new(CertificateFingerprint.From(certificate.RawDataMemory.Span));
@@ -80,8 +80,8 @@ public sealed class CertificatePinningTransportTests : IDisposable
         // anything is sent, or the token would already have reached the wrong destination and
         // rejecting it would no longer be worth anything. The server counts the application
         // bytes it receives, and they must be zero.
-        using X509Certificate2 presented = Generate("chi-sta-in-mezzo");
-        using X509Certificate2 expected = Generate("questa-macchina");
+        using X509Certificate2 presented = Generate("man-in-the-middle");
+        using X509Certificate2 expected = Generate("this-machine");
 
         TestServer server = StartServer(presented);
 
@@ -90,7 +90,7 @@ public sealed class CertificatePinningTransportTests : IDisposable
         using HttpClient client = new(pinning.Handler());
         using HttpRequestMessage request = new(HttpMethod.Get, server.Address);
 
-        request.Headers.Authorization = new("Bearer", "il-token-che-non-deve-uscire");
+        request.Headers.Authorization = new("Bearer", "the-token-that-must-not-leave");
 
         await Assert.ThrowsAnyAsync<HttpRequestException>(
             () => client.SendAsync(request, shutdown.Token));

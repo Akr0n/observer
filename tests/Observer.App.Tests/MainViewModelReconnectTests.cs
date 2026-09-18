@@ -23,7 +23,7 @@ public class MainViewModelReconnectTests
 
         MainViewModel viewModel = new(
             client: null,
-            configurationProblem: "manca il token",
+            configurationProblem: "the token is missing",
             rereadConfiguration: () =>
             {
                 rereads++;
@@ -40,7 +40,7 @@ public class MainViewModelReconnectTests
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.True(client.Queries >= 1, "il client comparso deve essere interrogato");
+        Assert.True(client.Queries >= 1, "the client that appeared was never queried");
         Assert.True(rereads >= 1);
 
         await stop.CancelAsync();
@@ -55,10 +55,10 @@ public class MainViewModelReconnectTests
         // stayed stuck on "Token rejected" until a restart, and no message said so. It is the
         // same incident as "Configuration missing", on a different path.
         FakeMetricsClient oldClient = new(
-            ObserverEndpoint.Remote(new Uri("http://vecchia:5057/"), "t", "dalla prova"),
+            ObserverEndpoint.Remote(new Uri("http://old-machine:5057/"), "t", "from the test"),
             ServiceOutcome.TokenRejected);
         FakeMetricsClient newClient = new(
-            ObserverEndpoint.Remote(new Uri("http://nuova:9999/"), "t", "dalla prova"),
+            ObserverEndpoint.Remote(new Uri("http://new-machine:9999/"), "t", "from the test"),
             ServiceOutcome.Unreachable);
 
         MainViewModel viewModel = new(
@@ -74,7 +74,7 @@ public class MainViewModelReconnectTests
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.True(newClient.Queries >= 1, "dopo un 401 il client riletto deve essere interrogato");
+        Assert.True(newClient.Queries >= 1, "after a 401 the re-read client was never queried");
 
         await stop.CancelAsync();
         await loop.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
@@ -85,7 +85,7 @@ public class MainViewModelReconnectTests
     {
         // The previous behaviour still holds when there is no way to re-read: hammering the
         // service with requests bound for a 401 would help nobody.
-        MainViewModel viewModel = new(client: null, configurationProblem: "manca il token");
+        MainViewModel viewModel = new(client: null, configurationProblem: "the token is missing");
 
         await viewModel.RunAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
 

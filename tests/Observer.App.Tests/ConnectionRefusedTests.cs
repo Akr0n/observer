@@ -56,7 +56,7 @@ public class ConnectionRefusedTests
     }
 
     private static ObserverEndpoint EndpointFor(string address) =>
-        ObserverEndpoint.Remote(new Uri(address), "il-token", "dalla prova");
+        ObserverEndpoint.Remote(new Uri(address), "the-token", "from the test");
 
     /// <summary>A port that is guaranteed to have nobody listening on it.</summary>
     /// <remarks>

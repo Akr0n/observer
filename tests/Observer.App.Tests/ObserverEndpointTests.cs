@@ -36,12 +36,12 @@ public class ObserverEndpointTests
     [Fact]
     public void AConfiguredADDRESSMakesTheEndpointREMOTE()
     {
-        ClientConfigurationResult result = ClientConfiguration.Resolve("un-token", "https://altra-macchina:5058/", Fingerprint, null);
+        ClientConfigurationResult result = ClientConfiguration.Resolve("a-token", "https://other-machine:5058/", Fingerprint, null);
 
         Assert.Null(result.Problem);
         Assert.NotNull(result.Endpoint);
         Assert.Equal(EndpointKind.Remote, result.Endpoint.Kind);
-        Assert.Equal("un-token", result.Endpoint.ApiToken);
+        Assert.Equal("a-token", result.Endpoint.ApiToken);
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class ObserverEndpointTests
     {
         // Pointing at another machine with no credential is not a case to be guessed at: that
         // service will refuse every request, and saying so at once beats a burst of 401s.
-        ClientConfigurationResult result = ClientConfiguration.Resolve(null, "https://altra-macchina:5058/", Fingerprint, null);
+        ClientConfigurationResult result = ClientConfiguration.Resolve(null, "https://other-machine:5058/", Fingerprint, null);
 
         Assert.Null(result.Endpoint);
         Assert.False(string.IsNullOrWhiteSpace(result.Problem));
@@ -59,7 +59,7 @@ public class ObserverEndpointTests
     public void ATOKENWithoutAnAddressStaysLOCAL_butIsNotUsed()
     {
         // A token exported by mistake must not divert the client away from the machine it is on.
-        ClientConfigurationResult result = ClientConfiguration.Resolve("un-token", null, null, null);
+        ClientConfigurationResult result = ClientConfiguration.Resolve("a-token", null, null, null);
 
         Assert.NotNull(result.Endpoint);
         Assert.Equal(EndpointKind.Local, result.Endpoint.Kind);
@@ -82,9 +82,9 @@ public class ObserverEndpointTests
         // Records generate a ToString with ALL the properties in it: without an override, one
         // careless binding or one log line would be enough to put the secret on screen.
         ObserverEndpoint remoteEndpoint = ObserverEndpoint.Remote(
-            new Uri("http://altra:5057/"), "SEGRETISSIMO", "dalla prova");
+            new Uri("http://other:5057/"), "TOPSECRET", "from the test");
 
-        Assert.DoesNotContain("SEGRETISSIMO", remoteEndpoint.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("TOPSECRET", remoteEndpoint.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

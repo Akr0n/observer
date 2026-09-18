@@ -77,8 +77,8 @@ public class GaugeGridTests
             double used = (columns * GaugeGridLayout.MinCellWidth) + ((columns - 1) * GaugeGridLayout.ColumnGap);
             double withOneMore = used + GaugeGridLayout.MinCellWidth + GaugeGridLayout.ColumnGap;
 
-            Assert.True(used <= availableWidth, $"a {availableWidth}: {columns} colonne non entrano");
-            Assert.True(withOneMore > availableWidth || columns == 12, $"a {availableWidth}: ci stava una colonna in piu'");
+            Assert.True(used <= availableWidth, $"at {availableWidth}: {columns} columns do not fit");
+            Assert.True(withOneMore > availableWidth || columns == 12, $"at {availableWidth}: one more column would have fitted");
         }
     }
 }

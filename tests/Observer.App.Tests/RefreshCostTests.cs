@@ -51,7 +51,7 @@ public class RefreshCostTests
 
         Assert.True(
             client.PeakInFlight >= 2,
-            $"al massimo {client.PeakInFlight} richieste di storico in volo insieme: sono partite in fila");
+            $"at most {client.PeakInFlight} history requests in flight at once: they went out one after another");
 
         // And every response has to go back to ITS OWN row: reading in parallel and then
         // matching by position is exactly the point where a history would end up under the
@@ -59,13 +59,13 @@ public class RefreshCostTests
         MetricRow cpu = viewModel.Gauges.Single(row => row.Key.StartsWith("cpu|", StringComparison.Ordinal));
         MetricRow memory = viewModel.Gauges.Single(row => row.Key.StartsWith("memory|", StringComparison.Ordinal));
 
-        while (!stop.IsCancellationRequested && !memory.HistoryNote.Contains("guasto", StringComparison.Ordinal))
+        while (!stop.IsCancellationRequested && !memory.HistoryNote.Contains("broken", StringComparison.Ordinal))
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.Contains("storico della memoria guasto", memory.HistoryNote, StringComparison.Ordinal);
-        Assert.DoesNotContain("guasto", cpu.HistoryNote, StringComparison.Ordinal);
+        Assert.Contains("memory history is broken", memory.HistoryNote, StringComparison.Ordinal);
+        Assert.DoesNotContain("broken", cpu.HistoryNote, StringComparison.Ordinal);
 
         await stop.CancelAsync();
 
@@ -149,7 +149,7 @@ public class RefreshCostTests
             Interlocked.Increment(ref completedCount);
 
             return string.Equals(query.Collector, "memory", StringComparison.Ordinal)
-                ? new HistoryFetch(ServiceOutcome.Unreachable, "storico della memoria guasto", null)
+                ? new HistoryFetch(ServiceOutcome.Unreachable, "memory history is broken", null)
                 : new HistoryFetch(ServiceOutcome.Ok, string.Empty, []);
         }
     }
