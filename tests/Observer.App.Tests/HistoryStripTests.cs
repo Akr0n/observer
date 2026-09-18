@@ -3,14 +3,14 @@ using Observer.App.Services;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// La griglia della striscia, e la bugia che esiste per impedire.
+/// The strip's grid, and the lie it exists to prevent.
 /// </summary>
 /// <remarks>
-/// Il servizio non manda i buchi: un intervallo senza campioni non arriva con zero campioni,
-/// non arriva affatto. Chi disegnasse una barretta per ogni punto ricevuto otterrebbe una
-/// striscia continua e piena anche da una macchina spenta meta' giornata — i buchi
-/// sparirebbero stringendosi, e chi guarda leggerebbe una macchina sempre accesa. E' una
-/// bugia raccontata con dati veri: non fallisce niente, e nessun altro test la vedrebbe.
+/// The service does not send the gaps: an interval with no samples does not arrive with zero
+/// samples, it does not arrive at all. Drawing one bar per point received would give a strip
+/// that is continuous and full even from a machine that was down half the day — the gaps
+/// would close up and vanish, and whoever looked at it would read a machine that was never
+/// down. It is a lie told with real data: nothing fails, and no other test would see it.
 /// </remarks>
 public class HistoryStripTests
 {
@@ -24,9 +24,9 @@ public class HistoryStripTests
     [Fact]
     public void APartialBarIsDrawnInProportionToItsCoverage()
     {
-        // L'ultima barra della striscia e' sempre l'intervallo IN CORSO. A un minuto di passo
-        // la differenza non si nota; a due ore, dopo cinque minuti, una barra piena direbbe
-        // "due ore cosi'" proprio dove l'occhio legge "adesso".
+        // The last bar of the strip is always the interval IN PROGRESS. At a one-minute step
+        // the difference does not show; at two hours, five minutes in, a full bar would say
+        // "two hours like this" exactly where the eye reads "now".
         HistoryBar oneTwelfth = new(Now, BarKind.Partial, 0.5d, 0.5d, 0.5d, 600, 7200);
 
         Assert.Equal(10d, HistoryStrip.WidthOf(oneTwelfth, 120d), 9);
@@ -35,8 +35,8 @@ public class HistoryStripTests
     [Fact]
     public void APartialBarNeverShrinksBelowOnePixel()
     {
-        // Sotto il pixel si leggerebbe come un buco, che vuol dire un'altra cosa: la' non si
-        // e' misurato, qui si e' misurato poco.
+        // Below one pixel it would read as a gap, which means something else: there nothing
+        // was measured, here little was measured.
         HistoryBar newborn = new(Now, BarKind.Partial, 0.5d, 0.5d, 0.5d, 1, 7200);
 
         Assert.Equal(1d, HistoryStrip.WidthOf(newborn, 6d), 9);
@@ -45,8 +45,8 @@ public class HistoryStripTests
     [Fact]
     public void FullBarsAndGapsAreDrawnAtFullWidth()
     {
-        // Stringere una barra piena sarebbe una bugia al contrario, e un buco ha gia' il suo
-        // segno: la larghezza parla solo di quanto un intervallo e' stato coperto.
+        // Narrowing a full bar would be the same lie the other way round, and a gap already
+        // has its own mark: the width speaks only of how much of an interval was covered.
         HistoryBar full = new(Now, BarKind.Measured, 0.5d, 0.5d, 0.5d, 60, 60);
         HistoryBar gap = new(Now, BarKind.Missing, 0d, 0d, 0d, 0, 60);
 
@@ -57,11 +57,11 @@ public class HistoryStripTests
     [Fact]
     public void SeveralPointsInOneBarAreAveragedInsteadOfLost()
     {
-        // Il caso che nasce appena il passo della barra supera quello dei punti: un quarto
-        // d'ora di barra su punti da cinque minuti. Senza il raggruppamento dentro Build
-        // ne sopravviveva UNO — l'ultimo iterato — e la barra mostrava quel campione
-        // spacciandolo per la media di tutti e tre. Con tre punti a 0,2, 0,5 e 0,8 la
-        // differenza fra la media vera e l'ultimo valore e' l'intera scala.
+        // The case that appears as soon as the bar's step exceeds the points' step: a quarter
+        // of an hour of bar over five-minute points. Without the bucketing inside Build only
+        // ONE of them survived — the last one iterated — and the bar showed that sample,
+        // passing it off as the average of all three. With three points at 0.2, 0.5 and 0.8
+        // the difference between the true average and the last value is the whole scale.
         List<HistoryPoint> points =
         [
             PointAt(14, 0.2d, samples: 300),
@@ -69,8 +69,8 @@ public class HistoryStripTests
             PointAt(4, 0.8d, samples: 300),
         ];
 
-        // Due barre: i tre punti cadono tutti nel quarto d'ora PRECEDENTE a quello in corso,
-        // perche' Adesso e' allineato alle 12:00 in punto.
+        // Two bars: all three points fall in the quarter of an hour BEFORE the one in
+        // progress, because Now is aligned to exactly 12:00.
         IReadOnlyList<HistoryBar> strip =
             HistoryStrip.Build(points, Now, barCount: 2, TimeSpan.FromMinutes(15));
 
@@ -80,7 +80,7 @@ public class HistoryStripTests
         Assert.Equal(0.2d, full.Min, 9);
         Assert.Equal(0.8d, full.Max, 9);
 
-        // E i campioni si sommano: 900 su 900, cioe' un quarto d'ora coperto per intero.
+        // And the samples add up: 900 out of 900, that is a quarter of an hour covered in full.
         Assert.Equal(900, full.Samples);
         Assert.Equal(BarKind.Measured, full.Kind);
     }
@@ -88,9 +88,9 @@ public class HistoryStripTests
     [Fact]
     public void AGapStaysAGapAndKeepsItsPlaceInTime()
     {
-        // IL test. Tre punti su dieci intervalli devono dare DIECI barrette, non tre: sette
-        // sono buchi e devono restare al proprio posto nel tempo. Se questa cade, la striscia
-        // racconta una macchina sempre accesa a chi l'ha spenta.
+        // THE test. Three points over ten intervals must give TEN bars, not three: seven are
+        // gaps and must stay in their own place in time. If this one fails, the strip tells
+        // whoever turned the machine off that it was never down.
         IReadOnlyList<HistoryBar> strip = HistoryStrip.Build(
             [PointAt(9, 0.5d), PointAt(5, 0.6d), PointAt(0, 0.7d)],
             Now,
@@ -100,7 +100,7 @@ public class HistoryStripTests
         Assert.Equal(10, strip.Count);
         Assert.Equal(7, strip.Count(bar => bar.Kind == BarKind.Missing));
 
-        // E stanno esattamente dove devono: il primo, il quinto e l'ultimo.
+        // And they sit exactly where they must: the first, the fifth and the last.
         Assert.Equal(BarKind.Measured, strip[0].Kind);
         Assert.Equal(BarKind.Measured, strip[4].Kind);
         Assert.Equal(BarKind.Measured, strip[9].Kind);
@@ -110,8 +110,8 @@ public class HistoryStripTests
     [Fact]
     public void AGapHasNoValueToShow()
     {
-        // Un intervallo assente non porta uno zero: uno zero e' una misura, e disegnarlo
-        // direbbe "qui la macchina era a riposo" invece di "qui non si sa niente".
+        // A missing interval does not carry a zero: a zero is a measurement, and drawing it
+        // would say "the machine was idle here" instead of "nothing is known here".
         HistoryBar gap = Assert.Single(HistoryStrip.Build([], Now, barCount: 1, Minute));
 
         Assert.Equal(BarKind.Missing, gap.Kind);
@@ -121,9 +121,10 @@ public class HistoryStripTests
     [Fact]
     public void APartlyCoveredIntervalIsNotPassedOffAsComplete()
     {
-        // Misurato sul servizio vero: fermandolo a meta' minuto, quel minuto arriva lo stesso
-        // ma con 53 campioni su 60, e con una media calcolata solo su quelli. E' un numero
-        // plausibile su mezzo minuto, e va detto che e' mezzo minuto.
+        // Measured on the real service: stopping it halfway through a minute, that minute
+        // arrives all the same but with 53 samples out of 60, and with an average computed
+        // over those alone. It is a plausible number for half a minute, and the strip has to
+        // say that it is half a minute.
         IReadOnlyList<HistoryBar> strip = HistoryStrip.Build(
             [PointAt(0, 0.42d, samples: 53)],
             Now,
@@ -138,9 +139,9 @@ public class HistoryStripTests
     [Fact]
     public void AnOffGridInstantStillFallsInTheRightInterval()
     {
-        // I timestamp arrivano gia' allineati, ma bastano pochi millisecondi di scarto perche'
-        // un confronto per uguaglianza faccia sparire la barretta. E una barretta che sparisce
-        // si legge come "non misurato", cioe' il caso peggiore.
+        // The timestamps arrive already aligned, but a few milliseconds of offset are enough
+        // for an equality comparison to make the bar disappear. And a bar that disappears
+        // reads as "not measured", which is the worst case.
         HistoryPoint offGrid = new(
             Now - TimeSpan.FromMinutes(1) + TimeSpan.FromMilliseconds(37),
             60,
@@ -171,9 +172,9 @@ public class HistoryStripTests
     [Fact]
     public void BucketingDoesNotAverageTheAverages()
     {
-        // Due intervalli con copertura diversa: 50 campioni a 0.20 e 10 campioni a 0.90.
-        // La media vera e' (50*0.20 + 10*0.90) / 60 = 0.3166..., non (0.20+0.90)/2 = 0.55.
-        // La media delle medie e' un numero credibile e falso, ed e' l'errore piu' facile.
+        // Two intervals with different coverage: 50 samples at 0.20 and 10 samples at 0.90.
+        // The true average is (50*0.20 + 10*0.90) / 60 = 0.3166..., not (0.20+0.90)/2 = 0.55.
+        // The average of the averages is a believable, false number, and the easiest mistake.
         IReadOnlyList<HistoryPoint> bucketed = HistoryStrip.Bucket(
             [
                 new(Now, 50, 0.20d, 0.10d, 0.30d, 0.20d),
@@ -192,9 +193,9 @@ public class HistoryStripTests
     [Fact]
     public void ATailWithMoreSamplesBeatsTheLaggingAggregate()
     {
-        // Il consolidamento degli aggregati ha una grazia di quattro minuti, quindi sugli
-        // ultimi intervalli l'aggregato e' incompleto. Dove le due letture si sovrappongono
-        // deve valere la piu' fresca, altrimenti sarebbe l'aggregato a mentire.
+        // Aggregate consolidation has a four-minute grace, so on the most recent intervals
+        // the aggregate is incomplete. Where the two readings overlap the fresher one has to
+        // win, or it would be the aggregate doing the lying.
         IReadOnlyList<HistoryPoint> merged = HistoryStrip.Merge(
             [new(Now, 12, 0.10d, 0.10d, 0.10d, 0.10d)],
             [new(Now, 60, 0.80d, 0.70d, 0.90d, 0.85d)]);
@@ -208,12 +209,12 @@ public class HistoryStripTests
     [Fact]
     public void ATruncatedIntervalDoesNotReplaceACompleteOne()
     {
-        // Il grezzo si chiede da un istante qualsiasi - "dieci minuti fa" - che non cade sul
-        // confine di un intervallo, quindi il PRIMO intervallo della coda arriva sempre
-        // tagliato. Se vincesse per il solo fatto di essere piu' fresco, una barra misurata
-        // per intero si disegnerebbe larga la meta' (e' parziale), il suggerimento direbbe
-        // "30 of 60 samples", e media, minimo e massimo salterebbero mezzo minuto di misure:
-        // un picco li' dentro sparirebbe. Vince chi ha piu' campioni, non chi arriva dopo.
+        // The raw data is asked for from an arbitrary instant - "ten minutes ago" - which does
+        // not fall on an interval boundary, so the FIRST interval of the tail always arrives
+        // truncated. If it won for the sole reason of being fresher, a bar measured in full
+        // would be drawn half as wide (it is partial), the tooltip would say
+        // "30 of 60 samples", and average, minimum and maximum would skip half a minute of
+        // measurements: a peak in there would vanish. More samples wins, not later arrival.
         IReadOnlyList<HistoryPoint> merged = HistoryStrip.Merge(
             [new(Now, 60, 0.30d, 0.05d, 0.95d, 0.30d)],
             [new(Now, 30, 0.30d, 0.28d, 0.32d, 0.30d)]);
@@ -238,8 +239,8 @@ public class HistoryStripTests
     [Fact]
     public void ExpectedSamplesFollowTheIntervalLength()
     {
-        // Il servizio campiona una volta al secondo: e' cio' che rende "quanti campioni sono
-        // arrivati" una misura della copertura, e non un dettaglio.
+        // The service samples once a second: that is what makes "how many samples arrived" a
+        // measure of coverage, and not a detail.
         Assert.Equal(60, HistoryStrip.ExpectedSamplesIn(TimeSpan.FromMinutes(1)));
         Assert.Equal(300, HistoryStrip.ExpectedSamplesIn(TimeSpan.FromMinutes(5)));
         Assert.Equal(1, HistoryStrip.ExpectedSamplesIn(TimeSpan.FromSeconds(1)));
@@ -269,18 +270,18 @@ public class HistoryStripTests
     [InlineData(-1d)]
     public void OutsideTheStripThereIsNoBar(double x)
     {
-        // Il bordo destro sbaglia da solo: con x esattamente uguale alla larghezza la
-        // divisione da' dieci, cioe' un indice che non esiste, e senza il controllo il
-        // suggerimento leggerebbe fuori dall'elenco.
+        // The right edge goes wrong all by itself: with x exactly equal to the width the
+        // division gives ten, an index that does not exist, and without the check the tooltip
+        // would read past the end of the list.
         Assert.Equal(-1, HistoryStrip.IndexAt(x, width: 100d, barCount: 10));
     }
 
     [Fact]
     public void TheTooltipSaysTheIntervalNotTheInstant()
     {
-        // Una barra copre da un minuto a due ore secondo il periodo: mostrarne solo l'inizio
-        // lascerebbe indovinare quanto e' larga. Il passo si ricava dalle barre stesse, non da
-        // una costante.
+        // A bar covers anything from one minute to two hours depending on the period: showing
+        // only its start would leave how wide it is to guesswork. The step is derived from the
+        // bars themselves, not from a constant.
         IReadOnlyList<HistoryBar> strip =
             HistoryStrip.Build([PointAt(1, 0.5d)], Now, barCount: 3, Minute);
 
@@ -290,18 +291,18 @@ public class HistoryStripTests
     [Fact]
     public void PastADayTheTooltipAlsoSaysTheDay()
     {
-        // A sette giorni la striscia copre 168 ore in 84 barre e non ha assi ne' etichette:
-        // il suggerimento e' l'unico modo di collocare una barra nel tempo, e "04:00 – 06:00"
-        // da solo compare su SETTE barre, una per giorno. Chi vede un picco - che e' il motivo
-        // per cui si guarda una settimana - non saprebbe di che giorno e'. Il nome del giorno
-        // basta: fra due barre passano al massimo 166 ore, quindi la coppia non si ripete.
+        // At seven days the strip covers 168 hours in 84 bars and has neither axes nor labels:
+        // the tooltip is the only way to place a bar in time, and "04:00 – 06:00" on its own
+        // appears on SEVEN bars, one per day. Anyone who sees a peak - which is the reason for
+        // looking at a week - would not know which day it belongs to. The weekday name is
+        // enough: at most 166 hours separate two bars, so the pair never repeats.
         IReadOnlyList<HistoryBar> week =
             HistoryStrip.Build([], Now, barCount: 84, TimeSpan.FromHours(2));
 
         Assert.Matches(@"^[A-Za-z]{3} \d{2}:\d{2} – [A-Za-z]{3} \d{2}:\d{2} · ", HistoryStrip.Describe(week, 40));
 
-        // A ventiquattro ore l'arco vale esattamente un giorno: la soglia e' stretta, e la
-        // frase resta corta dove non serve allungarla.
+        // At twenty-four hours the span is exactly one day: the threshold is strict, and the
+        // text stays short where there is no need to lengthen it.
         IReadOnlyList<HistoryBar> day =
             HistoryStrip.Build([], Now, barCount: 96, TimeSpan.FromMinutes(15));
 
@@ -311,8 +312,9 @@ public class HistoryStripTests
     [Fact]
     public void OnAGapTheTooltipSaysNothingWasMeasured()
     {
-        // "Non misurato" non e' "zero", ed e' la stessa distinzione che il disegno fa gia' col
-        // tratteggio: qui la si dice a parole, per chi ci passa sopra a controllare.
+        // "Not measured" is not "zero", and it is the same distinction the drawing already
+        // makes with the hatching: here it is said in words, for whoever hovers over it to
+        // check.
         IReadOnlyList<HistoryBar> strip = HistoryStrip.Build([], Now, barCount: 3, Minute);
 
         Assert.EndsWith("not measured", HistoryStrip.Describe(strip, 0), StringComparison.Ordinal);

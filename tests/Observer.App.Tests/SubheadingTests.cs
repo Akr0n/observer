@@ -5,14 +5,14 @@ using Observer.Core.Metrics;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Che cosa dice la riga sotto il titolo.
+/// What the row under the title says.
 /// </summary>
 /// <remarks>
-/// Dice <b>dove</b> e <b>quando</b>: quale macchina si sta guardando e a che ora e' arrivata
-/// l'ultima lettura. Non dice come ci si e' entrati. Da dove viene il token e' una nota di
-/// configurazione — serve quando qualcosa non va e bisogna sapere quale file correggere, ed e'
-/// li' che sta, nel messaggio dell'impronta che non corrisponde — ma a regime e' una frase che
-/// si rilegge a ogni sguardo senza mai cambiare.
+/// It says <b>where</b> and <b>when</b>: which machine is being watched and at what time the
+/// last reading arrived. It does not say how the connection was made. Where the token comes
+/// from is a configuration note — it is needed when something goes wrong and you have to know
+/// which file to correct, and that is where it lives, in the fingerprint mismatch message —
+/// but in normal running it is a sentence that gets re-read at every glance and never changes.
 /// </remarks>
 public class SubheadingTests
 {
@@ -33,10 +33,10 @@ public class SubheadingTests
             await Task.Delay(50, CancellationToken.None);
         }
 
-        // L'ora, e solo quella. Il confronto e' su una forma e non su una stringa fissa
-        // perche' l'ora cambia a ogni campione mentre la FORMA no — e una forma sbagliata,
-        // il fuso o i millisecondi o le dodici ore, e' il modo in cui questa riga si rompe
-        // senza che nessuno se ne accorga.
+        // The time, and only that. The check is on a shape and not on a fixed string because
+        // the time changes at every sample while the SHAPE does not — and a wrong shape, the
+        // time zone or the milliseconds or the twelve-hour clock, is how this row breaks
+        // without anyone noticing.
         Assert.Matches(@"^Last Reading: \d{2}:\d{2}:\d{2}$", viewModel.Subheading);
         Assert.DoesNotContain("token", viewModel.Subheading, StringComparison.OrdinalIgnoreCase);
 
@@ -48,7 +48,7 @@ public class SubheadingTests
         }
         catch (OperationCanceledException)
         {
-            // Fine del test.
+            // End of the test.
         }
     }
 

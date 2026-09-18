@@ -6,13 +6,13 @@ using Observer.Core.Metrics;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Il pallino accanto a ogni macchina: cosa dice, e chi lo aggiorna.
+/// The dot next to each machine: what it says, and who updates it.
 /// </summary>
 /// <remarks>
-/// Due regole. La prima: il colore segue la stessa regola della barra di stato, con la sua
-/// grazia di dieci secondi, cosi' un pallino rosso e una barra rossa vogliono dire la stessa
-/// cosa. La seconda: le macchine che non si stanno guardando vengono sondate da sole, senza
-/// che nessuno ci clicchi sopra e senza che il giro dei quadranti le aspetti.
+/// Two rules. The first: the colour follows the same rule as the status bar, with its own
+/// ten-second grace, so a red dot and a red bar mean the same thing. The second: the machines
+/// that are not being watched are probed on their own, with nobody clicking on them and without
+/// the gauge loop waiting for them.
 /// </remarks>
 public class MachineStatusTests
 {
@@ -46,8 +46,8 @@ public class MachineStatusTests
     [Fact]
     public void ARefusalIsAWarningThenAFaultAndAGoodAnswerResetsIt()
     {
-        // La stessa regola della barra di stato: un servizio che sta ancora partendo rifiuta,
-        // e per dieci secondi e' normale. Dopo, no.
+        // The same rule as the status bar: a service that is still starting refuses, and for ten
+        // seconds that is normal. After that, it is not.
         MachineRow row = new(RemoteAt("altra"));
 
         row.Record(ServiceOutcome.ConnectionRefused, "refused", T0);
@@ -56,7 +56,7 @@ public class MachineStatusTests
         row.Record(ServiceOutcome.ConnectionRefused, "refused", T0 + StatusEscalation.GracePeriod + TimeSpan.FromSeconds(1));
         Assert.True(row.IsFaulted);
 
-        // E una risposta buona azzera la serie: il guasto successivo ricomincia da capo.
+        // And a good answer clears the streak: the next fault starts over from scratch.
         row.Record(ServiceOutcome.Ok, string.Empty, T0 + TimeSpan.FromMinutes(1));
         row.Record(ServiceOutcome.ConnectionRefused, "refused", T0 + TimeSpan.FromMinutes(1));
         Assert.True(row.IsWarning);
@@ -65,8 +65,8 @@ public class MachineStatusTests
     [Fact]
     public void WithinTheGraceTheRowDoesNotYetSayForHowLong()
     {
-        // Un contatore che parte su ogni singhiozzo insegna a ignorarlo, ed e' esattamente
-        // cio' che i dieci secondi di tolleranza esistono per impedire.
+        // A counter that starts on every hiccup teaches you to ignore it, and that is exactly
+        // what the ten seconds of grace exist to prevent.
         MachineRow row = new(RemoteAt("altra"));
 
         row.Record(ServiceOutcome.ConnectionRefused, "refused", T0);
@@ -88,8 +88,8 @@ public class MachineStatusTests
         Assert.Equal("for 3 min", row.DowntimeText);
         Assert.Equal("for 3 min", row.Subtitle);
 
-        // La durata si sente anche senza vedere la riga: il suggerimento e il nome accessibile
-        // passano dallo stesso testo, cosi' non possono divergere.
+        // The duration is announced even without seeing the row: the tooltip and the accessible
+        // name come from the same text, so they cannot diverge.
         Assert.Contains("for 3 min", row.ToolTipText, StringComparison.Ordinal);
         Assert.Contains("for 3 min", row.AccessibleName, StringComparison.Ordinal);
     }
@@ -97,10 +97,10 @@ public class MachineStatusTests
     [Fact]
     public void AServiceThatIsNotSamplingSaysForHowLongEvenWhenItIsNotRed()
     {
-        // Il ramo giallo, che e' la ragione per cui il cancello e' il TONO e non lo stato
-        // IsFaulted: un servizio raggiungibile che non ha ancora campionato resta un avviso, mai
-        // un rosso, e puo' durare giorni. Un cancello scritto sul rosso lo lascerebbe senza
-        // durata proprio mentre e' la cosa che dura di piu'.
+        // The yellow branch, which is the reason the gate is the TONE and not the IsFaulted
+        // state: a reachable service that has not sampled yet stays a warning, never a red, and
+        // it can last for days. A gate written on red would leave it with no duration precisely
+        // when it is the thing that lasts longest.
         MachineRow row = new(RemoteAt("altra"));
 
         row.Record(ServiceOutcome.NotReadyYet, "warming up", T0);
@@ -114,8 +114,8 @@ public class MachineStatusTests
     [Fact]
     public void RecordingAFaultNotifiesTheDurationTheSubtitleAndTheTooltip()
     {
-        // Subtitle e' il Text della seconda riga: senza la sua notifica la durata
-        // cambierebbe e la riga continuerebbe a dire la cosa di prima, con la suite verde.
+        // Subtitle is the Text of the second line: without its notification the duration would
+        // change and the row would go on saying what it said before, with the suite green.
         MachineRow row = new(RemoteAt("altra"));
         List<string> notified = [];
         row.PropertyChanged += (_, e) => notified.Add(e.PropertyName ?? string.Empty);
@@ -138,14 +138,14 @@ public class MachineStatusTests
 
         Assert.Equal(string.Empty, row.DowntimeText);
 
-        // Niente coda: la descrizione torna a essere nome e stato, senza durata appiccicata.
+        // No tail: the description goes back to name and status, with no duration stuck on it.
         Assert.EndsWith(": Reachable", row.AccessibleName, StringComparison.Ordinal);
     }
 
     [Fact]
     public void ARejectedTokenSaysForHowLongFromTheFirstReading()
     {
-        // Non ha tolleranza: fra un minuto sara' identico, quindi la durata parte subito.
+        // It gets no grace: in a minute it will be identical, so the duration starts at once.
         MachineRow row = new(RemoteAt("altra"));
 
         row.Record(ServiceOutcome.TokenRejected, "rejected", T0);
@@ -157,7 +157,7 @@ public class MachineStatusTests
     [Fact]
     public void ARejectedTokenIsAFaultWithNoGrace()
     {
-        // Fra un minuto sara' identico: non c'e' grazia che tenga.
+        // In a minute it will be identical: no grace period can change that.
         MachineRow row = new(RemoteAt("altra"));
 
         row.Record(ServiceOutcome.TokenRejected, "rejected", T0);
@@ -193,12 +193,12 @@ public class MachineStatusTests
             await Task.Delay(50, CancellationToken.None);
         }
 
-        // La macchina guardata segue il giro principale; le altre due la sonda.
+        // The watched machine follows the main loop; the probe handles the other two.
         Assert.True(viewModel.Machines[0].IsReachable);
         Assert.True(viewModel.Machines[1].IsReachable);
         Assert.True(viewModel.Machines[2].IsWarning, viewModel.Machines[2].Detail);
 
-        // La sonda NON apre un client verso la macchina che si sta gia' guardando.
+        // The probe does NOT open a client to the machine that is already being watched.
         Assert.DoesNotContain(local, opened);
         Assert.Contains(alive, opened);
         Assert.Contains(down, opened);
@@ -211,15 +211,15 @@ public class MachineStatusTests
         }
         catch (OperationCanceledException)
         {
-            // Fine del test.
+            // End of the test.
         }
     }
 
     [Fact]
     public void ChangingStatusNotifiesEveryStatusFlagAndTheAccessibleName()
     {
-        // Sono i nomi a cui sono legate le Classes dell'Ellipse: toglierne uno dall'attributo
-        // lascerebbe il pallino grigio per sempre, e nessun test lo direbbe.
+        // These are the names the Ellipse's Classes are bound to: dropping one from the
+        // attribute would leave the dot grey for ever, and no test would say so.
         MachineRow row = new(RemoteAt("altra"));
         List<string> notified = [];
         row.PropertyChanged += (_, e) => notified.Add(e.PropertyName ?? string.Empty);
@@ -236,8 +236,9 @@ public class MachineStatusTests
     [Fact]
     public async Task TheWatchedMachineIsNotProbedEvenWhenItIsRemote()
     {
-        // "Salta la selezionata" e "salta la locale" sono indistinguibili quando la guardata
-        // e' la prima dell'elenco. Qui la guardata e' la seconda, e remota.
+        // "Skip the selected one" and "skip the local one" are indistinguishable when the
+        // watched machine is the first in the list. Here the watched machine is the second,
+        // and remote.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         ObserverEndpoint alive = RemoteAt("viva");
         ObserverEndpoint down = RemoteAt("spenta");
@@ -273,9 +274,9 @@ public class MachineStatusTests
     [Fact]
     public async Task WithNoSelectionTheWatchedMachineIsStillNotProbed()
     {
-        // La lista non dovrebbe mai azzerare la selezione (AlwaysSelected), ma se succede il
-        // giro principale continua a leggere la stessa macchina, e la sonda NON deve leggerla
-        // una seconda volta: e' la voce guardata a contare, non la selezione.
+        // The list should never clear the selection (AlwaysSelected), but if it does the main
+        // loop goes on reading the same machine, and the probe must NOT read it a second time:
+        // what counts is the watched entry, not the selection.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         ObserverEndpoint other = RemoteAt("altra");
         FakeClock clock = new();
@@ -319,8 +320,8 @@ public class MachineStatusTests
     [Fact]
     public async Task AHangingProbeDoesNotStopTheLoopAndDoesNotStartASecondOne()
     {
-        // Le due promesse delle sonde, provate con un client che NON risponde finche' il test
-        // non lo dice: un client che risponde subito le lascerebbe entrambe mutabili.
+        // The two promises the probes make, tested with a client that does NOT answer until the
+        // test says so: a client that answered straight away would leave both of them mutable.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         ObserverEndpoint slow = RemoteAt("lenta");
         FakeClock clock = new();
@@ -343,7 +344,7 @@ public class MachineStatusTests
         using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(20));
         Task loop = viewModel.RunAsync(cancellation.Token);
 
-        // La sonda e' partita e resta appesa; il giro principale intanto legge ancora.
+        // The probe has started and stays hanging; the main loop meanwhile keeps reading.
         while (!cancellation.IsCancellationRequested && watched.Reads < 3)
         {
             await Task.Delay(50, CancellationToken.None);
@@ -354,7 +355,7 @@ public class MachineStatusTests
         Assert.True(viewModel.Machines[1].IsProbing);
         Assert.True(viewModel.Machines[1].IsUnknown);
 
-        // Passano due cadenze: con la sonda ancora in volo non ne parte una seconda.
+        // Two cadences go by: with the probe still in flight a second one does not start.
         clock.Advance(MainViewModel.StatusRefreshInterval * 2);
         int before = watched.Reads;
 
@@ -365,7 +366,7 @@ public class MachineStatusTests
 
         Assert.Equal(1, openCount);
 
-        // Quando torna, il pallino cambia e la voce e' di nuovo sondabile.
+        // When it comes back, the dot changes and the row can be probed again.
         hanging.Respond(new SnapshotFetch(ServiceOutcome.Unreachable, "spenta", null));
 
         while (!cancellation.IsCancellationRequested && viewModel.Machines[1].IsUnknown)
@@ -404,7 +405,7 @@ public class MachineStatusTests
         Assert.Equal("Reading failed", viewModel.Machines[1].Detail);
         Assert.False(viewModel.Machines[1].IsProbing);
 
-        // E il giro principale e' vivo.
+        // And the main loop is alive.
         int before = watched.Reads;
 
         while (!cancellation.IsCancellationRequested && watched.Reads <= before)
@@ -420,12 +421,12 @@ public class MachineStatusTests
     [Fact]
     public async Task RereadingTheMachineRestartsTheDurationFromZero()
     {
-        // Stesso posto nell'elenco, macchina cambiata sotto: "giu' da mezz'ora" riferito alla
-        // precedente sarebbe una bugia, ed e' una bugia che nessuno andrebbe a cercare.
-        // Il percorso passa da rereadEndpoint -> ProbeAsync -> Update, che e' interno: si
-        // prova da qui, dove e' raggiungibile, invece di allargare la superficie della classe.
-        // Il client rifiuta ANCHE la credenziale nuova, altrimenti una lettura buona azzererebbe
-        // tutto per un'altra strada e il test passerebbe anche senza l'azzeramento.
+        // Same place in the list, machine swapped underneath: "down for half an hour" said of
+        // the previous one would be a lie, and it is a lie nobody would go looking for.
+        // The path runs rereadEndpoint -> ProbeAsync -> Update, which is internal: it is tested
+        // from here, where it is reachable, instead of widening the class's surface.
+        // The client rejects the new credential TOO, otherwise a good reading would clear
+        // everything by another route and the test would pass even without the reset.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         ObserverEndpoint oldEndpoint = RemoteAt("ruotata");
         ObserverEndpoint newEndpoint = oldEndpoint with { ApiToken = "nuovo" };
@@ -443,14 +444,14 @@ public class MachineStatusTests
         using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(20));
         Task loop = viewModel.RunAsync(cancellation.Token);
 
-        // Un token rifiutato e' rosso dal primo istante: niente tolleranza da aspettare.
+        // A rejected token is red from the very first moment: no grace to wait out.
         while (!cancellation.IsCancellationRequested && !viewModel.Machines[1].IsFaulted)
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        // Il guasto invecchia. L'orologio si sposta una volta sola: sono le sonde successive
-        // a leggerlo, e la riga arriva a dire mezz'ora.
+        // The fault ages. The clock moves only once: it is the later probes that read it, and
+        // the row gets to say half an hour.
         clock.Advance(TimeSpan.FromMinutes(30));
 
         while (!cancellation.IsCancellationRequested
@@ -461,8 +462,8 @@ public class MachineStatusTests
 
         Assert.Equal("for 30 min", viewModel.Machines[1].DowntimeText);
 
-        // Adesso la macchina cambia sotto: la sonda successiva la rilegge. L'orologio deve
-        // avanzare, altrimenti la sonda non scatta piu' e non c'e' nessuna lettura successiva.
+        // Now the machine changes underneath: the next probe rereads it. The clock has to
+        // advance, or the probe never fires again and there is no later reading.
         rotate = true;
 
         while (!cancellation.IsCancellationRequested && viewModel.Machines[1].Endpoint != newEndpoint)
@@ -471,14 +472,14 @@ public class MachineStatusTests
             await Task.Delay(50, CancellationToken.None);
         }
 
-        // La macchina e' ancora giu', ma e' un'ALTRA macchina: la misura ricomincia da zero e
-        // il rifiuto successivo riparte da "under 1 min", invece di continuare la mezz'ora
-        // della precedente. Senza l'azzeramento dentro Update la durata proseguirebbe.
+        // The machine is still down, but it is ANOTHER machine: the measurement restarts from
+        // zero and the next refusal starts again at "under 1 min", instead of carrying on the
+        // previous one's half hour. Without the reset inside Update the duration would go on.
         Assert.Equal(newEndpoint, viewModel.Machines[1].Endpoint);
         Assert.True(viewModel.Machines[1].IsFaulted || viewModel.Machines[1].IsWarning);
-        // Vuota se si guarda fra l'azzeramento e la lettura successiva, "under 1 min" se si
-        // guarda dopo. Senza l'azzeramento sarebbe la mezz'ora di prima, che continua a
-        // crescere: un'asserzione su un valore preciso non basterebbe a distinguerlo.
+        // Empty if you look between the reset and the next reading, "under 1 min" if you look
+        // after it. Without the reset it would be the earlier half hour, which keeps growing:
+        // an assertion on one exact value would not be enough to tell them apart.
         string after = viewModel.Machines[1].DowntimeText;
         Assert.True(after.Length == 0 || after == "for under 1 min", $"durata dopo la rilettura: '{after}'");
 
@@ -488,8 +489,8 @@ public class MachineStatusTests
     [Fact]
     public async Task AfterARejectedTokenTheProbeRereadsTheMachine()
     {
-        // "observer token set" a finestra aperta, su una macchina NON guardata: la sonda
-        // successiva deve partire con la credenziale nuova, non con quella letta all'avvio.
+        // "observer token set" with the window open, on a machine that is NOT being watched: the
+        // next probe has to start with the new credential, not with the one read at start-up.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         ObserverEndpoint oldEndpoint = RemoteAt("ruotata");
         ObserverEndpoint newEndpoint = oldEndpoint with { ApiToken = "nuovo" };
@@ -536,9 +537,9 @@ public class MachineStatusTests
     [Fact]
     public async Task ChoosingAMachineTheProbeAlreadyKnowsIsDownTheBarDoesNotSayConnecting()
     {
-        // Barra e pallino hanno un orologio solo: la sonda sa da sedici secondi che la macchina
-        // e' spenta, e cliccandoci sopra la barra deve aprire rossa, non "Connecting" per altri
-        // dieci secondi mentre il pallino accanto e' gia' rosso.
+        // Bar and dot share one clock: the probe has known for sixteen seconds that the machine
+        // is down, and clicking on it the bar must open red, not "Connecting" for another ten
+        // seconds while the dot beside it is already red.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         ObserverEndpoint down = RemoteAt("spenta");
         FakeClock clock = new();
@@ -626,7 +627,7 @@ public class MachineStatusTests
         }
         catch (OperationCanceledException)
         {
-            // Fine del test.
+            // End of the test.
         }
     }
 
@@ -650,7 +651,7 @@ public class MachineStatusTests
             Task.FromResult(new HistoryFetch(ServiceOutcome.Ok, string.Empty, []));
     }
 
-    /// <summary>Risponde bene e conta quante volte e' stato letto.</summary>
+    /// <summary>Answers well and counts how many times it has been read.</summary>
     private sealed class CountingClient(ObserverEndpoint endpoint) : IMetricsClient
     {
         private int reads;
@@ -679,7 +680,7 @@ public class MachineStatusTests
             Task.FromResult(new HistoryFetch(ServiceOutcome.Ok, string.Empty, []));
     }
 
-    /// <summary>Non risponde finche' il test non chiama <see cref="Rispondi"/>.</summary>
+    /// <summary>Does not answer until the test calls <see cref="Respond"/>.</summary>
     private sealed class HangingClient(ObserverEndpoint endpoint) : IMetricsClient
     {
         private readonly TaskCompletionSource<SnapshotFetch> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -697,7 +698,7 @@ public class MachineStatusTests
             Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "lenta", null));
     }
 
-    /// <summary>Lancia invece di rispondere: un client che non si costruisce, un DNS che esplode.</summary>
+    /// <summary>Throws instead of answering: a client that fails to build, a DNS that blows up.</summary>
     private sealed class ThrowingClient(ObserverEndpoint endpoint) : IMetricsClient
     {
         public ObserverEndpoint Endpoint { get; } = endpoint;
@@ -712,7 +713,7 @@ public class MachineStatusTests
             throw new InvalidOperationException("boom");
     }
 
-    /// <summary>Un servizio che rifiuta il token.</summary>
+    /// <summary>A service that rejects the token.</summary>
     private sealed class TokenRejectedClient(ObserverEndpoint endpoint) : IMetricsClient
     {
         public ObserverEndpoint Endpoint { get; } = endpoint;

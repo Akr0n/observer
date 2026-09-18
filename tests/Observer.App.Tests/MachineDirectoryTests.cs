@@ -5,17 +5,17 @@ using Observer.Core.Security;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// L'elenco delle macchine, e cio' che NON ci entra.
+/// The machine list, and what does NOT get into it.
 /// </summary>
 /// <remarks>
-/// La regola che questa classe difende: una voce configurata male non sparisce in silenzio. Una
-/// macchina che semplicemente non compare e' indistinguibile da una che non e' stata aggiunta,
-/// e chi la cerca non ha modo di sapere che cosa correggere.
+/// The rule this class defends: an entry that is configured badly does not disappear in silence.
+/// A machine that simply does not show up is indistinguishable from one that was never added,
+/// and whoever goes looking for it has no way of knowing what to correct.
 /// <para>
-/// Da oggi ne difende una seconda: <b>il token non sta piu' nel file</b>. Sta nel deposito del
-/// sistema, e una voce che se lo porta ancora dietro viene rifiutata anche se quel token e'
-/// giusto — accettarlo "per compatibilita'" vorrebbe dire che il segreto puo' restare li' per
-/// sempre.
+/// From today it defends a second one: <b>the token is no longer in the file</b>. It lives in
+/// the system store, and an entry that still carries it around is refused even when that token
+/// is the right one — accepting it "for compatibility" would mean the secret can stay there for
+/// ever.
 /// </para>
 /// </remarks>
 public class MachineDirectoryTests
@@ -29,7 +29,7 @@ public class MachineDirectoryTests
     private static MachineListResult Read(string json, ISecretStore? store = null) =>
         MachineDirectory.Resolve(json, NoOtherConfiguration(), store ?? FakeSecretStore.With("laptop", "il-token"));
 
-    /// <summary>Una voce del file. Il token si passa solo per provare che viene rifiutato.</summary>
+    /// <summary>One entry of the file. The token is passed only to prove it gets refused.</summary>
     private static string Entry(
         string? address, string? fingerprint, string name = "laptop", string? tokenInFile = null) =>
         $$"""
@@ -44,8 +44,8 @@ public class MachineDirectoryTests
     [Fact]
     public void ThisMachineIsAlwaysThereAndComesFirst()
     {
-        // Non si elenca e non si puo' togliere: non ha bisogno di niente per funzionare,
-        // quindi non c'e' modo di sbagliarne la configurazione.
+        // It is not declared in the file and cannot be removed: it needs nothing at all in
+        // order to work, so there is no way to get its configuration wrong.
         MachineListResult result = MachineDirectory.Resolve(null, NoOtherConfiguration(), FakeSecretStore.Empty());
 
         ObserverEndpoint first = Assert.Single(result.Machines);
@@ -73,8 +73,8 @@ public class MachineDirectoryTests
     [Fact]
     public void ATokenWrittenInTheFileIsRefused()
     {
-        // Il cuore della modifica. Il token qui sotto e' quello giusto, e non basta: se una
-        // voce col token nel file continuasse a funzionare, nessuno lo toglierebbe mai da li'.
+        // The heart of the change. The token below is the right one, and that is not enough: if
+        // an entry with the token in the file went on working, nobody would ever take it out.
         MachineListResult result = Read(
             Entry("https://laptop:5058", Fingerprint, tokenInFile: "il-token"),
             FakeSecretStore.Empty());
@@ -100,9 +100,9 @@ public class MachineDirectoryTests
     [Fact]
     public void WithoutANameThereIsNowhereToLookForTheToken()
     {
-        // Prima il nome era facoltativo e la macchina si chiamava col proprio indirizzo. Ora e'
-        // la chiave con cui il token si cerca nel deposito, quindi senza non si va da nessuna
-        // parte — e va detto, invece di far sparire la voce.
+        // The name used to be optional and a machine was called after its own address. It is now
+        // the key the token is looked up under in the store, so without it there is nowhere to
+        // go — and that must be said, instead of making the entry disappear.
         MachineListResult result = Read(
             $$"""
               { "machines": [ { "baseAddress": "https://laptop:5058",
@@ -116,8 +116,8 @@ public class MachineDirectoryTests
     [Fact]
     public void AnUntrustedStoreDropsOnlyThatEntry()
     {
-        // Un file di segreti leggibile da altri non deve far cadere l'intero elenco: le altre
-        // macchine non c'entrano, e la finestra deve restare utilizzabile.
+        // A secrets file that others can read must not bring the whole list down: the other
+        // machines have nothing to do with it, and the window must stay usable.
         MachineListResult result = Read(
             Entry("https://laptop:5058", Fingerprint),
             FakeSecretStore.ThatFails("chmod 600 e riprova"));
@@ -129,8 +129,8 @@ public class MachineDirectoryTests
     [Fact]
     public void ACleartextAddressStaysOutAndSaysWhy()
     {
-        // Il caso di gran lunga piu' probabile: una configurazione che era giusta ieri. Il
-        // servizio non risponde piu' in chiaro sulla rete, e va detto perche'.
+        // By far the most likely case: a configuration that was right yesterday. The service no
+        // longer answers in cleartext on the network, and the reason has to be spelled out.
         MachineListResult result = Read(Entry("http://laptop:5057", Fingerprint));
 
         Assert.Single(result.Machines);
@@ -144,8 +144,8 @@ public class MachineDirectoryTests
     [Fact]
     public void WithoutAFingerprintItStaysOut()
     {
-        // Cifrato non basta. Senza impronta, chi si mette in mezzo presenta il proprio
-        // certificato e il collegamento riesce lo stesso.
+        // Encrypted is not enough. With no fingerprint, an attacker in the middle presents their
+        // own certificate and the connection succeeds all the same.
         MachineListResult result = Read(Entry("https://laptop:5058", null));
 
         Assert.Single(result.Machines);
@@ -155,9 +155,8 @@ public class MachineDirectoryTests
     [Fact]
     public void AMalformedFingerprintIsRejected()
     {
-        // Un'impronta con dentro un errore di battitura non va aggiustata: verrebbe confrontata
-        // con successo contro nessun certificato al mondo, e il messaggio parlerebbe di un
-        // attacco.
+        // A fingerprint with a typo in it must not be patched up: it would match no certificate
+        // in the world, and the message would then talk about an attack.
         MachineListResult result = Read(Entry("https://laptop:5058", "sha256:non-sono-esadecimale"));
 
         Assert.Single(result.Machines);
@@ -167,8 +166,8 @@ public class MachineDirectoryTests
     [Fact]
     public void ABrokenFileDoesNotHideThisMachine()
     {
-        // La finestra deve restare utilizzabile: un elenco malscritto non puo' impedire di
-        // guardare la macchina su cui si e' seduti.
+        // The window must stay usable: a malformed list cannot stop you watching the machine
+        // you are sitting at.
         MachineListResult result = Read("{ non sono json");
 
         Assert.Single(result.Machines);
@@ -179,8 +178,8 @@ public class MachineDirectoryTests
     [Fact]
     public void WithNoListTheOldSingleMachineConfigurationStillApplies()
     {
-        // Chi aveva gia' configurato una macchina non deve rifare niente solo perche' adesso
-        // se ne possono elencare tante.
+        // Anyone who had already configured a machine has nothing to redo just because several
+        // of them can now be listed.
         ObserverEndpoint previous = ObserverEndpoint.Remote(
             new Uri("https://altra:5058/"), "token", "dal vecchio client.json", Fingerprint);
 
@@ -194,9 +193,9 @@ public class MachineDirectoryTests
     [Fact]
     public void TheFingerprintMismatchExplanationNamesExpectedAndReceived()
     {
-        // Un messaggio che si limita a "non corrisponde" lascia l'utente senza il valore nuovo,
-        // cioe' senza il modo di distinguere una reinstallazione da un attacco e senza il dato
-        // da incollare per rimettere le cose a posto.
+        // A message that says no more than "does not match" leaves the user without the new
+        // value, that is, without any way to tell a reinstallation from an attack and without
+        // the value to paste in to put things right.
         CertificatePinning pinning = new(Fingerprint);
 
         string explanation = pinning.DescribeMismatch("laptop");
@@ -205,15 +204,15 @@ public class MachineDirectoryTests
         Assert.Contains("Received:", explanation, StringComparison.Ordinal);
         Assert.Contains("reinstalled", explanation, StringComparison.Ordinal);
 
-        // Nessun certificato e' ancora arrivato: dirlo e' meglio che lasciare la riga vuota.
+        // No certificate has arrived yet: saying so is better than leaving the line empty.
         Assert.Contains("none", explanation, StringComparison.Ordinal);
     }
 
     [Fact]
     public void TheExplanationSaysTheTokenNeverLeftThisMachine()
     {
-        // E' la prima domanda che si fa chi vede quel messaggio, e la risposta e' buona: il
-        // collegamento viene rifiutato durante l'handshake, prima di spedire qualsiasi cosa.
+        // It is the first question anyone who sees that message asks, and the answer is a good
+        // one: the connection is refused during the handshake, before anything at all is sent.
         CertificatePinning pinning = new(Fingerprint);
 
         Assert.Contains("never left this machine", pinning.DescribeMismatch("laptop"), StringComparison.Ordinal);
@@ -222,10 +221,10 @@ public class MachineDirectoryTests
     [Fact]
     public void TheOldClientJsonCannotReopenTheCleartextRoute()
     {
-        // La porta di servizio piu' facile da lasciare aperta: l'elenco rifiuta http://, ma il
-        // ripiego a macchina singola entrava senza passare da alcun controllo. Il risultato
-        // sarebbe stato il token spedito in chiaro una volta al secondo, cioe' esattamente cio'
-        // che la chiusura della porta doveva impedire.
+        // The back door easiest to leave open: the list refuses http://, but the single-machine
+        // fallback used to get in without passing any check at all. The result would have been
+        // the token sent in cleartext once a second, which is exactly what closing that door
+        // was meant to prevent.
         ObserverEndpoint cleartext = ObserverEndpoint.Remote(
             new Uri("http://vecchia:5057/"), "token", "dal vecchio client.json", Fingerprint);
 
@@ -239,7 +238,7 @@ public class MachineDirectoryTests
     [Fact]
     public void TheOldClientJsonWithoutAFingerprintStaysOut()
     {
-        // Stesso buco, altra meta': cifrato ma verso nessuno in particolare.
+        // Same hole, other half: encrypted, but towards nobody in particular.
         ObserverEndpoint withoutFingerprint = ObserverEndpoint.Remote(
             new Uri("https://vecchia:5058/"), "token", "dal vecchio client.json");
 
@@ -253,9 +252,10 @@ public class MachineDirectoryTests
     [Fact]
     public void AFileWithoutTheListDoesNotDropTheOldConfiguration()
     {
-        // JSON valido ma senza "machines": non e' un file vuoto che va bene, e' un file che
-        // qualcuno credeva di aver scritto. Azzerare tutto in silenzio farebbe sparire anche la
-        // configurazione precedente, e chi guarda vedrebbe una macchina sparire senza motivo.
+        // Valid JSON but with no "machines": this is not an empty file, which would be fine, it
+        // is a file somebody thought they had written. Clearing everything in silence would take
+        // the previous configuration away too, and whoever is watching would see a machine
+        // vanish for no reason.
         ObserverEndpoint previous = ObserverEndpoint.Remote(
             new Uri("https://altra:5058/"), "token", "dal vecchio client.json", Fingerprint);
 

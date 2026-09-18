@@ -3,18 +3,18 @@ using Observer.App.Services;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Quando un guasto diventa rosso, e quando invece e' ancora normale.
+/// When a fault turns red, and when it is still normal.
 /// </summary>
 /// <remarks>
-/// Il difetto che questa classe chiude: su una macchina appena installata la finestra si
-/// apriva con una barra ROSSA — "Service unreachable" — perche' il primo tentativo cadeva
-/// mentre il servizio stava ancora partendo. Cioe' il primo secondo di vita del programma
-/// mostrava un errore, e l'errore spariva da solo un attimo dopo. Un allarme che si spegne da
-/// solo insegna a ignorare anche quelli veri.
+/// The defect this class closes: on a freshly installed machine the window used to open with a
+/// RED bar — "Service unreachable" — because the first attempt landed while the service was
+/// still starting. That is, the program's first second of life showed an error, and the error
+/// cleared itself a moment later. An alarm that switches itself off teaches you to ignore the
+/// real ones too.
 /// <para>
-/// La regola non e' "non allarmare mai": e' che la gravita' dipende da QUANTO DURA il guasto,
-/// non dal singolo tentativo andato male. Un servizio irraggiungibile da un secondo e' un
-/// servizio che sta partendo; da mezzo minuto e' un servizio che non c'e'.
+/// The rule is not "never raise an alarm": it is that the severity depends on HOW LONG the
+/// fault has lasted, not on the single attempt that went wrong. A service unreachable for one
+/// second is a service that is starting; for half a minute it is a service that is not there.
 /// </para>
 /// </remarks>
 public class StatusEscalationTests
@@ -34,7 +34,7 @@ public class StatusEscalationTests
     [Fact]
     public void TheFirstFailedAttempt_IsNotAnError()
     {
-        // Il caso misurato: la finestra si apre mentre il servizio sta ancora partendo.
+        // The measured case: the window opens while the service is still starting.
         StatusMessage message = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Local);
 
         Assert.Equal(StatusTone.Informational, message.Tone);
@@ -67,8 +67,8 @@ public class StatusEscalationTests
     [Fact]
     public void OnceTheGraceHasExpired_TheTechnicalDetailComesBack()
     {
-        // Durante l'attesa il dettaglio si tace perche' e' rumore. Quando il guasto diventa
-        // vero il dettaglio serve, ed e' l'unica cosa con cui si diagnostica.
+        // While waiting the detail is kept quiet because it is noise. Once the fault is real
+        // the detail is needed, and it is the only thing there is to diagnose with.
         StatusMessage waiting = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Local);
         StatusMessage fault = MessageFor(ServiceOutcome.Unreachable, StatusEscalation.GracePeriod, Local);
 
@@ -79,8 +79,8 @@ public class StatusEscalationTests
     [Fact]
     public void OnARemoteMachine_TheWaitNamesThatMachineAndNotThisOne()
     {
-        // Di una macchina altrui non si sa se stia partendo: e' un'affermazione che non si
-        // puo' fare. Si dice cio' che si sta facendo — contattarla — e basta.
+        // There is no way to know whether somebody else's machine is starting: that is a claim
+        // that cannot be made. It says what is being done — contacting it — and nothing more.
         StatusMessage message = MessageFor(ServiceOutcome.Unreachable, TimeSpan.Zero, Remote);
 
         Assert.Equal(StatusTone.Informational, message.Tone);
@@ -99,10 +99,10 @@ public class StatusEscalationTests
     [Fact]
     public void AServiceThatListensButNeverSamples_BecomesAWarning()
     {
-        // Il gemello silenzioso della barra rossa, e altrettanto sbagliato: un servizio vivo
-        // che non produce un campione restava "Service is starting" PER SEMPRE, con un testo
-        // che promette "questo di solito si risolve da solo in un secondo o due". Se non si
-        // risolve, quella frase e' una bugia che nessuno smentisce mai.
+        // The silent twin of the red bar, and just as wrong: a live service that produces no
+        // sample used to stay "Service is starting" FOR EVER, with a text promising "this
+        // usually clears itself in a second or two". If it does not clear, that sentence is a
+        // lie nobody ever contradicts.
         StatusMessage message = MessageFor(ServiceOutcome.NotReadyYet, TimeSpan.FromMinutes(5), Local);
 
         Assert.Equal(StatusTone.Warning, message.Tone);
@@ -117,9 +117,9 @@ public class StatusEscalationTests
     [InlineData(ServiceOutcome.Unknown)]
     public void WhatWaitingCannotFix_IsRedStraightAway(ServiceOutcome outcome)
     {
-        // Aspettare aiuta solo dove aspettare puo' cambiare l'esito. Un token sbagliato, una
-        // versione incompatibile o una risposta illeggibile saranno identici fra un minuto:
-        // rimandare l'allarme rimanderebbe solo il momento in cui l'utente puo' agire.
+        // Waiting only helps where waiting can change the outcome. A wrong token, an
+        // incompatible version or an unreadable response will be identical in a minute:
+        // postponing the alarm would only postpone the moment the user can act.
         StatusMessage immediate = MessageFor(outcome, TimeSpan.Zero, Remote);
 
         Assert.Equal(StatusTone.Error, immediate.Tone);
@@ -140,8 +140,8 @@ public class StatusEscalationTests
     [Fact]
     public void WithValuesOnScreen_TheSubheadingSaysTheyAreStale()
     {
-        // Lasciare i valori a schermo senza dirlo li farebbe leggere come attuali: e' il modo
-        // piu' facile di far credere che una macchina stia bene mentre e' spenta.
+        // Leaving the values on screen without saying so would make them read as current: it
+        // is the easiest way to make a machine look healthy while it is down.
         StatusMessage fault = MessageFor(
             ServiceOutcome.Unreachable,
             TimeSpan.FromMinutes(1),
@@ -154,8 +154,8 @@ public class StatusEscalationTests
     [Fact]
     public void NoOutcomeProducesAnEmptyBar()
     {
-        // Una barra visibile senza titolo o senza testo e' un riquadro colorato che non dice
-        // niente, ed e' peggio di nessuna barra.
+        // A visible bar with no title or no text is a coloured panel that says nothing, and it
+        // is worse than no bar at all.
         foreach (ServiceOutcome outcome in Enum.GetValues<ServiceOutcome>())
         {
             if (outcome == ServiceOutcome.Ok)
@@ -181,10 +181,10 @@ public class StatusEscalationTests
     [InlineData(ServiceOutcome.TimedOut)]
     public void BothWaysOfNotAnsweringDeserveTheGraceToo(ServiceOutcome outcome)
     {
-        // Appena avviata, una macchina rifiuta la connessione perche' la porta non e' ancora
-        // aperta, e piu' avanti nell'avvio la accetta. Togliere la tolleranza a questi due
-        // rimetterebbe la barra rossa all'apertura della finestra, che e' il difetto che
-        // questa classe esiste per chiudere.
+        // Just after booting, a machine refuses the connection because the port is not open
+        // yet, and later in the boot it accepts it. Taking the grace away from these two would
+        // put the red bar back when the window opens, which is the defect this class exists to
+        // close.
         StatusMessage message = MessageFor(outcome, TimeSpan.Zero, Remote);
 
         Assert.Equal(StatusTone.Informational, message.Tone);
@@ -194,9 +194,9 @@ public class StatusEscalationTests
     [Fact]
     public void ARefusalAndATimeoutDoNotReadTheSame()
     {
-        // Il cuore di questa correzione. I due guasti hanno rimedi opposti: uno si risolve
-        // avviando un servizio, l'altro aprendo una porta. Se il titolo e' lo stesso, chi
-        // guarda la finestra non ha nient'altro da cui capirlo.
+        // The heart of this fix. The two faults have opposite remedies: one is solved by
+        // starting a service, the other by opening a port. If the title is the same, whoever
+        // is looking at the window has nothing else to tell them apart by.
         StatusMessage refusal = MessageFor(ServiceOutcome.ConnectionRefused, TimeSpan.FromMinutes(1), Remote);
         StatusMessage expired = MessageFor(ServiceOutcome.TimedOut, TimeSpan.FromMinutes(1), Remote);
 
@@ -210,10 +210,10 @@ public class StatusEscalationTests
     [Fact]
     public void EveryWayOfFailingHasATitleOfItsOwn()
     {
-        // La falla che questo test chiude non si vede a schermo: e' l'arm di scarto in fondo
-        // allo switch. Aggiungere un valore all'enum COMPILA, e il guasto nuovo finisce in
-        // silenzio sotto un titolo generico, con la tolleranza tolta senza che nessuno lo
-        // abbia deciso. Nessun test falliva. Ora fallisce questo.
+        // The hole this test closes is not visible on screen: it is the discard arm at the
+        // bottom of the switch. Adding a value to the enum COMPILES, and the new fault ends up
+        // silently under a generic title, with the grace taken away without anyone having
+        // decided it. No test used to fail. Now this one does.
         List<string> withGenericTitle = [];
 
         foreach (ServiceOutcome outcome in Enum.GetValues<ServiceOutcome>())

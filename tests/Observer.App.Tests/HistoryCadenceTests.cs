@@ -5,17 +5,17 @@ using Observer.Core.Metrics;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Ogni quanto si rilegge lo storico, e perche' non e' "ogni passo".
+/// How often the history is re-read, and why it is not "every step".
 /// </summary>
 /// <remarks>
-/// Finche' la striscia mostrava un'ora sola, il passo era un minuto e qualunque errore di
-/// cadenza durava sessanta secondi: invisibile. Con i periodi lunghi lo stesso errore dura due
-/// ore, e diventa lo stato stabile della finestra. Le regole qui sono nate da difetti veri,
-/// tutti trovati con la suite verde.
+/// While the strip showed one hour only, the step was a minute and any cadence error lasted
+/// sixty seconds: invisible. With the long periods the same error lasts two hours, and becomes
+/// the window's settled state. The rules here came out of real defects, every one of them
+/// found with the suite green.
 /// </remarks>
 public class HistoryCadenceTests
 {
-    /// <summary>I tre periodi del selettore, come chiavi.</summary>
+    /// <summary>The selector's three periods, as keys.</summary>
     public static TheoryData<string> Periods() => [.. Preferences.AllowedPeriods];
 
     [Theory]
@@ -26,19 +26,19 @@ public class HistoryCadenceTests
 
         TimeSpan retryDelay = MainViewModel.HistoryReadDelay(period, succeeded: false);
 
-        // Il difetto era esattamente questo: la lettura dichiarava "andata bene" anche quando
-        // OGNI striscia era fallita, quindi un timeout rimandava di un passo intero. A sette
-        // giorni sono due ore di "No history" accanto a quadranti che si aggiornano ogni
-        // secondo, su dati che il servizio ha ripreso a dare dopo un secondo.
+        // The defect was exactly this: the read declared "went well" even when EVERY strip had
+        // failed, so a timeout put the next one off by a whole step. At seven days that is two
+        // hours of "No history" next to gauges refreshing once a second, over data the service
+        // went back to serving a second later.
         Assert.True(
             retryDelay < period.Step,
             $"{key}: dopo un guasto si aspetta {retryDelay}, cioe' quanto un passo ({period.Step})");
 
-        // E presto vuol dire presto, non "un po' meno": mezzo minuto e' il tetto.
+        // And soon means soon, not "a bit less": half a minute is the ceiling.
         Assert.True(retryDelay <= TimeSpan.FromSeconds(30), $"{key}: si riprova dopo {retryDelay}");
     }
 
-    /// <summary>Ogni periodo con la cadenza esatta che gli tocca, in secondi.</summary>
+    /// <summary>Each period with the exact cadence it gets, in seconds.</summary>
     public static TheoryData<string, double> Cadences() => new()
     {
         { "1h", 60d },
@@ -54,19 +54,20 @@ public class HistoryCadenceTests
 
         TimeSpan cadence = MainViewModel.HistoryReadDelay(period, succeeded: true);
 
-        // I valori esatti e non solo la regola, come per le scale: un quarto di passo col
-        // pavimento al minuto da' {1 min, 3 min 45 s, 30 min}, e chi li cambia deve vederli.
+        // The exact values and not only the rule, as with the zoom levels: a quarter of the
+        // step with the floor at one minute gives {1 min, 3 min 45 s, 30 min}, and whoever
+        // changes them has to see them.
         Assert.Equal(TimeSpan.FromSeconds(seconds), cadence);
 
-        // Rileggere ESATTAMENTE ogni passo sembra la cadenza giusta - piu' spesso non aggiunge
-        // una barra - e non lo e': l'ultima barra e' l'intervallo in corso e si disegna larga
-        // quanto ha coperto, quindi rileggendo al passo si guarderebbe ogni volta una barra
-        // appena nata, sempre alla stessa frazione. A sette giorni l'estremo destro della
-        // striscia - il punto che l'occhio legge come "adesso" - resterebbe congelato a quella
-        // larghezza per tutta la sessione, e con una scelta fatta a inizio intervallo e' un
-        // pixel. A un'ora il passo vale gia' un minuto e il pavimento vince: li' la barra non
-        // cresce, ed e' una rinuncia dichiarata (dodici richieste ogni quindici secondi per
-        // animare tredici pixel non si pagano).
+        // Re-reading EXACTLY every step looks like the right cadence - reading more often adds
+        // no bar - and it is not: the last bar is the interval in progress and is drawn as wide
+        // as it has covered, so re-reading at the step would mean looking at a newborn bar
+        // every time, always at the same fraction. At seven days the right-hand end of the
+        // strip - the point the eye reads as "now" - would stay frozen at that width for the
+        // whole session, and with a choice made at the start of an interval that is one pixel.
+        // At one hour the step is already a minute and the floor wins: there the bar does not
+        // grow, and that is a declared give-up (twelve requests every fifteen seconds to
+        // animate thirteen pixels do not pay).
         Assert.True(
             cadence <= period.Step,
             $"{key}: si rilegge ogni {cadence}, cioe' MENO spesso del passo ({period.Step})");
@@ -75,17 +76,17 @@ public class HistoryCadenceTests
             key == "1h" || cadence <= period.Step / 2,
             $"{key}: si rilegge ogni {cadence} su barre da {period.Step}: la barra in corso non cresce");
 
-        // E nemmeno di continuo: questa e' una finestra che misura la macchina che sta
-        // interrogando, e cio' che spende per aggiornarsi rientra nel numero che mostra.
+        // And not continuously either: this is a window that measures the machine it is
+        // querying, and what it spends on refreshing itself lands in the number it shows.
         Assert.True(cadence >= TimeSpan.FromMinutes(1), $"{key}: si rilegge ogni {cadence}");
     }
 
     [Fact]
     public async Task AFailingHistoryDoesNotFreezeTheStripForAWholeStep()
     {
-        // A sette giorni il passo e' due ore: se la scadenza si spostasse lo stesso dopo un
-        // guasto, la seconda lettura non partirebbe per mezz'ora di orologio. Qui l'orologio
-        // avanza di venti secondi e la seconda lettura deve esserci gia'.
+        // At seven days the step is two hours: if the deadline moved anyway after a fault, the
+        // second read would not start for half an hour of clock. Here the clock advances by
+        // twenty seconds and the second read must already be there.
         FakeClock clock = new();
         ClientWithoutHistory client = new();
 
@@ -123,10 +124,10 @@ public class HistoryCadenceTests
     [Fact]
     public async Task AfterSwitchingMachineTheStripDoesNotWaitForThePreviousDeadline()
     {
-        // La scadenza dello storico e' un derivato della macchina guardata, come i quadranti e
-        // il catalogo. Senza azzerarla, le righe della macchina nuova nascono senza striscia E
-        // senza nota - ne' barre ne' il motivo per cui non ci sono - e restano cosi' fino alla
-        // scadenza ereditata: mezz'ora a sette giorni, con i quadranti sopra gia' vivi.
+        // The history deadline is derived from the watched machine, like the gauges and the
+        // catalog. Without resetting it, the new machine's rows are born with no strip AND no
+        // note - neither bars nor the reason there are none - and stay that way until the
+        // inherited deadline: half an hour at seven days, with the gauges above already live.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         ObserverEndpoint other = ObserverEndpoint.Remote(
             new Uri("https://altra:5058/"), "token", "altra", new string('a', 64));
@@ -158,8 +159,8 @@ public class HistoryCadenceTests
 
         Assert.Empty(viewModel.Gauges);
 
-        // Senza avanzare l'orologio: la striscia della macchina nuova deve tornare nei secondi
-        // del ciclo, non fra mezz'ora.
+        // Without advancing the clock: the new machine's strip must come back within the
+        // loop's seconds, not half an hour from now.
         while (!stop.IsCancellationRequested && !viewModel.Gauges.Any(row => row.ShowHistory))
         {
             await Task.Delay(50, CancellationToken.None);
@@ -173,18 +174,18 @@ public class HistoryCadenceTests
     [Fact]
     public async Task WithNothingDrawnTheTitleFollowsTheSelectedPeriod()
     {
-        // Con la macchina che non risponde lo storico non si rilegge affatto: se il titolo
-        // seguisse il selettore, resterebbe per sempre "Last 7 days" sopra le barre da un
-        // minuto lette prima del guasto, e una macchina a riposo da un'ora si leggerebbe come
-        // a riposo da una settimana.
+        // With the machine not answering, the history is not re-read at all: if the title
+        // followed the selector, it would stay "Last 7 days" for ever above the one-minute
+        // bars read before the fault, and a machine idle for an hour would read as idle for a
+        // week.
         MainViewModel viewModel = new(new SilentClient(), configurationProblem: null);
 
         string titleAtStart = viewModel.HistoryTitle;
 
         viewModel.HistoryPeriod = "7d";
 
-        // Niente di disegnato, quindi il titolo segue il selettore: non c'e' striscia da
-        // contraddire, e all'avvio con "7d" nel file dire "Last hour" sarebbe sbagliato e basta.
+        // Nothing is drawn, so the title does follow the selector: there is no strip to
+        // contradict, and at startup with "7d" in the file saying "Last hour" would just be wrong.
         Assert.Equal(new HistoryPeriodOption("7d").Title, viewModel.HistoryTitle);
         Assert.NotEqual(titleAtStart, viewModel.HistoryTitle);
 
@@ -193,7 +194,7 @@ public class HistoryCadenceTests
 
         await Task.Delay(1500, CancellationToken.None);
 
-        // Nessuna lettura e' andata a buon fine, quindi non c'e' niente da rinominare.
+        // No read succeeded, so there is nothing to rename.
         Assert.Empty(viewModel.Gauges);
         Assert.Equal(new HistoryPeriodOption("7d").Title, viewModel.HistoryTitle);
 
@@ -210,11 +211,11 @@ public class HistoryCadenceTests
         }
         catch (OperationCanceledException)
         {
-            // Fine del test.
+            // End of the test.
         }
     }
 
-    /// <summary>Campiona benissimo e non ha storico: il guasto che la cadenza deve vedere.</summary>
+    /// <summary>Samples perfectly well and has no history: the fault the cadence must see.</summary>
     private sealed class ClientWithoutHistory : IMetricsClient
     {
         private int readCount;
@@ -237,7 +238,7 @@ public class HistoryCadenceTests
         }
     }
 
-    /// <summary>Risponde a tutto, storico compreso.</summary>
+    /// <summary>Answers everything, history included.</summary>
     private sealed class ClientWithHistory(ObserverEndpoint endpoint) : IMetricsClient
     {
         public ObserverEndpoint Endpoint { get; } = endpoint;
@@ -252,7 +253,7 @@ public class HistoryCadenceTests
             Task.FromResult(new HistoryFetch(ServiceOutcome.Ok, string.Empty, []));
     }
 
-    /// <summary>Non risponde mai: la macchina spenta.</summary>
+    /// <summary>Never answers: the machine that is down.</summary>
     private sealed class SilentClient : IMetricsClient
     {
         public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.LocalChannel();
@@ -267,7 +268,7 @@ public class HistoryCadenceTests
             Task.FromResult(new HistoryFetch(ServiceOutcome.Unreachable, "spenta", null));
     }
 
-    /// <summary>Una CPU, che e' quanto basta per avere un quadrante.</summary>
+    /// <summary>One CPU, which is all it takes to get a gauge.</summary>
     private static class Bench
     {
         public static SnapshotFetch Snapshot() =>

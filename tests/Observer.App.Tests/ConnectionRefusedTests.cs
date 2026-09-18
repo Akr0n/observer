@@ -5,24 +5,24 @@ using Observer.App.Services;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Un rifiuto vero, su un socket vero.
+/// A real refusal, on a real socket.
 /// </summary>
 /// <remarks>
-/// <see cref="TransportFailureTests"/> prova la REGOLA costruendo le eccezioni a mano; questo
-/// prova l'unica cosa che a tavolino non si puo' sapere, cioe' che .NET consegni davvero
-/// quello che quella regola si aspetta, e che ci arrivi dentro il tempo concesso.
+/// <see cref="TransportFailureTests"/> tests the RULE by building the exceptions by hand; this
+/// one tests the only thing that cannot be known on paper, namely that .NET really delivers
+/// what that rule expects, and that it gets there within the time allowed.
 /// <para>
-/// La seconda meta' e' quella che serviva. Misurato su Windows con .NET 10, sei giri per
-/// indirizzo: un rifiuto costa 2018-2104 ms, su loopback come sull'indirizzo di rete. Un nome
-/// a doppia pila lo paga due volte, perche' gli indirizzi si provano in fila, e senza tappo
-/// costa 4035-4121 ms. Con i 3 secondi di budget che il client aveva, "localhost" su una
-/// porta chiusa non arrivava mai a dire "rifiutata": scadeva prima, e la finestra consigliava
-/// di controllare il firewall per un servizio semplicemente spento. Un test costruito solo
-/// sulle eccezioni sarebbe rimasto verde tutto il tempo.
+/// The second half is the one that was needed. Measured on Windows with .NET 10, six runs per
+/// address: a refusal costs 2018-2104 ms, on loopback just as on the network address. A
+/// dual-stack name pays it twice, because the addresses are tried one after another, and with
+/// no cap it costs 4035-4121 ms. With the 3 seconds of budget the client used to have,
+/// "localhost" on a closed port never got as far as saying "refused": it timed out first, and
+/// the window advised checking the firewall for a service that was simply down. A test built on
+/// the exceptions alone would have stayed green the whole time.
 /// <para>
-/// E' anche il test che ha bocciato il primo budget. Sei secondi passavano su una macchina
-/// scarica e sono caduti su una occupata, perche' meno di due secondi di margine su 4,1 non
-/// sono un margine. Otto danno quasi il doppio del costo misurato.
+/// It is also the test that failed the first budget. Six seconds passed on an idle machine and
+/// fell over on a busy one, because less than two seconds of margin on 4.1 is not a margin.
+/// Eight gives nearly twice the measured cost.
 /// </para>
 /// </para>
 /// </remarks>
@@ -41,27 +41,27 @@ public class ConnectionRefusedTests
     [Fact]
     public async Task AClosedPortOnADualStackNameComesBackAsARefusalAndDoesNotBlameTheFirewall()
     {
-        // Il caso che il budget precedente non copriva. Se un giorno qualcuno riabbassasse
-        // RequestTimeout, questo test tornerebbe rosso — ed e' l'unico posto in cui quel
-        // numero e' legato a cio' che protegge.
+        // The case the previous budget did not cover. If one day somebody lowered
+        // RequestTimeout again, this test would go red — and it is the only place where that
+        // number is tied to what it protects.
         using MetricsClient client = new(EndpointFor($"http://localhost:{ClosedPort()}/"));
 
         SnapshotFetch fetch = await client.GetLatestAsync(CancellationToken.None);
 
         Assert.Equal(ServiceOutcome.ConnectionRefused, fetch.Outcome);
 
-        // Il danno vero non era l'etichetta: era il consiglio. Mandare a cercare un firewall
-        // mentre il servizio e' spento costa il pomeriggio di chi lo segue.
+        // The real damage was not the label: it was the advice. Sending someone hunting for a
+        // firewall while the service is down costs them an afternoon.
         Assert.DoesNotContain("dropping the packets", fetch.Problem, StringComparison.Ordinal);
     }
 
     private static ObserverEndpoint EndpointFor(string address) =>
         ObserverEndpoint.Remote(new Uri(address), "il-token", "dalla prova");
 
-    /// <summary>Una porta su cui si e' sicuri che non ascolti nessuno.</summary>
+    /// <summary>A port that is guaranteed to have nobody listening on it.</summary>
     /// <remarks>
-    /// Si fa aprire al sistema una porta effimera e la si chiude subito: e' l'unico modo di
-    /// avere un numero libero senza sceglierlo a caso e sperare.
+    /// The system is asked to open an ephemeral port and it is closed straight away: it is the
+    /// only way to get a free number without picking one at random and hoping.
     /// </remarks>
     private static int ClosedPort()
     {

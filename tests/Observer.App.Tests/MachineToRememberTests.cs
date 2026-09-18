@@ -4,13 +4,13 @@ using Observer.App.ViewModels;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Quale macchina la finestra riapre, e quale nome finisce nel file.
+/// Which machine the window reopens on, and which name ends up in the file.
 /// </summary>
 /// <remarks>
-/// Che la barra laterale evidenzi la macchina con cui la finestra e' stata costruita lo pinna
-/// gia' <c>StatoMacchineTests.LaMacchinaGuardataNonVieneSondataAncheSeRemota</c>. Qui si prova
-/// l'altra meta': cosa si scrive nel file alla chiusura, che e' l'unica parte che questo giro
-/// aggiunge al view model.
+/// That the sidebar highlights the machine the window was built with is already pinned by
+/// <c>MachineStatusTests.TheWatchedMachineIsNotProbedEvenWhenItIsRemote</c>. Here the other
+/// half is tested: what gets written to the file on close, which is the only part this round
+/// adds to the view model.
 /// </remarks>
 public class MachineToRememberTests
 {
@@ -31,8 +31,8 @@ public class MachineToRememberTests
     [Fact]
     public void OnTheLocalChannelNothingIsRemembered()
     {
-        // Null nel file vuol dire "questo computer", ed e' anche cio' che si legge in un file
-        // scritto da una versione precedente: nessuna migrazione da fare.
+        // Null in the file means "this computer", and it is also what is read from a file
+        // written by an earlier version: no migration to do.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
 
         MainViewModel viewModel = new(
@@ -46,9 +46,9 @@ public class MachineToRememberTests
     [Fact]
     public void ADeselectionDoesNotForgetTheMachine()
     {
-        // Si ricorda la macchina che il giro sta davvero LEGGENDO, non quella evidenziata: la
-        // selezione puo' diventare nulla mentre la lettura continua, ed e' la stessa
-        // distinzione per cui il view model tiene watchedEntry separata dalla selezione.
+        // It remembers the machine the loop is really READING, not the highlighted one: the
+        // selection can become null while the reading goes on, and it is the same distinction
+        // for which the view model keeps watchedEntry separate from the selection.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         ObserverEndpoint remote = RemoteEndpoint("laptop");
 
@@ -79,9 +79,9 @@ public class MachineToRememberTests
         viewModel.SelectedMachine = viewModel.Machines.Single(row => row.Endpoint == remote);
         Assert.Equal("laptop", viewModel.MachineToRemember);
 
-        // E tornando su questo computer si torna a non ricordare niente, che e' cio' che il
-        // null nel file vuol dire. Senza, chi passa dalla remota alla locale si ritroverebbe
-        // la remota riaperta per sempre.
+        // And going back to this computer goes back to remembering nothing, which is what the
+        // null in the file means. Without it, whoever moves from the remote machine to the
+        // local one would find the remote one reopened for ever.
         viewModel.SelectedMachine = viewModel.Machines[0];
         Assert.Null(viewModel.MachineToRemember);
     }
@@ -89,10 +89,10 @@ public class MachineToRememberTests
     [Fact]
     public void AMachineWithoutANameDoesNotReachTheFile()
     {
-        // La vecchia configurazione a macchina singola (client.json, Observer__BaseAddress)
-        // produce un punto remoto SENZA nome. Il nome visibile in quel caso ripiega
-        // sull'INDIRIZZO, e un indirizzo in preferences.json sarebbe un dato di rete scritto
-        // dove non deve stare, per giunta inutile: non e' una chiave di machines.json.
+        // The old single-machine configuration (client.json, Observer__BaseAddress) produces a
+        // remote endpoint with NO name. The display name in that case falls back to the
+        // ADDRESS, and an address in preferences.json would be network data written where it
+        // must not be, and useless on top of that: it is not a key of machines.json.
         ObserverEndpoint unnamed = ObserverEndpoint.Remote(
             new Uri("https://10.0.0.9:5058/"), "token", "client.json");
 
@@ -112,7 +112,7 @@ public class MachineToRememberTests
             new string('a', 64),
             name);
 
-    /// <summary>Un client che non risponde mai: qui interessa solo da dove si e' partiti.</summary>
+    /// <summary>A client that never answers: only where it started from matters here.</summary>
     private sealed class SilentClient(ObserverEndpoint endpoint) : IMetricsClient
     {
         public ObserverEndpoint Endpoint { get; } = endpoint;

@@ -5,13 +5,14 @@ using Observer.App.ViewModels;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Il selettore del tema: le voci, e cosa chiedono all'applicazione.
+/// The Theme and Zoom selectors: the entries they offer, and what they ask of the window.
 /// </summary>
 /// <remarks>
-/// Il tema lo applica l'applicazione, e quello non si prova senza una finestra. Qui si prova
-/// tutto cio' che sta prima: le chiavi ammesse, l'etichetta che un lettore di schermo annuncia,
-/// e la traduzione chiave -> variante, che e' l'unico punto in cui un refuso lascerebbe una
-/// finestra chiara a chi ha chiesto quella scura senza che nessun test lo dica.
+/// Neither is applied by the view model - the theme by the application, the zoom by the window's
+/// layout transform - and neither can be tested without a window. Here everything that comes
+/// before that is tested: the allowed keys and the allowed zoom levels, the label a screen reader
+/// announces, and the key -> variant translation, which is the one place where a typo would
+/// leave a light window to whoever asked for the dark one with no test saying so.
 /// </remarks>
 public class ThemeAndZoomSelectorTests
 {
@@ -29,7 +30,7 @@ public class ThemeAndZoomSelectorTests
         Assert.Equal(ThemeVariant.Dark, ThemeOption.VariantFor("dark"));
         Assert.Equal(ThemeVariant.Default, ThemeOption.VariantFor("system"));
 
-        // Una chiave che non esiste segue il sistema, mai una variante a caso.
+        // A key that does not exist follows the system, never a variant at random.
         Assert.Equal(ThemeVariant.Default, ThemeOption.VariantFor("nero"));
     }
 
@@ -43,9 +44,9 @@ public class ThemeAndZoomSelectorTests
     [Fact]
     public void ChangingThemeOrZoomAlsoNotifiesTheSelectedOption()
     {
-        // La tendina e' legata alla VOCE (SelectedTheme, SelectedScale), ma la finestra scrive la
-        // chiave (Theme, Zoom): senza la notifica della voce, all'avvio con "dark" nel
-        // file la finestra sarebbe scura con il selettore fermo su System.
+        // The drop-down is bound to the ENTRY (SelectedTheme, SelectedScale), but the window
+        // writes the key (Theme, Zoom): without the entry's notification, starting with "dark"
+        // in the file the window would be dark with the selector stuck on System.
         MainViewModel viewModel = new(client: null, configurationProblem: null);
         List<string> notified = [];
         viewModel.PropertyChanged += (_, e) => notified.Add(e.PropertyName ?? string.Empty);
@@ -72,7 +73,7 @@ public class ThemeAndZoomSelectorTests
         viewModel.Theme = "nero";
         Assert.Equal("system", viewModel.Theme);
 
-        // Il selettore puo' assegnare null mentre cambia elenco: il tema resta com'e'.
+        // The selector can assign null while the list changes: the theme stays as it is.
         viewModel.Theme = "light";
         viewModel.SelectedTheme = null!;
         Assert.Equal("light", viewModel.Theme);
@@ -81,15 +82,15 @@ public class ThemeAndZoomSelectorTests
     [Fact]
     public void TheViewModelStartsAtNormalZoomAndOffersEveryLevel()
     {
-        // La tendina mostra ScaleOptions, non AllowedZoomLevels: un gradino perso fra le due liste
-        // non si vede in nessun altro test. E la scala di partenza e' quella normale, non il
-        // primo elemento della lista, che da 0.14.0 e' 0,75.
+        // The drop-down shows ScaleOptions, not AllowedZoomLevels: a step lost between the two
+        // lists shows up in no other test. And the starting zoom is the normal one, not the
+        // first element of the list, which since 0.14.0 is 0.75.
         MainViewModel viewModel = new(client: null, configurationProblem: null);
 
         Assert.Equal(Preferences.NormalZoom, viewModel.Zoom);
         Assert.Equal(Preferences.AllowedZoomLevels, MainViewModel.ScaleOptions.Select(option => option.Factor));
 
-        // Come per il tema: una scala inventata non entra, torna alla normale.
+        // As with the theme: a made-up zoom level is refused, it falls back to normal.
         viewModel.Zoom = 0.5d;
         Assert.Equal(Preferences.NormalZoom, viewModel.Zoom);
     }

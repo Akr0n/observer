@@ -3,11 +3,11 @@ using Observer.App.Services;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Da dove il client prende indirizzo e token.
+/// Where the client takes its address and token from.
 /// </summary>
 /// <remarks>
-/// La parte che decide e' una funzione PURA sui suoi ingressi: non legge ne' ambiente ne'
-/// disco, quindi si verifica con un test invece che avviando l'applicazione e guardandola.
+/// The part that decides is a PURE function of its inputs: it reads neither the environment nor
+/// the disk, so it is checked with a test instead of by starting the application and watching it.
 /// </remarks>
 public class ClientConfigurationTests
 {
@@ -16,8 +16,8 @@ public class ClientConfigurationTests
     [Fact]
     public void NoConfiguration_WatchesTheMachineYouAreON()
     {
-        // Il caso di una macchina appena installata. Prima questo era "Configuration missing",
-        // e chiedeva un token che il servizio locale non pretende nemmeno.
+        // The case of a freshly installed machine. This used to be "Configuration missing", and
+        // it asked for a token the local service does not even require.
         ClientConfigurationResult result = ClientConfiguration.Resolve(null, null, null, null);
 
         Assert.Null(result.Problem);
@@ -49,9 +49,8 @@ public class ClientConfigurationTests
     [Fact]
     public void TheENVIRONMENTWinsOverTheFile()
     {
-        // Stesso motivo per cui vince nel servizio: un valore vecchio dimenticato nel file
-        // sovrascriverebbe in silenzio quello nuovo appena esportato, e il sintomo sarebbe un
-        // 401 inspiegabile.
+        // Same reason it wins in the service: an old value forgotten in the file would silently
+        // overwrite the new one just exported, and the symptom would be an inexplicable 401.
         ClientConfigurationResult result = ClientConfiguration.Resolve("vince-questo",
             "https://vince-questa:9000",
             Fingerprint,
@@ -64,8 +63,8 @@ public class ClientConfigurationTests
     [Fact]
     public void TheTrailingSlashIsAddedWhenMissing()
     {
-        // Senza, Uri risolverebbe "metrics/latest" cancellando l'ultimo segmento di un
-        // indirizzo tipo "http://host:5057/observer/", e la richiesta finirebbe altrove.
+        // Without it, Uri would resolve "metrics/latest" by dropping the last segment of an
+        // address such as "http://host:5057/observer/", and the request would end up elsewhere.
         ClientConfigurationResult result =
             ClientConfiguration.Resolve("t", "https://altra:5058/observer", Fingerprint, null);
 
@@ -114,7 +113,7 @@ public class ClientConfigurationTests
     [Fact]
     public void AnEMPTYFileMeansNoConfigurationAtAll()
     {
-        // Cioe' si guarda la macchina su cui si sta: e' il comportamento utile, e non un errore.
+        // Meaning it watches the machine you are on: that is the useful behaviour, not an error.
         ClientConfigurationResult result = ClientConfiguration.Resolve(null, null, null, "   ");
 
         Assert.Null(result.Problem);
@@ -124,9 +123,9 @@ public class ClientConfigurationTests
     [Fact]
     public void TheFilePathLIVESOutsideTheRepository()
     {
-        // Cosi' un token non puo' finire in un commit. E in LocalApplicationData e non in
-        // Roaming: su una macchina di dominio Roaming si sincronizza con un file server, e un
-        // segreto legato a UNA macchina non deve seguire l'utente da un computer all'altro.
+        // That way a token cannot end up in a commit. And in LocalApplicationData, not in
+        // Roaming: on a domain machine Roaming syncs with a file server, and a secret tied to
+        // ONE machine must not follow the user from one computer to another.
         Assert.Contains("Observer", ClientConfiguration.FilePath, StringComparison.Ordinal);
         Assert.EndsWith("client.json", ClientConfiguration.FilePath, StringComparison.Ordinal);
     }

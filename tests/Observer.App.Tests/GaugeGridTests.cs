@@ -3,20 +3,20 @@ using Observer.App.Controls;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// La griglia dei quadranti: colonne piene, niente buchi, celle che crescono fino a un tetto.
+/// The gauge grid: full columns, no holes, cells that grow up to a ceiling.
 /// </summary>
 /// <remarks>
-/// Il pannello non si puo' provare senza una finestra; la matematica si'. Un errore qui non
-/// fa fallire nulla a runtime: lascia un buco a fine riga o un quadrante tagliato, che e'
-/// esattamente cio' che si sta togliendo.
+/// The panel cannot be tested without a window; the arithmetic can. A mistake here fails
+/// nothing at runtime: it leaves a hole at the end of a row or a clipped gauge, which is
+/// exactly what is being removed.
 /// </remarks>
 public class GaugeGridTests
 {
     [Fact]
     public void SixGaugesInAMediumWindowFitTwoRowsOfThree()
     {
-        // 600 px: alla misura minima ce ne stanno 3 (3x148 + 2x18 = 480, la quarta non entra),
-        // e i tre si allargano a riempire la riga.
+        // 600 px: at the minimum width 3 fit (3x148 + 2x18 = 480, the fourth does not), and
+        // the three widen to fill the row.
         (int columns, double cellWidth) = GaugeGridLayout.Plan(600d, 6);
 
         Assert.Equal(3, columns);
@@ -26,8 +26,8 @@ public class GaugeGridTests
     [Fact]
     public void WithPlentyOfSpaceTheColumnsNeverOutnumberTheGauges()
     {
-        // 1240 px ne conterrebbe sette, ma sono sei: sei colonne, una riga, e la cella cresce
-        // fino a riempirla.
+        // 1240 px would hold seven, but there are six: six columns, one row, and the cell
+        // grows until it fills the row.
         (int columns, double cellWidth) = GaugeGridLayout.Plan(1240d, 6);
 
         Assert.Equal(6, columns);
@@ -68,17 +68,17 @@ public class GaugeGridTests
     [Fact]
     public void TheColumnsAreAlwaysAsManyAsFitAtTheMinimumWidth()
     {
-        // La proprieta' che rende la griglia "senza buchi": con N colonne, N celle alla misura
-        // minima piu' gli spazi entrano nella larghezza, e N+1 no.
-        for (double cellWidth = 150d; cellWidth <= 2000d; cellWidth += 37d)
+        // The property that makes the grid "without holes": with N columns, N cells at the
+        // minimum width plus the gaps fit inside the width, and N+1 do not.
+        for (double availableWidth = 150d; availableWidth <= 2000d; availableWidth += 37d)
         {
-            (int columns, _) = GaugeGridLayout.Plan(cellWidth, 12);
+            (int columns, _) = GaugeGridLayout.Plan(availableWidth, 12);
 
             double used = (columns * GaugeGridLayout.MinCellWidth) + ((columns - 1) * GaugeGridLayout.ColumnGap);
             double withOneMore = used + GaugeGridLayout.MinCellWidth + GaugeGridLayout.ColumnGap;
 
-            Assert.True(used <= cellWidth, $"a {cellWidth}: {columns} colonne non entrano");
-            Assert.True(withOneMore > cellWidth || columns == 12, $"a {cellWidth}: ci stava una colonna in piu'");
+            Assert.True(used <= availableWidth, $"a {availableWidth}: {columns} colonne non entrano");
+            Assert.True(withOneMore > availableWidth || columns == 12, $"a {availableWidth}: ci stava una colonna in piu'");
         }
     }
 }

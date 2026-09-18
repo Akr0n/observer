@@ -10,21 +10,21 @@ using Observer.Core.Security;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Il fissaggio dell'impronta contro un server TLS <b>vero</b>.
+/// Fingerprint pinning against a <b>real</b> TLS server.
 /// </summary>
 /// <remarks>
-/// E' l'unico test del client che tocca un trasporto. Gli altri esaminano
-/// <see cref="CertificatePinning"/> guardando il testo dei suoi messaggi, cioe' cio' che quel
-/// tipo dice di se stesso; qui si guarda cosa fa, che e' un'altra cosa. La regola che difende
-/// e' quella su cui poggia tutto il collegamento remoto: <b>l'identita' di una macchina e' la
-/// sua impronta, e nient'altro</b>. Se un giorno qualcuno scrivesse
-/// <c>return sslPolicyErrors == SslPolicyErrors.None</c> credendo di rafforzare il controllo,
-/// non romperebbe nessun test — spegnerebbe soltanto ogni collegamento verso un certificato
-/// autofirmato, che sono tutti quelli che Observer presenta.
+/// It is the only client test that touches a transport. The others examine
+/// <see cref="CertificatePinning"/> by looking at the text of its messages, that is, at what
+/// that type says about itself; here we look at what it does, which is another matter. The rule
+/// it defends is the one the whole remote connection rests on: <b>the identity of a machine is
+/// its fingerprint, and nothing else</b>. If one day somebody wrote
+/// <c>return sslPolicyErrors == SslPolicyErrors.None</c> believing they were tightening the
+/// check, no test would break — it would merely kill every connection to a self-signed
+/// certificate, which is every certificate Observer presents.
 /// <para>
-/// Il gemello lato servizio e' <c>TrasportoHttpsTests</c>, nato dopo che questa stessa lacuna
-/// aveva nascosto un difetto vero: un certificato che si caricava benissimo e poi non reggeva
-/// l'handshake. Un test che non tocca il filo non vede quella classe di guasti.
+/// The service-side twin is <c>HttpsTransportTests</c>, written after this very gap had hidden
+/// a real defect: a certificate that loaded perfectly well and then could not carry the
+/// handshake. A test that does not touch the wire cannot see that class of fault.
 /// </para>
 /// </remarks>
 public sealed class CertificatePinningTransportTests : IDisposable
@@ -57,11 +57,11 @@ public sealed class CertificatePinningTransportTests : IDisposable
     [Fact]
     public async Task TheConnectionSucceedsWhenTheHostNameDoesNotMatchTheCertificate()
     {
-        // LA regola che rende possibile interrogare una macchina per indirizzo. Il certificato
-        // dice "un-altro-nome" e il client si collega a 127.0.0.1: la validazione ordinaria di
-        // TLS lo rifiuterebbe per nome non corrispondente, e nel certificato non c'e' nessun
-        // SAN di tipo iPAddress che possa salvarlo. Qui passa, perche' cio' che identifica la
-        // macchina e' l'impronta.
+        // THE rule that makes it possible to query a machine by address. The certificate says
+        // "un-altro-nome" and the client connects to 127.0.0.1: ordinary TLS validation would
+        // reject that as a name mismatch, and the certificate carries no iPAddress SAN that
+        // could rescue it. Here it passes, because what identifies the machine is the
+        // fingerprint.
         using X509Certificate2 certificate = Generate("un-altro-nome");
         TestServer server = StartServer(certificate);
 
@@ -75,11 +75,11 @@ public sealed class CertificatePinningTransportTests : IDisposable
     [Fact]
     public async Task WithAnotherCertificateTheConnectionFailsAndTheTokenNeverLeaves()
     {
-        // Chi si mette in mezzo presenta il proprio certificato, valido quanto l'altro. Cio'
-        // che deve succedere non e' soltanto che il collegamento fallisca: deve fallire PRIMA
-        // che parta qualunque cosa, altrimenti il token sarebbe gia' arrivato a destinazione
-        // sbagliata e rifiutare non servirebbe piu' a niente. Il server conta i byte
-        // applicativi che riceve, e devono essere zero.
+        // Whoever sits in the middle presents their own certificate, as valid as the other
+        // one. What has to happen is not only that the connection fails: it must fail BEFORE
+        // anything is sent, or the token would already have reached the wrong destination and
+        // rejecting it would no longer be worth anything. The server counts the application
+        // bytes it receives, and they must be zero.
         using X509Certificate2 presented = Generate("chi-sta-in-mezzo");
         using X509Certificate2 expected = Generate("questa-macchina");
 
@@ -98,8 +98,8 @@ public sealed class CertificatePinningTransportTests : IDisposable
         Assert.True(pinning.HasRejected);
         Assert.Equal(0, server.ApplicationBytesReceived);
 
-        // E l'impronta arrivata viene conservata: senza, dopo una reinstallazione legittima
-        // l'utente non avrebbe da nessuna parte il valore nuovo da ricopiare.
+        // And the fingerprint that arrived is kept: without it, after a legitimate
+        // reinstallation the user would have nowhere to read the new value from to copy it.
         Assert.Equal(
             CertificateFingerprint.From(presented.RawDataMemory.Span),
             pinning.LastSeenFingerprint);
@@ -127,12 +127,12 @@ public sealed class CertificatePinningTransportTests : IDisposable
             DateTimeOffset.UtcNow.AddDays(-1),
             DateTimeOffset.UtcNow.AddDays(1));
 
-        // Esporta e ricarica, sempre. Su Windows un certificato che esce diritto da
-        // CreateSelfSigned si carica benissimo, dice HasPrivateKey == true, e poi SChannel non
-        // riesce a servirlo: l'handshake muore con "Received an unexpected EOF or 0 bytes from
-        // the transport stream", un errore che non nomina la propria causa. E' la stessa
-        // ragione per cui CertificateProvisioning, lato servizio, non restituisce mai un
-        // certificato appena generato.
+        // Export and reload, always. On Windows a certificate that comes straight out of
+        // CreateSelfSigned loads perfectly well, reports HasPrivateKey == true, and then
+        // SChannel cannot serve it: the handshake dies with "Received an unexpected EOF or 0
+        // bytes from the transport stream", an error that does not name its own cause. It is
+        // the same reason why CertificateProvisioning, on the service side, never returns a
+        // freshly generated certificate.
         byte[] pkcs12 = fresh.Export(X509ContentType.Pkcs12);
 
         X509KeyStorageFlags storageFlags = OperatingSystem.IsWindows()
@@ -177,8 +177,8 @@ public sealed class CertificatePinningTransportTests : IDisposable
                 }
                 catch (Exception) when (!cancellationToken.IsCancellationRequested)
                 {
-                    // Il client ha rifiutato il certificato durante l'handshake: e' proprio il
-                    // caso che uno dei test esercita, e per il server non e' un guasto.
+                    // The client rejected the certificate during the handshake: that is exactly
+                    // the case one of the tests exercises, and for the server it is no fault.
                     continue;
                 }
 
@@ -197,11 +197,11 @@ public sealed class CertificatePinningTransportTests : IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Fine del test.
+            // End of the test.
         }
         catch (SocketException)
         {
-            // L'ascoltatore e' stato chiuso.
+            // The listener has been closed.
         }
         finally
         {
@@ -209,18 +209,18 @@ public sealed class CertificatePinningTransportTests : IDisposable
         }
     }
 
-    /// <summary>Il server di prova: dove ascolta, e quanto gli e' davvero arrivato.</summary>
+    /// <summary>The test server: where it listens, and how much really reached it.</summary>
     private sealed class TestServer(Uri address)
     {
         private int received;
 
-        /// <summary>L'indirizzo su cui il server risponde.</summary>
+        /// <summary>The address the server answers on.</summary>
         public Uri Address { get; } = address;
 
-        /// <summary>Byte arrivati DOPO l'handshake, cioe' quelli della richiesta HTTP.</summary>
+        /// <summary>Bytes that arrived AFTER the handshake, that is, those of the HTTP request.</summary>
         public int ApplicationBytesReceived => Volatile.Read(ref received);
 
-        /// <summary>Registra quanto e' arrivato.</summary>
+        /// <summary>Records how much arrived.</summary>
         public void RecordBytes(int count) => Interlocked.Add(ref received, count);
     }
 }

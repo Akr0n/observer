@@ -4,12 +4,12 @@ using Observer.App.Controls;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// La matematica del tachimetro.
+/// The gauge arithmetic.
 /// </summary>
 /// <remarks>
-/// Sono i test di una cosa che nessun altro test puo' cogliere: il disegno non fallisce mai,
-/// sbaglia soltanto. Una lancetta a meta' corsa quando il valore e' al massimo non rompe
-/// niente, non lancia niente, e chi guarda legge un numero sbagliato credendolo misurato.
+/// These test something no other test can catch: drawing never fails, it only gets things
+/// wrong. A needle halfway along its travel while the value is at the maximum breaks nothing,
+/// throws nothing, and whoever is looking reads a wrong number believing it was measured.
 /// </remarks>
 public class GaugeScaleTests
 {
@@ -30,9 +30,9 @@ public class GaugeScaleTests
     [Fact]
     public void HalfSitsAtTheTop()
     {
-        // 135 + 135 = 270 gradi, cioe' dritto in alto: e' il punto in cui l'occhio verifica da
-        // solo se la lancetta e' dove dovrebbe. Se questa cambia, il tachimetro non e' piu'
-        // simmetrico e si legge male senza che nessun altro test se ne accorga.
+        // 135 + 135 = 270 degrees, that is straight up: it is the point where the eye checks
+        // on its own whether the needle is where it should be. If this changes, the gauge is
+        // no longer symmetric and reads badly with no other test noticing.
         Assert.Equal(270d, GaugeScale.AngleFor(0.5d), 9);
 
         Point top = GaugeScale.PointAt(Center, 50d, GaugeScale.AngleFor(0.5d));
@@ -56,9 +56,9 @@ public class GaugeScaleTests
     [Fact]
     public void AnUnmeasurablePercentageDoesNotMakeTheGaugeVanish()
     {
-        // Una metrica che non si e' potuta misurare arriva come NaN. Un NaN dentro un seno
-        // esce come NaN nelle coordinate, e Avalonia una geometria con dentro un NaN non la
-        // disegna affatto: il riquadro resterebbe vuoto, senza dire perche'.
+        // A metric that could not be measured arrives as NaN. A NaN inside a sine comes out as
+        // NaN in the coordinates, and Avalonia does not draw a geometry with a NaN in it at
+        // all: the box would stay empty, without saying why.
         double angle = GaugeScale.AngleFor(double.NaN);
 
         Assert.False(double.IsNaN(angle));
@@ -78,8 +78,8 @@ public class GaugeScaleTests
         Assert.Equal(GaugeScale.StartAngle, GaugeScale.TickAngle(0, intervals), 9);
         Assert.Equal(GaugeScale.EndAngle, GaugeScale.TickAngle(intervals, intervals), 9);
 
-        // Passo costante: una scala a passo variabile si legge come se i valori centrali
-        // fossero piu' vicini fra loro di quanto sono.
+        // Constant step: a scale with a varying step reads as if the middle values were closer
+        // to each other than they are.
         double step = GaugeScale.SweepAngle / intervals;
 
         for (int i = 1; i <= intervals; i++)
@@ -100,8 +100,8 @@ public class GaugeScaleTests
     [Fact]
     public void TheUncoveredArcSitsAtTheBottomAndIsSymmetric()
     {
-        // Il pezzo di cerchio su cui la lancetta non passa mai deve stare in basso e centrato,
-        // altrimenti il tachimetro appare storto. Sono i 90 gradi fra l'arrivo e la partenza.
+        // The piece of circle the needle never crosses must sit at the bottom and centred, or
+        // the gauge looks crooked. It is the 90 degrees between the end and the start.
         double uncovered = 360d - GaugeScale.SweepAngle;
 
         Assert.Equal(90d, uncovered, 9);
@@ -109,7 +109,7 @@ public class GaugeScaleTests
         Point zero = GaugeScale.PointAt(Center, 50d, GaugeScale.StartAngle);
         Point fullScale = GaugeScale.PointAt(Center, 50d, GaugeScale.EndAngle);
 
-        // Stessa altezza, sotto il centro, e speculari rispetto all'asse verticale.
+        // Same height, below the centre, and mirrored about the vertical axis.
         Assert.Equal(zero.Y, fullScale.Y, 6);
         Assert.True(zero.Y > Center.Y);
         Assert.Equal(Center.X - zero.X, fullScale.X - Center.X, 6);

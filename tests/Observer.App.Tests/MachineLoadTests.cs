@@ -7,12 +7,12 @@ using Observer.Core.Metrics.Memory;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// I due numeri accanto al nome di una macchina che non si sta guardando.
+/// The two numbers next to the name of a machine you are not watching.
 /// </summary>
 /// <remarks>
-/// La barra laterale risponde a una domanda sola - "devo cambiare macchina?" - e i due numeri
-/// esistono per quella. Le regole qui dicono soprattutto cosa succede quando la risposta non si
-/// sa, che e' il caso in cui uno zero inventato fa piu' danno di un vuoto.
+/// The sidebar answers one question only - "should I switch machine?" - and the two numbers
+/// exist for that. The rules here are mostly about what happens when the answer is not known,
+/// which is the case where an invented zero does more damage than a blank.
 /// </remarks>
 public class MachineLoadTests
 {
@@ -28,7 +28,7 @@ public class MachineLoadTests
         new Uri("https://altra:5058/"), "token", "machines.json", new string('a', 64), "altra"));
 
     [Fact]
-    public void BothNumbersComeFromOneSnapshotAndTheCaptionRoundsThem()
+    public void BothNumbersComeFromTheSnapshotTheProbeAlreadyHasAndTheCaptionRoundsThem()
     {
         MachineLoad load = MachineLoad.From(Snapshot(
             Group("cpu", MetricPoint.Measured(CpuCollector.TotalUsageMetricId, null, MetricValue.FromNumber(42.7d))),
@@ -37,19 +37,19 @@ public class MachineLoadTests
         Assert.Equal(42.7d, load.Cpu);
         Assert.Equal(61.2d, load.Memory);
 
-        // Interi: la domanda e' "quale macchina e' in affanno", e un decimo di punto non ci
-        // aggiunge niente mentre attira l'occhio a ogni lettura.
+        // Whole numbers: the question is "which machine is struggling", and a tenth of a point
+        // adds nothing to it while catching the eye at every reading.
         Assert.Equal("CPU 43% · RAM 61%", load.Caption);
     }
 
     [Fact]
     public void APerCorePointIsNeverTakenForTheWholeMachine()
     {
-        // Il per-core passa dalla stessa interfaccia, con lo STESSO identificativo e un'istanza
-        // valorizzata. Prendere il primo punto che capita darebbe il carico di un core solo
-        // spacciato per quello della macchina - e sarebbe verosimile, quindi invisibile.
-        // In ENTRAMBI gli ordini, perche' l'ordine dei punti non e' dichiarato da nessuna
-        // parte: con i core solo in coda, un codice che prende il primo punto passerebbe.
+        // The per-core points come through the same interface, with the SAME identifier and an
+        // instance set. Taking whichever point comes first would pass the load of a single core
+        // off as the machine's - and it would look plausible, so it would go unnoticed.
+        // In BOTH orders, because the order of the points is not declared anywhere: with the
+        // cores only at the end, code that takes the first point would pass.
         MachineLoad machinePointLast = MachineLoad.From(Snapshot(Group(
             "cpu",
             MetricPoint.Measured(CpuCollector.TotalUsageMetricId, "0", MetricValue.FromNumber(99d)),
@@ -70,8 +70,8 @@ public class MachineLoadTests
     [Fact]
     public void AMissingMetricDoesNotHideTheOther()
     {
-        // Su una piattaforma dove la CPU non e' leggibile la memoria lo e' lo stesso, e meta'
-        // risposta e' meglio di nessuna.
+        // On a platform where the CPU cannot be read the memory still can be, and half an
+        // answer is better than none.
         MachineLoad memoryOnly = MachineLoad.From(Snapshot(
             Group("cpu", MetricPoint.Unsupported(CpuCollector.TotalUsageMetricId, null, "non misurabile qui")),
             Group("memory", MetricPoint.Measured(MemoryCollector.UsedPercentMetricId, null, MetricValue.FromNumber(61d)))));
@@ -89,8 +89,8 @@ public class MachineLoadTests
     [Fact]
     public void WithNoSnapshotItDoesNotInventAZero()
     {
-        // Uno zero accanto al nome di una macchina si legge "ferma", che e' l'opposto di "non
-        // si sa". La differenza conta proprio sulle macchine che non rispondono.
+        // A zero next to a machine's name reads as "idle", which is the opposite of "not
+        // known". The difference matters precisely on the machines that do not answer.
         Assert.Equal(MachineLoad.None, MachineLoad.From(null));
         Assert.Equal(string.Empty, MachineLoad.None.Caption);
         Assert.Null(MachineLoad.None.Cpu);
@@ -111,9 +111,9 @@ public class MachineLoadTests
     [Fact]
     public void AMachineThatGoesDownLosesTheLoadItHad()
     {
-        // Il carico si azzera dentro Record e non nei chiamanti: sono tre, e uno si
-        // dimenticherebbe, lasciando sotto il nome di una macchina spenta i numeri di quando
-        // rispondeva - numeri veri, riferiti a un momento che non c'e' piu'.
+        // The load is cleared inside Record and not in the callers: there are three of them and
+        // one would forget, leaving under the name of a machine that is down the numbers from
+        // when it was answering - real numbers, for a moment that is gone.
         MachineRow row = RemoteRow();
 
         row.Record(
@@ -126,10 +126,10 @@ public class MachineLoadTests
 
         row.Record(ServiceOutcome.ConnectionRefused, "refused", T0 + TimeSpan.FromMinutes(1));
 
-        // Il carico se ne va SUBITO, mentre la durata non c'e' ancora: dentro i dieci secondi
-        // di tolleranza StatusEscalation non dice niente, di proposito. La riga resta quindi
-        // vuota per un momento, ed e' la ragione per cui lo spazio sotto il nome e' riservato
-        // sempre invece di comparire e sparire - il vuoto non deve far saltare la voce.
+        // The load goes AT ONCE, while the duration is not there yet: within the ten seconds of
+        // grace StatusEscalation says nothing, on purpose. So the row stays empty for a moment,
+        // and that is the reason the space under the name is always reserved instead of
+        // appearing and disappearing - the blank must not make the row jump.
         Assert.Equal(MachineLoad.None, row.MachineLoad);
         Assert.Equal(string.Empty, row.Subtitle);
 
@@ -142,10 +142,11 @@ public class MachineLoadTests
     [Fact]
     public void TheFaultDurationTakesPrecedenceOverTheLoad()
     {
-        // La precedenza si prova solo se i due CONVIVONO, e per costruzione non convivono mai:
-        // Record azzera il carico su ogni esito non Ok. Quindi si forza la convivenza dal di
-        // fuori, che e' l'unico modo di mettere alla prova la regola invece del ramo che oggi
-        // la rende irraggiungibile - e di accorgersene se un giorno smettesse di esserlo.
+        // The precedence can only be tested if the two COEXIST, and by construction they never
+        // do: Record clears the load on every outcome that is not Ok. So they are made to
+        // coexist from the outside, which is the only way to test the rule itself instead of
+        // the branch that today makes it unreachable - and to notice if one day it stopped
+        // being unreachable.
         MachineRow row = RemoteRow();
 
         row.Record(ServiceOutcome.TokenRejected, "rejected", T0);
@@ -164,12 +165,12 @@ public class MachineLoadTests
     [Fact]
     public void TheWatchedMachineShowsNoNumbersInTheSidebar()
     {
-        // E' la decisione che tiene insieme tutto il resto: i numeri della macchina guardata
-        // sono nei quadranti, e ripeterli accanto al nome vorrebbe dire due letture della
-        // stessa macchina a cadenze diverse - quindici secondi contro uno - che si
-        // contraddicono a vista. La voce guardata e' anche l'unica sempre selezionata, cioe'
-        // l'unica che un lettore di schermo riannuncia: con i numeri il suo nome accessibile
-        // cambierebbe a ogni secondo, per sempre.
+        // This is the decision that holds all the rest together: the numbers for the watched
+        // machine are in the gauges, and repeating them next to the name would mean two
+        // readings of the same machine at different cadences - fifteen seconds against one -
+        // able to contradict each other in plain sight. The watched row is also the only one
+        // that is always selected, that is, the only one a screen reader re-announces: with
+        // the numbers its accessible name would change every second, for ever.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         ObserverEndpoint other = ObserverEndpoint.Remote(
             new Uri("https://altra:5058/"), "token", "machines.json", new string('a', 64), "altra");
@@ -181,7 +182,7 @@ public class MachineLoadTests
 
         MachineRow row = viewModel.Machines.Single(v => v.Endpoint == other);
 
-        // La sonda le ha scritto il carico mentre NON era guardata: e' il caso normale.
+        // The probe wrote the load into it while it was NOT being watched: the normal case.
         row.Record(
             ServiceOutcome.Ok,
             string.Empty,
@@ -192,9 +193,9 @@ public class MachineLoadTests
 
         Assert.Equal("CPU 42% · RAM 61%", row.Subtitle);
 
-        // Il clic. SUBITO, senza aspettare un giro: fra la selezione e la prima risposta
-        // passano fino a otto secondi di timeout, e in quel tempo la riga evidenziata direbbe
-        // che la macchina sta lavorando mentre la barra di stato dice "Connecting".
+        // The click. AT ONCE, without waiting for a round: up to eight seconds of timeout pass
+        // between the selection and the first answer, and in that time the highlighted row
+        // would say the machine is working while the status bar says "Connecting".
         viewModel.SelectedMachine = row;
 
         Assert.Equal(MachineLoad.None, row.MachineLoad);
@@ -205,14 +206,14 @@ public class MachineLoadTests
     [Fact]
     public void TheLoadIsAnnouncedEvenWithoutSeeingTheRow()
     {
-        // Il suggerimento del mouse e il nome accessibile passano dallo stesso testo della
-        // riga, cosi' non possono divergere. Il punto medio separa due fatti accostati.
+        // The tooltip and the accessible name both come from the row's one text, so they
+        // cannot diverge. The middle dot separates two facts placed side by side.
         MachineRow row = RemoteRow();
 
-        // Una prima lettura riuscita SENZA carico, cosi' Status e Detail sono gia' al valore
-        // finale: da qui in poi l'unica cosa che cambia e' il carico, e le notifiche che si
-        // osservano possono venire solo da lui. Senza questo passo le tre asserzioni sarebbero
-        // soddisfatte da Detail, che notifica ToolTipText e AccessibleName per conto suo.
+        // A first successful reading WITHOUT a load, so that Status and Detail are already at
+        // their final value: from here on the only thing that changes is the load, and the
+        // notifications observed can only come from it. Without this step the three assertions
+        // would be satisfied by Detail, which notifies ToolTipText and AccessibleName by itself.
         row.Record(ServiceOutcome.Ok, string.Empty, T0);
 
         List<string> notified = [];
@@ -229,7 +230,8 @@ public class MachineLoadTests
         Assert.Equal("Reachable · CPU 42% · RAM 61%", row.ToolTipText);
         Assert.Contains("CPU 42%", row.AccessibleName, StringComparison.Ordinal);
 
-        // Senza queste notifiche la riga direbbe ancora la cosa di prima, con la suite verde.
+        // Without these notifications the row would still say what it said before, and the
+        // suite would still be green.
         Assert.Contains(nameof(MachineRow.Subtitle), notified);
         Assert.Contains(nameof(MachineRow.ToolTipText), notified);
         Assert.Contains(nameof(MachineRow.AccessibleName), notified);
@@ -238,10 +240,10 @@ public class MachineLoadTests
     [Fact]
     public async Task AProbeThatReturnsAfterTheMachineBecameWatchedDoesNotWrite()
     {
-        // La sonda PARTE filtrando la macchina guardata, ma TORNA fino a otto secondi dopo, e
-        // in quel tempo un clic basta. Da li' in poi scriverebbero in due sulla stessa voce -
-        // la sonda ogni quindici secondi, il giro principale ogni secondo - e la riga
-        // mostrerebbe a strappi due letture diverse della STESSA macchina.
+        // The probe STARTS by filtering out the watched machine, but it COMES BACK up to eight
+        // seconds later, and one click in that time is enough. From then on two writers would
+        // be writing into the same row - the probe every fifteen seconds, the main loop every
+        // second - and the row would jerk between two different readings of the SAME machine.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         ObserverEndpoint other = ObserverEndpoint.Remote(
             new Uri("https://altra:5058/"), "token", "machines.json", new string('a', 64), "altra");
@@ -259,7 +261,7 @@ public class MachineLoadTests
 
         MachineRow row = viewModel.Machines.Single(v => v.Endpoint == other);
 
-        // Si aspetta che la sonda sia DAVVERO in volo, non che sia passato del tempo.
+        // Wait until the probe is REALLY in flight, not until some time has gone by.
         while (!stop.IsCancellationRequested && !held.HasEntered)
         {
             await Task.Delay(20, CancellationToken.None);
@@ -267,7 +269,7 @@ public class MachineLoadTests
 
         Assert.True(held.HasEntered, "la sonda non e' mai partita");
 
-        // Il clic, mentre la risposta e' ancora per aria.
+        // The click, while the response is still in the air.
         viewModel.SelectedMachine = row;
 
         held.Release();
@@ -277,7 +279,7 @@ public class MachineLoadTests
             await Task.Delay(20, CancellationToken.None);
         }
 
-        // La sonda aveva in mano una CPU al 99 %: se avesse scritto, la riga lo direbbe.
+        // The probe was holding a CPU at 99 %: had it written, the row would say so.
         Assert.Equal(MachineLoad.None, row.MachineLoad);
         Assert.Equal(string.Empty, row.Subtitle);
 
@@ -289,11 +291,11 @@ public class MachineLoadTests
         }
         catch (OperationCanceledException)
         {
-            // Fine del test.
+            // End of the test.
         }
     }
 
-    /// <summary>Risponde solo quando il test lo libera, e la prima volta sola.</summary>
+    /// <summary>Answers only when the test releases it, and only the first time.</summary>
     private sealed class HeldClient(bool alreadyReleased = false) : IMetricsClient
     {
         private readonly TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -3,10 +3,10 @@ using Observer.App.ViewModels;
 
 namespace Observer.App.Tests;
 
-/// <summary>La versione nella barra del titolo.</summary>
+/// <summary>The version in the title bar.</summary>
 /// <remarks>
-/// La parte che puo' mentire e' il taglio: l'hash del commit va via, un suffisso di pre-release
-/// no, e una versione assente non deve produrre un titolo con uno spazio penzolante.
+/// The part that can lie is the trimming: the commit hash goes, a pre-release suffix does not,
+/// and a missing version must not produce a title with a dangling space.
 /// </remarks>
 public class AppVersionTests
 {
@@ -23,8 +23,8 @@ public class AppVersionTests
     [Fact]
     public void ThisProgramHasAVersionThatLooksLikeAVersion()
     {
-        // I metadati arrivano da Directory.Build.props attraverso l'SDK: se questo test
-        // fallisce, il titolo della finestra dira' "Observer" e basta, e nessuno se ne accorge.
+        // The metadata comes from Directory.Build.props through the SDK: if this test fails, the
+        // window title will say just "Observer", and nobody notices.
         string version = AppVersion.OfThisProgram();
 
         Assert.Matches(@"^\d+\.\d+\.\d+", version);

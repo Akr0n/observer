@@ -1,12 +1,12 @@
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Un orologio che avanza solo quando il test lo dice.
+/// A clock that advances only when the test says so.
 /// </summary>
 /// <remarks>
-/// I tick stanno in un <c>long</c> letto e scritto con <see cref="Volatile"/>: il ciclo di
-/// aggiornamento gira su un thread del pool, il test avanza l'orologio dal proprio, e una
-/// struttura da sedici byte si potrebbe leggere a meta' scrittura.
+/// The ticks live in a <c>long</c> read and written with <see cref="Volatile"/>: the refresh
+/// loop runs on a pool thread, the test advances the clock from its own, and a sixteen-byte
+/// struct could be read halfway through a write.
 /// </remarks>
 internal sealed class FakeClock
 {

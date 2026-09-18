@@ -5,10 +5,10 @@ using Observer.Core.Metrics;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// La traduzione da campionamento a righe di schermo. E' il punto in cui uno stato degradato
-/// puo' diventare in silenzio uno zero dall'aria innocente, cioe' il difetto peggiore per chi
-/// non puo' leggere il codice: una macchina che sembra a riposo mentre in realta' non si sta
-/// misurando niente.
+/// The translation from a snapshot into rows on screen. This is where a degraded status can
+/// silently turn into an innocent-looking zero, which is the worst defect for someone who
+/// cannot read the code: a machine that looks idle when in fact nothing is being measured
+/// at all.
 /// </summary>
 public class SnapshotProjectionTests
 {
@@ -39,10 +39,10 @@ public class SnapshotProjectionTests
         Assert.Equal("CPU", groups[0].Title);
         Assert.Equal("CPU usage", row.Label);
 
-        // 64.2 e non 64.3: "F1" arrotonda il mezzo al pari. Su una percentuale di CPU la
-        // differenza e' irrilevante, ma vale la pena che sia scritta invece che scoperta.
-        // Il punto come separatore decimale e' voluto: gli eseguibili girano in modalita'
-        // di globalizzazione invariante (vedi runtimeconfig.template.json).
+        // 64.2 and not 64.3: "F1" rounds a half to even. On a CPU percentage the difference
+        // does not matter, but it is worth writing it down instead of discovering it.
+        // The dot as the decimal separator is deliberate: the executables run in invariant
+        // globalization mode (see runtimeconfig.template.json).
         Assert.Equal("64.2 %", row.Display);
         Assert.Equal(0.6425d, row.Fraction!.Value, precision: 6);
         Assert.Equal(MetricSeverity.Ok, row.Severity);
@@ -64,8 +64,8 @@ public class SnapshotProjectionTests
     [Fact]
     public void Project_WithAFlag_WritesItInWords()
     {
-        // Una metrica a bandiera QUALUNQUE: memory.available.estimated non serve piu' come
-        // esempio, perche' quella ha un trattamento suo (vedi i test qui sotto).
+        // ANY flag metric will do: memory.available.estimated no longer works as the example,
+        // because that one gets a treatment of its own (see the tests below).
         IReadOnlyList<MetricGroupState> groups = Project(
             Ok("memory", MetricPoint.Measured("memory.swap.enabled", null, MetricValue.FromFlag(true))));
 
@@ -75,9 +75,9 @@ public class SnapshotProjectionTests
     [Fact]
     public void Project_WhenAvailableMemoryIsMeasured_DoesNotAddARowToSaySo()
     {
-        // Su Windows quel flag e' cablato a falso: quella riga direbbe "No" per sempre, su
-        // qualunque macchina Windows. Una riga che ripete all'infinito la stessa risposta
-        // insegna a saltarla, e verrebbe saltata anche il giorno in cui dicesse altro.
+        // On Windows that flag is hardwired to false: that row would say "No" for ever, on
+        // every Windows machine. A row that repeats the same answer endlessly teaches the
+        // reader to skip it, and it would be skipped on the day it said something else too.
         IReadOnlyList<MetricGroupState> groups = Project(Ok(
             "memory",
             MetricPoint.Measured("memory.available.bytes", null, MetricValue.FromNumber(17_179_869_184d)),
@@ -92,9 +92,9 @@ public class SnapshotProjectionTests
     [Fact]
     public void Project_WhenAvailableMemoryIsEstimated_SaysSoOnTheValue()
     {
-        // Il caso per cui quel flag esiste: su Linux, se il kernel non espone MemAvailable,
-        // il numero viene sommato da memoria libera, buffer, cache e memoria recuperabile.
-        // Non e' sbagliato, ma non e' una misura, e va detto DOVE si legge il numero.
+        // The case that flag exists for: on Linux, when the kernel does not expose MemAvailable,
+        // the number is summed from free memory, buffers, cache and reclaimable memory. That is
+        // not wrong, but it is not a measurement, and it must be said WHERE the number is read.
         IReadOnlyList<MetricGroupState> groups = Project(Ok(
             "memory",
             MetricPoint.Measured("memory.available.bytes", null, MetricValue.FromNumber(3_435_973_836d)),
@@ -109,8 +109,8 @@ public class SnapshotProjectionTests
     [Fact]
     public void Project_WhenReadingTheFlagFailed_TheRowStays()
     {
-        // Non e' ne' si' ne' no: e' un guasto, e un guasto che sparisce dallo schermo e'
-        // peggio di una riga di troppo.
+        // It is neither yes nor no: it is a fault, and a fault that disappears from the screen
+        // is worse than one row too many.
         IReadOnlyList<MetricGroupState> groups = Project(Ok(
             "memory",
             MetricPoint.Unavailable("memory.available.estimated", null, "the reading failed")));
@@ -123,9 +123,9 @@ public class SnapshotProjectionTests
     [Fact]
     public void Project_WithACollectorInWarmup_ShowsTheExplanationAndDoesNotCallItAFault()
     {
-        // Il Warmup all'avvio e' normale: manca il secondo campione per calcolare la
-        // percentuale. Un riquadro vuoto qui sarebbe indiagnosticabile, e un errore rosso
-        // sarebbe una bugia.
+        // Warmup at startup is normal: the second sample needed to work out the percentage is
+        // not there yet. An empty panel here would be impossible to diagnose, and a red error
+        // would be a lie.
         MachineSnapshot snapshot = new(
             MachineSnapshot.CurrentSchemaVersion,
             DateTimeOffset.UnixEpoch,
@@ -155,8 +155,8 @@ public class SnapshotProjectionTests
     [Fact]
     public void Project_WithAFaultedCollectorAndNoMessage_StillPutsASentence()
     {
-        // Un riquadro vuoto e muto e' esattamente cio' che non deve capitare a chi non legge
-        // i log.
+        // An empty, silent panel is exactly what must not happen to someone who does not read
+        // the logs.
         MachineSnapshot snapshot = new(
             MachineSnapshot.CurrentSchemaVersion,
             DateTimeOffset.UnixEpoch,
@@ -211,9 +211,9 @@ public class SnapshotProjectionTests
     [Fact]
     public void Project_WithAnOkPointButNoValue_SaysSoInsteadOfShowingZero()
     {
-        // Questo caso non e' costruibile dalle fabbriche di MetricPoint: arriva solo dal filo,
-        // ed e' proprio il difetto che i commenti di Observer.Core temono. Mostrare "0" qui
-        // significherebbe una macchina piena di zeri marcati "Ok".
+        // This case cannot be built from the MetricPoint factories: it only arrives over the
+        // wire, and it is exactly the defect the comments in Observer.Core fear. Showing "0"
+        // here would mean a machine full of zeros marked "Ok".
         MachineSnapshot? snapshot = JsonSerializer.Deserialize<MachineSnapshot>(
             """
             {"schemaVersion":1,"capturedAt":"2026-08-26T09:15:49.34Z","collectors":[
@@ -231,8 +231,8 @@ public class SnapshotProjectionTests
     [Fact]
     public void Project_WithAValueOfUnknownKind_SaysSoInsteadOfShowingZero()
     {
-        // kind = 0 significa che la deserializzazione non ha agganciato il costruttore: il
-        // numero sarebbe zero e sembrerebbe una misura valida.
+        // kind = 0 means deserialization never reached the constructor: the number would be
+        // zero and would look like a valid measurement.
         MachineSnapshot? snapshot = JsonSerializer.Deserialize<MachineSnapshot>(
             """
             {"schemaVersion":1,"capturedAt":"2026-08-26T09:15:49.34Z","collectors":[
@@ -252,7 +252,7 @@ public class SnapshotProjectionTests
     [Fact]
     public void Project_WithNoCatalog_ShowsEverythingWithRawIdentifiers()
     {
-        // Se /metrics/catalog non risponde, le metriche non devono sparire.
+        // If /metrics/catalog does not answer, the metrics must not disappear.
         MachineSnapshot snapshot = new(
             MachineSnapshot.CurrentSchemaVersion,
             DateTimeOffset.UnixEpoch,
@@ -271,8 +271,8 @@ public class SnapshotProjectionTests
     [Fact]
     public void Project_RowKeysAreStableAcrossTwoReadings()
     {
-        // Le chiavi servono ad aggiornare le righe sul posto: se cambiassero a ogni giro, la
-        // finestra ricostruirebbe l'elenco ogni secondo e lampeggerebbe.
+        // The keys are what updates the rows in place: if they changed on every pass, the
+        // window would rebuild the list every second and flicker.
         MetricRowState before = Project(
             Ok("cpu", MetricPoint.Measured("cpu.usage.total", null, MetricValue.FromNumber(10d))))[0].Rows[0];
 
@@ -286,8 +286,8 @@ public class SnapshotProjectionTests
     [Fact]
     public void Project_WithTwoMetricsSharingAName_TellsThemApartByTheUnit()
     {
-        // Il collector della memoria chiama "Memoria usata" sia i byte sia la percentuale:
-        // due righe con lo stesso nome e numeri diversi sembrano una contraddizione.
+        // The memory collector calls both the bytes and the percentage "Used memory": two rows
+        // with the same name and different numbers look like a contradiction.
         MachineSnapshot snapshot = new(
             MachineSnapshot.CurrentSchemaVersion,
             DateTimeOffset.UnixEpoch,
@@ -328,9 +328,9 @@ public class SnapshotProjectionTests
     [InlineData(449852d, "439.3 KiB/s")]
     [InlineData(1073741824d, "1.0 GiB/s")]
     public void ARateUsesTheSamePrefixesAsBytes(double perSecond, string expected) =>
-        // I byte al secondo sono l'unita' nuova portata dall'attivita' dei dischi. Senza un
-        // ramo suo finiscono nel formato generico e a schermo si legge "449852 B/s", con il
-        // formattatore dei byte li' accanto a non fare niente.
+        // Bytes per second are the new unit that disk activity brought in. Without a branch of
+        // their own they fall into the generic format and the screen reads "449852 B/s", with
+        // the byte formatter sitting right next to it doing nothing.
         Assert.Equal(
             expected,
             MetricFormatting.Describe(MetricValue.FromNumber(perSecond), new MetricUnit("B/s")));

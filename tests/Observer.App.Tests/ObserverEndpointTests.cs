@@ -3,12 +3,12 @@ using Observer.App.Services;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Dove il client va a cercare il servizio, e con quale credenziale.
+/// Where the client goes looking for the service, and with which credential.
 /// </summary>
 /// <remarks>
-/// E' il pezzo che rende installabile la dashboard: su una macchina appena installata non c'e'
-/// alcuna configurazione, e senza questo comportamento la finestra si aprirebbe su
-/// "Configuration missing" chiedendo un token che il servizio non pretende nemmeno.
+/// It is the piece that makes the dashboard installable: on a freshly installed machine there is
+/// no configuration at all, and without this behaviour the window would open on
+/// "Configuration missing", asking for a token the service does not even require.
 /// </remarks>
 public class ObserverEndpointTests
 {
@@ -28,8 +28,8 @@ public class ObserverEndpointTests
     [Fact]
     public void TheZeroValueOfTheKINDIsTheLocalChannel()
     {
-        // Il canale locale non porta segreti: se un campo dimenticato deve valere qualcosa, che
-        // valga quello che non puo' perdere nulla.
+        // The local channel carries no secrets: if a forgotten field has to mean something, let
+        // it mean the one that cannot leak anything.
         Assert.Equal(EndpointKind.Local, default(EndpointKind));
     }
 
@@ -47,8 +47,8 @@ public class ObserverEndpointTests
     [Fact]
     public void ARemoteAddressWITHOUTATokenIsRefused()
     {
-        // Puntare a un'altra macchina senza credenziale non e' un caso da indovinare: quel
-        // servizio rifiutera' ogni richiesta, e dirlo subito e' meglio che mostrare 401 a raffica.
+        // Pointing at another machine with no credential is not a case to be guessed at: that
+        // service will refuse every request, and saying so at once beats a burst of 401s.
         ClientConfigurationResult result = ClientConfiguration.Resolve(null, "https://altra-macchina:5058/", Fingerprint, null);
 
         Assert.Null(result.Endpoint);
@@ -58,7 +58,7 @@ public class ObserverEndpointTests
     [Fact]
     public void ATOKENWithoutAnAddressStaysLOCAL_butIsNotUsed()
     {
-        // Un token esportato per errore non deve dirottare il client dalla macchina su cui sta.
+        // A token exported by mistake must not divert the client away from the machine it is on.
         ClientConfigurationResult result = ClientConfiguration.Resolve("un-token", null, null, null);
 
         Assert.NotNull(result.Endpoint);
@@ -71,16 +71,16 @@ public class ObserverEndpointTests
     {
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
 
-        // L'host e' fittizio e non deve risolversi: la connessione la fa il ConnectCallback,
-        // e l'host finisce solo nell'header Host.
+        // The host is a fake one and must not resolve: the connection is made by the
+        // ConnectCallback, and the host only ends up in the Host header.
         Assert.EndsWith(".invalid/", local.BaseAddress.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
     public void AnEndpointNEVERPrintsItsOwnToken()
     {
-        // I record generano un ToString con TUTTE le proprieta' dentro: senza un override,
-        // basterebbe un binding distratto o una riga di log per mostrare il segreto a schermo.
+        // Records generate a ToString with ALL the properties in it: without an override, one
+        // careless binding or one log line would be enough to put the secret on screen.
         ObserverEndpoint remoteEndpoint = ObserverEndpoint.Remote(
             new Uri("http://altra:5057/"), "SEGRETISSIMO", "dalla prova");
 
@@ -90,8 +90,8 @@ public class ObserverEndpointTests
     [Fact]
     public void TheLocalEndpointDescribesItselfWithoutMentioningAToken()
     {
-        // Finisce nell'intestazione della finestra: deve dire dove si sta guardando, non
-        // menzionare una credenziale che li' non esiste.
+        // It ends up in the window's heading: it has to say where you are looking, not mention
+        // a credential that does not exist there.
         string description = ObserverEndpoint.LocalChannel().Description;
 
         Assert.False(string.IsNullOrWhiteSpace(description));

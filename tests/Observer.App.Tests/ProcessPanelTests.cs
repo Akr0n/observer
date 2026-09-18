@@ -5,13 +5,13 @@ using Observer.Core.Metrics;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Il pannello dei processi: quando si apre, cosa ricorda, e cosa serve per terminare.
+/// The process panel: when it opens, what it remembers, and what it takes to end a process.
 /// </summary>
 /// <remarks>
-/// E' l'unico posto dell'applicazione da cui si distrugge qualcosa, e le regole che contano
-/// non sono quelle che si vedono. La selezione deve sopravvivere all'aggiornamento — l'elenco
-/// si riscrive ogni secondo mentre l'utente punta la riga — e la conferma deve disarmarsi
-/// cambiando riga, o il secondo clic ucciderebbe il processo sbagliato.
+/// It is the only place in the application that destroys anything, and the rules that matter
+/// are not the ones you can see. The selection has to survive the refresh — the list is
+/// rewritten every second while the user is aiming at the row — and the confirmation has to
+/// disarm when the row changes, or the second click would kill the wrong process.
 /// </remarks>
 public class ProcessPanelTests
 {
@@ -31,10 +31,10 @@ public class ProcessPanelTests
     [InlineData(null)]
     public void TheDiskSpaceGaugesOpenNothing(string? key)
     {
-        // Non e' una dimenticanza. Lo spazio occupato su un volume non e' attribuibile a un
-        // processo IN ESECUZIONE — chi ha scritto quei file magari non c'e' piu' da mesi. Un
-        // pannello che si aprisse con l'elenco della CPU sotto il titolo di un volume direbbe
-        // una cosa falsa.
+        // This is not an oversight. The space used on a volume is not attributable to a
+        // RUNNING process — whoever wrote those files may have been gone for months. A panel
+        // that opened with the CPU list under the title of a volume would be saying something
+        // false.
         Assert.Null(ProcessResource.From(key));
     }
 
@@ -49,8 +49,8 @@ public class ProcessPanelTests
     [Fact]
     public async Task TheDiskActivityGaugeAsksForWholeMachineIo()
     {
-        // Il quadrante e' di UN disco, l'elenco no: i contatori sono per processo, non per
-        // dispositivo. Il titolo deve dirlo, e al servizio si chiede "io", non la CPU.
+        // The gauge is for ONE disk, the list is not: the counters are per process, not per
+        // device. The title has to say so, and the service is asked for "io", not for the CPU.
         FakeProcessClient client = new();
         MainViewModel viewModel = new(client, configurationProblem: null);
 
@@ -64,8 +64,8 @@ public class ProcessPanelTests
     [Fact]
     public void AnIoRateIsFormattedAsBytesPerSecondAndAnUnknownOneAsADash()
     {
-        // Un trattino e non "0 B/s": sono due affermazioni diverse, e la seconda su un elenco
-        // ordinato per I/O sposterebbe l'attenzione sul programma sbagliato.
+        // A dash and not "0 B/s": they are two different claims, and the second one, on a list
+        // sorted by I/O, would move attention to the wrong program.
         Assert.Equal("1.5 MiB/s", ProcessRowState.From(new ProcessWire(1, "copia", 0d, 10, 1_572_864d)).Io);
         Assert.Equal("—", ProcessRowState.From(new ProcessWire(1, "ignoto", 0d, 10, null)).Io);
     }
@@ -73,8 +73,8 @@ public class ProcessPanelTests
     [Fact]
     public async Task TheSelectionSurvivesTheRefresh()
     {
-        // L'elenco si riscrive una volta al secondo. Senza tenere la selezione sul PID, la
-        // riga puntata si deselezionerebbe da sola mentre ci si prepara a terminarla.
+        // The list is rewritten once a second. Without holding the selection on the PID, the
+        // row being aimed at would deselect itself while you get ready to end it.
         FakeProcessClient client = new();
         MainViewModel viewModel = new(client, configurationProblem: null);
 
@@ -82,9 +82,9 @@ public class ProcessPanelTests
 
         viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 22);
 
-        // Stessi PID, valori nuovi: e' cio' che succede a ogni giro. Si passa per un altro
-        // quadrante e non per lo stesso, perche' lo stesso quadrante una seconda volta CHIUDE
-        // il pannello; un altro lo aggiorna sul posto, ed e' l'aggiornamento che qui conta.
+        // Same PIDs, new values: that is what happens on every round. This goes through another
+        // gauge and not the same one, because the same gauge a second time CLOSES the panel;
+        // another one refreshes it in place, and the refresh is what matters here.
         client.Cpu = ["9.0 %", "3.0 %"];
         await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("memory|memory.used.percent|"));
 
@@ -95,9 +95,9 @@ public class ProcessPanelTests
     [Fact]
     public async Task ChangingTheSelectedRowDisarmsTheConfirmation()
     {
-        // La regola che evita l'incidente peggiore: conferma armata su un processo, l'utente
-        // cambia idea e ne seleziona un altro, e il clic successivo terminerebbe quello nuovo
-        // senza averlo mai confermato.
+        // The rule that prevents the worst accident: the confirmation is armed on one process,
+        // the user changes their mind and selects another, and the next click would end the new
+        // one without ever having confirmed it.
         FakeProcessClient client = new();
         MainViewModel viewModel = new(client, configurationProblem: null);
 
@@ -136,9 +136,9 @@ public class ProcessPanelTests
     [Fact]
     public async Task ClickingTheSameGaugeAgainClosesThePanel()
     {
-        // Il gesto che chiunque prova per primo per far sparire cio' che ha appena fatto
-        // comparire. Prima riapriva lo stesso elenco, e l'unico modo di chiuderlo era il
-        // pulsante Close in fondo a destra.
+        // The gesture anyone tries first to make what they have just brought up go away again.
+        // It used to reopen the same list, and the only way to close it was the Close button
+        // at the bottom right.
         FakeProcessClient client = new();
         MainViewModel viewModel = new(client, configurationProblem: null);
 
@@ -169,8 +169,8 @@ public class ProcessPanelTests
     [Fact]
     public async Task TheButtonSaysWhenTheSecondClickIsNeeded()
     {
-        // Un pulsante solo, che cambia scritta: cosi' il fuoco della tastiera resta dov'e'.
-        // Con due pulsanti alternati, al primo clic quello premuto spariva.
+        // A single button that changes its text: that way the keyboard focus stays where it is.
+        // With two alternating buttons, the first click made the one just pressed disappear.
         FakeProcessClient client = new();
         MainViewModel viewModel = new(client, configurationProblem: null);
 
@@ -214,10 +214,10 @@ public class ProcessPanelTests
     [Fact]
     public async Task AClickWhileTheFirstReadIsInFlightIsNotDropped()
     {
-        // Macchina remota lenta: la prima lettura dell'elenco non torna subito. Nel frattempo
-        // chi ha cliccato clicca ancora — per chiudere, o per passare a un altro quadrante —
-        // e quel clic deve contare. Prima veniva scartato: il comando e' UNO per tutti i
-        // quadranti, e un comando asincrono in esecuzione rifiuta le esecuzioni concorrenti.
+        // Slow remote machine: the first read of the list does not come back straight away. In
+        // the meantime whoever clicked clicks again — to close, or to move to another gauge —
+        // and that click has to count. It used to be dropped: the command is ONE for all the
+        // gauges, and an async command that is running refuses concurrent executions.
         FakeProcessClient client = new() { PendingRead = new TaskCompletionSource<ProcessFetch>() };
         MainViewModel viewModel = new(client, configurationProblem: null);
 
@@ -230,7 +230,7 @@ public class ProcessPanelTests
 
         Assert.False(viewModel.IsProcessPanelOpen);
 
-        // E la risposta arrivata in ritardo per un pannello ormai chiuso non lo riempie.
+        // And a response that arrives late for a panel that is closed by now does not fill it.
         client.PendingRead.SetResult(new ProcessFetch(
             ServiceOutcome.Ok, string.Empty, [new ProcessRowState(99, "in ritardo", "99 %", "1 MiB")]));
         await first;
@@ -249,7 +249,7 @@ public class ProcessPanelTests
 
         Task cpu = viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("cpu|cpu.usage.total|"));
 
-        // Il secondo quadrante risponde subito; il primo, dopo.
+        // The second gauge answers straight away; the first one, later.
         client.PendingRead = null;
         await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("memory|memory.used.percent|"));
 
@@ -267,7 +267,7 @@ public class ProcessPanelTests
     {
         public IReadOnlyList<string> Cpu { get; set; } = ["5.0 %", "1.0 %"];
 
-        /// <summary>Se impostata, la prossima lettura dell'elenco risponde solo quando lo dice il test.</summary>
+        /// <summary>When set, the next read of the list answers only when the test says so.</summary>
         public TaskCompletionSource<ProcessFetch>? PendingRead { get; set; }
 
         public List<int> Killed { get; } = [];

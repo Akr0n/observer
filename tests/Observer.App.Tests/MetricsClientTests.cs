@@ -6,9 +6,9 @@ using Observer.Core.Metrics;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Il confine con la rete. Ogni modo di fallire deve diventare un esito DISTINTO con la sua
-/// frase: "il servizio e' spento" e "il token e' sbagliato" si risolvono in due modi diversi,
-/// e chi guarda la finestra non ha altro da cui capirlo.
+/// The boundary with the network. Every way of failing must become a DISTINCT outcome with its
+/// own wording: "the service is down" and "the token is wrong" are fixed in two different ways,
+/// and whoever is looking at the window has nothing else to tell them apart by.
 /// </summary>
 public class MetricsClientTests
 {
@@ -34,9 +34,9 @@ public class MetricsClientTests
 
         MetricPoint point = fetch.Snapshot.Collectors[0].Points[0];
 
-        // Il difetto piu' pericoloso di tutto il progetto e' un valore che si serializza e non
-        // si rideserializza: il client mostrerebbe zeri marcati "Ok". Qui si verifica che il
-        // numero vero arrivi fino in fondo.
+        // The most dangerous defect in the whole project is a value that serialises and does
+        // not deserialise back: the client would show zeros marked "Ok". This checks that the
+        // real number makes it all the way through.
         Assert.Equal(CollectorStatus.Ok, point.Status);
         Assert.Equal(MetricValueKind.Number, point.Value!.Value.Kind);
         Assert.Equal(64.25d, point.Value.Value.Number);
@@ -79,7 +79,7 @@ public class MetricsClientTests
     [Fact]
     public async Task GetLatestAsync_WhenTheServiceHasNotSampledYet_DoesNotCallItAnError()
     {
-        // 503 all'avvio e' normale: il campionatore non ha ancora pubblicato nulla.
+        // A 503 at startup is normal: the sampler has not published anything yet.
         using MetricsClient client =
             Create(new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
 
@@ -92,17 +92,17 @@ public class MetricsClientTests
     [Fact]
     public async Task GetProcessesAsync_OnAnOldService_SaysItIsOldNotThatTheResponseWasUnexpected()
     {
-        // Successo davvero, su questa macchina: la dashboard nuova ha interrogato un servizio
-        // 0.4.1, che quell'endpoint non ce l'ha, e ha risposto 404. Il messaggio diceva "non
-        // so come interpretarlo" e mandava a cercare un difetto che non c'era. La causa e'
-        // nota e il rimedio pure: aggiornare il servizio su quella macchina.
+        // This actually happened, on this machine: the new dashboard queried a 0.4.1 service,
+        // which does not have that endpoint, and got a 404. The message said "I do not know
+        // how to interpret this" and sent you hunting for a defect that was not there. The
+        // cause is known and so is the remedy: update the service on that machine.
         using MetricsClient client =
             Create(new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound)));
 
         ProcessFetch fetch = await client.GetProcessesAsync("cpu", 15, CancellationToken.None);
 
-        // IncompatibleVersion e non UnexpectedResponse: aspettare non aggiorna un servizio, e
-        // la barra di stato deve dirlo subito invece di restare in attesa.
+        // IncompatibleVersion and not UnexpectedResponse: waiting does not update a service,
+        // and the status bar has to say so straight away instead of staying in a waiting state.
         Assert.Equal(ServiceOutcome.IncompatibleVersion, fetch.Outcome);
         Assert.Contains("older than this dashboard", fetch.Problem, StringComparison.Ordinal);
         Assert.Empty(fetch.Processes);
@@ -111,8 +111,8 @@ public class MetricsClientTests
     [Fact]
     public async Task GetProcessesAsync_ForIoOnAServiceThatDoesNotKnowIt_SaysItIsOld()
     {
-        // Un servizio 0.6 non conosce "io": risponde 200 con l'elenco della CPU, e senza il
-        // campo "by". Mostrare quell'elenco sotto il titolo dell'I/O sarebbe una bugia.
+        // A 0.6 service does not know "io": it answers 200 with the CPU list, and without the
+        // "by" field. Showing that list under the I/O title would be a lie.
         using MetricsClient client = Create(new FakeHandler(_ => Json(HttpStatusCode.OK,
             """{"capturedAt":"2026-09-03T08:00:00Z","processes":[{"pid":1,"name":"x","cpuPercent":null,"workingSetBytes":10}]}""")));
 
@@ -126,8 +126,8 @@ public class MetricsClientTests
     [Fact]
     public async Task GetProcessesAsync_ForCpuOnAServiceThatDoesNotEchoTheCriterion_StillWorks()
     {
-        // Lo stesso servizio vecchio sa ordinare per CPU: l'assenza di "by" non deve
-        // rifiutare un elenco che e' giusto.
+        // That same old service can sort by CPU: a missing "by" must not make us reject a
+        // list that is correct.
         using MetricsClient client = Create(new FakeHandler(_ => Json(HttpStatusCode.OK,
             """{"capturedAt":"2026-09-03T08:00:00Z","processes":[{"pid":1,"name":"x","cpuPercent":null,"workingSetBytes":10}]}""")));
 
@@ -177,7 +177,7 @@ public class MetricsClientTests
     [Fact]
     public async Task GetLatestAsync_WithADifferentSchemaVersion_RefusesInsteadOfShowingZeros()
     {
-        // Un servizio piu' recente riempirebbe la finestra di campi a zero marcati "Ok".
+        // A newer service would fill the window with zeroed fields marked "Ok".
         using MetricsClient client = Create(new FakeHandler(_ => Json(
             HttpStatusCode.OK,
             """{"schemaVersion":99,"capturedAt":"2026-08-26T09:15:49.34Z","collectors":[]}""")));
@@ -226,8 +226,8 @@ public class MetricsClientTests
     [Fact]
     public async Task OnTheLOCALChannelNoCredentialIsSent()
     {
-        // Mandare il token dove non serve significa continuare a esporlo senza guadagnarci
-        // niente: il servizio, sul canale locale, non lo guarda nemmeno.
+        // Sending the token where it is not needed means going on exposing it for nothing in
+        // return: on the local channel the service does not even look at it.
         HttpRequestMessage? captured = null;
 
         using FakeHandler handler = new(request =>
@@ -248,7 +248,7 @@ public class MetricsClientTests
             ObserverEndpoint.Remote(new Uri("http://altra-macchina:5057/"), "il-token", "dai test"),
             handler);
 
-    /// <summary>Un client sul canale locale, che NON deve mandare alcuna credenziale.</summary>
+    /// <summary>A client on the local channel, which must NOT send any credential.</summary>
     private static MetricsClient CreateLocal(HttpMessageHandler handler) =>
         new(ObserverEndpoint.LocalChannel(), handler);
 

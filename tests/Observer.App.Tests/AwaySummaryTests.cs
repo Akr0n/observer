@@ -6,19 +6,19 @@ using Observer.Core.Metrics.Cpu;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// La frase che dice cosa e' successo mentre la finestra era chiusa.
+/// The line that says what happened while the window was closed.
 /// </summary>
 /// <remarks>
-/// E' la risposta onesta che questo stack puo' dare alla richiesta "avvisami se una macchina cade
-/// mentre non guardo": l'avviso vero non e' consegnabile senza poter fallire in silenzio, questo
-/// non puo' fallire in silenzio perche' non promette niente mentre nessuno guarda.
+/// It is the honest answer this stack can give to "tell me if a machine goes down while I am not
+/// looking": the real alert cannot be delivered without being able to fail silently, and this one
+/// cannot fail silently because it promises nothing while nobody is looking.
 /// </remarks>
 public class AwaySummaryTests
 {
     /// <remarks>
-    /// Mezzogiorno LOCALE, non UTC: la frase mostra l'ora della macchina di chi guarda (come
-    /// <c>HistoryStrip.Describe</c>), quindi un istante UTC renderebbe il test dipendente dal
-    /// fuso di chi lo esegue - verde qui e rosso sul runner, o viceversa.
+    /// LOCAL noon, not UTC: the line shows the clock of the machine you are watching from (like
+    /// <c>HistoryStrip.Describe</c>), so a UTC instant would make the test depend on the time
+    /// zone of whoever runs it - green here and red on the runner, or the other way round.
     /// </remarks>
     private static readonly DateTimeOffset Noon = new(new DateTime(2026, 9, 12, 12, 0, 0, DateTimeKind.Local));
 
@@ -28,9 +28,9 @@ public class AwaySummaryTests
     [Fact]
     public void NoGapsMeansNoLine()
     {
-        // Il silenzio e' un risultato: "ho chiesto e non c'era niente". Una riga "all good" per
-        // ogni macchina sana riempirebbe il riquadro proprio nel caso in cui non serve, e lo si
-        // imparerebbe a chiudere senza leggerlo.
+        // Silence is a result: "I asked and there was nothing". An "all good" line for every
+        // healthy machine would fill the panel in exactly the case where it is not needed, and
+        // people would learn to close it without reading it.
         Assert.Equal(string.Empty, AwaySummary.LineFor("lavoro", [], withDay: false));
     }
 
@@ -41,16 +41,16 @@ public class AwaySummaryTests
 
         Assert.Equal("lavoro: not measured for 3 h (12:20 – 15:20)", line);
 
-        // Con una sola, "in 1 period" sarebbe rumore: il totale E' quella.
+        // With only one, "in 1 period" would be noise: the total IS that one.
         Assert.DoesNotContain("period", line, StringComparison.Ordinal);
     }
 
     [Fact]
     public void SeveralOutagesSayHowManyAndWhichWasLongest()
     {
-        // Il totale da solo mentirebbe per omissione: tre ore in un colpo e tre ore in dieci
-        // singhiozzi sono due macchine diverse, e la piu' lunga e' quella che decide se alzarsi
-        // dalla sedia.
+        // The total on its own would lie by omission: three hours in one go and three hours in
+        // ten hiccups are two different machines, and the longest one is what decides whether
+        // you get out of your chair.
         string line = AwaySummary.LineFor("lavoro", [Gap(10, 20), Gap(60, 240), Gap(300, 310)], withDay: false);
 
         Assert.Contains("in 3 periods", line, StringComparison.Ordinal);
@@ -61,16 +61,16 @@ public class AwaySummaryTests
     [Fact]
     public void TheGapAtTheEdgeIsNotCountedAsAnOutage()
     {
-        // La ritenzione cancella un PREFISSO, indistinguibile da una macchina accesa a meta'
-        // finestra: chiamarlo interruzione sarebbe inventare, e una frase inventata insegna a
-        // non fidarsi delle altre.
+        // Retention deletes a PREFIX, indistinguishable from a machine switched on halfway
+        // through the window: calling it an outage would be inventing, and one invented line
+        // teaches you not to trust the rest.
         string edgeOnly = AwaySummary.LineFor("casa", [Gap(0, 45, atEdge: true)], withDay: false);
 
         Assert.Equal("casa: nothing known before 12:45", edgeOnly);
         Assert.DoesNotContain("not measured", edgeOnly, StringComparison.Ordinal);
 
-        // E quando c'e' anche un'interruzione vera, il bordo resta una nota in coda e NON entra
-        // nel totale: venti minuti, non sessantacinque.
+        // And when there is a real outage too, the edge stays a note at the end and does NOT go
+        // into the total: twenty minutes, not sixty-five.
         string edgeAndOutage = AwaySummary.LineFor("casa", [Gap(0, 45, atEdge: true), Gap(60, 80)], withDay: false);
 
         Assert.Contains("not measured for 20 min", edgeAndOutage, StringComparison.Ordinal);
@@ -81,8 +81,8 @@ public class AwaySummaryTests
     [Fact]
     public void TheDayFlagAddsTheWeekdayToBothTimes()
     {
-        // Stessa soglia e stessa ragione di HistoryStrip.Describe: a sette giorni "14:20" puo'
-        // essere uno qualunque di sette pomeriggi.
+        // Same threshold and same reason as HistoryStrip.Describe: at seven days "14:20" can be
+        // any one of seven afternoons.
         string plain = AwaySummary.LineFor("lavoro", [Gap(20, 200)], withDay: false);
         string dated = AwaySummary.LineFor("lavoro", [Gap(20, 200)], withDay: true);
 
@@ -93,27 +93,27 @@ public class AwaySummaryTests
     [Fact]
     public void AnOutageAcrossMidnightDoesNotReadBackwards()
     {
-        // A ventiquattro ore un'assenza puo' durare quasi l'intera finestra, e i due estremi
-        // cadono allora sullo stesso orario di due giorni diversi: senza il giorno la riga
-        // direbbe "not measured for 23 h 45 min (09:25 – 09:10)", cioe' una durata di quasi un
-        // giorno accanto a un intervallo che si legge come un quarto d'ora all'indietro.
-        // Succede anche a un'ora, su una macchina spenta a cavallo di mezzanotte: per questo la
-        // regola guarda la COPPIA e non la soglia della finestra.
+        // At twenty-four hours a gap can last almost the whole window, and its two ends then
+        // fall at the same time of day on two different days: without the day the line would
+        // say "not measured for 23 h 45 min (09:25 – 09:10)", a duration of almost a day next
+        // to an interval that reads as a quarter of an hour backwards. It happens at one hour
+        // too, on a machine that is down across midnight: that is why the rule looks at the
+        // PAIR and not at the window's threshold.
         string line = AwaySummary.LineFor("lavoro", [Gap(-755, -710)], withDay: false);
 
         Assert.Matches(@"\([A-Za-z]{3} \d{2}:\d{2} – [A-Za-z]{3} \d{2}:\d{2}\)", line);
 
-        // E quando i due estremi stanno nella stessa giornata il giorno NON compare: aggiungerlo
-        // sempre allungherebbe la frase dove non serve.
+        // And when the two ends are in the same day, the day does NOT appear: always adding it
+        // would make the line longer where it is not needed.
         Assert.DoesNotMatch(@"[A-Za-z]{3} \d{2}:\d{2}", AwaySummary.LineFor("lavoro", [Gap(10, 20)], withDay: false));
     }
 
     [Fact]
     public async Task AHistoryThatCannotBeReadSaysSoInsteadOfStayingSilent()
     {
-        // E' il punto in cui questa strada si distingue da un avviso che non compare: quando non
-        // si puo' sapere, lo si scrive. Il silenzio resta riservato a "ho chiesto e va tutto
-        // bene", e cosi' il silenzio significa qualcosa.
+        // This is the point where this route differs from an alert that never appears: when it
+        // cannot be known, it is written down. Silence stays reserved for "I asked and all is
+        // well", and that way silence means something.
         ObserverEndpoint local = ObserverEndpoint.LocalChannel();
         FailingHistoryClient client = new();
 
@@ -134,14 +134,14 @@ public class AwaySummaryTests
         Assert.Contains("persistenza spenta", viewModel.AwaySummaryText, StringComparison.Ordinal);
         Assert.True(viewModel.ShowAwaySummary);
 
-        // Il riepilogo chiede PIU' indietro della finestra che esamina, ed e' la correzione che
-        // tiene in piedi tutto il resto: senza quel margine la griglia, ancorata all'ultimo
-        // punto, sfora a sinistra e ogni macchina sana apre con "nothing known before".
+        // The summary asks FURTHER BACK than the window it examines, and that is the fix that
+        // holds up everything else: without that margin the grid, anchored to the last point,
+        // overruns on the left and every healthy machine opens with "nothing known before".
         Assert.True(
             client.SummaryQueryCount(TimeSpan.FromHours(1), DateTimeOffset.UtcNow) > 0,
             "il riepilogo non ha chiesto oltre la finestra: la griglia sforerebbe a sinistra");
 
-        // Cambiando periodo cambia la domanda, quindi si ricomincia da capo.
+        // Changing the period changes the question, so it starts again from scratch.
         int queriesAtOneHour = client.SummaryQueryCount(TimeSpan.FromHours(1), DateTimeOffset.UtcNow);
 
         viewModel.HistoryPeriod = "24h";
@@ -168,21 +168,21 @@ public class AwaySummaryTests
         }
         catch (OperationCanceledException)
         {
-            // Fine del test.
+            // End of the test.
         }
     }
 
-    /// <summary>Campiona benissimo, e lo storico non c'e'.</summary>
+    /// <summary>Samples perfectly well, and the history is not there.</summary>
     private sealed class FailingHistoryClient : IMetricsClient
     {
         private readonly System.Collections.Concurrent.ConcurrentBag<HistoryQuery> queries = [];
 
-        /// <summary>Le sole richieste del RIEPILOGO, riconosciute dal margine che solo lui chiede.</summary>
+        /// <summary>The SUMMARY's requests alone, told apart by the margin only it asks for.</summary>
         /// <remarks>
-        /// Contarle tutte non distinguerebbe niente: la striscia interroga la stessa serie a
-        /// ogni passo, quindi un contatore unico sale comunque e il test resterebbe verde anche
-        /// se il riepilogo non partisse mai. Il riepilogo e' l'unico che guarda PIU' indietro
-        /// della finestra, ed e' proprio la correzione che questo test deve inchiodare.
+        /// Counting them all would tell nothing apart: the strip queries the same series at
+        /// every step, so a single counter goes up anyway and the test would stay green even
+        /// if the summary never ran. The summary is the only one that looks FURTHER BACK than
+        /// the window, and that is precisely the fix this test has to pin down.
         /// </remarks>
         public int SummaryQueryCount(TimeSpan window, DateTimeOffset now) =>
             queries.Count(q => q.From < now - window - TimeSpan.FromMinutes(1));

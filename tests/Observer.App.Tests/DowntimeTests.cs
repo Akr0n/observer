@@ -3,12 +3,12 @@ using Observer.App.Services;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Come si legge la durata di un guasto accanto al nome di una macchina.
+/// How the duration of a fault reads next to a machine's name.
 /// </summary>
 /// <remarks>
-/// Il numero sbagliato qui non ha l'aria di un errore: ha l'aria di un'informazione. "3 min"
-/// accanto a una macchina caduta da tre giorni manda a cercare un guasto appena nato, ed e'
-/// esattamente la decisione che questa riga esiste per orientare.
+/// The wrong number here does not look like an error: it looks like information. "3 min" next
+/// to a machine that has been down for three days sends you looking for a fault that has just
+/// started, and that is exactly the decision this line exists to steer.
 /// </remarks>
 public class DowntimeTests
 {
@@ -18,25 +18,25 @@ public class DowntimeTests
     [InlineData(59)]
     public void UnderAMinuteSecondsAreNotCounted(int seconds)
     {
-        // "0 min" sembrerebbe un guasto di durata nulla, e i secondi sarebbero una precisione
-        // che una lettura ogni dieci o quindici secondi non ha.
+        // "0 min" would look like a fault of no duration at all, and seconds would be a
+        // precision that a reading every ten or fifteen seconds does not have.
         Assert.Equal("under 1 min", Downtime.Describe(TimeSpan.FromSeconds(seconds)));
     }
 
     [Fact]
     public void AClockGoingBackwardsDoesNotShowANegativeDuration()
     {
-        // L'ora di sistema puo' cambiare fra una lettura e l'altra: senza questo ramo la
-        // sottrazione darebbe una durata negativa e la frase un numero col segno meno.
+        // The system clock can change between one reading and the next: without this branch the
+        // subtraction would give a negative duration and the text a number with a minus sign.
         Assert.Equal("under 1 min", Downtime.Describe(TimeSpan.FromSeconds(-30)));
     }
 
     [Fact]
     public void MinutesAreTruncatedNotRounded()
     {
-        // La proprieta' che rende onesto un testo in ritardo: il numero mostrato e' sempre un
-        // limite inferiore della durata vera. Arrotondando, sommato al ritardo della lettura,
-        // la riga direbbe piu' di quanto sa.
+        // The property that keeps a late text honest: the number shown is always a lower bound
+        // on the real duration. With rounding, added to the lag of the reading, the row would
+        // say more than it knows.
         Assert.Equal("2 min", Downtime.Describe(TimeSpan.FromSeconds(179)));
         Assert.Equal("59 min", Downtime.Describe(TimeSpan.FromSeconds(3599)));
     }
@@ -44,7 +44,7 @@ public class DowntimeTests
     [Fact]
     public void TheMinuteBoundaryLeavesNoGap()
     {
-        // L'altro capo di "under 1 min": a cinquantanove secondi non si conta, a sessanta si.
+        // The other end of "under 1 min": at fifty-nine seconds it does not count, at sixty it does.
         Assert.Equal("under 1 min", Downtime.Describe(TimeSpan.FromSeconds(59)));
         Assert.Equal("1 min", Downtime.Describe(TimeSpan.FromMinutes(1)));
     }
@@ -60,8 +60,8 @@ public class DowntimeTests
     [Fact]
     public void TheDayBoundaryLeavesNoGap()
     {
-        // Un secondo prima delle ventiquattro ore si contano ancora le ore; un secondo dopo
-        // si contano i giorni, e le ore ripartono da zero senza sparire.
+        // One second before twenty-four hours the hours are still counted; one second after,
+        // the days are, and the hours start again from zero without disappearing.
         Assert.Equal("23 h 59 min", Downtime.Describe(TimeSpan.FromDays(1) - TimeSpan.FromSeconds(1)));
         Assert.Equal("1 day", Downtime.Describe(TimeSpan.FromDays(1)));
         Assert.Equal("1 day 1 h", Downtime.Describe(new TimeSpan(0, 25, 30, 0)));
@@ -79,7 +79,7 @@ public class DowntimeTests
     [Fact]
     public void TheSecondUnitDisappearsWhenItIsZero()
     {
-        // "2 h 0 min" e "3 days 0 h" chiedono di leggere uno zero che non aggiunge niente.
+        // "2 h 0 min" and "3 days 0 h" ask the reader to take in a zero that adds nothing.
         Assert.Equal("2 h", Downtime.Describe(TimeSpan.FromHours(2)));
         Assert.Equal("3 days", Downtime.Describe(TimeSpan.FromDays(3)));
     }
@@ -91,10 +91,10 @@ public class DowntimeTests
     [Fact]
     public void TheTextNeverShowsAFractionalNumber()
     {
-        // Non e' una prova sulla cultura: un intero non porta separatori in nessuna cultura,
-        // e a proteggere la cultura c'e' CA1305, che senza il formato esplicito non fa
-        // nemmeno compilare. Qui si pinna che la frase non contenga mai un numero con la
-        // virgola, cioe' che le unita' restino intere invece di diventare "1,5 h".
+        // This is not a test about the culture: an integer carries no separators in any
+        // culture, and the culture is guarded by CA1305, which without an explicit format does
+        // not even compile. What is pinned here is that the text never contains a number with
+        // a comma, that is, that the units stay whole instead of becoming "1,5 h".
         foreach (TimeSpan duration in new[]
         {
             TimeSpan.FromMinutes(90),

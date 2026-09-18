@@ -4,13 +4,13 @@ using Observer.App.Services;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Chi chiede la compressione e chi no, che e' la meta' client della decisione.
+/// Who asks for compression and who does not, which is the client half of the decision.
 /// </summary>
 /// <remarks>
-/// La codifica si NEGOZIA per richiesta: un servizio che comprime e un client che non lo chiede
-/// si scambiano esattamente i byte di prima. Quindi le due meta' stanno insieme o non stanno, e
-/// questa prova esiste perche' la meta' client e' invisibile - nessuna schermata cambia, nessun
-/// numero si muove, e cancellarla non farebbe fallire niente altro.
+/// The encoding is NEGOTIATED per request: a service that compresses and a client that does not
+/// ask for it exchange exactly the bytes they did before. So the two halves stand together or
+/// not at all, and this test exists because the client half is invisible - no screen changes, no
+/// number moves, and deleting it would make nothing else fail.
 /// </remarks>
 public class ClientCompressionTests
 {
@@ -20,8 +20,8 @@ public class ClientCompressionTests
     [Fact]
     public void OnTheWireCompressionIsRequested()
     {
-        // E' il percorso che paga i byte: la coda grezza dello storico pesa 76 kB a un'ora e
-        // 114 a ventiquattro, una volta per quadrante.
+        // This is the path that pays for the bytes: the raw history tail weighs 76 kB at one
+        // hour and 114 at twenty-four, once per gauge.
         using SocketsHttpHandler handler = new CertificatePinning(FakeFingerprint).Handler();
 
         Assert.Equal(DecompressionMethods.All, handler.AutomaticDecompression);
@@ -30,11 +30,11 @@ public class ClientCompressionTests
     [Fact]
     public void OnTheLocalChannelItIsNotAskedForOnPurpose()
     {
-        // Sulla pipe (o sul socket unix) i byte non attraversano niente. Chiederla li'
-        // significherebbe far comprimere e decomprimere la macchina che questo programma STA
-        // MISURANDO, cioe' pagare CPU che finisce nel numero mostrato per risparmiare byte che
-        // non esistono. E l'esclusione non ha bisogno di alcun ramo nel servizio: il servizio
-        // comprime solo cio' che gli viene chiesto, quindi basta non chiedere.
+        // On the pipe (or on the unix socket) the bytes cross nothing. Asking for it there would
+        // mean making the machine this program IS MEASURING compress and decompress, that is,
+        // paying CPU that ends up in the number on screen to save bytes that do not exist. And
+        // the exclusion needs no branch in the service: the service compresses only what it is
+        // asked for, so it is enough not to ask.
         using SocketsHttpHandler handler = LocalChannelHandler.Create();
 
         Assert.Equal(DecompressionMethods.None, handler.AutomaticDecompression);

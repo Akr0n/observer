@@ -5,20 +5,20 @@ using Observer.App.ViewModels;
 namespace Observer.App.Tests;
 
 /// <summary>
-/// Che l'attesa provata in <see cref="StatusEscalationTests"/> sia davvero cablata nel ciclo.
+/// That the grace proven in <see cref="StatusEscalationTests"/> is really wired into the loop.
 /// </summary>
 /// <remarks>
-/// Senza questa classe la tabella dell'escalation potrebbe essere perfetta e la finestra
-/// continuare ad aprirsi rossa: basterebbe che il view model passasse sempre zero come durata,
-/// e nessun test puro se ne accorgerebbe. Qui si guarda cio' che si vede a schermo.
+/// Without this class the escalation table could be perfect and the window still keep opening
+/// red: it would be enough for the view model to always pass zero as the duration, and no pure
+/// test would notice. What is looked at here is what shows on screen.
 /// </remarks>
 public class MainViewModelStatusTests
 {
     [Fact]
     public async Task TheWindowOpeningWhileTheServiceStarts_ShowsNoRedBar()
     {
-        // Il difetto misurato, riprodotto: il servizio non risponde ancora, e la finestra
-        // e' appena stata aperta.
+        // The measured defect, reproduced: the service is not answering yet, and the window
+        // has just been opened.
         FakeClock clock = new();
         MainViewModel viewModel = Build(ServiceOutcome.Unreachable, clock);
 
@@ -36,8 +36,8 @@ public class MainViewModelStatusTests
     [Fact]
     public async Task IfTheServiceStillDoesNotAnswerAfterTheGracePeriod_TheBarTurnsRed()
     {
-        // Il gemello obbligatorio del test sopra: rimandare l'allarme non deve significare
-        // sopprimerlo. Un servizio che non c'e' va detto, e va detto in rosso.
+        // The mandatory twin of the test above: postponing the alarm must not mean suppressing
+        // it. A service that is not there has to be reported, and reported in red.
         FakeClock clock = new();
         MainViewModel viewModel = Build(ServiceOutcome.Unreachable, clock);
 
@@ -59,9 +59,9 @@ public class MainViewModelStatusTests
     [Fact]
     public async Task ARejectedTokenDoesNotWait_ItIsRedFromTheFirstAttempt()
     {
-        // L'attesa vale solo dove aspettare puo' cambiare l'esito. Un token sbagliato sara'
-        // sbagliato anche fra dieci secondi: rimandare l'allarme rimanderebbe solo il momento
-        // in cui l'utente puo' correggerlo.
+        // The grace applies only where waiting can change the outcome. A wrong token will still
+        // be wrong ten seconds from now: postponing the alarm would only postpone the moment
+        // the user can correct it.
         FakeClock clock = new();
         MainViewModel viewModel = Build(ServiceOutcome.TokenRejected, clock);
 
@@ -99,7 +99,7 @@ public class MainViewModelStatusTests
         await loop.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
     }
 
-    /// <summary>Un client che fallisce sempre allo stesso modo.</summary>
+    /// <summary>A client that always fails in the same way.</summary>
     private sealed class FakeMetricsClient(ServiceOutcome outcome) : IMetricsClient
     {
         public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.LocalChannel();
@@ -112,8 +112,8 @@ public class MainViewModelStatusTests
         public Task<HistoryFetch> GetHistoryAsync(HistoryQuery query, CancellationToken cancellationToken) =>
             Task.FromResult(new HistoryFetch(outcome, MessageFor(outcome), null));
 
-        // Ricalca le frasi vere di MetricsClient: i test aspettano cio' che si vede a schermo,
-        // e una frase inventata qui renderebbe l'attesa una tautologia.
+        // Mirrors the real sentences of MetricsClient: the tests wait for what shows on screen,
+        // and a made-up sentence here would turn that wait into a tautology.
         private static string MessageFor(ServiceOutcome outcome) => outcome switch
         {
             ServiceOutcome.TokenRejected =>
