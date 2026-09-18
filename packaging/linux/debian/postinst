@@ -1,9 +1,9 @@
 #!/bin/sh
 set -e
 
-# Questo script NON genera, non chiede e non scrive alcun token: il servizio se lo procura da
-# solo al primo avvio, dentro /etc/observer, e lo protegge con i permessi del file.
-# Qui si crea soltanto l'utente e la cartella che gli servono per farlo.
+# This script does NOT generate, ask for or write any token: the service obtains one by
+# itself on first start, inside /etc/observer, and protects it with the file's permissions.
+# All that is created here is the user and the folder it needs to do so.
 
 case "$1" in
     configure)
@@ -15,22 +15,22 @@ case "$1" in
             adduser --system --ingroup observer --no-create-home                     --home /nonexistent --shell /usr/sbin/nologin observer
         fi
 
-        # 0700: solo il servizio. Il token che ci finira' dentro vale DALLA RETE e non scade,
-        # quindi la cartella non va letta da nessun altro.
+        # 0700: the service only. The token that will end up in it is valid FROM THE NETWORK
+        # and does not expire, so nobody else may read the folder.
         install -d -o observer -g observer -m 0700 /etc/observer
 
-        # NON "systemctl enable" e "systemctl start", e la differenza non e' formale.
+        # NOT "systemctl enable" and "systemctl start", and the difference is not a formality.
         #
-        # deb-systemd-invoke consulta /usr/sbin/policy-rc.d, che e' il modo in cui un
-        # amministratore dice "installa pure, ma NON avviare niente": durante la preparazione
-        # di un'immagine, dentro un contenitore, in un chroot. systemctl quel file non lo
-        # guarda nemmeno, e avvia lo stesso. La guardia [ -d /run/systemd/system ] copre il
-        # caso in cui systemd NON gira affatto, non questo.
+        # deb-systemd-invoke consults /usr/sbin/policy-rc.d, which is how an administrator
+        # says "go ahead and install, but do NOT start anything": while preparing an image,
+        # inside a container, in a chroot. systemctl does not even look at that file, and
+        # starts the service anyway. The [ -d /run/systemd/system ] guard covers the case
+        # where systemd is NOT running at all, not this one.
         #
-        # deb-systemd-helper, dal canto suo, tiene lo STATO dell'abilitazione: e' cio' che
-        # permette a "dpkg --purge" di ripulire i collegamenti che ha creato, e a un
-        # aggiornamento di non riabilitare un servizio che l'amministratore aveva disabilitato
-        # a mano. "systemctl enable" a ogni configure lo riabiliterebbe ogni volta.
+        # deb-systemd-helper, for its part, keeps the enablement STATE: that is what lets
+        # "dpkg --purge" clean up the links it created, and lets an upgrade leave alone a
+        # service the administrator had disabled by hand. "systemctl enable" on every
+        # configure would re-enable it every time.
         deb-systemd-helper unmask observer.service >/dev/null || true
 
         if deb-systemd-helper --quiet was-enabled observer.service; then
@@ -42,7 +42,7 @@ case "$1" in
         if [ -d /run/systemd/system ]; then
             systemctl --system daemon-reload >/dev/null || true
 
-            # $2 e' la versione precedente: valorizzata solo su un aggiornamento.
+            # $2 is the previous version: set only on an upgrade.
             if [ -n "$2" ]; then
                 deb-systemd-invoke restart observer.service >/dev/null || true
             else
@@ -50,8 +50,7 @@ case "$1" in
             fi
         fi
 
-        # In INGLESE: lo legge chiunque installi il pacchetto, ed e' testo visibile
-        # all'utente. I commenti di questo script restano in italiano.
+        # In ENGLISH: anyone who installs the package reads it, and it is user-visible text.
         cat <<'NOTE'
 
 Observer is installed.

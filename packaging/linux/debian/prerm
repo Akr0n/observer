@@ -1,9 +1,9 @@
 #!/bin/sh
 set -e
 
-# deb-systemd-invoke e non systemctl: rispetta policy-rc.d anche in fermata. Un
-# amministratore che ha vietato di toccare i servizi non vuole che li tocchi nemmeno la
-# rimozione di un pacchetto.
+# deb-systemd-invoke and not systemctl: it honours policy-rc.d on stop too. An
+# administrator who has forbidden touching services does not want the removal of a
+# package to touch them either.
 if [ -d /run/systemd/system ] && [ "$1" = remove ]; then
     deb-systemd-invoke stop observer.service >/dev/null || true
 fi

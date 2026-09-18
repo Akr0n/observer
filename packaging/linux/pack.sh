@@ -1,165 +1,166 @@
 #!/usr/bin/env bash
-# Costruisce il .deb di Observer.
+# Builds Observer's .deb.
 #
-# Non serve alcuno strumento .NET aggiuntivo: dpkg-deb c'e' gia' su ubuntu-latest. Gli
-# strumenti .NET per produrre pacchetti Debian sono la strada peggiore - uno e' fermo da anni,
-# l'altro e' a pagamento.
+# No extra .NET tool is needed: dpkg-deb is already on ubuntu-latest. The .NET tools for
+# building Debian packages are the worst option - one has not been updated in years, the
+# other is paid.
 set -euo pipefail
 
-QUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RADICE="$(cd "$QUI/../.." && pwd)"
-ALBERO="$QUI/root"
-USCITA="$QUI/out"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+STAGING="$SCRIPT_DIR/root"
+OUT_DIR="$SCRIPT_DIR/out"
 CONFIG="${1:-Release}"
 
-# LA versione viene da Directory.Build.props, che e' l'unica fonte. Prima era scritta a mano
-# qui, nel control e nel .wxs: alzarla voleva dire ricordarsi di tre posti.
-VERSIONE="$(sed -n "s:.*<Version>\(.*\)</Version>.*:\1:p" "$RADICE/Directory.Build.props" | head -1)"
+# THE version comes from Directory.Build.props, which is the only source. It used to be
+# written by hand here, in control and in the .wxs: bumping it meant remembering three places.
+VERSION="$(sed -n "s:.*<Version>\(.*\)</Version>.*:\1:p" "$REPO_ROOT/Directory.Build.props" | head -1)"
 
-if [ -z "$VERSIONE" ]; then
-    echo "Non trovo <Version> in Directory.Build.props." >&2
+if [ -z "$VERSION" ]; then
+    echo "Cannot find <Version> in Directory.Build.props." >&2
     exit 1
 fi
 
-# E il changelog deve concordare. Un pacchetto la cui versione non corrisponde alla prima voce
-# del changelog e' un pacchetto che mente sulla propria storia, e lintian lo dice; ma dirlo qui
-# costa un confronto e si scopre prima.
-if ! head -1 "$QUI/debian/changelog" | grep -q "($VERSIONE)"; then
-    echo "Il changelog non parla della versione $VERSIONE:" >&2
-    head -1 "$QUI/debian/changelog" >&2
+# And the changelog must agree. A package whose version does not match the first changelog
+# entry is a package that lies about its own history, and lintian says so; but checking it
+# here costs one comparison and catches it sooner.
+if ! head -1 "$SCRIPT_DIR/debian/changelog" | grep -q "($VERSION)"; then
+    echo "The changelog does not describe version $VERSION:" >&2
+    head -1 "$SCRIPT_DIR/debian/changelog" >&2
     exit 1
 fi
 
-# E nessuna riga puo' superare le 80 colonne. Non e' pignoleria di stile: lintian emette
-# debian-changelog-line-too-long, il job di release gira con --fail-on error,warning, e una
-# riga di 81 caratteri ferma la pubblicazione DOPO che l'MSI e' gia' stato costruito. E'
-# successo: v0.2.0, due righe a 81. Costa un confronto e si scopre qui.
-# SOLO la voce nuova, cioe' fino alla riga di firma: lintian guarda quella, e le voci
-# storiche restano come sono state scritte invece di dover essere riaperte a ogni release.
-# L'uscita PRIMA del controllo, e non dopo: la riga di firma e' a formato obbligato - nome
-# piu' indirizzo piu' data - e supera gli 80 da sempre, ma lintian non la conta. Con i due
-# blocchi nell'ordine sbagliato questa guardia bloccherebbe ogni singola build.
-LUNGHE="$(awk '/^ -- / { exit } length($0) > 80 { print FNR ": " length($0) " colonne" }' "$QUI/debian/changelog")"
+# And no line may be longer than 80 columns. This is not style pedantry: lintian emits
+# debian-changelog-line-too-long, the release job runs with --fail-on error,warning, and an
+# 81-character line stops the release AFTER the MSI has already been built. It happened:
+# v0.2.0, two lines at 81. It costs one comparison and it is caught here.
+# ONLY the new entry, that is, up to the sign-off line: that is the one lintian checks, and the
+# older entries stay as they were written instead of having to be reopened at every release.
+# The exit comes BEFORE the check, not after: the sign-off line has a mandatory format - name
+# plus address plus date - and has always been longer than 80, but lintian does not count it.
+# With the two blocks in the wrong order this guard would block every single build.
+LONG_LINES="$(awk '/^ -- / { exit } length($0) > 80 { print FNR ": " length($0) " columns" }' "$SCRIPT_DIR/debian/changelog")"
 
-if [ -n "$LUNGHE" ]; then
-    echo "Righe troppo lunghe nel changelog (lintian ne ammette 80):" >&2
-    echo "$LUNGHE" >&2
+if [ -n "$LONG_LINES" ]; then
+    echo "Lines too long in the changelog (lintian allows at most 80):" >&2
+    echo "$LONG_LINES" >&2
     exit 1
 fi
 
-# E la voce nuova deve essere DATATA DOPO la precedente. Lintian confronta le due date e
-# rifiuta il pacchetto (latest-changelog-entry-without-new-date): e' successo alla 0.8.1,
-# scritta con le 11:30 sotto una 0.8.0 scritta con le 12:00, e la release e' fallita dopo che
-# l'MSI era gia' costruito. Anche questo costa un confronto e si scopre qui.
-DATA_NUOVA="$(grep -m1 '^ -- ' "$QUI/debian/changelog" | sed 's/.*>  //')"
-DATA_VECCHIA="$(grep -m2 '^ -- ' "$QUI/debian/changelog" | tail -1 | sed 's/.*>  //')"
+# And the new entry must be DATED AFTER the previous one. Lintian compares the two dates and
+# rejects the package (latest-changelog-entry-without-new-date): it happened to 0.8.1, dated
+# 11:30 under a 0.8.0 dated 12:00, and the release failed after the MSI had already been
+# built. This too costs one comparison and is caught here.
+NEW_DATE="$(grep -m1 '^ -- ' "$SCRIPT_DIR/debian/changelog" | sed 's/.*>  //')"
+PREVIOUS_DATE="$(grep -m2 '^ -- ' "$SCRIPT_DIR/debian/changelog" | tail -1 | sed 's/.*>  //')"
 
-if [ "$(date -d "$DATA_NUOVA" +%s)" -le "$(date -d "$DATA_VECCHIA" +%s)" ]; then
-    echo "La data della voce nuova del changelog ($DATA_NUOVA) non e' successiva a quella" >&2
-    echo "precedente ($DATA_VECCHIA): lintian la rifiuta." >&2
+if [ "$(date -d "$NEW_DATE" +%s)" -le "$(date -d "$PREVIOUS_DATE" +%s)" ]; then
+    echo "The date of the new changelog entry ($NEW_DATE) is not later than that of the" >&2
+    echo "previous one ($PREVIOUS_DATE): lintian rejects it." >&2
     exit 1
 fi
 
-echo "Versione $VERSIONE"
+echo "Version $VERSION"
 
-rm -rf "$ALBERO" "$USCITA"
-mkdir -p "$ALBERO/DEBIAN" "$ALBERO/usr/lib/observer/service" "$ALBERO/usr/lib/observer/dashboard"          "$ALBERO/usr/lib/observer/cli" "$ALBERO/usr/bin" "$ALBERO/lib/systemd/system"          "$ALBERO/usr/share/doc/observer" "$ALBERO/usr/share/applications"          "$ALBERO/usr/share/icons/hicolor/256x256/apps" "$ALBERO/usr/share/man/man1" "$ALBERO/usr/share/lintian/overrides" "$ALBERO/etc/ufw/applications.d" "$USCITA"
+rm -rf "$STAGING" "$OUT_DIR"
+mkdir -p "$STAGING/DEBIAN" "$STAGING/usr/lib/observer/service" "$STAGING/usr/lib/observer/dashboard"          "$STAGING/usr/lib/observer/cli" "$STAGING/usr/bin" "$STAGING/lib/systemd/system"          "$STAGING/usr/share/doc/observer" "$STAGING/usr/share/applications"          "$STAGING/usr/share/icons/hicolor/256x256/apps" "$STAGING/usr/share/man/man1" "$STAGING/usr/share/lintian/overrides" "$STAGING/etc/ufw/applications.d" "$OUT_DIR"
 
-pubblica() {
-    local progetto="$1" destinazione="$2"
-    echo "Pubblico $progetto..."
-    # NON self-contained: Ubuntu 24.04 ha .NET 10 nel proprio archivio ufficiale, in main, con
-    # aggiornamenti di sicurezza. Imbarcare un runtime significherebbe doverlo aggiornare noi.
-    dotnet publish "$RADICE/src/$progetto" -c "$CONFIG" -r linux-x64 --self-contained false         -o "$destinazione" --nologo >/dev/null
+publish() {
+    local project="$1" destination="$2"
+    echo "Publishing $project..."
+    # NOT self-contained: Ubuntu 24.04 has .NET 10 in its own official archive, in main, with
+    # security updates. Shipping a runtime would mean having to keep it updated ourselves.
+    dotnet publish "$REPO_ROOT/src/$project" -c "$CONFIG" -r linux-x64 --self-contained false         -o "$destination" --nologo >/dev/null
 }
 
-pubblica Observer.Service "$ALBERO/usr/lib/observer/service"
-pubblica Observer.App     "$ALBERO/usr/lib/observer/dashboard"
-pubblica Observer.Cli     "$ALBERO/usr/lib/observer/cli"
+publish Observer.Service "$STAGING/usr/lib/observer/service"
+publish Observer.App     "$STAGING/usr/lib/observer/dashboard"
+publish Observer.Cli     "$STAGING/usr/lib/observer/cli"
 
-# LA GUARDIA, e qui vale piu' che nell'MSI. "dotnet publish" copia nell'output anche
-# appsettings.Local.json, cioe' il file dove uno sviluppatore tiene il proprio token. Un .deb
-# che lo imbarcasse darebbe a OGNI macchina lo STESSO token, perche' la configurazione esplicita
-# vince sul deposito: annullerebbe da sola l'intero meccanismo che genera una chiave per
-# macchina. Si tolgono, e poi si CONTROLLA che non ce ne siano piu'.
-find "$ALBERO" \( -name 'appsettings*.Local.json' -o -name 'credentials.json'                  -o -name 'client.json' -o -name '*.pdb'                  -o -name 'appsettings.Development.json'                  -o -name 'runtimeconfig.template.json' \) -print -delete
+# THE GUARD, and here it matters even more than in the MSI. "dotnet publish" also copies
+# appsettings.Local.json into the output, which is the file where a developer keeps their own
+# token. A .deb that shipped it would give EVERY machine the SAME token, because explicit
+# configuration wins over the credential store: on its own it would defeat the whole mechanism
+# that generates one key per machine. They are removed, and then we CHECK that none are left.
+find "$STAGING" \( -name 'appsettings*.Local.json' -o -name 'credentials.json'                  -o -name 'client.json' -o -name '*.pdb'                  -o -name 'appsettings.Development.json'                  -o -name 'runtimeconfig.template.json' \) -print -delete
 
-if find "$ALBERO" \( -name 'appsettings*.Local.json' -o -name 'credentials.json'                     -o -name 'client.json' \) | grep -q .; then
-    echo "Nel pacchetto e' rimasto un file che puo' portare un segreto." >&2
+if find "$STAGING" \( -name 'appsettings*.Local.json' -o -name 'credentials.json'                     -o -name 'client.json' \) | grep -q .; then
+    echo "A file that can carry a secret is still in the package." >&2
     exit 1
 fi
 
-# I permessi che escono da "dotnet publish" non sono quelli di un pacchetto Debian, e non e'
-# un'ipotesi: lintian, girato sul .deb vero, segnala le .dll gestite a 0744
-# (executable-not-elf-or-script piu' non-standard-executable-perm) e appsettings.json a 0777.
+# The permissions that come out of "dotnet publish" are not those of a Debian package, and
+# this is not a guess: lintian, run on the real .deb, flags the managed .dlls at 0744
+# (executable-not-elf-or-script plus non-standard-executable-perm) and appsettings.json at 0777.
 #
-# L'ultimo non e' una rifinitura. Un file di configurazione scrivibile da CHIUNQUE, dentro un
-# albero che il servizio rilegge a ogni avvio, oggi e' tappato soltanto dal permesso della
-# cartella che lo contiene: e' l'unica cosa fra un utente qualsiasi e il contenuto della
-# sezione Kestrel del servizio.
+# The last one is not cosmetic. A configuration file writable by ANYONE, inside a tree the
+# service reads again on every start, is currently protected only by the permissions of the
+# directory that holds it: that is all that stands between any local user and the contents
+# of the service's Kestrel section.
 #
-# Si azzera tutto a 0644 e si rimette 0755 SOLO sui tre eseguibili veri. Cosi' cadono anche
-# shared-library-is-executable sulle .so native, che il bit di esecuzione non lo vogliono.
-find "$ALBERO/usr/lib/observer" -type f -exec chmod 0644 {} +
-chmod 0755 "$ALBERO/usr/lib/observer/service/Observer.Service"
-chmod 0755 "$ALBERO/usr/lib/observer/dashboard/Observer.App"
-chmod 0755 "$ALBERO/usr/lib/observer/cli/observer"
+# Everything is reset to 0644, and 0755 goes back ONLY on the three real executables. This
+# also clears shared-library-is-executable on the native .so files, which should not carry
+# the execute bit.
+find "$STAGING/usr/lib/observer" -type f -exec chmod 0644 {} +
+chmod 0755 "$STAGING/usr/lib/observer/service/Observer.Service"
+chmod 0755 "$STAGING/usr/lib/observer/dashboard/Observer.App"
+chmod 0755 "$STAGING/usr/lib/observer/cli/observer"
 
-# unstripped-binary-or-object, e per lintian e' un ERRORE, non un avvertimento: le librerie
-# native che arrivano dai pacchetti NuGet portano dentro la tabella dei simboli.
-find "$ALBERO/usr/lib/observer" -name '*.so' -exec strip --strip-unneeded {} +
+# unstripped-binary-or-object, and lintian treats it as an ERROR, not a warning: the native
+# libraries that come from NuGet packages still carry their symbol tables.
+find "$STAGING/usr/lib/observer" -name '*.so' -exec strip --strip-unneeded {} +
 
-install -m 0644 "$QUI/debian/observer.service" "$ALBERO/lib/systemd/system/observer.service"
-# Il control e' un modello: la versione ci entra da fuori, da Directory.Build.props.
-sed "s/@VERSIONE@/$VERSIONE/" "$QUI/debian/control" > "$ALBERO/DEBIAN/control"
-chmod 0644 "$ALBERO/DEBIAN/control"
-install -m 0755 "$QUI/debian/postinst"         "$ALBERO/DEBIAN/postinst"
-install -m 0755 "$QUI/debian/prerm"            "$ALBERO/DEBIAN/prerm"
-install -m 0755 "$QUI/debian/postrm"           "$ALBERO/DEBIAN/postrm"
-install -m 0644 "$QUI/debian/copyright"        "$ALBERO/usr/share/doc/observer/copyright"
+install -m 0644 "$SCRIPT_DIR/debian/observer.service" "$STAGING/lib/systemd/system/observer.service"
+# control is a template: the version is filled in from outside, from Directory.Build.props.
+sed "s/@VERSION@/$VERSION/" "$SCRIPT_DIR/debian/control" > "$STAGING/DEBIAN/control"
+chmod 0644 "$STAGING/DEBIAN/control"
+install -m 0755 "$SCRIPT_DIR/debian/postinst"         "$STAGING/DEBIAN/postinst"
+install -m 0755 "$SCRIPT_DIR/debian/prerm"            "$STAGING/DEBIAN/prerm"
+install -m 0755 "$SCRIPT_DIR/debian/postrm"           "$STAGING/DEBIAN/postrm"
+install -m 0644 "$SCRIPT_DIR/debian/copyright"        "$STAGING/usr/share/doc/observer/copyright"
 
-# changelog.gz e NON changelog.Debian.gz: questo e' un pacchetto NATIVO - la versione non ha
-# revisione Debian - e per un pacchetto nativo il secondo nome e' sbagliato. Lo dice lintian
-# (wrong-name-for-changelog-of-native-package), e ha ragione.
-gzip -9n -c "$QUI/debian/changelog" > "$ALBERO/usr/share/doc/observer/changelog.gz"
-chmod 0644 "$ALBERO/usr/share/doc/observer/changelog.gz"
+# changelog.gz and NOT changelog.Debian.gz: this is a NATIVE package - the version has no
+# Debian revision - and for a native package the second name is wrong. lintian says so
+# (wrong-name-for-changelog-of-native-package), and it is right.
+gzip -9n -c "$SCRIPT_DIR/debian/changelog" > "$STAGING/usr/share/doc/observer/changelog.gz"
+chmod 0644 "$STAGING/usr/share/doc/observer/changelog.gz"
 
-# Le pagine di manuale. Non e' una formalita': i due comandi finiscono in /usr/bin, e su
-# Debian cio' che sta in /usr/bin si spiega con "man", non con "--help" e basta.
-gzip -9n -c "$QUI/debian/observer.1"           > "$ALBERO/usr/share/man/man1/observer.1.gz"
-gzip -9n -c "$QUI/debian/observer-dashboard.1" > "$ALBERO/usr/share/man/man1/observer-dashboard.1.gz"
-chmod 0644 "$ALBERO/usr/share/man/man1/observer.1.gz"            "$ALBERO/usr/share/man/man1/observer-dashboard.1.gz"
+# The man pages. They are not a formality: both commands end up in /usr/bin, and on Debian
+# whatever lives in /usr/bin is documented by "man", not by "--help" alone.
+gzip -9n -c "$SCRIPT_DIR/debian/observer.1"           > "$STAGING/usr/share/man/man1/observer.1.gz"
+gzip -9n -c "$SCRIPT_DIR/debian/observer-dashboard.1" > "$STAGING/usr/share/man/man1/observer-dashboard.1.gz"
+chmod 0644 "$STAGING/usr/share/man/man1/observer.1.gz"            "$STAGING/usr/share/man/man1/observer-dashboard.1.gz"
 
-# L'unico tag che resta e non si puo' correggere: le librerie che SkiaSharp porta dentro di
-# se'. Il file spiega perche', ed e' volutamente corto - un elenco lungo di eccezioni sarebbe
-# il modo di smettere di guardarle.
-install -m 0644 "$QUI/debian/lintian-overrides" "$ALBERO/usr/share/lintian/overrides/observer"
+# The only tag left, and it cannot be fixed: the libraries SkiaSharp bundles inside itself.
+# The file explains why, and it is deliberately short - a long list of exceptions is how
+# people stop looking at them.
+install -m 0644 "$SCRIPT_DIR/debian/lintian-overrides" "$STAGING/usr/share/lintian/overrides/observer"
 
-# Il profilo per ufw. NON apre niente da solo - un pacchetto Debian non tocca il firewall di
-# chi lo installa - ma rende possibile "sudo ufw allow Observer" al posto del numero della
-# porta. Sta in /etc, quindi e' un conffile: cosi' dpkg lo tratta da configurazione e a un
-# aggiornamento non sovrascrive una modifica dell'amministratore.
-install -m 0644 "$QUI/debian/observer.ufw" "$ALBERO/etc/ufw/applications.d/observer"
-echo /etc/ufw/applications.d/observer > "$ALBERO/DEBIAN/conffiles"
-chmod 0644 "$ALBERO/DEBIAN/conffiles"
+# The ufw profile. It does NOT open anything by itself - a Debian package does not touch the
+# firewall of whoever installs it - but it lets an administrator type "sudo ufw allow Observer"
+# instead of the port number. It lives in /etc, so it is a conffile: dpkg treats it as
+# configuration and does not overwrite an administrator's change on upgrade.
+install -m 0644 "$SCRIPT_DIR/debian/observer.ufw" "$STAGING/etc/ufw/applications.d/observer"
+echo /etc/ufw/applications.d/observer > "$STAGING/DEBIAN/conffiles"
+chmod 0644 "$STAGING/DEBIAN/conffiles"
 
-if [ -f "$RADICE/src/Observer.App/Assets/observer.png" ]; then
-    install -m 0644 "$RADICE/src/Observer.App/Assets/observer.png"         "$ALBERO/usr/share/icons/hicolor/256x256/apps/observer.png"
+if [ -f "$REPO_ROOT/src/Observer.App/Assets/observer.png" ]; then
+    install -m 0644 "$REPO_ROOT/src/Observer.App/Assets/observer.png"         "$STAGING/usr/share/icons/hicolor/256x256/apps/observer.png"
 fi
 
-cat > "$ALBERO/usr/bin/observer" <<'AVVIO'
+cat > "$STAGING/usr/bin/observer" <<'LAUNCHER'
 #!/bin/sh
 exec /usr/lib/observer/cli/observer "$@"
-AVVIO
-chmod 0755 "$ALBERO/usr/bin/observer"
+LAUNCHER
+chmod 0755 "$STAGING/usr/bin/observer"
 
-cat > "$ALBERO/usr/bin/observer-dashboard" <<'AVVIO'
+cat > "$STAGING/usr/bin/observer-dashboard" <<'LAUNCHER'
 #!/bin/sh
 exec /usr/lib/observer/dashboard/Observer.App "$@"
-AVVIO
-chmod 0755 "$ALBERO/usr/bin/observer-dashboard"
+LAUNCHER
+chmod 0755 "$STAGING/usr/bin/observer-dashboard"
 
-cat > "$ALBERO/usr/share/applications/observer.desktop" <<'VOCE'
+cat > "$STAGING/usr/share/applications/observer.desktop" <<'DESKTOP_ENTRY'
 [Desktop Entry]
 Type=Application
 Name=Observer
@@ -168,19 +169,19 @@ Exec=observer-dashboard
 Icon=observer
 Terminal=false
 Categories=System;Monitor;
-VOCE
-chmod 0644 "$ALBERO/usr/share/applications/observer.desktop"
+DESKTOP_ENTRY
+chmod 0644 "$STAGING/usr/share/applications/observer.desktop"
 
-# Compressione predefinita, cioe' zstd su Ubuntu 24.04. Misurato: bookworm (dpkg 1.21.23) la
-# installa senza storie; fallisce solo da bullseye in giu'. E li' il punto e' comunque teorico,
-# perche' aspnetcore-runtime-10.0 su bookworm non esiste.
-dpkg-deb --root-owner-group --build "$ALBERO" "$USCITA/observer_${VERSIONE}_amd64.deb"
+# Default compression, which is zstd on Ubuntu 24.04. Measured: bookworm (dpkg 1.21.23)
+# installs it without complaint; it fails only on bullseye and older. And there the point is
+# academic anyway, because aspnetcore-runtime-10.0 does not exist on bookworm.
+dpkg-deb --root-owner-group --build "$STAGING" "$OUT_DIR/observer_${VERSION}_amd64.deb"
 
 echo
-# sed e NON head: con "set -o pipefail", head chiude la pipe dopo venti righe e il SIGPIPE
-# di dpkg-deb diventa un codice d'uscita - cioe' un pacchetto costruito bene e uno script che
-# dice di aver fallito. E' una corsa: in CI e' stata vinta per settimane, in un container
-# Debian e' stata persa il 2026-09-03, e lintian non e' mai partito. sed legge fino in fondo.
-dpkg-deb --info "$USCITA"/observer_*.deb | sed -n '1,20p'
+# sed and NOT head: with "set -o pipefail", head closes the pipe after twenty lines and
+# dpkg-deb's SIGPIPE becomes an exit code - that is, a correctly built package and a script
+# that says it failed. It is a race: in CI it was won for weeks, in a Debian container it was
+# lost on 2026-09-03, and lintian never ran. sed reads to the end.
+dpkg-deb --info "$OUT_DIR"/observer_*.deb | sed -n '1,20p'
 echo
-ls -lh "$USCITA"/observer_*.deb
+ls -lh "$OUT_DIR"/observer_*.deb

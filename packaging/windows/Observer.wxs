@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Il pacchetto di Observer.
+  The Observer package.
 
-  Non genera, non chiede e non registra alcun token: dal piano 3 il servizio se lo procura da
-  solo al primo avvio, sotto C:\ProgramData\Observer, con permessi che escludono ogni altro
-  account. Questo installer copia file, registra un servizio e crea un collegamento.
+  It generates no token, asks for none and registers none: since plan 3 the service creates its
+  own on first start, under C:\ProgramData\Observer, with permissions that exclude every other
+  account. This installer copies files, registers a service and creates a shortcut.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall"
@@ -17,55 +17,55 @@
            Scope="perMachine"
            Compressed="yes">
 
-    <!-- Un solo pacchetto per-macchina copre entrambi i casi: il servizio DEVE essere
-         per-macchina, e con ProgramMenuFolder il collegamento finisce nel menu Start di tutti
-         gli utenti. Due pacchetti separati non servono. -->
+    <!-- One per-machine package covers both cases: the service MUST be per-machine, and
+         with ProgramMenuFolder the shortcut lands in the Start menu of every user. Two
+         separate packages are not needed. -->
     <MajorUpgrade DowngradeErrorMessage="A newer version of Observer is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- SENZA questa voce il collegamento nel menu Start mostra l'icona generica di un
-         documento, e non e' un dettaglio estetico: e' l'unica cosa che distingue il programma
-         nell'elenco. Un collegamento PUBBLICIZZATO (Advertise="yes") non punta al file ma a un
-         descrittore, quindi Windows non ha da dove ricavare l'icona e prende quella del tipo
-         di file. Misurato: nell'MSI precedente la tabella Icon non esisteva affatto, mentre
-         l'eseguibile la sua icona ce l'ha - la finestra e la barra delle applicazioni la
-         mostrano - ma per un collegamento pubblicizzato quella non basta.
+    <!-- WITHOUT this entry the Start-menu shortcut shows the generic document icon, and that
+         is not a cosmetic detail: it is the only thing that sets the program apart in the
+         list. An ADVERTISED shortcut (Advertise="yes") points not at the file but at a
+         descriptor, so Windows has nowhere to take the icon from and uses the one for the file
+         type. Measured: in the previous MSI the Icon table did not exist at all, while the
+         executable does have its icon - the window and the taskbar show it - but for an
+         advertised shortcut that is not enough.
          
-         DUE VINCOLI, entrambi presi da ICE50 al primo tentativo, con un .ico del repository:
-         l'ID di questa voce deve FINIRE con .exe o .ico, e l'estensione deve COINCIDERE con
-         quella del file chiave del componente che ospita il collegamento. Il file chiave qui
-         e' Observer.App.exe, quindi l'icona si estrae dall'eseguibile stesso: e' la stessa
-         immagine, perche' il csproj la incorpora con ApplicationIcon. -->
+         TWO CONSTRAINTS, both caught by ICE50 on the first attempt, with a .ico from the
+         repository: the ID of this entry must END in .exe or .ico, and the extension must
+         MATCH that of the key file of the component that holds the shortcut. The key file
+         here is Observer.App.exe, so the icon is extracted from the executable itself: it is
+         the same image, because the csproj embeds it with ApplicationIcon. -->
     <Icon Id="ObserverIcon.exe" SourceFile="$(var.PayloadDir)Observer.App.exe" />
 
-    <!-- La stessa icona anche in "App e funzionalita". -->
+    <!-- The same icon in "Apps & features" too. -->
     <Property Id="ARPPRODUCTICON" Value="ObserverIcon.exe" />
 
     <StandardDirectory Id="ProgramFiles6432Folder">
       <Directory Id="INSTALLFOLDER" Name="Observer" />
     </StandardDirectory>
 
-    <!-- Il deposito delle credenziali: token di macchina e certificato. L'installer non lo
-         crea e non lo tocca - lo fa il servizio, con una DACL che esclude ogni altro account -
-         ma la disinstallazione lo porta via. -->
+    <!-- The credential store: machine token and certificate. The installer neither creates
+         it nor touches it - the service does, with a DACL that excludes every other account -
+         but uninstalling removes it. -->
     <StandardDirectory Id="CommonAppDataFolder">
-      <Directory Id="DepositoObserver" Name="Observer" />
+      <Directory Id="CredentialStoreFolder" Name="Observer" />
     </StandardDirectory>
 
-    <!-- Lo storico. Finisce qui e non altrove perche' il servizio gira come LocalSystem e
-         chiede la cartella dati LOCALE dell'account: per SYSTEM e' dentro il profilo, sotto
-         System32. Non e' un posto che qualcuno andrebbe a cercare a mano, ed e' esattamente
-         il motivo per cui deve pulirlo l'installer. -->
-    <!-- System64Folder e NON SystemFolder, e la differenza e' capovolta rispetto a come suona:
-         in un pacchetto a 64 bit "SystemFolder" e' SysWOW64, cioe' la cartella a 32 bit, e
-         System64Folder e' System32. Il servizio gira a 64 bit, quindi il suo profilo sta sotto
-         System32. Preso da ICE80 al primo tentativo: "64BitComponent uses 32BitDirectory". -->
+    <!-- The history. It lives here and nowhere else because the service runs as LocalSystem
+         and asks for the account's LOCAL data folder: for SYSTEM that is inside the profile,
+         under System32. Nobody would ever go looking for it there by hand, and that is exactly
+         why the installer has to clean it up. -->
+    <!-- System64Folder and NOT SystemFolder, and the difference is the opposite of what it
+         sounds like: in a 64-bit package "SystemFolder" is SysWOW64, the 32-bit folder, and
+         System64Folder is System32. The service runs as 64-bit, so its profile is under
+         System32. Caught by ICE80 on the first attempt: "64BitComponent uses 32BitDirectory". -->
     <StandardDirectory Id="System64Folder">
-      <Directory Id="CartellaConfig" Name="config">
-        <Directory Id="CartellaSystemProfile" Name="systemprofile">
-          <Directory Id="CartellaAppData" Name="AppData">
-            <Directory Id="CartellaLocal" Name="Local">
-              <Directory Id="StoricoObserver" Name="Observer" />
+      <Directory Id="SystemConfigFolder" Name="config">
+        <Directory Id="SystemProfileFolder" Name="systemprofile">
+          <Directory Id="SystemProfileAppDataFolder" Name="AppData">
+            <Directory Id="SystemProfileLocalFolder" Name="Local">
+              <Directory Id="HistoryFolder" Name="Observer" />
             </Directory>
           </Directory>
         </Directory>
@@ -73,38 +73,46 @@
     </StandardDirectory>
 
     <StandardDirectory Id="ProgramMenuFolder">
-      <!-- Maiuscolo e minuscolo MISTI, di proposito: un Id tutto maiuscolo verrebbe
-           interpretato da MSI come proprieta' pubblica, e la validazione lo segnala (ICE90). -->
+      <!-- MIXED case, on purpose: MSI would read an all-uppercase Id as a public property,
+           and validation flags it (ICE90). -->
       <Directory Id="ObserverMenuFolder" Name="Observer" />
     </StandardDirectory>
 
     <Feature Id="Main" Title="Observer" Level="1">
-      <ComponentGroupRef Id="Servizio" />
+      <ComponentGroupRef Id="Service" />
       <ComponentGroupRef Id="Dashboard" />
-      <ComponentGroupRef Id="RigaDiComando" />
-      <ComponentGroupRef Id="Contorno" />
-      <ComponentGroupRef Id="Pulizia" />
+      <ComponentGroupRef Id="CommandLine" />
+      <ComponentGroupRef Id="RuntimeFiles" />
+      <ComponentGroupRef Id="Cleanup" />
     </Feature>
   </Package>
 
   <Fragment>
     <!-- ==================================================================================
-         La pulizia alla disinstallazione.
+         Cleanup on uninstall.
 
-         LA CONDIZIONE E' LA PARTE IMPORTANTE, non i RemoveFile. Un aggiornamento maggiore
-         DISINSTALLA la versione precedente prima di installare la nuova: senza
-         "NOT UPGRADINGPRODUCTCODE" ogni aggiornamento porterebbe via token, certificato e
-         storico. E il certificato nuovo avrebbe un'impronta nuova, quindi ogni dashboard
-         remota si fermerebbe di colpo mostrando un messaggio che parla di qualcuno in mezzo
-         alla connessione. Un aggiornamento non deve somigliare a un attacco.
+         THE CONDITION IS THE IMPORTANT PART, not the RemoveFile elements. A major upgrade
+         UNINSTALLS the previous version before installing the new one: without
+         "NOT UPGRADINGPRODUCTCODE" every upgrade would take away the token, the certificate
+         and the history. And the new certificate would have a new fingerprint, so every
+         remote dashboard would stop dead with a message about someone in the middle of the
+         connection. An upgrade must not look like an attack.
 
-         Ogni componente ha un valore di registro come file chiave: un componente che non
-         installa nulla ne ha comunque bisogno, e quel valore sparisce con la disinstallazione.
+         Every component has a registry value as its KeyPath: a component that installs
+         nothing still needs one, and that value goes away on uninstall.
+
+         The key and value names (Software\Observer\Pulizia with Deposito, Storico and
+         Installazione) stay in Italian on purpose, just as the dashboard's preferences.json
+         keeps the key "textScale" under its old name. Windows Installer stores each one as
+         the KeyPath of a component whose Guid never changes (measured on an installed
+         machine), and every release since 0.1.3 has shipped them. A component must not change its KeyPath under
+         the same Guid: the old values would be left behind, owned by no product, and would
+         survive every later uninstall. Renaming them takes a migration, not a translation.
          ================================================================================== -->
-    <ComponentGroup Id="Pulizia">
+    <ComponentGroup Id="Cleanup">
 
-      <Component Id="PuliziaDeposito"
-                 Directory="DepositoObserver"
+      <Component Id="CleanupCredentialStore"
+                 Directory="CredentialStoreFolder"
                  Guid="D4F7B9E1-6C2A-4285-AD3B-8E4F5A7C9B13"
                  Condition="NOT UPGRADINGPRODUCTCODE">
         <RegistryValue Root="HKLM"
@@ -113,13 +121,13 @@
                        Type="integer"
                        Value="1"
                        KeyPath="yes" />
-        <!-- credentials.json, certificate.pfx e un eventuale temporaneo rimasto indietro. -->
-        <RemoveFile Id="FileDelDeposito" Name="*" On="uninstall" />
-        <RemoveFolder Id="CartellaDelDeposito" On="uninstall" />
+        <!-- credentials.json, certificate.pfx and any temporary file left behind. -->
+        <RemoveFile Id="RemoveCredentialStoreFiles" Name="*" On="uninstall" />
+        <RemoveFolder Id="RemoveCredentialStoreFolder" On="uninstall" />
       </Component>
 
-      <Component Id="PuliziaStorico"
-                 Directory="StoricoObserver"
+      <Component Id="CleanupHistory"
+                 Directory="HistoryFolder"
                  Guid="E5A8C1F2-7D3B-4396-BE4C-9F5A6B8D0C24"
                  Condition="NOT UPGRADINGPRODUCTCODE">
         <RegistryValue Root="HKLM"
@@ -128,12 +136,12 @@
                        Type="integer"
                        Value="1"
                        KeyPath="yes" />
-        <!-- observer.db piu' i suoi -wal e -shm, che SQLite lascia accanto. -->
-        <RemoveFile Id="FileDelloStorico" Name="*" On="uninstall" />
-        <RemoveFolder Id="CartellaDelloStorico" On="uninstall" />
+        <!-- observer.db plus its -wal and -shm, which SQLite keeps next to it. -->
+        <RemoveFile Id="RemoveHistoryFiles" Name="*" On="uninstall" />
+        <RemoveFolder Id="RemoveHistoryFolder" On="uninstall" />
       </Component>
 
-      <Component Id="PuliziaCartellaDiInstallazione"
+      <Component Id="CleanupInstallFolder"
                  Directory="INSTALLFOLDER"
                  Guid="F6B9D2A3-8E4C-44A7-CF5D-0A6B7C9E1D35"
                  Condition="NOT UPGRADINGPRODUCTCODE">
@@ -143,41 +151,41 @@
                        Type="integer"
                        Value="1"
                        KeyPath="yes" />
-        <!-- I file che l'installer ha messo li' se ne vanno da soli. Questo prende cio' che e'
-             nato DOPO, a programma in funzione, e che altrimenti terrebbe in piedi la cartella
-             vuota per sempre. -->
-        <RemoveFile Id="FileNatiDopo" Name="*" On="uninstall" />
-        <RemoveFolder Id="CartellaDiInstallazione" On="uninstall" />
+        <!-- The files the installer put there go away on their own. This catches what was
+             created AFTER, while the program was running, and would otherwise keep the
+             folder from ever being removed. -->
+        <RemoveFile Id="RemoveFilesCreatedLater" Name="*" On="uninstall" />
+        <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
       </Component>
 
     </ComponentGroup>
 
-    <ComponentGroup Id="Servizio" Directory="INSTALLFOLDER">
+    <ComponentGroup Id="Service" Directory="INSTALLFOLDER">
       <Component Id="ServiceExecutable" Guid="A1C4E6B2-3F8D-4E52-9A07-5B1D2C4F6E80">
         <File Id="ObserverServiceExe" Source="$(var.PayloadDir)Observer.Service.exe" KeyPath="yes">
-          <!-- La porta nel firewall di Windows, che senza questa regola blocca ogni
-               connessione in ingresso: il servizio ascoltava sulla rete e nessuno lo
-               raggiungeva, e la dashboard remota diceva "no answer", cioe' mandava a cercare
-               un guasto di rete. Era un difetto del prodotto, non della rete.
+          <!-- The port in Windows Firewall, which without this rule blocks every incoming
+               connection: the service was listening on the network and nobody could reach
+               it, and the remote dashboard said "no answer", which sent you looking for a
+               network fault. It was a defect in the product, not in the network.
 
-               DUE regole e non una, perche' Profile accetta un solo valore e "all" include le
-               reti PUBBLICHE: la porta si apre sulle reti private e di dominio, mai sul Wi-Fi
-               di un bar. Scope="localSubnet" restringe ai vicini di sottorete, che e' cio' che
-               "dispositivi presenti sulla rete locale" vuol dire; chi ha la remota su un'altra
-               sottorete allarga la regola a mano, sapendo cosa sta facendo. Annidate nel File
-               e non nel componente: cosi' la regola vale per QUESTO eseguibile su questa
-               porta, non per chiunque si metta in ascolto su 5058.
+               TWO rules and not one, because Profile takes a single value and "all" includes
+               PUBLIC networks: the port opens on private and domain networks, never on a
+               coffee shop's Wi-Fi. Scope="localSubnet" limits it to machines on the same
+               subnet, which is what "devices on the local network" means; anyone whose remote
+               machine sits on another subnet widens the rule by hand, knowing what they are
+               doing. Nested in the File and not in the component: that way the rule applies to
+               THIS executable on this port, not to anything that listens on 5058.
 
-               Transazionale come tutto il resto: nasce con il componente e sparisce con lui
-               alla disinstallazione, senza uno script netsh da ricordare. -->
-          <fw:FirewallException Id="ObserverPortaPrivata"
+               Transactional like everything else: it is created with the component and goes
+               away with it on uninstall, with no netsh script to remember. -->
+          <fw:FirewallException Id="ObserverPortPrivate"
                                 Name="Observer metrics service (private networks)"
                                 Description="Lets other computers on this network read this machine's metrics over HTTPS. Not needed to watch this machine."
                                 Port="5058"
                                 Protocol="tcp"
                                 Profile="private"
                                 Scope="localSubnet" />
-          <fw:FirewallException Id="ObserverPortaDominio"
+          <fw:FirewallException Id="ObserverPortDomain"
                                 Name="Observer metrics service (domain networks)"
                                 Description="Lets other computers on this network read this machine's metrics over HTTPS. Not needed to watch this machine."
                                 Port="5058"
@@ -196,30 +204,31 @@
                         ErrorControl="normal"
                         Vital="yes">
 
-          <!-- Se il processo muore, Windows lo rialza. Senza questo le azioni di ripristino
-               restano "Nessuna operazione" e il servizio sta fermo fino al riavvio della
-               macchina: misurato con sc.exe qfailure sull'installazione 0.14.0, che rispondeva
-               PERIODO_REIMPOSTAZIONE 0 e nessuna azione. L'unita' systemd ha Restart=on-failure
-               dalla prima versione, quindi l'asimmetria era solo fra i due sistemi.
-               E' l'ESTENSIONE util, non l'elemento nativo, e non per gusto: il nativo
-               <ServiceConfigFailureActions> scriverebbe MsiServiceConfigFailureActions in modo
-               transazionale, che sembra la scelta migliore, ma WiX 6 lo RIFIUTA con WIX1149
-               ("documented in the Windows Installer SDK to not work as expected") e rimanda
-               proprio qui. Provato: l'MSI non compila.
-               ResetPeriodInDays e RestartServiceDelayInSeconds sono scritti a mano di
-               proposito: omessi, il pacchetto compila lo stesso ma le due colonne restano
-               nulle e la custom action le legge come zero, cioe' periodo di azzeramento nullo
-               e riavvio istantaneo. Non e' il compilatore a pretenderli, e' la politica.
-               Attenzione a cosa vogliono dire davvero tre azioni: la terza vale per il terzo
-               guasto E PER TUTTI I SUCCESSIVI, quindi questo non e' "riavvia tre volte" ma
-               "riavvia sempre, a cinque secondi l'uno dall'altro", con il conteggio azzerato
-               dopo un giorno senza guasti. E' voluto, ed e' anche cio' che fa la unit systemd
-               (Restart=on-failure con RestartSec=5). Il prezzo, dichiarato: un guasto che
-               impedisce l'avvio - per esempio un deposito credenziali che non si puo' mettere
-               in sicurezza, caso in cui il servizio si rifiuta di partire - diventa un ciclo
-               di avvii ogni cinque secondi finche' qualcuno non interviene. E' preferibile al
-               contrario, cioe' a un monitor che resta zitto: un servizio di monitoraggio che
-               non c'e' e' il difetto peggiore che questo programma possa avere. -->
+          <!-- If the process dies, Windows starts it again. Without this the recovery actions
+               stay at "Take No Action" and the service stays down until the machine
+               restarts: measured with sc.exe qfailure on the 0.14.0 installation, which
+               answered RESET_PERIOD 0 and no actions. The systemd unit has had
+               Restart=on-failure since the first version, so Windows was the only one
+               without it.
+               It is the util EXTENSION, not the native element, and not out of preference: the
+               native <ServiceConfigFailureActions> would write MsiServiceConfigFailureActions
+               transactionally, which looks like the better choice, but WiX 6 REFUSES it with
+               WIX1149 ("documented in the Windows Installer SDK to not work as expected") and
+               points to this extension instead. Tried: the MSI does not build.
+               ResetPeriodInDays and RestartServiceDelayInSeconds are spelled out on
+               purpose: without them the package still builds, but the two columns stay
+               null and the custom action reads them as zero, which means a zero reset period
+               and an instant restart. The compiler does not require them; the policy does.
+               Note what three actions really mean: the third applies to the third failure
+               AND TO EVERY ONE AFTER IT, so this is not "restart three times" but "restart
+               always, five seconds apart", with the count reset after a day without
+               failures. That is intended, and it is also what the systemd unit does
+               (Restart=on-failure with RestartSec=5). The known cost: a fault that prevents
+               start-up - for example a credential store that cannot be secured, in which
+               case the service refuses to start - becomes a start attempt every five
+               seconds until someone steps in. That is better than the opposite, a monitor
+               that stays silent: a monitoring service that is not running is the worst
+               defect this program can have. -->
           <util:ServiceConfig FirstFailureActionType="restart"
                               SecondFailureActionType="restart"
                               ThirdFailureActionType="restart"
@@ -227,10 +236,10 @@
                               RestartServiceDelayInSeconds="5" />
         </ServiceInstall>
 
-        <!-- Stop="both" ferma il servizio SIA in installazione SIA in disinstallazione: e' cio'
-             che rende sicuro aggiornare mentre il servizio sta girando. E tutto questo e'
-             transazionale: se l'installazione fallisce a meta', Windows Installer rimette
-             indietro anche il servizio, cosa che uno script con sc.exe non sa fare. -->
+        <!-- Stop="both" stops the service BOTH on install AND on uninstall: that is what
+             makes it safe to upgrade while the service is running. And all of it is
+             transactional: if the installation fails halfway, Windows Installer rolls the
+             service back as well, which a script using sc.exe cannot do. -->
         <ServiceControl Id="ObserverServiceControl"
                         Name="Observer"
                         Start="install"
@@ -243,9 +252,9 @@
     <ComponentGroup Id="Dashboard" Directory="INSTALLFOLDER">
       <Component Id="DashboardExecutable" Guid="B2D5F7C3-4A9E-4063-8B18-6C2E3D5A7F91">
         <File Id="ObserverAppExe" Source="$(var.PayloadDir)Observer.App.exe" KeyPath="yes">
-          <!-- ANNIDATO dentro il File, e non in un componente a se': la forma separata con
-               KeyPath in HKLM produce ICE38, ICE43 e ICE57, perche' mescola dati per-utente e
-               per-macchina nello stesso componente. -->
+          <!-- NESTED inside the File, and not in a component of its own: the separate form
+               with a KeyPath in HKLM produces ICE38, ICE43 and ICE57, because it mixes
+               per-user and per-machine data in the same component. -->
           <Shortcut Id="ObserverDashboardShortcut"
                     Directory="ObserverMenuFolder"
                     Name="Observer"
@@ -254,27 +263,27 @@
                     Advertise="yes" />
         </File>
 
-        <!-- Senza, dopo la disinstallazione resta nel menu Start una cartella "Observer"
-             vuota, che nessuno guardera' mai piu'. La validazione lo segnala con ICE64.
-             Sta DENTRO questo componente, e non in uno suo: un componente collocato nella
-             cartella del menu verrebbe considerato da MSI come dati di profilo utente e
-             pretenderebbe un KeyPath in HKCU (ICE38), che su un pacchetto per-macchina non
-             ha senso. RemoveFolder porta con se' la propria Directory, e questo lo risolve. -->
-        <RemoveFolder Id="RimuoviObserverMenuFolder" Directory="ObserverMenuFolder" On="uninstall" />
+        <!-- Without it, uninstalling leaves an empty "Observer" folder in the Start menu,
+             which nobody will ever look at again. Validation flags it with ICE64.
+             It sits INSIDE this component, and not in one of its own: MSI would treat a
+             component placed in the menu folder as user-profile data and would demand a
+             KeyPath in HKCU (ICE38), which makes no sense in a per-machine package.
+             RemoveFolder carries its own Directory, and that solves it. -->
+        <RemoveFolder Id="RemoveObserverMenuFolder" Directory="ObserverMenuFolder" On="uninstall" />
       </Component>
     </ComponentGroup>
 
-    <ComponentGroup Id="RigaDiComando" Directory="INSTALLFOLDER">
+    <ComponentGroup Id="CommandLine" Directory="INSTALLFOLDER">
       <Component Id="CliExecutable" Guid="C3E6A8D4-5B0F-4174-9C29-7D3F4E6B8A02">
         <File Id="ObserverCliExe" Source="$(var.PayloadDir)observer.exe" KeyPath="yes" />
 
-        <!-- La cartella finisce nel PATH di sistema, altrimenti l'unico modo di invocare la
-             riga di comando sarebbe scriverne il percorso completo - e in PowerShell un
-             percorso fra virgolette all'inizio della riga non e' un comando ma una stringa,
-             quindi il tentativo ovvio fallisce con un errore di sintassi che non nomina la
-             propria causa. Part="last" e Permanent="no": si aggiunge in coda e si toglie
-             disinstallando, senza mai riscrivere cio' che c'era. -->
-        <Environment Id="ObserverNelPath"
+        <!-- The folder goes on the system PATH, otherwise the only way to run the
+             command-line tool would be to type its full path - and in PowerShell a quoted
+             path at the start of a line is not a command but a string, so the obvious
+             attempt fails with a syntax error that does not name its cause. Part="last" and
+             Permanent="no": it is appended at the end and removed on uninstall, without ever
+             rewriting what was there. -->
+        <Environment Id="ObserverOnPath"
                      Name="PATH"
                      Value="[INSTALLFOLDER]"
                      Part="last"
@@ -284,11 +293,11 @@
       </Component>
     </ComponentGroup>
 
-    <ComponentGroup Id="Contorno" Directory="INSTALLFOLDER">
-      <!-- Tutto il resto della cartella pubblicata: dll, runtimeconfig, deps.
-           L'esclusione dei file che possono portare un segreto e' ESPLICITA, e in piu' il
-           .wixproj fa fallire la build se ne trova uno nel payload. Due difese, perche'
-           l'esclusione da sola si dimentica il giorno che qualcuno rinomina il file. -->
+    <ComponentGroup Id="RuntimeFiles" Directory="INSTALLFOLDER">
+      <!-- Everything else in the published folder: dll, runtimeconfig, deps.
+           The files that can carry a secret are excluded EXPLICITLY, and on top of that the
+           .wixproj fails the build if it finds one in the payload. Two defences, because an
+           exclusion on its own gets forgotten the day someone renames the file. -->
       <Files Include="$(var.PayloadDir)**">
         <Exclude Files="$(var.PayloadDir)Observer.Service.exe" />
         <Exclude Files="$(var.PayloadDir)Observer.App.exe" />

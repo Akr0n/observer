@@ -1,55 +1,56 @@
-<!-- Questo progetto sta DELIBERATAMENTE fuori da Observer.slnx.
-     WixToolset.Sdk porta binari nativi solo per Windows e il target WindowsInstallerValidation
-     non ha alcuna condizione sul sistema operativo: gira sempre. Dentro la soluzione, il job
-     "build (ubuntu-latest)" della CI - che e' un check OBBLIGATORIO del ruleset main-protection,
-     con bypass_actors vuoto - fallirebbe per sempre, e ogni PR resterebbe bloccata.
-     Si costruisce con un job CI a parte, condizionato a Windows. -->
+<!-- This project stays DELIBERATELY outside Observer.slnx.
+     WixToolset.Sdk ships native binaries for Windows only, and the WindowsInstallerValidation
+     target has no condition on the operating system: it always runs. Inside the solution, the
+     CI job "build (ubuntu-latest)" - which is a REQUIRED check of the main-protection ruleset,
+     with an empty bypass_actors - would fail for ever, and every PR would stay blocked.
+     It is built by a separate CI job that runs only on Windows. -->
 <Project Sdk="WixToolset.Sdk/6.0.2">
 
   <PropertyGroup>
     <OutputName>Observer</OutputName>
     <OutputType>Package</OutputType>
-    <!-- x64, e non il valore predefinito x86. Il payload e' pubblicato per win-x64: un
-         pacchetto marcato Intel finiva in "Program Files (x86)", cioe' nella cartella che per
-         convenzione ospita software a 32 bit, con dentro binari a 64 bit. -->
+    <!-- x64, and not the default x86. The payload is published for win-x64: a package
+         marked Intel ended up in "Program Files (x86)", the folder that by convention holds
+         32-bit software, with 64-bit binaries inside it. -->
     <InstallerPlatform>x64</InstallerPlatform>
-    <!-- La cartella prodotta da: dotnet publish src/Observer.Service -o payload
-         piu' dotnet publish src/Observer.App -o payload e src/Observer.Cli -o payload. -->
+    <!-- The folder produced by: dotnet publish src/Observer.Service -o payload
+         plus dotnet publish src/Observer.App -o payload and src/Observer.Cli -o payload. -->
     <PayloadDir Condition="'$(PayloadDir)' == ''">$(MSBuildThisFileDirectory)payload\</PayloadDir>
-    <!-- var.PayloadDir e' come il .wxs raggiunge la cartella pubblicata. I bind path
-         valgono per File/@Source ma NON per l'harvesting di Files/@Include, che vuole un
-         percorso vero. -->
+    <!-- var.PayloadDir is how the .wxs reaches the published folder. Bind paths apply
+         to File/@Source but NOT to harvesting with Files/@Include, which needs a real
+         path. -->
     <DefineConstants>PayloadDir=$(PayloadDir);Version=$(Version)</DefineConstants>
-    <!-- ICE60 e SOLO ICE60. Segnala file versionati senza colonna Language, e le decine di
-         .dll native di .NET e di SkiaSharp lo sono tutte: e' rumore, non un difetto.
-         NON si spegne la validazione intera (SuppressValidation), perche' e' proprio lei ad
-         aver preso ICE38/43/57 sul collegamento nel menu Start, che erano difetti veri.
-         Nota: il Directory.Build.props del repository si applica anche qui, e il suo
-         TreatWarningsAsErrors promuove gli avvisi ICE a errori. -->
+    <!-- ICE60 and ONLY ICE60. It flags versioned files without a Language column, and the
+         dozens of native .dll files from .NET and SkiaSharp are all like that: it is noise,
+         not a defect. The whole validation is NOT turned off (SuppressValidation), because
+         it is what caught ICE38/43/57 on the Start-menu shortcut, and those were real defects.
+         Note: the repository's Directory.Build.props applies here too, and its
+         TreatWarningsAsErrors turns ICE warnings into errors. -->
     <SuppressIces>ICE60</SuppressIces>
   </PropertyGroup>
 
-  <!-- La guardia. L'esclusione nel .wxs da sola non basta: si dimentica il giorno in cui
-       qualcuno rinomina il file, e il vincolo del piano 6 non e' "l'installer non genera un
-       token" ma "l'installer non lo CONOSCE". Un MSI finisce su GitHub Releases. -->
-  <Target Name="RifiutaSegretiNelPayload" BeforeTargets="BeforeBuild;Compile">
+  <!-- The guard. The exclusion in the .wxs is not enough on its own: it gets forgotten the
+       day someone renames the file, and the constraint from plan 6 is not "the installer
+       does not generate a token" but "the installer does not KNOW it". An MSI ends up on
+       GitHub Releases. -->
+  <Target Name="RejectSecretsInPayload" BeforeTargets="BeforeBuild;Compile">
     <ItemGroup>
-      <!-- Con un carattere jolly MSBuild espande solo cio' che ESISTE. Un Include letterale
-           entrerebbe nell'elenco anche per un file assente, e la guardia griderebbe al lupo. -->
-      <SegretiTrovati Include="$(PayloadDir)appsettings*.Local.json" />
-      <SegretiTrovati Include="$(PayloadDir)credential*.json" />
-      <SegretiTrovati Include="$(PayloadDir)client*.json" />
+      <!-- With a wildcard MSBuild expands only what EXISTS. A literal Include would put a
+           missing file in the list too, and the guard would cry wolf. -->
+      <SecretsFound Include="$(PayloadDir)appsettings*.Local.json" />
+      <SecretsFound Include="$(PayloadDir)credential*.json" />
+      <SecretsFound Include="$(PayloadDir)client*.json" />
     </ItemGroup>
-    <Error Condition="'@(SegretiTrovati)' != ''"
-           Text="Il payload contiene file che possono portare un segreto: @(SegretiTrovati). Un MSI finisce su GitHub Releases: toglili dalla cartella pubblicata prima di impacchettare." />
+    <Error Condition="'@(SecretsFound)' != ''"
+           Text="The payload contains files that can carry a secret: @(SecretsFound). An MSI ends up on GitHub Releases: remove them from the published folder before packaging." />
   </Target>
 
-  <!-- L'estensione Firewall: l'unico modo, dentro un MSI, di aprire la porta del servizio in
-       modo transazionale - la regola nasce con il componente e muore con lui alla
-       disinstallazione, senza uno script netsh che poi nessuno ricorda di annullare. -->
-  <!-- L'estensione Util: serve solo per le azioni di ripristino del servizio. L'elemento
-       nativo ServiceConfigFailureActions esiste ma WiX 6 lo rifiuta con WIX1149, citando la
-       documentazione del Windows Installer SDK, e rimanda a questa. -->
+  <!-- The Firewall extension: the only way, inside an MSI, to open the service's port
+       transactionally - the rule is created with the component and removed with it on
+       uninstall, with no netsh script that nobody later remembers to undo. -->
+  <!-- The Util extension: needed only for the service's recovery actions. The native
+       element ServiceConfigFailureActions exists, but WiX 6 refuses it with WIX1149, citing
+       the Windows Installer SDK documentation, and points to this extension instead. -->
   <ItemGroup>
     <PackageReference Include="WixToolset.Firewall.wixext" Version="6.0.2" />
     <PackageReference Include="WixToolset.Util.wixext" Version="6.0.2" />

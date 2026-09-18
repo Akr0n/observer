@@ -29,15 +29,15 @@ jobs:
       - name: Test
         run: dotnet test --no-build -c Release --verbosity normal
 
-  # Job AGGIUNTIVO, e va tenuto tale. I due contesti richiesti dal ruleset main-protection sono
-  # le stringhe esatte "build (ubuntu-latest)" e "build (windows-latest)": aggiungere un job
-  # nuovo e' sicuro, rinominare "build" o i valori della matrice "os" no. E NON si aggiunge una
-  # seconda dimensione alla matrice: quella cambierebbe i nomi dei contesti richiesti, ed e' la
-  # mossa che blocca ogni PR per sempre.
+  # An ADDITIONAL job, and it must stay that way. The two contexts the main-protection ruleset
+  # requires are the exact strings "build (ubuntu-latest)" and "build (windows-latest)": adding a
+  # new job is safe, renaming "build" or the values of the "os" matrix is not. And the matrix does
+  # NOT get a second dimension: that would change the names of the required contexts, and that is
+  # the one change that blocks every PR forever.
   #
-  # Sta a parte anche per una seconda ragione: il progetto WiX non e' in Observer.slnx, perche'
-  # WixToolset.Sdk porta binari nativi solo per Windows e la validazione ICE gira sempre. Dentro
-  # la soluzione farebbe fallire "build (ubuntu-latest)" per sempre.
+  # It is separate for a second reason too: the WiX project is not in Observer.slnx, because
+  # WixToolset.Sdk ships native binaries for Windows only and ICE validation always runs. Inside
+  # the solution it would make "build (ubuntu-latest)" fail forever.
   pack-windows:
     needs: build
     runs-on: windows-latest
@@ -48,14 +48,14 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Costruisci il pacchetto
+      - name: Build the package
         run: ./packaging/windows/pack.ps1
         shell: pwsh
 
-      - name: Nessun segreto dentro il pacchetto
-        # Il .wixproj ha gia' una guardia sul PAYLOAD, ma questa guarda il PACCHETTO FINITO,
-        # che e' la cosa che finisce su GitHub Releases. E' la stessa difesa che pack-linux ha
-        # gia': senza, l'MSI sarebbe l'unico dei due che nessuno ricontrolla dopo averlo fatto.
+      - name: No secrets inside the package
+        # The .wixproj already has a guard on the PAYLOAD, but this one checks the FINISHED
+        # PACKAGE, which is what ends up on GitHub Releases. pack-linux already has the same
+        # defence: without it, the MSI would be the only one of the two nobody checks once built.
         shell: pwsh
         run: |
           $msi = Get-ChildItem packaging/windows/bin/Release/Observer.msi
@@ -63,27 +63,27 @@ jobs:
           $db = $inst.GetType().InvokeMember('OpenDatabase','InvokeMethod',$null,$inst,@($msi.FullName,0))
           $v = $db.GetType().InvokeMember('OpenView','InvokeMethod',$null,$db,@('SELECT FileName FROM File'))
           $v.GetType().InvokeMember('Execute','InvokeMethod',$null,$v,$null)
-          $sospetti = @()
+          $suspects = @()
           $n = 0
           while ($true) {
             $r = $v.GetType().InvokeMember('Fetch','InvokeMethod',$null,$v,$null)
             if (-not $r) { break }
             $n++
-            $nome = $r.GetType().InvokeMember('StringData','GetProperty',$null,$r,@(1))
-            if ($nome -match 'Local\.json|credential|client\.json|\.pdb') { $sospetti += $nome }
+            $name = $r.GetType().InvokeMember('StringData','GetProperty',$null,$r,@(1))
+            if ($name -match 'Local\.json|credential|client\.json|\.pdb') { $suspects += $name }
           }
-          if ($sospetti) {
-            Write-Error "Il pacchetto contiene: $($sospetti -join ', ')"
+          if ($suspects) {
+            Write-Error "The package contains: $($suspects -join ', ')"
             exit 1
           }
-          Write-Host "Nessun segreto fra i $n file impacchettati."
+          Write-Host "No secrets among the $n packaged files."
 
-      - name: Il servizio riparte se muore
-        # Le azioni di ripristino arrivano da una custom action dell'estensione util: "ha
-        # compilato" non dice che la riga sia finita nel pacchetto. Senza questo passo la
-        # configurazione resterebbe verificata una volta sola, a mano, il giorno in cui e'
-        # stata scritta. Il nome della tabella e' "Wix4..." anche con WiX 6, come "Wix5..."
-        # per il firewall: le tabelle delle estensioni tengono la versione in cui sono nate.
+      - name: The service restarts if it dies
+        # The recovery actions come from a custom action of the util extension: "it
+        # compiled" does not mean the row made it into the package. Without this step the
+        # configuration would have been checked once, by hand, on the day it was
+        # written. The table name is "Wix4..." even with WiX 6, like "Wix5..." for the
+        # firewall: extension tables keep the version number they were introduced with.
         shell: pwsh
         run: |
           $msi = Get-ChildItem packaging/windows/bin/Release/Observer.msi
@@ -93,36 +93,36 @@ jobs:
                  '`ThirdFailureActionType`,`RestartServiceDelayInSeconds` FROM `Wix4ServiceConfig`'
           $v = $db.GetType().InvokeMember('OpenView','InvokeMethod',$null,$db,@($sql))
           $v.GetType().InvokeMember('Execute','InvokeMethod',$null,$v,$null)
-          $righe = @()
+          $rows = @()
           while ($true) {
             $r = $v.GetType().InvokeMember('Fetch','InvokeMethod',$null,$v,$null)
             if (-not $r) { break }
-            $campi = @()
+            $fields = @()
             for ($i = 1; $i -le 5; $i++) {
-              $campi += [string]$r.GetType().InvokeMember('StringData','GetProperty',$null,$r,@($i))
+              $fields += [string]$r.GetType().InvokeMember('StringData','GetProperty',$null,$r,@($i))
             }
-            $righe += ,$campi
+            $rows += ,$fields
           }
-          $observer = $righe | Where-Object { $_[0] -eq 'Observer' }
+          $observer = $rows | Where-Object { $_[0] -eq 'Observer' }
           if (-not $observer) {
-            Write-Error "L'MSI non configura le azioni di ripristino del servizio: se muore, resta giu'."
+            Write-Error "The MSI does not configure the service's recovery actions: if it dies, it stays down."
             exit 1
           }
           if ($observer[1] -ne 'restart' -or $observer[2] -ne 'restart' -or $observer[3] -ne 'restart') {
-            Write-Error "Azioni di ripristino inattese: $($observer[1])/$($observer[2])/$($observer[3])"
+            Write-Error "Unexpected recovery actions: $($observer[1])/$($observer[2])/$($observer[3])"
             exit 1
           }
-          Write-Host "Ripristino: $($observer[1])/$($observer[2])/$($observer[3]), ritardo $($observer[4]) s."
+          Write-Host "Recovery: $($observer[1])/$($observer[2])/$($observer[3]), delay $($observer[4]) s."
 
-      - name: Pubblica l'artefatto
+      - name: Upload the artifact
         uses: actions/upload-artifact@v4
         with:
           name: Observer-msi
           path: packaging/windows/bin/Release/Observer.msi
           if-no-files-found: error
 
-  # Anche questo e' un job AGGIUNTIVO: vale la stessa regola. La matrice del job "build" resta
-  # a una sola dimensione, e i due contesti richiesti dal ruleset non cambiano nome.
+  # This is an ADDITIONAL job too, and the same rule applies. The matrix of the "build" job stays
+  # one-dimensional, and the two contexts the ruleset requires keep their names.
   pack-linux:
     needs: build
     runs-on: ubuntu-latest
@@ -133,46 +133,45 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Costruisci il pacchetto
+      - name: Build the package
         run: ./packaging/linux/pack.sh
 
-      - name: Nessun segreto dentro il pacchetto
-        # La guardia c'e' gia' dentro lo script, ma questa la ripete sul PACCHETTO FINITO e non
-        # sull'albero da cui e' stato costruito. Un .deb che imbarcasse appsettings.Local.json
-        # darebbe a OGNI macchina lo stesso token, perche' la configurazione esplicita vince sul
-        # deposito: annullerebbe da sola il meccanismo che genera una chiave per macchina.
+      - name: No secrets inside the package
+        # The script already has this guard, but this step repeats it on the FINISHED PACKAGE,
+        # not on the tree it was built from. A .deb that shipped appsettings.Local.json would
+        # give EVERY machine the same token, because explicit configuration wins over the
+        # credential store: on its own it would defeat the mechanism that generates one key per machine.
         run: |
           set -euo pipefail
-          PACCHETTO=$(ls packaging/linux/out/observer_*.deb)
-          if dpkg-deb --contents "$PACCHETTO" | grep -E 'appsettings.*Local\.json|credentials\.json|client\.json|\.pdb$'; then
-            echo "Il pacchetto contiene un file che puo' portare un segreto." >&2
+          PACKAGE=$(ls packaging/linux/out/observer_*.deb)
+          if dpkg-deb --contents "$PACKAGE" | grep -E 'appsettings.*Local\.json|credentials\.json|client\.json|\.pdb$'; then
+            echo "The package contains a file that can carry a secret." >&2
             exit 1
           fi
-          echo "Nessun segreto nel pacchetto."
-          dpkg-deb --contents "$PACCHETTO" | wc -l
+          echo "No secrets in the package."
+          dpkg-deb --contents "$PACKAGE" | wc -l
 
-      - name: Verifica con lintian
-        # lintian non gira su Windows, e questa e' l'unica macchina Debian che il progetto
-        # tocca: finche' questo passo non e' esistito, ogni correzione di packaging e' rimasta
-        # un'ipotesi non verificata. Adesso il pacchetto viene ispezionato dove e' costruito.
+      - name: Check with lintian
+        # lintian does not run on Windows, and this is the only Debian machine the project
+        # touches: until this step existed, every packaging fix stayed an untested
+        # hypothesis. Now the package is inspected where it is built.
         #
-        # La soglia comprende gli AVVERTIMENTI, non solo gli errori. E' stata alzata quando
-        # il pacchetto e' arrivato a zero tag: tenere pulito cio' che e' pulito costa molto
-        # meno che ripulirlo, e un avvertimento lasciato passare diventa il primo di una
-        # fila che nessuno guarda piu'. Se un aggiornamento di lintian introduce un tag
-        # nuovo, questo job diventa rosso senza che sia cambiato niente qui: e' voluto, ed
-        # e' un segnale, non un falso allarme. Non blocca comunque la merge, perche'
-        # pack-linux non e' un check obbligatorio del ruleset.
-        # pacchetto che nessuno guarda piu'.
+        # The threshold includes WARNINGS, not only errors. It was raised when the package
+        # reached zero tags: keeping a clean package clean costs far less than cleaning it
+        # up, and one warning let through becomes the first of a list that nobody reads
+        # any more. If a lintian update introduces a new tag, this job turns red with
+        # nothing changed here: that is intended, and it is a signal, not a false alarm. It
+        # still does not block the merge, because pack-linux is not a required check of the
+        # ruleset.
         run: |
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq lintian
-          PACCHETTO=$(ls packaging/linux/out/observer_*.deb)
+          PACKAGE=$(ls packaging/linux/out/observer_*.deb)
           lintian --version
-          lintian --tag-display-limit 0 --fail-on error,warning "$PACCHETTO"
+          lintian --tag-display-limit 0 --fail-on error,warning "$PACKAGE"
 
-      - name: Pubblica l'artefatto
+      - name: Upload the artifact
         uses: actions/upload-artifact@v4
         with:
           name: Observer-deb

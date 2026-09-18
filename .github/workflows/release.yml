@@ -1,9 +1,9 @@
-# Pubblica una release quando arriva un tag "v*".
+# Publishes a release when a "v*" tag is pushed.
 #
-# File SEPARATO da build.yml, e deve restare tale. I due contesti richiesti dal ruleset
-# main-protection sono le stringhe esatte "build (ubuntu-latest)" e "build (windows-latest)":
-# questo workflow non gira sulle pull request, quindi non aggiunge contesti e non puo' lasciarne
-# nessuna in attesa per sempre.
+# A file SEPARATE from build.yml, and it must stay that way. The two contexts the main-protection
+# ruleset requires are the exact strings "build (ubuntu-latest)" and "build (windows-latest)":
+# this workflow does not run on pull requests, so it adds no contexts and cannot leave any PR
+# waiting forever.
 name: release
 
 on:
@@ -11,9 +11,9 @@ on:
     tags:
       - 'v*'
 
-# contents: per creare la release. id-token e attestations: per l'attestazione di
-# provenienza, che e' firmata con un token OIDC effimero del workflow e non con un
-# segreto del repository - non c'e' nessuna chiave da custodire, e nessuna da perdere.
+# contents: to create the release. id-token and attestations: for the provenance
+# attestation, which is signed with the workflow's short-lived OIDC token and not with a
+# repository secret - there is no key to guard, and none to lose.
 permissions:
   contents: write
   id-token: write
@@ -29,35 +29,35 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Costruisci l'MSI
+      - name: Build the MSI
         run: ./packaging/windows/pack.ps1
         shell: pwsh
 
-      # LA guardia che rende affidabile una release. Il tag e la versione dentro il pacchetto
-      # sono due valori scritti da due mani diverse: se divergono, chi scarica "v0.2.0" installa
-      # un programma che dice di essere un'altra cosa, e non se ne accorge nessuno finche' non
-      # serve davvero - cioe' nel momento peggiore.
-      - name: La versione nell'MSI coincide col tag
+      # THE guard that makes a release trustworthy. The tag and the version inside the package
+      # are two values set independently: if they diverge, whoever downloads "v0.2.0" installs
+      # a program that claims to be something else, and nobody notices until it really
+      # matters - that is, at the worst possible moment.
+      - name: The MSI version matches the tag
         shell: pwsh
         run: |
-          $atteso = "${{ github.ref_name }}" -replace '^v', ''
+          $expected = "${{ github.ref_name }}" -replace '^v', ''
           $msi = Get-ChildItem packaging/windows/bin/Release/Observer.msi
           $inst = New-Object -ComObject WindowsInstaller.Installer
           $db = $inst.GetType().InvokeMember('OpenDatabase','InvokeMethod',$null,$inst,@($msi.FullName,0))
           $v = $db.GetType().InvokeMember('OpenView','InvokeMethod',$null,$db,@("SELECT Value FROM Property WHERE Property='ProductVersion'"))
           $v.GetType().InvokeMember('Execute','InvokeMethod',$null,$v,$null)
           $r = $v.GetType().InvokeMember('Fetch','InvokeMethod',$null,$v,$null)
-          $trovato = $r.GetType().InvokeMember('StringData','GetProperty',$null,$r,@(1))
-          if ($trovato -ne $atteso) {
-            Write-Error "Il tag dice $atteso ma l'MSI dice $trovato. Allinea <Version> in Directory.Build.props al tag."
+          $found = $r.GetType().InvokeMember('StringData','GetProperty',$null,$r,@(1))
+          if ($found -ne $expected) {
+            Write-Error "The tag says $expected but the MSI says $found. Set <Version> in Directory.Build.props to match the tag."
             exit 1
           }
-          Write-Host "MSI: versione $trovato, come il tag."
+          Write-Host "MSI: version $found, matching the tag."
 
-      # L'attestazione di provenienza. NON e' una firma Authenticode e Windows non la
-      # guarda: risponde alla domanda "questo file viene davvero da quel codice
-      # sorgente", non a "Windows si fida di chi l'ha fatto". E' l'unica delle due che
-      # oggi si puo' avere, e costa zero su un repository pubblico.
+      # The provenance attestation. It is NOT an Authenticode signature and Windows does not
+      # look at it: it answers the question "does this file really come from that source
+      # code", not "does Windows trust whoever made it". It is the only one of the two
+      # available today, and it costs nothing on a public repository.
       - uses: actions/attest-build-provenance@v4
         with:
           subject-path: packaging/windows/bin/Release/Observer.msi
@@ -77,34 +77,34 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Costruisci il .deb
+      - name: Build the .deb
         run: ./packaging/linux/pack.sh
 
-      - name: La versione nel .deb coincide col tag
+      - name: The .deb version matches the tag
         run: |
           set -euo pipefail
-          ATTESO="${GITHUB_REF_NAME#v}"
-          PACCHETTO=$(ls packaging/linux/out/observer_*.deb)
-          TROVATO=$(dpkg-deb --field "$PACCHETTO" Version)
-          if [ "$TROVATO" != "$ATTESO" ]; then
-            echo "Il tag dice $ATTESO ma il pacchetto dice $TROVATO." >&2
+          EXPECTED="${GITHUB_REF_NAME#v}"
+          PACKAGE=$(ls packaging/linux/out/observer_*.deb)
+          FOUND=$(dpkg-deb --field "$PACKAGE" Version)
+          if [ "$FOUND" != "$EXPECTED" ]; then
+            echo "The tag says $EXPECTED but the package says $FOUND." >&2
             exit 1
           fi
-          echo "deb: versione $TROVATO, come il tag."
+          echo "deb: version $FOUND, matching the tag."
 
-      # Le stesse due guardie del workflow ordinario. Una release e' il posto in cui un errore
-      # costa di piu': quello che finisce qui lo scarica gente che non lo ricostruira' mai.
-      - name: Nessun segreto dentro il pacchetto
+      # The same two guards as the build workflow. A release is where a mistake costs the
+      # most: whatever ends up here is downloaded by people who will never rebuild it.
+      - name: No secrets inside the package
         run: |
           set -euo pipefail
-          PACCHETTO=$(ls packaging/linux/out/observer_*.deb)
-          if dpkg-deb --contents "$PACCHETTO" | grep -E 'appsettings.*Local\.json|credentials\.json|client\.json|\.pdb$'; then
-            echo "Il pacchetto contiene un file che puo' portare un segreto." >&2
+          PACKAGE=$(ls packaging/linux/out/observer_*.deb)
+          if dpkg-deb --contents "$PACKAGE" | grep -E 'appsettings.*Local\.json|credentials\.json|client\.json|\.pdb$'; then
+            echo "The package contains a file that can carry a secret." >&2
             exit 1
           fi
-          echo "Nessun segreto nel pacchetto."
+          echo "No secrets in the package."
 
-      - name: Verifica con lintian
+      - name: Check with lintian
         run: |
           set -euo pipefail
           sudo apt-get update -qq
@@ -121,93 +121,93 @@ jobs:
           path: packaging/linux/out/observer_*.deb
           if-no-files-found: error
 
-  pubblica:
+  publish:
     needs: [windows, linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: pacchetti
+          path: packages
 
-      - name: Crea la release
+      - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          VERSIONE="${GITHUB_REF_NAME#v}"
+          VERSION="${GITHUB_REF_NAME#v}"
 
-          # Le note dicono per prima cosa cio' che l'utente incontrera' per primo. I pacchetti
-          # non sono firmati: nasconderlo trasformerebbe un avviso previsto in un sospetto.
+          # The notes say first what the user will run into first. The packages are not
+          # signed: hiding it would turn an expected warning into a reason for suspicion.
           cat > note.md <<NOTE
-          Observer $VERSIONE.
+          Observer $VERSION.
 
-          ## I pacchetti NON sono firmati
+          ## The packages are NOT signed
 
-          Windows lo dira' due volte, in due modi diversi, e le due cose non si
-          risolvono con lo stesso rimedio:
+          Windows will say so twice, in two different ways, and the two are not fixed
+          by the same thing:
 
-          - la finestra di controllo dell'account dira' **"Editore sconosciuto"**.
-            Questo lo toglie una firma, subito, dal primo download;
-          - **SmartScreen** mostrera' un avviso al primo avvio dell'installer. Questo
-            una firma NON lo toglie: da marzo 2024 nemmeno un certificato EV lo evita
-            piu'. Dipende da quanti download puliti il file ha accumulato, non dal
-            certificato che porta.
+          - User Account Control will show **"Unknown publisher"**. A signature removes
+            this immediately, from the first download;
+          - **SmartScreen** will warn on first run of the installer. A signature does
+            NOT remove this: since March 2024 not even an EV certificate bypasses it.
+            It depends on how many clean downloads the file has accumulated, not on the
+            certificate it carries.
 
-          Per procedere: *Ulteriori informazioni* e poi *Esegui comunque*.
+          To go ahead: *More info*, then *Run anyway*.
 
-          ## Da dove viene questo pacchetto
+          ## Where this package comes from
 
-          Ogni file allegato porta un'attestazione di provenienza firmata da GitHub,
-          che lo lega al commit e al workflow che l'hanno prodotto:
+          Every attached file carries a provenance attestation signed by GitHub, which
+          ties it to the commit and the workflow that produced it:
 
           \`\`\`
           gh attestation verify Observer.msi --repo $GITHUB_REPOSITORY
           \`\`\`
 
-          Non e' una firma Authenticode e Windows non la guarda. Risponde a una
-          domanda diversa, e altrettanto utile: *questo file viene davvero da quel
-          codice sorgente*, invece di *Windows si fida di chi l'ha fatto*.
+          It is not an Authenticode signature and Windows does not look at it. It answers
+          a different and equally useful question: *does this file really come from that
+          source code*, rather than *does Windows trust whoever made it*.
 
           ## Windows
 
-          Installa servizio, dashboard e riga di comando. Serve un terminale con privilegi:
+          Installs the service, the dashboard and the command line. Needs an elevated terminal:
 
           \`\`\`
           msiexec /i Observer.msi
           \`\`\`
 
-          Non serve installare altro: il pacchetto **porta con se' il runtime .NET**, ed e'
-          il motivo per cui pesa una cinquantina di megabyte. Fino alla 0.2.0 pretendeva
-          ASP.NET Core 10 senza verificare che ci fosse, e su una macchina che non l'aveva
-          il servizio moriva all'avvio mentre l'installer parlava di privilegi
-          insufficienti - una causa che con quella vera non c'entrava niente.
+          Nothing else needs installing: the package **bundles the .NET runtime**, which is
+          why it weighs about fifty megabytes. Up to 0.2.0 it required ASP.NET Core 10
+          without checking that it was there, and on a machine without it the service
+          died at startup while the installer talked about insufficient privileges - a
+          cause that had nothing to do with the real one.
 
-          Da sapere: cosi' le correzioni di sicurezza del runtime **non** arrivano piu' da
-          Windows Update. Arrivano con una release nuova di Observer.
+          Note that this means the runtime's security fixes **no longer** come from
+          Windows Update. They come with a new Observer release.
 
-          Se su quella macchina esiste gia' un servizio Observer registrato a mano, va rimosso
-          prima, e va svuotata la cartella di installazione.
+          If that machine already has an Observer service registered by hand, remove it
+          first, and empty the installation folder.
 
           ## Linux
 
           \`\`\`
-          sudo apt install ./observer_${VERSIONE}_amd64.deb
+          sudo apt install ./observer_${VERSION}_amd64.deb
           \`\`\`
 
-          Serve Ubuntu 24.04 o successiva: \`aspnetcore-runtime-10.0\` viene dall'archivio
-          ufficiale, quindi il runtime non e' imbarcato e si aggiorna col sistema.
+          Requires Ubuntu 24.04 or later: \`aspnetcore-runtime-10.0\` comes from the official
+          archive, so the runtime is not bundled and is updated with the system.
 
-          ## Dopo l'installazione
+          ## After installing
 
-          Per guardare la macchina su cui sei seduto non serve configurare niente, e non serve
-          alcun token: la dashboard entra dal canale locale. Il token e l'impronta del
-          certificato servono soltanto perche' un ALTRO computer possa interrogare questo, e si
-          ottengono con \`observer share\`.
+          To watch the machine you are sitting at there is nothing to configure, and no token
+          is needed: the dashboard uses the local channel. The token and the certificate
+          fingerprint are needed only so that ANOTHER computer can query this one, and you get
+          them with \`observer share\`.
           NOTE
 
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Observer $VERSIONE" \
+            --title "Observer $VERSION" \
             --notes-file note.md \
-            pacchetti/msi/Observer.msi \
-            pacchetti/deb/observer_*.deb
+            packages/msi/Observer.msi \
+            packages/deb/observer_*.deb
