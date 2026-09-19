@@ -60,6 +60,18 @@ if [ "$(date -d "$NEW_DATE" +%s)" -le "$(date -d "$PREVIOUS_DATE" +%s)" ]; then
     exit 1
 fi
 
+# And both man pages must name the same version in their .TH line, which is what man prints in
+# the footer. Nothing else reads it, so nothing else would notice: 0.21.1 shipped both pages
+# still saying 0.21.0, although every release before it had bumped them. Only the version:
+# the date next to it is when the page's text last changed, and stays as it is.
+for PAGE in observer.1 observer-dashboard.1; do
+    if ! head -1 "$SCRIPT_DIR/debian/$PAGE" | grep -qF "\"observer $VERSION\""; then
+        echo "The man page $PAGE does not describe version $VERSION:" >&2
+        head -1 "$SCRIPT_DIR/debian/$PAGE" >&2
+        exit 1
+    fi
+done
+
 echo "Version $VERSION"
 
 rm -rf "$STAGING" "$OUT_DIR"
