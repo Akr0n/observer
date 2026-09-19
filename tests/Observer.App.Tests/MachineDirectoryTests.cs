@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Observer.App.Services;
+using Observer.App.ViewModels;
 using Observer.Core.Security;
 
 namespace Observer.App.Tests;
@@ -40,6 +41,19 @@ public class MachineDirectoryTests
 
     private static string JsonValue(string? value) =>
         value is null ? "null" : "\"" + value + "\"";
+
+    [Fact]
+    public void TheSidebarHintSendsTheTokenToTheCredentialStoreAndNotIntoThisFile()
+    {
+        // The hint used to say "put what observer share prints into machines.json", and share
+        // prints the token too: whoever followed it wrote an entry this class refuses. The file
+        // takes the name, the address and the fingerprint; the token goes through the command.
+        string hint = new MainViewModel(client: null, configurationProblem: null).MachineListHint;
+
+        Assert.Contains("observer token set", hint, StringComparison.Ordinal);
+        Assert.Contains(MachineDirectory.FilePath, hint, StringComparison.Ordinal);
+        Assert.Contains("fingerprint", hint, StringComparison.Ordinal);
+    }
 
     [Fact]
     public void ThisMachineIsAlwaysThereAndComesFirst()
@@ -95,6 +109,18 @@ public class MachineDirectoryTests
         Assert.Single(result.Machines);
         Assert.Contains(
             "observer token set laptop", Assert.Single(result.Problems), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ANameWithASpaceIsQuotedInTheCommandItSuggests()
+    {
+        // Unquoted, "observer token set My Laptop" is refused for the extra word, so advice that
+        // left the quotes out would send the reader straight into that refusal.
+        MachineListResult result = Read(
+            Entry("https://laptop:5058", Fingerprint, name: "My Laptop"), FakeSecretStore.Empty());
+
+        Assert.Contains(
+            "observer token set \"My Laptop\"", Assert.Single(result.Problems), StringComparison.Ordinal);
     }
 
     [Fact]

@@ -181,8 +181,8 @@ public static class MachineDirectory
     public static string DescribeExample() =>
         "A machine looks like this: { \"name\": \"laptop\", \"baseAddress\": " +
         "\"https://laptop:5058/\", \"fingerprint\": \"sha256:...\" }. Run \"observer share\" " +
-        "on that machine to get the address and the fingerprint, and \"observer token set " +
-        "laptop\" here to keep its token out of this file.";
+        "on that machine to get the fingerprint, and \"observer token set laptop\" here to keep " +
+        "its token out of this file, then reopen this window.";
 
     private static ObserverEndpoint? ToEndpoint(MachineEntry entry, ISecretStore store)
     {
@@ -251,7 +251,7 @@ public static class MachineDirectory
                 label + " still carries its token inside " + FileName + ", and Observer will not " +
                 "use it from there. That token now also authorises ending processes on that " +
                 "machine, so a file meant to be read, copied and shared is the wrong place for " +
-                "it. Run \"observer token set " + label + "\" to hand it over, then delete the " +
+                "it. Run \"" + TokenSetCommand(label) + "\" to hand it over, then delete the " +
                 "\"apiToken\" line from " + FilePath + ".";
         }
 
@@ -275,9 +275,15 @@ public static class MachineDirectory
 
         return
             label + " has no token in " + store.Description + ", and another machine's Observer " +
-            "rejects every request that isn't authenticated. Run \"observer token set " + label +
+            "rejects every request that isn't authenticated. Run \"" + TokenSetCommand(label) +
             "\" to store it.";
     }
+
+    // A name with a space in it has to be quoted: unquoted, the shell splits it in two, and
+    // "observer token set" refuses the extra word rather than keep the token under the first.
+    private static string TokenSetCommand(string label) =>
+        "observer token set " +
+        (label.Contains(' ', StringComparison.Ordinal) ? "\"" + label + "\"" : label);
 
     private static string WithTrailingSlash(string address) =>
         address.EndsWith('/') ? address : address + "/";

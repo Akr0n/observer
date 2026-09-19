@@ -73,7 +73,9 @@ if ($Remove) {
     Write-Step "Removing the container $Name"
     podman rm -f $Name
     Write-Host "Done. That container's token and fingerprint no longer exist: if you run the" -ForegroundColor Yellow
-    Write-Host "test again, machines.json has to be rewritten with the new values." -ForegroundColor Yellow
+    Write-Host "test again, put the new fingerprint in machines.json and store the new token" -ForegroundColor Yellow
+    Write-Host "with the command the run prints. To drop the old token from this computer:" -ForegroundColor Yellow
+    Write-Host "    dotnet run --project src\Observer.Cli -- token forget obs-container" -ForegroundColor Yellow
     return
 }
 
@@ -158,7 +160,8 @@ catch {
 }
 
 Write-Host ''
-Write-Host 'Put this in %LOCALAPPDATA%\Observer\machines.json:' -ForegroundColor Green
+Write-Host 'Put this in %LOCALAPPDATA%\Observer\machines.json - without the token, which the' -ForegroundColor Green
+Write-Host 'dashboard refuses in that file:' -ForegroundColor Green
 Write-Host ''
 
 [ordered]@{
@@ -166,12 +169,15 @@ Write-Host ''
         [ordered]@{
             name        = 'obs-container'
             baseAddress = 'https://localhost:5058/'
-            apiToken    = $token
             fingerprint = $fingerprint
         }
     )
 } | ConvertTo-Json -Depth 4
 
+Write-Host ''
+Write-Host 'Then keep the token on this computer. It goes through a pipe, so it never appears' -ForegroundColor Green
+Write-Host 'on a command line or in the shell history:' -ForegroundColor Green
+Write-Host "    podman exec $Name observer share --stdout | dotnet run --project src\Observer.Cli -- token set obs-container"
 Write-Host ''
 Write-Host 'Then: dotnet run --project src\Observer.App' -ForegroundColor Green
 Write-Host 'Expect two machines in the sidebar: this one and obs-container.'

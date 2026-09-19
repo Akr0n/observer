@@ -1,3 +1,30 @@
+observer (0.21.3) unstable; urgency=medium
+
+  * Adding a second machine is now explained the way it actually works, in
+    the dashboard's sidebar and in "observer share": a name, the machine's
+    address and its fingerprint go into machines.json, its token is kept on
+    this computer, readable only by you, with "observer token set NAME", and
+    the dashboard reads the file when it starts. The sidebar used to say to
+    put everything "observer share" prints into machines.json - the token
+    too, which the dashboard has refused there since 0.6.0 - and "observer
+    share" pointed only at the older one-machine setup, which is ignored as
+    soon as machines.json lists machines. The note shown under a rejected
+    entry no longer says that "observer share" prints the address: it does
+    not.
+  * A machine name with a space in it has to be quoted: "observer token set
+    My Laptop" used to keep the token under "My" without a word, and the
+    dashboard then reported the token for "My Laptop" missing. It now stops
+    and says to write "My Laptop" in quotes.
+  * Several messages read better in English. When the machine is this one,
+    the messages for a kill the operating system refuses, a rejected token
+    and an unreadable answer no longer start with "this machine" in lower
+    case; the service's refusal to start, the note printed after
+    installation, the package description and the observer man page lose
+    turns of phrase carried over from Italian. On Windows, "observer
+    doctor" says FALSELY PROTECTED where it said FAKE PROTECTED.
+
+ -- Federico Cardinali <noreply@example.invalid>  Sat, 19 Sep 2026 19:58:23 +0000
+
 observer (0.21.2) unstable; urgency=medium
 
   * The two man pages carry the right version again. 0.21.1 shipped them

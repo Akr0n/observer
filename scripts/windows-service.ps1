@@ -223,7 +223,7 @@ $installedExecutable = Join-Path $Destination 'Observer.Service.exe'
 New-Service -Name $serviceName `
             -BinaryPathName ('"' + $installedExecutable + '"') `
             -DisplayName 'Observer metrics service' `
-            -Description 'Samples CPU and memory and serves them over HTTP and a local named pipe.' `
+            -Description 'Samples CPU, memory, disks and processes and serves them over HTTPS and a local named pipe.' `
             -StartupType Automatic | Out-Null
 
 Start-Service -Name $serviceName
