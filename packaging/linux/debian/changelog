@@ -4,8 +4,8 @@ observer (0.21.2) unstable; urgency=medium
     still saying 0.21.0 in their footer, although every release since
     0.6.1 had moved them along: nothing checked it, so nothing noticed.
   * Building the Debian package now stops when either man page names a
-    version other than the package's own, next to the checks it already
-    makes on this changelog. Only the version is checked: the date beside
+    version other than the package's own, alongside the checks it already
+    runs on this changelog. Only the version is checked: the date beside
     it is when the page's text last changed, and stays as it is.
 
  -- Federico Cardinali <noreply@example.invalid>  Sat, 19 Sep 2026 17:45:00 +0000
@@ -23,11 +23,11 @@ observer (0.21.1) unstable; urgency=medium
 observer (0.21.0) unstable; urgency=medium
 
   * Responses are compressed on the network. The history the dashboard draws
-    is what costs: its raw tail weighs 76 kB over an hour and 114 kB over a
-    day, asked once per gauge, against 3.2 kB a second for the live sample.
-    Measured on this machine's real bodies, compression takes 4 to 6 times
-    off that - roughly 860 MB a day for one dashboard watching one machine
-    over an hour window.
+    is the expensive part: its raw tail weighs 76 kB over an hour and 114 kB
+    over a day, requested once per gauge, against 3.2 kB a second for the live
+    sample. Measured on this machine's real bodies, compression takes 4 to 6
+    times off that - roughly 860 MB a day for one dashboard watching one
+    machine over an hour window.
   * The local channel is deliberately left alone. A named pipe or a unix
     socket carries no bytes anywhere, so compressing there would spend the
     CPU of the very machine being measured to save nothing. It needs no
@@ -50,7 +50,7 @@ observer (0.21.0) unstable; urgency=medium
     go Brotli wins; but this service SERIALISES, so the JSON leaves the
     writer in pieces with a flush per segment, and flushes punish Brotli far
     more. On the same body: gzip 2 720 bytes, Brotli 3 223 - eighteen per
-    cent more, on exactly the responses that weigh. Brotli stays available
+    cent more, on exactly the heaviest responses. Brotli stays available
     for a client that accepts only that.
   * The level stays at Fastest, the default for both: Optimal costs 4 to 30
     times as much for a handful of bytes, and is the only setting large

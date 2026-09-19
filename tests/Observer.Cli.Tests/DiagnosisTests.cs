@@ -32,7 +32,7 @@ public class DiagnosisTests
     public void OnlyTheSafeVerdictSaysProtected()
     {
         // "PROTECTED" is the word an administrator stops reading at: it must not appear in
-        // any of the other cases, and in particular not in the FAKE PROTECTED one.
+        // any of the other cases, and in particular not in the FALSELY PROTECTED one.
         foreach (DirectoryVerdict verdict in Enum.GetValues<DirectoryVerdict>())
         {
             bool saysProtected = Diagnosis.DescribeVerdict(verdict).StartsWith("PROTECTED", StringComparison.Ordinal);
@@ -42,7 +42,7 @@ public class DiagnosisTests
     }
 
     [Fact]
-    public void FakeProtectedExplainsWhyItIsNotProtected()
+    public void FalselyProtectedExplainsWhyItIsNotProtected()
     {
         // It is the verdict nobody would write without having measured it: the DACL looks right,
         // but the owner rewrites it whenever they like. If the sentence does not explain that,

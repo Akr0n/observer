@@ -111,7 +111,7 @@ public static class CredentialProvisioning
 
     private static string RefusalMessage(string path) =>
         $"Observer runs as a system service and can't secure its credential store at '{path}'. " +
-        "It will not start: depositing a machine token that other accounts can read would be " +
+        "It will not start: writing a machine token where other accounts can read it would be " +
         "worse than not starting at all, because nothing would report it. Check that the " +
         "directory is not a junction, that it is owned by SYSTEM or Administrators, and that " +
         "no other account is granted access.";

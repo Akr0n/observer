@@ -143,7 +143,7 @@ public static class SecretStores
 public sealed class UnsupportedSecretStore : ISecretStore
 {
     private const string Reason =
-        "This platform has no supported place to keep machine tokens. Observer knows the " +
+        "This platform has no supported place to keep machine tokens. Observer supports the " +
         "Windows Credential Manager and, on Linux, a file readable only by its owner.";
 
     /// <inheritdoc />

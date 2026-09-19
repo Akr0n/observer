@@ -67,7 +67,7 @@ public static class LocalChannelProbe
         {
             return
                 "REFUSED - the pipe exists but this account can't open it. The dashboard would " +
-                "not connect either. The service's pipe permissions grant only interactive users.";
+                "not connect either. The service's pipe grants access only to interactive users.";
         }
         catch (IOException error)
         {

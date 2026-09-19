@@ -135,7 +135,7 @@ public static class Diagnosis
             "NOT PROTECTED - other accounts on this machine can read it. Anyone who reads it " +
             "gets permanent access to this machine FROM THE NETWORK.",
         DirectoryVerdict.UntrustedOwner =>
-            "FAKE PROTECTED - the permissions name only SYSTEM and Administrators, but the " +
+            "FALSELY PROTECTED - the permissions name only SYSTEM and Administrators, but the " +
             "OWNER is an ordinary account, and an owner can grant itself access again whenever " +
             "it likes. This looks safe and is not.",
         DirectoryVerdict.ReparsePoint =>

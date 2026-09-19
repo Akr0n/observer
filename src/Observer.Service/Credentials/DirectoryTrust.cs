@@ -105,7 +105,7 @@ public static class DirectoryTrust
         {
             // FIRST, before reading any ACL. A junction is created by a standard user with no
             // privilege at all: if this check came later, the owner and the ACL of the ATTACKER's
-            // directory would be fixed up and the token would be deposited inside it.
+            // directory would be fixed up and the token would be written inside it.
             return DirectoryVerdict.ReparsePoint;
         }
 
@@ -117,7 +117,7 @@ public static class DirectoryTrust
         if (!IsTrusted(facts.OwnerSid, trustedSids))
         {
             // SECOND, and before the DACL. The owner has implicit WRITE_DAC: a perfect DACL on a
-            // directory owned by a user is a "fake protected", and that user rewrites it with a
+            // directory owned by a user is only FALSELY PROTECTED, and that user rewrites it with a
             // single call. Measured.
             return DirectoryVerdict.UntrustedOwner;
         }
