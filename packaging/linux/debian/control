@@ -12,6 +12,6 @@ Description: Machine metrics service and dashboard
  token on first start, so nothing has to be configured after installation.
  .
  To watch the machine you are sitting at you need no token at all: the
- dashboard comes in through the local socket, and membership of the observer
+ dashboard connects through the local socket, and membership of the observer
  group is what grants access. The token exists only so another computer can
  query this one.

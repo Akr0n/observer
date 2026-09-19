@@ -20,8 +20,8 @@
          measured on the layout, and it is not 640, which had seemed enough for two gauges: at 640
          the three numeric columns of the process panel ate the whole width and the NAME
          column - the only elastic one - went to zero, rows of nothing but numbers. At 720 the
-         name keeps 148 px. The old minimum, 420x360, was from a day BEFORE the sidebar
-         existed, and had never been realigned. -->
+         name keeps 148 px. The old minimum, 420x360, dated from BEFORE the sidebar
+         existed, and had never been revisited. -->
 
     <Window.Styles>
         <!-- Popups (tooltips, drop-downs) follow the zoom. The selector's drop-down already
@@ -435,7 +435,7 @@
                                          ItemsSource="{Binding Processes}"
                                          SelectedItem="{Binding SelectedProcess}"
                                          AutomationProperties.Name="{Binding ProcessesTitle}">
-                                    <!-- No Ctrl+C, and it is a measured give-up. A KeyBinding
+                                    <!-- No Ctrl+C, and leaving it out was measured, not assumed. A KeyBinding
                                          on the list never fires: focus does not stay in
                                          there, neither by clicking a row nor with
                                          Focusable="True" on the ListBox, both tried on the

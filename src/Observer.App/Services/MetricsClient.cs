@@ -352,16 +352,16 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
 
                 HttpStatusCode.Forbidden => new KillFetch(
                     ServiceOutcome.UnexpectedResponse,
-                    $"{Endpoint.Description} refused to terminate it: the operating system " +
+                    $"The service on {Endpoint.Description} refused to terminate it: the operating system " +
                     "protects that process."),
 
                 HttpStatusCode.Unauthorized => new KillFetch(
                     ServiceOutcome.TokenRejected,
-                    $"{Endpoint.Description} rejected the token."),
+                    $"The service on {Endpoint.Description} rejected the token."),
 
                 _ => new KillFetch(
                     ServiceOutcome.UnexpectedResponse,
-                    $"{Endpoint.Description} replied " +
+                    $"The service on {Endpoint.Description} replied " +
                     ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture) +
                     ", which this application doesn't know how to interpret."),
             };
@@ -566,8 +566,8 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
               $"Technical detail: {detail}";
 
     private string DescribeUnreadableResponse(string detail) =>
-        $"{Endpoint.Description} responded, but not with a sample this application can read. " +
-        $"It probably isn't Observer. Technical detail: {detail}";
+        $"Something on {Endpoint.Description} responded, but not with a sample this application " +
+        $"can read. It probably isn't Observer. Technical detail: {detail}";
 
     /// <summary>The 401 on the local channel: there is no token to correct.</summary>
     /// <remarks>

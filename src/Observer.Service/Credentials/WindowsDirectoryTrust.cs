@@ -170,7 +170,7 @@ public static class WindowsDirectoryTrust
     /// Closes a real race condition. Between the observation and the creation a standard user
     /// can slip in and create the directory themselves; at that point the creation with a
     /// descriptor does NOT fail, it is a silent no-op, and without this re-check we would carry
-    /// on and deposit the token in a hostile directory, believing it had just been created.
+    /// on and write the token into a hostile directory, believing it had just been created.
     /// </remarks>
     private static void ConfirmSafe(string path)
     {

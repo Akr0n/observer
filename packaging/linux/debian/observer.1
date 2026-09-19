@@ -1,4 +1,4 @@
-.TH OBSERVER 1 "2026-09-03" "observer 0.21.2" "User Commands"
+.TH OBSERVER 1 "2026-09-19" "observer 0.21.2" "User Commands"
 .SH NAME
 observer \- manage this machine's Observer service and its stored tokens
 .SH SYNOPSIS
@@ -11,7 +11,7 @@ manages the machine token of the Observer service running on this computer, and
 keeps the tokens of the other machines this computer watches.
 .PP
 To watch the machine you are sitting at you need no token at all: the dashboard
-comes in through the local socket, and membership of the
+connects through the local socket, and membership of the
 .B observer
 group is what grants access to it. The token exists only so that
 .I another
@@ -33,8 +33,8 @@ store is readable only by the service account and by root.
 With
 .B \-\-stdout
 it prints the token alone, with no trailing newline, for capture in a shell
-variable. The newline matters: a trailing one would enter the value and be
-rejected byte by byte by the constant-time comparison.
+variable. The newline matters: a trailing one would become part of the value
+and be rejected byte by byte by the constant-time comparison.
 .TP
 .B rotate\-key
 Replace the machine token. The previous one keeps working for 24 hours, so

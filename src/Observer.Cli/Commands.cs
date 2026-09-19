@@ -61,7 +61,7 @@ public static class Commands
 
               observer token forget NAME  Remove a machine's token from this computer.
 
-            To watch THIS machine you need no token at all: the dashboard comes in through the
+            To watch THIS machine you need no token at all: the dashboard connects through the
             local channel. The token exists only so another computer can query this one.
             """);
 
@@ -279,7 +279,7 @@ public static class Commands
         Console.WriteLine("Running as      : " + Diagnosis.CurrentAccountName());
         Console.WriteLine("Elevated        : " + Diagnosis.ElevatedAsText());
         Console.WriteLine();
-        Console.WriteLine("To watch THIS machine you need no token: the dashboard comes in through");
+        Console.WriteLine("To watch THIS machine you need no token: the dashboard connects through");
         Console.WriteLine("the local channel. The token exists only so another computer can query this one.");
 
         return 0;
@@ -310,7 +310,7 @@ public static class Commands
             Console.Error.WriteLine("Fix   : reopen the terminal with 'Run as administrator'.");
             Console.Error.WriteLine();
             Console.Error.WriteLine("Note  : to watch THIS machine you need no token at all.");
-            Console.Error.WriteLine("        The dashboard comes in through the local channel.");
+            Console.Error.WriteLine("        The dashboard connects through the local channel.");
             Console.Error.WriteLine("Detail: " + error.Message);
 
             return null;

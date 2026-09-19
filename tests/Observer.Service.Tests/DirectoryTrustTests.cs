@@ -51,15 +51,15 @@ public class DirectoryTrustTests
     [Fact]
     public void APerfectDaclOwnedByAUSERIsNOTSafe()
     {
-        // This is the "fake protected" case: the DACL does not name the user in any way, but the
+        // This is the FALSELY PROTECTED case: the DACL does not name the user in any way, but the
         // owner has implicit WRITE_DAC and rewrites it whenever it likes. Measured: a single call
         // and access is complete again. Whoever looks only at the ACEs says "safe" and is wrong.
-        DirectoryFacts fakeProtected = Facts(
+        DirectoryFacts falselyProtected = Facts(
             owner: UserSid,
             daclProtected: true,
             daclSids: [SystemSid, AdministratorsSid]);
 
-        Assert.Equal(DirectoryVerdict.UntrustedOwner, DirectoryTrust.Evaluate(fakeProtected));
+        Assert.Equal(DirectoryVerdict.UntrustedOwner, DirectoryTrust.Evaluate(falselyProtected));
     }
 
     [Theory]

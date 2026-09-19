@@ -74,7 +74,7 @@ builder.Services.AddSingleton<MetricSnapshotCache>();
 // but this service SERIALISES - Results.Ok pushes the JSON out of the writer in pieces, with one
 // flush per segment - and flushes punish Brotli far more than Gzip. Measured from the bench on
 // real TLS, on the same body: gzip 2 720 bytes, brotli 3 223. Eighteen per cent more, and exactly
-// on the responses that weigh. Registering them explicitly only inverts the precedence at equal
+// on the heaviest responses. Registering them explicitly only inverts the precedence at equal
 // preference: Brotli stays available for a client that accepts only that one.
 //
 // The level stays Fastest, which is the default of both: Optimal costs 4 to 30 times as much for
