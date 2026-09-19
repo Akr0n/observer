@@ -263,6 +263,73 @@ public class ProcessPanelTests
         Assert.Equal(["greedy", "quiet"], viewModel.Processes.Select(row => row.Name));
     }
 
+    [Fact]
+    public async Task AReadStartedOnThePreviousMachineDoesNotFillTheNewMachinesPanel()
+    {
+        // Both panels ask for the same resource, so the guard on the resource cannot tell them
+        // apart, and App.Open hands back the SAME client object for the same endpoint, so
+        // comparing the client by reference cannot tell A -> B -> A apart either. What separates
+        // them is that the machine changed while the response was in flight.
+        ObserverEndpoint local = ObserverEndpoint.LocalChannel();
+        ObserverEndpoint other = ObserverEndpoint.Remote(
+            new Uri("https://other:5058/"), "token", "other", new string('a', 64));
+
+        FakeProcessClient previous = new() { PendingRead = new TaskCompletionSource<ProcessFetch>() };
+        FakeProcessClient current = new();
+
+        MainViewModel viewModel = new(
+            previous,
+            configurationProblem: null,
+            machineList: new MachineListResult([local, other], []),
+            openMachine: endpoint => current);
+
+        Task inFlight = viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("cpu|cpu.usage.total|"));
+
+        viewModel.SelectedMachine = viewModel.Machines.Single(entry => entry.Endpoint == other);
+
+        await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("cpu|cpu.usage.total|"));
+
+        previous.PendingRead!.SetResult(new ProcessFetch(
+            ServiceOutcome.Ok, string.Empty, [new ProcessRowState(99, "ghost", "99.0 %", "1 GiB")]));
+
+        await inFlight;
+
+        Assert.DoesNotContain(viewModel.Processes, row => row.Pid == 99);
+        Assert.Equal([11, 22], viewModel.Processes.Select(row => row.Pid));
+    }
+
+    [Fact]
+    public async Task AProblemFromThePreviousMachineDoesNotReachTheNewMachinesPanel()
+    {
+        // The half that is easy to forget: a superseded request must not report its failure
+        // either, or the new machine's panel explains a fault belonging to the one just left.
+        ObserverEndpoint local = ObserverEndpoint.LocalChannel();
+        ObserverEndpoint other = ObserverEndpoint.Remote(
+            new Uri("https://other:5058/"), "token", "other", new string('a', 64));
+
+        FakeProcessClient previous = new() { PendingRead = new TaskCompletionSource<ProcessFetch>() };
+        FakeProcessClient current = new();
+
+        MainViewModel viewModel = new(
+            previous,
+            configurationProblem: null,
+            machineList: new MachineListResult([local, other], []),
+            openMachine: endpoint => current);
+
+        Task inFlight = viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("cpu|cpu.usage.total|"));
+
+        viewModel.SelectedMachine = viewModel.Machines.Single(entry => entry.Endpoint == other);
+
+        await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("cpu|cpu.usage.total|"));
+
+        previous.PendingRead!.SetResult(new ProcessFetch(
+            ServiceOutcome.Unreachable, "the machine you just left is down", []));
+
+        await inFlight;
+
+        Assert.Equal(string.Empty, viewModel.ProcessesProblem);
+    }
+
     private sealed class FakeProcessClient : IMetricsClient
     {
         public IReadOnlyList<string> Cpu { get; set; } = ["5.0 %", "1.0 %"];

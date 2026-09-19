@@ -544,6 +544,13 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Which resource the panel is watching: <c>cpu</c>, <c>memory</c>, or null.</summary>
     private string? shownResource;
 
+    // Bumped whenever the panel stops belonging to the machine it was read for. A read captures
+    // it before the await and compares it after: a response that crosses a machine switch has to
+    // be dropped, rows AND problem. Comparing the client instead would not do - App.Open keeps
+    // one client per endpoint, so A -> B -> A hands back the very same object, the same trap the
+    // history strip's stale guard already documents.
+    private int processEpoch;
+
     /// <summary>The machines to choose from, each with its status. The first is always this one.</summary>
     public ObservableCollection<MachineRow> Machines { get; } = [];
 
@@ -1581,6 +1588,9 @@ public sealed partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void CloseProcessPanel()
     {
+        // Whatever was read for this panel stops belonging to anybody here: the panel is closing
+        // either because the user closed it or because the machine changed under it.
+        processEpoch++;
         IsProcessPanelOpen = false;
         shownResource = null;
         SelectedProcess = null;
@@ -1636,12 +1646,19 @@ public sealed partial class MainViewModel : ViewModelBase
             return;
         }
 
+        int readEpoch = processEpoch;
+
         ProcessFetch fetch = await client.GetProcessesAsync(resource, ProcessRowCount, cancellationToken);
 
         // While the response was in flight the panel may have been closed, or moved to another
-        // resource: that response then belongs to nobody. Applying it would fill a closed
-        // panel, or put the CPU rows under the memory title.
-        if (!IsProcessPanelOpen || !string.Equals(shownResource, resource, StringComparison.Ordinal))
+        // resource, or the machine may have changed under it: that response then belongs to
+        // nobody. Applying it would fill a closed panel, put the CPU rows under the memory
+        // title, or - the one that matters - show one machine's processes under another's name.
+        // The epoch covers the third case, which neither of the other two comparisons can see:
+        // both panels ask for the same resource, and A -> B -> A hands back the same client.
+        if (readEpoch != processEpoch
+            || !IsProcessPanelOpen
+            || !string.Equals(shownResource, resource, StringComparison.Ordinal))
         {
             return;
         }
