@@ -306,7 +306,8 @@ observer token set laptop
 
 The command reads it from standard input and does not show it while you type. It ends up in the
 **Windows Credential Manager**, or — on Linux — in a file readable only by its owner, which
-Observer refuses to use if the permissions are any wider.
+Observer refuses to use if the permissions are any wider. The dashboard reads `machines.json`
+when it starts, so reopen it once the entry and the token are in place.
 
 The reason for this changed recently, and it is worth spelling out: since
 `/processes/{pid}/kill` was added, that token no longer just lets you **read** another

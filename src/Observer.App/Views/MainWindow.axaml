@@ -254,7 +254,7 @@
                          the template, because the row is what the arrow keys pick and what a
                          screen reader announces. And the tooltip is there for the same
                          reason: on a panel with no background it appeared only over the dot's
-                         eight pixels and over the name, not over the rest of the row. -->
+                         ten pixels and over the name, not over the rest of the row. -->
                     <ListBox.Styles>
                         <Style Selector="ListBoxItem">
                             <Setter Property="AutomationProperties.Name"

@@ -1,4 +1,4 @@
-.TH OBSERVER-DASHBOARD 1 "2026-09-12" "observer 0.21.2" "User Commands"
+.TH OBSERVER-DASHBOARD 1 "2026-09-19" "observer 0.21.3" "User Commands"
 .SH NAME
 observer-dashboard \- watch a machine's vital signs
 .SH SYNOPSIS
@@ -38,8 +38,9 @@ then log out and back in.
 It can watch other machines too, and that is what makes watching several of
 them nearly free. Each one needs two values, both printed by
 .B observer share
-on that machine: its address and its certificate fingerprint go into
-.IR machines.json ;
+on that machine: its certificate fingerprint goes into
+.IR machines.json ,
+with a name and the machine's address (https://HOST:5058/);
 its token is handed to this computer with
 .B observer token set NAME
 and is never written into the file. An entry that still carries an

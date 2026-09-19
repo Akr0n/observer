@@ -82,6 +82,18 @@ public static class Commands
             return PrintHelp(2);
         }
 
+        if (args.Length > 3 && args[1] is "set" or "forget")
+        {
+            // A name with a space in it arrives as two arguments. Taking the first one kept the
+            // token under the wrong name without a word, and the dashboard then reported the
+            // real name's token missing - suggesting the very same command.
+            Console.Error.WriteLine(
+                "Too many words after \"" + args[1] + "\": a machine name with a space in it must " +
+                "be quoted, for example: observer token " + args[1] + " \"My Laptop\"");
+
+            return 2;
+        }
+
         ISecretStore store = SecretStores.ForThisMachine();
 
         try
@@ -212,8 +224,12 @@ public static class Commands
         Console.WriteLine("claims to be. Without the second, anyone able to stand in the middle");
         Console.WriteLine("presents their own certificate and collects the token.");
         Console.WriteLine();
-        Console.WriteLine("On the OTHER computer, put it in the Observer__ApiToken environment");
-        Console.WriteLine("variable, or in the apiToken field of the dashboard's client.json.");
+        Console.WriteLine("On the OTHER computer, add this machine to the dashboard's machines.json:");
+        Console.WriteLine("a name of your choice, its address as https://HOST:5058/ and the");
+        Console.WriteLine("fingerprint above - never the token. Then run \"observer token set NAME\"");
+        Console.WriteLine("there with that same name, paste the token when it asks, and reopen the");
+        Console.WriteLine("dashboard. machines.json is in %LOCALAPPDATA%\\Observer on Windows and in");
+        Console.WriteLine("~/.local/share/Observer on Linux.");
         Console.WriteLine();
         Console.WriteLine("You do NOT need this to watch the machine you are sitting at.");
 
