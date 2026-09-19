@@ -1,5 +1,9 @@
+using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Observer.Service.Tests;
 
@@ -113,6 +117,38 @@ public class ProcessEndpointsTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    [Fact]
+    public async Task AKillTheSystemRefusesIsLoggedWithTheProcessName()
+    {
+        // Two processes nobody can terminate, so asking is safe: on Windows pid 4 is System,
+        // a protected process that refuses even an administrator; on Linux pid 1 is init,
+        // which an ordinary user may not signal (CI runs as one) and which the kernel shields
+        // from SIGKILL anyway - as root the kill "succeeds" as a no-op and this test fails
+        // instead of passing, it does not take init down.
+        int pid = OperatingSystem.IsWindows() ? 4 : 1;
+        string name;
+
+        using (Process target = Process.GetProcessById(pid))
+        {
+            name = target.ProcessName;
+        }
+
+        LogRecorder recorder = new();
+        service.Services.GetRequiredService<ILoggerFactory>().AddProvider(recorder);
+
+        using HttpClient client = service.CreateAuthorizedClient();
+
+        using HttpResponseMessage response = await client.PostAsync(
+            new Uri($"/processes/{pid}/kill", UriKind.Relative), content: null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+
+        // The refusal is the case someone reads the log for: a pid alone says nothing once
+        // the number has been reused, and the name was already in hand when Kill was called.
+        string line = Assert.Single(recorder.LinesFor(eventId: 13));
+        Assert.Contains($"{name} (pid {pid})", line, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("/processes", "cpu")]
     [InlineData("/processes?by=memory", "memory")]
@@ -175,5 +211,49 @@ public class ProcessEndpointsTests
         Assert.Contains(
             document.RootElement.GetProperty("processes").EnumerateArray(),
             process => process.GetProperty("ioBytesPerSecond").ValueKind != JsonValueKind.Null);
+    }
+
+    /// <summary>Keeps the formatted lines the process endpoints write, per event.</summary>
+    /// <remarks>
+    /// Added to the shared service's logger factory, which has no way to remove it: it stays
+    /// until the fixture is disposed, so it records the process endpoints' category only.
+    /// </remarks>
+    private sealed class LogRecorder : ILoggerProvider, ILogger
+    {
+        private readonly Lock gate = new();
+        private readonly List<(int EventId, string Line)> lines = [];
+
+        public List<string> LinesFor(int eventId)
+        {
+            lock (gate)
+            {
+                return [.. lines.Where(line => line.EventId == eventId).Select(line => line.Line)];
+            }
+        }
+
+        public ILogger CreateLogger(string categoryName) =>
+            categoryName == typeof(ProcessEndpoints).FullName ? this : NullLogger.Instance;
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            lock (gate)
+            {
+                lines.Add((eventId.Id, formatter(state, exception)));
+            }
+        }
+
+        public void Dispose()
+        {
+        }
     }
 }
