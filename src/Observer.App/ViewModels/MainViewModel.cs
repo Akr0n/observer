@@ -286,6 +286,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>The selected row, the one the button would end.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanCopyRow))]
+    [NotifyPropertyChangedFor(nameof(EndButtonText))]
     [NotifyCanExecuteChangedFor(nameof(CopyProcessRowCommand))]
     public partial ProcessRowState? SelectedProcess { get; set; }
 
@@ -350,7 +351,27 @@ public sealed partial class MainViewModel : ViewModelBase
     /// the pressed button disappeared and the keyboard focus fell into nothing, and whoever
     /// confirms with Enter found themselves pressing Enter on nothing.
     /// </remarks>
-    public string EndButtonText => IsAwaitingEndConfirmation ? "Click again to end it" : "End process";
+    /// <remarks>
+    /// Armed, it NAMES its target. The list is rewritten once a second and the selection can move
+    /// under the pointer; a button that only says "click again" lets the second click land on
+    /// whatever is selected by then. With the pid and the name on it, the click is aimed at a
+    /// process the user can read before pressing. "it" remains for the case with no selection at
+    /// all, where naming nothing would be worse than saying nothing.
+    /// <para>
+    /// The PID comes first because the label can be trimmed: the name is the part that may be
+    /// long, and the pid is the part that tells two "chrome" apart. The button renders this
+    /// through a TextBlock child and not as string Content, because FluentAvalonia's template
+    /// passes string content through AccessText: an underscore in a process name - an
+    /// "exporter"-style daemon has one - would be swallowed AND would register the next letter
+    /// as an access key, that is a one-keystroke kill on the armed button.
+    /// </para>
+    /// </remarks>
+    public string EndButtonText =>
+        IsAwaitingEndConfirmation
+            ? SelectedProcess is { } process
+                ? $"Click again to end pid {process.Pid.ToString(CultureInfo.InvariantCulture)} ({process.Name})"
+                : "Click again to end it"
+            : "End process";
 
     /// <summary>
     /// True when the window is minimized: the reading cadence gets longer.
@@ -544,6 +565,21 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Which resource the panel is watching: <c>cpu</c>, <c>memory</c>, or null.</summary>
     private string? shownResource;
 
+    // Bumped whenever the panel stops belonging to the machine it was read for. A read captures
+    // it before the await and compares it after: a response that crosses a machine switch has to
+    // be dropped, rows AND problem. Comparing the client instead would not do - App.Open keeps
+    // one client per endpoint, so A -> B -> A hands back the very same object, the same trap the
+    // history strip's stale guard already documents.
+    private int processEpoch;
+
+    // What the confirmation is armed on: the process, not the row it was clicked on. The list is
+    // rewritten once a second, ProcessRowState is a record whose CPU and memory are FORMATTED
+    // STRINGS that change, and clearing the collection makes the bound list write null into the
+    // selection - so keyed on the row the confirmation disarmed itself about once a second, and
+    // on a busy process the second click never arrived in time. Pid AND name, the pair
+    // ProcessRanking already uses against pid reuse: a pid alone is not an identity here.
+    private (int Pid, string Name)? armedTarget;
+
     /// <summary>The machines to choose from, each with its status. The first is always this one.</summary>
     public ObservableCollection<MachineRow> Machines { get; } = [];
 
@@ -645,6 +681,12 @@ public sealed partial class MainViewModel : ViewModelBase
         // third derived collection adds it HERE.
         Gauges.Clear();
         HasGauges = false;
+
+        // And the process panel, which is the previous machine's too - with its rows, its
+        // selection and, worse, its armed confirmation: the second click would send THAT
+        // machine's pid to THIS machine's client. Closing is the safe direction; refilling the
+        // panel against the new machine would silently repoint a kill aimed somewhere else.
+        CloseProcessPanel();
 
         // And the history deadline is derived from the previous machine too. The rows come back
         // with no strip and no note - neither bars nor the reason why they are missing -
@@ -1475,6 +1517,10 @@ public sealed partial class MainViewModel : ViewModelBase
         };
 
         IsProcessPanelOpen = true;
+
+        // The list is about to become another resource's, so a confirmation armed on a row of
+        // the previous one is void - the target has to be armed again, and seen again first.
+        armedTarget = null;
         IsAwaitingEndConfirmation = false;
         ProcessesProblem = string.Empty;
 
@@ -1575,6 +1621,10 @@ public sealed partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void CloseProcessPanel()
     {
+        // Whatever was read for this panel stops belonging to anybody here: the panel is closing
+        // either because the user closed it or because the machine changed under it.
+        processEpoch++;
+        armedTarget = null;
         IsProcessPanelOpen = false;
         shownResource = null;
         SelectedProcess = null;
@@ -1593,22 +1643,43 @@ public sealed partial class MainViewModel : ViewModelBase
             return;
         }
 
-        // First click: it only arms. The button changes text, and whoever clicked by mistake
-        // notices before anything happens.
-        if (!IsAwaitingEndConfirmation)
+        // First click: it only arms, on THIS process. The button changes text and names it, and
+        // whoever clicked by mistake notices before anything happens. A click on a row the
+        // confirmation is not armed on arms that one instead of ending it.
+        if (armedTarget != (process.Pid, process.Name))
         {
+            armedTarget = (process.Pid, process.Name);
             IsAwaitingEndConfirmation = true;
 
             return;
         }
 
+        armedTarget = null;
         IsAwaitingEndConfirmation = false;
+
+        int killEpoch = processEpoch;
 
         KillFetch fetch = await client.KillProcessAsync(process.Pid, CancellationToken.None);
 
-        ProcessesProblem = fetch.Outcome == ServiceOutcome.Ok ? string.Empty : fetch.Problem;
+        // The machine may have changed while the request was in flight - the panel is closed by
+        // then, and the answer describes a machine that is no longer on screen.
+        if (killEpoch != processEpoch)
+        {
+            return;
+        }
 
         await RefreshProcessesAsync(CancellationToken.None);
+
+        if (killEpoch != processEpoch)
+        {
+            return;
+        }
+
+        // The problem line is written AFTER the reread, not before: a successful reread clears
+        // it, so setting it first meant a refusal - "the operating system protects that
+        // process" - appeared and was wiped within the same click, leaving the user with a
+        // process still there and no reason why.
+        ProcessesProblem = fetch.Outcome == ServiceOutcome.Ok ? string.Empty : fetch.Problem;
     }
 
     /// <summary>Changing row disarms the confirmation.</summary>
@@ -1619,7 +1690,18 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </remarks>
     partial void OnSelectedProcessChanged(ProcessRowState? value)
     {
-        IsAwaitingEndConfirmation = false;
+        // A genuinely different process disarms, which is the rule this method exists for. The
+        // refresh does NOT: it clears the collection - the bound list then writes null here -
+        // and re-selects an equal row that is a new object. Both arrive through this callback,
+        // and only the first one is a change of mind.
+        if (value is { } row && armedTarget is { } armed && (row.Pid, row.Name) != armed)
+        {
+            armedTarget = null;
+        }
+
+        IsAwaitingEndConfirmation =
+            armedTarget is { } target && value is { } selected && (selected.Pid, selected.Name) == target;
+
         CanEndProcess = value is not null;
     }
 
@@ -1630,12 +1712,19 @@ public sealed partial class MainViewModel : ViewModelBase
             return;
         }
 
+        int readEpoch = processEpoch;
+
         ProcessFetch fetch = await client.GetProcessesAsync(resource, ProcessRowCount, cancellationToken);
 
         // While the response was in flight the panel may have been closed, or moved to another
-        // resource: that response then belongs to nobody. Applying it would fill a closed
-        // panel, or put the CPU rows under the memory title.
-        if (!IsProcessPanelOpen || !string.Equals(shownResource, resource, StringComparison.Ordinal))
+        // resource, or the machine may have changed under it: that response then belongs to
+        // nobody. Applying it would fill a closed panel, put the CPU rows under the memory
+        // title, or - the one that matters - show one machine's processes under another's name.
+        // The epoch covers the third case, which neither of the other two comparisons can see:
+        // both panels ask for the same resource, and A -> B -> A hands back the same client.
+        if (readEpoch != processEpoch
+            || !IsProcessPanelOpen
+            || !string.Equals(shownResource, resource, StringComparison.Ordinal))
         {
             return;
         }
@@ -1659,6 +1748,15 @@ public sealed partial class MainViewModel : ViewModelBase
         foreach (ProcessRowState row in fetch.Processes)
         {
             Processes.Add(row);
+        }
+
+        // A target that is no longer in the list is forgotten: the process ended, or fell out of
+        // the top rows. Without this it would sit there armed and invisible, and the click that
+        // re-selects that row when it comes back - a left click, or the right click that opens
+        // "Copy row" - would find the confirmation already armed and end it on the FIRST press.
+        if (armedTarget is { } armed && !Processes.Any(row => (row.Pid, row.Name) == armed))
+        {
+            armedTarget = null;
         }
 
         SelectedProcess = selectedPid is { } pid
