@@ -1,3 +1,25 @@
+observer (0.21.4) unstable; urgency=medium
+
+  * The process panel now belongs to the machine on screen. Switching
+    machine used to leave the previous machine's processes in it, with
+    their selection and, worse, with a confirmation still armed: the next
+    click sent that machine's pid to this machine's service.
+  * The confirmation no longer expires on its own. It was tied to the
+    selected row, and the list is rewritten once a second, so it disarmed
+    itself about as often - and on a busy process, which is the one being
+    ended, the second click never arrived in time. It is tied to the
+    process now, pid and name, and the button names it: "Click again to
+    end pid 4312 (chrome)".
+  * A process the operating system refuses to end now says why. The
+    reason was written before the list was read again, and a successful
+    read cleared it: the explanation appeared and vanished within the
+    same click.
+  * A process list, or the answer to a kill, that arrives after the
+    machine was switched is discarded instead of landing under the new
+    machine's name.
+
+ -- Federico Cardinali <noreply@example.invalid>  Sat, 19 Sep 2026 22:27:19 +0000
+
 observer (0.21.3) unstable; urgency=medium
 
   * Adding a second machine is now explained the way it actually works, in

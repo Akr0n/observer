@@ -496,9 +496,17 @@
                                      the second kills. It used to be two alternating buttons,
                                      and on the first click the one that had been pressed
                                      disappeared, taking the keyboard focus with it. -->
-                                <Button Content="{Binding EndButtonText}"
-                                        IsEnabled="{Binding CanEndProcess}"
-                                        Command="{Binding EndSelectedProcessCommand}" />
+                                <!-- A TextBlock child and not string Content: the theme passes a
+                                     string through AccessText, which eats an underscore in a
+                                     process name and turns the next letter into an access key -
+                                     a one-keystroke kill on a button that is already armed. The
+                                     child also gives the label somewhere to be trimmed, and the
+                                     accessible name still comes from the presenter's text. -->
+                                <Button IsEnabled="{Binding CanEndProcess}"
+                                        Command="{Binding EndSelectedProcessCommand}">
+                                    <TextBlock Text="{Binding EndButtonText}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Button>
                             </StackPanel>
                         </Border>
 

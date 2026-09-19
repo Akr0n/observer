@@ -354,14 +354,22 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <remarks>
     /// Armed, it NAMES its target. The list is rewritten once a second and the selection can move
     /// under the pointer; a button that only says "click again" lets the second click land on
-    /// whatever is selected by then. With the name and the pid on it, the click is aimed at a
+    /// whatever is selected by then. With the pid and the name on it, the click is aimed at a
     /// process the user can read before pressing. "it" remains for the case with no selection at
     /// all, where naming nothing would be worse than saying nothing.
+    /// <para>
+    /// The PID comes first because the label can be trimmed: the name is the part that may be
+    /// long, and the pid is the part that tells two "chrome" apart. The button renders this
+    /// through a TextBlock child and not as string Content, because FluentAvalonia's template
+    /// passes string content through AccessText: an underscore in a process name - an
+    /// "exporter"-style daemon has one - would be swallowed AND would register the next letter
+    /// as an access key, that is a one-keystroke kill on the armed button.
+    /// </para>
     /// </remarks>
     public string EndButtonText =>
         IsAwaitingEndConfirmation
             ? SelectedProcess is { } process
-                ? $"Click again to end {process.Name} (pid {process.Pid.ToString(CultureInfo.InvariantCulture)})"
+                ? $"Click again to end pid {process.Pid.ToString(CultureInfo.InvariantCulture)} ({process.Name})"
                 : "Click again to end it"
             : "End process";
 
@@ -1660,9 +1668,18 @@ public sealed partial class MainViewModel : ViewModelBase
             return;
         }
 
-        ProcessesProblem = fetch.Outcome == ServiceOutcome.Ok ? string.Empty : fetch.Problem;
-
         await RefreshProcessesAsync(CancellationToken.None);
+
+        if (killEpoch != processEpoch)
+        {
+            return;
+        }
+
+        // The problem line is written AFTER the reread, not before: a successful reread clears
+        // it, so setting it first meant a refusal - "the operating system protects that
+        // process" - appeared and was wiped within the same click, leaving the user with a
+        // process still there and no reason why.
+        ProcessesProblem = fetch.Outcome == ServiceOutcome.Ok ? string.Empty : fetch.Problem;
     }
 
     /// <summary>Changing row disarms the confirmation.</summary>
@@ -1731,6 +1748,15 @@ public sealed partial class MainViewModel : ViewModelBase
         foreach (ProcessRowState row in fetch.Processes)
         {
             Processes.Add(row);
+        }
+
+        // A target that is no longer in the list is forgotten: the process ended, or fell out of
+        // the top rows. Without this it would sit there armed and invisible, and the click that
+        // re-selects that row when it comes back - a left click, or the right click that opens
+        // "Copy row" - would find the confirmation already armed and end it on the FIRST press.
+        if (armedTarget is { } armed && !Processes.Any(row => (row.Pid, row.Name) == armed))
+        {
+            armedTarget = null;
         }
 
         SelectedProcess = selectedPid is { } pid

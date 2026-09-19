@@ -183,7 +183,7 @@ public class ProcessPanelTests
 
         // Armed, it names its target: the second click is aimed at a process that can be read
         // before pressing, not at whatever the list has selected by then.
-        Assert.Equal("Click again to end greedy (pid 11)", viewModel.EndButtonText);
+        Assert.Equal("Click again to end pid 11 (greedy)", viewModel.EndButtonText);
 
         viewModel.SelectedProcess = viewModel.Processes.Last();
 
@@ -305,6 +305,139 @@ public class ProcessPanelTests
         Assert.Equal(11, viewModel.SelectedProcess!.Pid);
         Assert.Contains("greedy", viewModel.EndButtonText, StringComparison.Ordinal);
         Assert.Contains("11", viewModel.EndButtonText, StringComparison.Ordinal);
+        Assert.Empty(client.Killed);
+
+        await stop.CancelAsync();
+
+        try
+        {
+            await loop;
+        }
+        catch (OperationCanceledException)
+        {
+            // End of the test.
+        }
+    }
+
+    [Fact]
+    public async Task ARefusedKillSaysSoAndTheListIsReadAgain()
+    {
+        // The other half of the kill: the service can refuse - a process the operating system
+        // protects - and then the panel has to say so and show the list as it is now.
+        FakeProcessClient client = new() { Killing = new KillFetch(ServiceOutcome.UnexpectedResponse, "it is protected") };
+        MainViewModel viewModel = new(client, configurationProblem: null);
+
+        await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("cpu|cpu.usage.total|"));
+        viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 11);
+
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
+        Assert.Equal("it is protected", viewModel.ProcessesProblem);
+        Assert.Equal(["cpu", "cpu"], client.Requested);
+    }
+
+    [Fact]
+    public async Task AKillAnsweredAfterTheMachineChangedSaysNothingOnTheNewMachine()
+    {
+        // The kill is the only destructive request, and its answer can arrive after the user has
+        // moved on. Reopening the panel on the new machine clears the problem line, so a late
+        // refusal would land under the new machine's name - and pull an extra read with it.
+        ObserverEndpoint local = ObserverEndpoint.LocalChannel();
+        ObserverEndpoint other = ObserverEndpoint.Remote(
+            new Uri("https://other:5058/"), "token", "other", new string('a', 64));
+
+        FakeProcessClient previous = new() { PendingKill = new TaskCompletionSource<KillFetch>() };
+        FakeProcessClient current = new();
+
+        MainViewModel viewModel = new(
+            previous,
+            configurationProblem: null,
+            machineList: new MachineListResult([local, other], []),
+            openMachine: endpoint => current);
+
+        await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("cpu|cpu.usage.total|"));
+        viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 11);
+
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+        Task inFlight = viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
+        viewModel.SelectedMachine = viewModel.Machines.Single(entry => entry.Endpoint == other);
+
+        await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("cpu|cpu.usage.total|"));
+
+        previous.PendingKill!.SetResult(new KillFetch(ServiceOutcome.UnexpectedResponse, "the machine you left refused"));
+
+        await inFlight;
+
+        Assert.Equal(string.Empty, viewModel.ProcessesProblem);
+        Assert.Equal(["cpu"], current.Requested);
+    }
+
+    [Fact]
+    public async Task APidThatCameBackUnderAnotherNameIsNotTheProcessThatWasArmed()
+    {
+        // Pids are recycled, and the list re-selects by pid alone: the name is what stops an
+        // already armed second click from ending whatever inherited the number.
+        FakeProcessClient client = new();
+        MainViewModel viewModel = new(client, configurationProblem: null);
+
+        await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("cpu|cpu.usage.total|"));
+        viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 11);
+
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
+        viewModel.SelectedProcess = new ProcessRowState(11, "reused", "1.0 %", "1 MiB");
+
+        Assert.False(viewModel.IsAwaitingEndConfirmation);
+
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
+        Assert.Empty(client.Killed);
+    }
+
+    [Fact]
+    public async Task AnArmedProcessThatLeavesTheListIsForgotten()
+    {
+        // It ended, or it fell out of the top rows. The target must go with it: otherwise it
+        // waits, invisible, and the click that re-selects that row when it comes back - even the
+        // right click that opens "Copy row" - would find the confirmation already armed.
+        FakeProcessClient client = new() { AnswersPoll = true };
+        MainViewModel viewModel = new(client, configurationProblem: null);
+
+        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(15));
+        Task loop = viewModel.RunAsync(stop.Token);
+
+        await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("cpu|cpu.usage.total|"));
+        viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 11);
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
+        Assert.True(viewModel.IsAwaitingEndConfirmation);
+
+        // The armed process is gone from the rows the service returns from now on.
+        client.WithoutTheGreedyOne = true;
+
+        while (!stop.IsCancellationRequested && viewModel.Processes.Any(row => row.Pid == 11))
+        {
+            await Task.Delay(50, CancellationToken.None);
+        }
+
+        Assert.DoesNotContain(viewModel.Processes, row => row.Pid == 11);
+
+        // And now it is back, and the user clicks its row.
+        client.WithoutTheGreedyOne = false;
+
+        while (!stop.IsCancellationRequested && !viewModel.Processes.Any(row => row.Pid == 11))
+        {
+            await Task.Delay(50, CancellationToken.None);
+        }
+
+        viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 11);
+
+        Assert.False(viewModel.IsAwaitingEndConfirmation);
+
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
         Assert.Empty(client.Killed);
 
         await stop.CancelAsync();
@@ -467,6 +600,12 @@ public class ProcessPanelTests
         /// <summary>When set, the next read of the list answers only when the test says so.</summary>
         public TaskCompletionSource<ProcessFetch>? PendingRead { get; set; }
 
+        /// <summary>What a kill answers, when the test wants something other than success.</summary>
+        public KillFetch Killing { get; set; } = new(ServiceOutcome.Ok, string.Empty);
+
+        /// <summary>When true the list comes back without the process the tests arm on.</summary>
+        public bool WithoutTheGreedyOne { get; set; }
+
         public List<int> Killed { get; } = [];
 
         public List<string> Requested { get; } = [];
@@ -518,17 +657,27 @@ public class ProcessPanelTests
             return Task.FromResult(new ProcessFetch(
                 ServiceOutcome.Ok,
                 string.Empty,
-                [
-                    new ProcessRowState(11, "greedy", Cpu[0], "100 MiB"),
-                    new ProcessRowState(22, "quiet", Cpu[1], "10 MiB"),
-                ]));
+                WithoutTheGreedyOne
+                    ? [new ProcessRowState(22, "quiet", Cpu[1], "10 MiB")]
+                    : [
+                        new ProcessRowState(11, "greedy", Cpu[0], "100 MiB"),
+                        new ProcessRowState(22, "quiet", Cpu[1], "10 MiB"),
+                    ]));
         }
+
+        /// <summary>When set, the kill answers only when the test says so.</summary>
+        public TaskCompletionSource<KillFetch>? PendingKill { get; set; }
 
         public Task<KillFetch> KillProcessAsync(int pid, CancellationToken cancellationToken)
         {
             Killed.Add(pid);
 
-            return Task.FromResult(new KillFetch(ServiceOutcome.Ok, string.Empty));
+            if (PendingKill is { } pending)
+            {
+                return pending.Task;
+            }
+
+            return Task.FromResult(Killing);
         }
     }
 }
