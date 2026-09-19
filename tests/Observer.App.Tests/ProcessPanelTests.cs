@@ -181,7 +181,9 @@ public class ProcessPanelTests
 
         await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
 
-        Assert.Equal("Click again to end it", viewModel.EndButtonText);
+        // Armed, it names its target: the second click is aimed at a process that can be read
+        // before pressing, not at whatever the list has selected by then.
+        Assert.Equal("Click again to end greedy (pid 11)", viewModel.EndButtonText);
 
         viewModel.SelectedProcess = viewModel.Processes.Last();
 
@@ -264,6 +266,134 @@ public class ProcessPanelTests
     }
 
     [Fact]
+    public async Task TheConfirmationSurvivesTheRefreshThatRewritesTheRow()
+    {
+        // The list is rewritten once a second by the loop, and ProcessRowState is a record whose
+        // CPU and memory are formatted strings: the re-selected row is a different object as soon
+        // as a number changes. Armed on the row, the confirmation disarmed itself on the next
+        // round - and a busy process, which is the one being ended, changes its numbers every
+        // round.
+        FakeProcessClient client = new() { AnswersPoll = true };
+        MainViewModel viewModel = new(client, configurationProblem: null);
+
+        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(15));
+        Task loop = viewModel.RunAsync(stop.Token);
+
+        await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("cpu|cpu.usage.total|"));
+        viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 11);
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
+        Assert.True(viewModel.IsAwaitingEndConfirmation);
+
+        // The rows the loop reads from here on carry new numbers, which is what makes the
+        // re-selected row a different object.
+        client.Cpu = ["9.0 %", "3.0 %"];
+
+        while (!stop.IsCancellationRequested
+            && !viewModel.Processes.Any(row => string.Equals(row.Cpu, "9.0 %", StringComparison.Ordinal)))
+        {
+            await Task.Delay(50, CancellationToken.None);
+        }
+
+        // Without this the test would pass vacuously if the refresh never ran: the wait above
+        // gives up quietly, and a confirmation nothing ever touched is of course still armed.
+        Assert.True(
+            viewModel.Processes.Any(row => string.Equals(row.Cpu, "9.0 %", StringComparison.Ordinal)),
+            $"the panel was never refreshed: reads={client.Requested.Count}");
+
+        Assert.True(viewModel.IsAwaitingEndConfirmation);
+        Assert.Equal(11, viewModel.SelectedProcess!.Pid);
+        Assert.Contains("greedy", viewModel.EndButtonText, StringComparison.Ordinal);
+        Assert.Contains("11", viewModel.EndButtonText, StringComparison.Ordinal);
+        Assert.Empty(client.Killed);
+
+        await stop.CancelAsync();
+
+        try
+        {
+            await loop;
+        }
+        catch (OperationCanceledException)
+        {
+            // End of the test.
+        }
+    }
+
+    [Fact]
+    public async Task ComingBackToTheRowThatWasArmedStillTakesTwoClicks()
+    {
+        // The other half of the disarm, and the one a bare "the flag went false" test cannot
+        // see: after changing one's mind the target must be FORGOTTEN, not just unflagged, or
+        // re-selecting that row would find it still armed and end it on the very first click.
+        FakeProcessClient client = new();
+        MainViewModel viewModel = new(client, configurationProblem: null);
+
+        await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("cpu|cpu.usage.total|"));
+
+        viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 11);
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
+        viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 22);
+        viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 11);
+
+        Assert.False(viewModel.IsAwaitingEndConfirmation);
+
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
+        Assert.Empty(client.Killed);
+        Assert.True(viewModel.IsAwaitingEndConfirmation);
+    }
+
+    [Fact]
+    public async Task SwitchingResourceForgetsTheArmedTarget()
+    {
+        // The panel stays open but the list becomes another resource's: a confirmation armed on
+        // the CPU list must not come back to life when the same process appears in the memory
+        // one.
+        FakeProcessClient client = new();
+        MainViewModel viewModel = new(client, configurationProblem: null);
+
+        await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("cpu|cpu.usage.total|"));
+
+        viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 11);
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
+        await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("memory|memory.used.percent|"));
+
+        viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 11);
+
+        Assert.False(viewModel.IsAwaitingEndConfirmation);
+
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
+        Assert.Empty(client.Killed);
+    }
+
+    [Fact]
+    public async Task TheSelectionGoingNullDuringARefreshDoesNotDisarmTheConfirmation()
+    {
+        // What the bound list does when the collection is cleared: it writes null into the
+        // selection before the re-selection arrives. It never happens in the view model on its
+        // own, so this test is the only place that rule is written down - and it is the path
+        // that disarmed the confirmation on EVERY refresh, numbers changed or not.
+        FakeProcessClient client = new();
+        MainViewModel viewModel = new(client, configurationProblem: null);
+
+        await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("cpu|cpu.usage.total|"));
+        viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 11);
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
+        viewModel.SelectedProcess = null;
+        viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 11);
+
+        Assert.True(viewModel.IsAwaitingEndConfirmation);
+
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
+        Assert.Equal([11], client.Killed);
+    }
+
+    [Fact]
     public async Task AReadStartedOnThePreviousMachineDoesNotFillTheNewMachinesPanel()
     {
         // Both panels ask for the same resource, so the guard on the resource cannot tell them
@@ -343,8 +473,30 @@ public class ProcessPanelTests
 
         public ObserverEndpoint Endpoint { get; } = ObserverEndpoint.LocalChannel();
 
-        public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new SnapshotFetch(ServiceOutcome.Unreachable, "down", null));
+        /// <summary>When true the poll is answered, so the loop refreshes the open panel.</summary>
+        public bool AnswersPoll { get; set; }
+
+        public int Polls;
+
+        public Task<SnapshotFetch> GetLatestAsync(CancellationToken cancellationToken)
+        {
+            Polls++;
+
+            return Task.FromResult(AnswersPoll
+                ? new SnapshotFetch(
+                    ServiceOutcome.Ok,
+                    string.Empty,
+                    new MachineSnapshot(
+                        MachineSnapshot.CurrentSchemaVersion,
+                        DateTimeOffset.UnixEpoch,
+                        [
+                            new MetricSnapshot("cpu", CollectorStatus.Ok, null,
+                            [
+                                MetricPoint.Measured("cpu.usage.total", null, MetricValue.FromNumber(42d)),
+                            ]),
+                        ]))
+                : new SnapshotFetch(ServiceOutcome.Unreachable, "down", null));
+        }
 
         public Task<CatalogFetch> GetCatalogAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new CatalogFetch(ServiceOutcome.Ok, string.Empty, MetricCatalog.Empty));

@@ -286,6 +286,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>The selected row, the one the button would end.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanCopyRow))]
+    [NotifyPropertyChangedFor(nameof(EndButtonText))]
     [NotifyCanExecuteChangedFor(nameof(CopyProcessRowCommand))]
     public partial ProcessRowState? SelectedProcess { get; set; }
 
@@ -350,7 +351,19 @@ public sealed partial class MainViewModel : ViewModelBase
     /// the pressed button disappeared and the keyboard focus fell into nothing, and whoever
     /// confirms with Enter found themselves pressing Enter on nothing.
     /// </remarks>
-    public string EndButtonText => IsAwaitingEndConfirmation ? "Click again to end it" : "End process";
+    /// <remarks>
+    /// Armed, it NAMES its target. The list is rewritten once a second and the selection can move
+    /// under the pointer; a button that only says "click again" lets the second click land on
+    /// whatever is selected by then. With the name and the pid on it, the click is aimed at a
+    /// process the user can read before pressing. "it" remains for the case with no selection at
+    /// all, where naming nothing would be worse than saying nothing.
+    /// </remarks>
+    public string EndButtonText =>
+        IsAwaitingEndConfirmation
+            ? SelectedProcess is { } process
+                ? $"Click again to end {process.Name} (pid {process.Pid.ToString(CultureInfo.InvariantCulture)})"
+                : "Click again to end it"
+            : "End process";
 
     /// <summary>
     /// True when the window is minimized: the reading cadence gets longer.
@@ -550,6 +563,14 @@ public sealed partial class MainViewModel : ViewModelBase
     // one client per endpoint, so A -> B -> A hands back the very same object, the same trap the
     // history strip's stale guard already documents.
     private int processEpoch;
+
+    // What the confirmation is armed on: the process, not the row it was clicked on. The list is
+    // rewritten once a second, ProcessRowState is a record whose CPU and memory are FORMATTED
+    // STRINGS that change, and clearing the collection makes the bound list write null into the
+    // selection - so keyed on the row the confirmation disarmed itself about once a second, and
+    // on a busy process the second click never arrived in time. Pid AND name, the pair
+    // ProcessRanking already uses against pid reuse: a pid alone is not an identity here.
+    private (int Pid, string Name)? armedTarget;
 
     /// <summary>The machines to choose from, each with its status. The first is always this one.</summary>
     public ObservableCollection<MachineRow> Machines { get; } = [];
@@ -1488,6 +1509,10 @@ public sealed partial class MainViewModel : ViewModelBase
         };
 
         IsProcessPanelOpen = true;
+
+        // The list is about to become another resource's, so a confirmation armed on a row of
+        // the previous one is void - the target has to be armed again, and seen again first.
+        armedTarget = null;
         IsAwaitingEndConfirmation = false;
         ProcessesProblem = string.Empty;
 
@@ -1591,6 +1616,7 @@ public sealed partial class MainViewModel : ViewModelBase
         // Whatever was read for this panel stops belonging to anybody here: the panel is closing
         // either because the user closed it or because the machine changed under it.
         processEpoch++;
+        armedTarget = null;
         IsProcessPanelOpen = false;
         shownResource = null;
         SelectedProcess = null;
@@ -1609,18 +1635,30 @@ public sealed partial class MainViewModel : ViewModelBase
             return;
         }
 
-        // First click: it only arms. The button changes text, and whoever clicked by mistake
-        // notices before anything happens.
-        if (!IsAwaitingEndConfirmation)
+        // First click: it only arms, on THIS process. The button changes text and names it, and
+        // whoever clicked by mistake notices before anything happens. A click on a row the
+        // confirmation is not armed on arms that one instead of ending it.
+        if (armedTarget != (process.Pid, process.Name))
         {
+            armedTarget = (process.Pid, process.Name);
             IsAwaitingEndConfirmation = true;
 
             return;
         }
 
+        armedTarget = null;
         IsAwaitingEndConfirmation = false;
 
+        int killEpoch = processEpoch;
+
         KillFetch fetch = await client.KillProcessAsync(process.Pid, CancellationToken.None);
+
+        // The machine may have changed while the request was in flight - the panel is closed by
+        // then, and the answer describes a machine that is no longer on screen.
+        if (killEpoch != processEpoch)
+        {
+            return;
+        }
 
         ProcessesProblem = fetch.Outcome == ServiceOutcome.Ok ? string.Empty : fetch.Problem;
 
@@ -1635,7 +1673,18 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </remarks>
     partial void OnSelectedProcessChanged(ProcessRowState? value)
     {
-        IsAwaitingEndConfirmation = false;
+        // A genuinely different process disarms, which is the rule this method exists for. The
+        // refresh does NOT: it clears the collection - the bound list then writes null here -
+        // and re-selects an equal row that is a new object. Both arrive through this callback,
+        // and only the first one is a change of mind.
+        if (value is { } row && armedTarget is { } armed && (row.Pid, row.Name) != armed)
+        {
+            armedTarget = null;
+        }
+
+        IsAwaitingEndConfirmation =
+            armedTarget is { } target && value is { } selected && (selected.Pid, selected.Name) == target;
+
         CanEndProcess = value is not null;
     }
 
