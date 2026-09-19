@@ -1,3 +1,13 @@
+observer (0.21.1) unstable; urgency=medium
+
+  * A kill the operating system refuses is now logged with the process name,
+    as a successful one already was. The name is read before Kill is called,
+    so it was already in hand, yet the line carried only the pid - which
+    says nothing once the number has been reused. The class comments said
+    both lines carry the name; now the code does what they say.
+
+ -- Federico Cardinali <noreply@example.invalid>  Sat, 19 Sep 2026 06:30:00 +0000
+
 observer (0.21.0) unstable; urgency=medium
 
   * Responses are compressed on the network. The history the dashboard draws
