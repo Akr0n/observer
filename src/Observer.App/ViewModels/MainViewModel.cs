@@ -646,6 +646,12 @@ public sealed partial class MainViewModel : ViewModelBase
         Gauges.Clear();
         HasGauges = false;
 
+        // And the process panel, which is the previous machine's too - with its rows, its
+        // selection and, worse, its armed confirmation: the second click would send THAT
+        // machine's pid to THIS machine's client. Closing is the safe direction; refilling the
+        // panel against the new machine would silently repoint a kill aimed somewhere else.
+        CloseProcessPanel();
+
         // And the history deadline is derived from the previous machine too. The rows come back
         // with no strip and no note - neither bars nor the reason why they are missing -
         // and without this line they stay that way until the INHERITED deadline: half an hour

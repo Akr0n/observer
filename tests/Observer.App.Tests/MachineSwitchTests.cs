@@ -68,6 +68,57 @@ public class MachineSwitchTests
         }
     }
 
+    [Fact]
+    public async Task ChangingMachineClosesTheProcessPanel()
+    {
+        // The panel is derived from the watched machine like the gauges, and it is the only one
+        // that can DO something: left open across a switch it shows the previous machine's
+        // processes under the new machine's name, and its armed confirmation sends THAT
+        // machine's pid to THIS machine's client on the very next click.
+        ObserverEndpoint local = ObserverEndpoint.LocalChannel();
+        ObserverEndpoint other = ObserverEndpoint.Remote(
+            new Uri("https://other:5058/"), "token", "other", new string('a', 64));
+
+        MainViewModel viewModel = new(
+            client: new ClientWithData(local),
+            configurationProblem: null,
+            machineList: new MachineListResult([local, other], []),
+            openMachine: endpoint => new SilentClient(endpoint));
+
+        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(15));
+        Task loop = viewModel.RunAsync(stop.Token);
+
+        while (!stop.IsCancellationRequested && viewModel.Gauges.Count == 0)
+        {
+            await Task.Delay(50, CancellationToken.None);
+        }
+
+        await viewModel.OpenProcessesCommand.ExecuteAsync(viewModel.Gauges[0]);
+        viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 11);
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
+        Assert.True(viewModel.IsProcessPanelOpen);
+        Assert.True(viewModel.IsAwaitingEndConfirmation);
+
+        viewModel.SelectedMachine = viewModel.Machines.Single(entry => entry.Endpoint == other);
+
+        Assert.False(viewModel.IsProcessPanelOpen);
+        Assert.Empty(viewModel.Processes);
+        Assert.Null(viewModel.SelectedProcess);
+        Assert.False(viewModel.IsAwaitingEndConfirmation);
+
+        await stop.CancelAsync();
+
+        try
+        {
+            await loop;
+        }
+        catch (OperationCanceledException)
+        {
+            // End of the test.
+        }
+    }
+
     /// <summary>A client that answers with a single, good reading.</summary>
     private sealed class ClientWithData(ObserverEndpoint endpoint) : IMetricsClient
     {
@@ -107,6 +158,18 @@ public class MachineSwitchTests
             HistoryQuery query,
             CancellationToken cancellationToken) =>
             Task.FromResult(new HistoryFetch(ServiceOutcome.Ok, string.Empty, []));
+
+        public Task<ProcessFetch> GetProcessesAsync(
+            string by,
+            int top,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new ProcessFetch(
+                ServiceOutcome.Ok,
+                string.Empty,
+                [
+                    new ProcessRowState(11, "greedy", "5.0 %", "100 MiB"),
+                    new ProcessRowState(22, "quiet", "1.0 %", "10 MiB"),
+                ]));
     }
 
     /// <summary>A client that never answers, like a machine that is switched off.</summary>
