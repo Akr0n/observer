@@ -114,7 +114,8 @@ public static partial class ProcessEndpoints
         ILogger logger = loggerFactory.CreateLogger(typeof(ProcessEndpoints).FullName!);
         CallerOrigin origin = LocalCaller.Classify(context);
 
-        string name;
+        // Null only if the system refused before the name could be read.
+        string? name = null;
 
         try
         {
@@ -142,7 +143,7 @@ public static partial class ProcessEndpoints
             // Protected processes are refused by the operating system, even to LocalSystem.
             // There is no list of untouchables of our own to keep up to date: there is the
             // system's refusal, reported for what it is.
-            LogKillRefusedBySystem(logger, pid, origin.Reason, error.Message);
+            LogKillRefusedBySystem(logger, name, pid, origin.Reason, error.Message);
 
             return Results.Problem(
                 detail: "the operating system refused to terminate this process",
@@ -176,7 +177,7 @@ public static partial class ProcessEndpoints
     [LoggerMessage(
         EventId = 13,
         Level = LogLevel.Warning,
-        Message = "Kill refused by the operating system: pid {Pid} ({Origin}): {Error}")]
+        Message = "Kill refused by the operating system: {Name} (pid {Pid}), requested by {Origin}: {Error}")]
     private static partial void LogKillRefusedBySystem(
-        ILogger logger, int pid, string origin, string error);
+        ILogger logger, string? name, int pid, string origin, string error);
 }

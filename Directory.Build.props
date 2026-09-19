@@ -12,7 +12,7 @@
          remembering all three. From here it also reaches the binaries' metadata, which all
          used to declare 1.0.0.0 whatever the version of the package that carried them.
          The .wixproj receives it because this file applies to it too. -->
-    <Version>0.21.0</Version>
+    <Version>0.21.1</Version>
 
     <!-- The copyright holder, in one place. From here it ends up in the metadata of EVERY
          executable the build produces: the file properties on Windows, and the same

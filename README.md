@@ -180,8 +180,8 @@ monitored".
 `/processes/{pid}/kill` is the service's **only write**, and it is allowed from the network
 with the token, by deliberate choice: from another machine you see a runaway process and
 stop it from there. Every attempt, successful or refused by the operating system, ends up in
-the service log with the pid and where the caller came from, and a successful one also
-records the process name. The kill endpoint is also why the token is no longer kept in a file
+the service log with the pid, the process name and where the caller came from. The kill
+endpoint is also why the token is no longer kept in a file
 (see "Watching another machine"). `GET /processes` returns `503` when the list cannot be
 read on that machine.
 
