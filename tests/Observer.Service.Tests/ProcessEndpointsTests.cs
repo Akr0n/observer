@@ -122,9 +122,10 @@ public class ProcessEndpointsTests
     {
         // Two processes nobody can terminate, so asking is safe: on Windows pid 4 is System,
         // a protected process that refuses even an administrator; on Linux pid 1 is init,
-        // which an ordinary user may not signal (CI runs as one) and which the kernel shields
-        // from SIGKILL anyway - as root the kill "succeeds" as a no-op and this test fails
-        // instead of passing, it does not take init down.
+        // which the kernel shields from SIGKILL. The REFUSAL this test needs comes on Linux
+        // only when the caller may not signal pid 1 at all - CI's runner user gets EPERM. Run
+        // as root, or as the uid that owns pid 1 (a container started with --user), the kill
+        // "succeeds" as a no-op and this test fails instead of passing; nothing is taken down.
         int pid = OperatingSystem.IsWindows() ? 4 : 1;
         string name;
 
