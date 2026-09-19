@@ -1,8 +1,8 @@
 observer (0.21.2) unstable; urgency=medium
 
   * The two man pages carry the right version again. 0.21.1 shipped them
-    still saying 0.21.0 in their footer, although every release before it
-    had moved them along: nothing checked it, so nothing noticed.
+    still saying 0.21.0 in their footer, although every release since
+    0.6.1 had moved them along: nothing checked it, so nothing noticed.
   * Building the Debian package now stops when either man page names a
     version other than the package's own, next to the checks it already
     makes on this changelog. Only the version is checked: the date beside
