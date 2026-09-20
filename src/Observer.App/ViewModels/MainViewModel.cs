@@ -965,7 +965,13 @@ public sealed partial class MainViewModel : ViewModelBase
             text,
             now - faultSince.Value,
             endpoint,
-            hasValuesOnScreen: Groups.Count > 0);
+            hasValuesOnScreen: Groups.Count > 0,
+
+            // What is DRAWN and what this machine has ever DONE are two different facts,
+            // and the panels are cleared on a machine switch: without this the bar told you
+            // a machine had never produced a reading while its own row in the sidebar, which
+            // had watched it produce them, said it had stopped.
+            hasMeasured: watchedEntry?.HasMeasured == true);
 
         ShowStatus(SeverityFor(message.Tone), message.Title, message.Text);
         Subheading = message.Subheading;

@@ -43,6 +43,10 @@ builder.Host.UseWindowsService();
 builder.Host.UseSystemd();
 
 builder.Services.AddObserverMetrics();
+// Registered explicitly, and not left to a default: the cache takes it as a constructor
+// argument so a test can hand it a counter it moves by hand, and the built-in container does not
+// fill in an optional parameter it cannot resolve.
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<MetricSnapshotCache>();
 
 // Response compression, with ONE single option, and that line is a security decision taken,
@@ -243,10 +247,39 @@ app.MapGet("/metrics/catalog", (IReadOnlyList<IMetricCollector> collectors) =>
 
 // Reads ONLY from the cache: the endpoints never sample, otherwise two simultaneous
 // requests would skew the CPU percentage computation.
+//
+// And it refuses to serve a sample that has stopped advancing. That is the price of the line
+// above: if the sampling loop dies - a hung P/Invoke does it without ever observing the
+// cancellation token, as the sampler's own remarks say - the cache goes on handing out the same
+// snapshot, and a 200 says "this is the machine right now". It is not, and a dashboard drawing
+// it once a second under a green dot makes a machine that stopped measuring look healthier than
+// one that is switched off. Better no answer than a wrong one, which is the same rule the
+// collectors follow when they emit no point rather than a zero.
+//
+// The two silences are told apart in the text, because they send you to different places: one
+// is a service that has only just started, the other is one whose measuring has died while the
+// rest of it goes on answering.
 app.MapGet("/metrics/latest", (MetricSnapshotCache cache) =>
-    cache.Latest is { } snapshot
-        ? Results.Ok(snapshot)
-        : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
+{
+    (MachineSnapshot? snapshot, TimeSpan age) = cache.Read();
+
+    if (snapshot is null)
+    {
+        return Results.Problem(
+            detail: "this service is listening but has not produced its first reading yet",
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    if (age > MetricSnapshotCache.StaleAfter)
+    {
+        return Results.Problem(
+            detail: FormattableString.Invariant(
+                $"this service has stopped sampling: its newest reading is {age.TotalSeconds:F0} seconds old"),
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    return Results.Ok(snapshot);
+});
 
 // Mapped AFTER the middleware above, like the other two: history says when the
 // machine is on and how hard it works, that is more than a single sample says.

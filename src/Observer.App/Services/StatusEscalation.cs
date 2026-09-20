@@ -69,13 +69,23 @@ public static class StatusEscalation
     /// <param name="hasValuesOnScreen">
     /// True if there are already values on screen, which stay there but are frozen.
     /// </param>
+    /// <param name="hasMeasured">
+    /// True if THIS MACHINE has ever answered with a reading. Not the same question as
+    /// <paramref name="hasValuesOnScreen"/>, and conflating them put two different sentences
+    /// about one machine on screen at the same moment: switching to a machine whose sampler had
+    /// died cleared the panels, so the bar said it had never produced a reading while its own
+    /// row in the sidebar - which had watched it produce them - said it had stopped. One is
+    /// about the SCREEN, and decides whether to warn that the numbers are frozen; the other is
+    /// about the MACHINE, and decides which of the two faults is being reported.
+    /// </param>
     /// <returns>Title, text, severity and the line below the window title.</returns>
     public static StatusMessage MessageFor(
         ServiceOutcome outcome,
         string problem,
         TimeSpan failingFor,
         ObserverEndpoint endpoint,
-        bool hasValuesOnScreen)
+        bool hasValuesOnScreen,
+        bool hasMeasured = false)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
 
@@ -97,11 +107,38 @@ public static class StatusEscalation
                     : $"Contacting {endpoint.Description}…",
                 WaitingSubheading(hasValuesOnScreen)),
 
+            // A machine with readings already drawn is a machine that WAS measuring, and the
+            // client's sentence for this outcome promises the opposite twice over: that the
+            // service has not produced its FIRST reading, and that it usually sorts itself out
+            // in a second or two. Both are about a service that is starting. This one is not.
+            ServiceOutcome.NotReadyYet when withinGrace && hasMeasured => new StatusMessage(
+                StatusTone.Informational,
+                "Readings paused",
+                $"The service on {endpoint.Description} is answering but has not produced a new " +
+                "reading in the last few seconds.",
+                MeasuringStoppedSubheading(hasValuesOnScreen)),
+
             ServiceOutcome.NotReadyYet when withinGrace => new StatusMessage(
                 StatusTone.Informational,
                 "Service is starting",
                 problem,
                 WaitingSubheading(hasValuesOnScreen)),
+
+            // The same outcome, past the grace, and still two different things. With values on
+            // screen the machine measured until a moment ago and has stopped: saying it never
+            // produced a reading would be contradicted by every number below the message, and
+            // "Not connected" would be contradicted by the fact that it is ANSWERING - which is
+            // the whole peculiarity of this fault and the reason it went unnoticed for so long.
+            ServiceOutcome.NotReadyYet when hasMeasured => new StatusMessage(
+                StatusTone.Warning,
+                "Not measuring",
+                $"The service on {endpoint.Description} is answering, but it has stopped producing " +
+                "readings. " +
+                (hasValuesOnScreen
+                    ? "The values below are the last ones it measured, and they are not moving. "
+                    : string.Empty) +
+                "Run \"observer doctor\" on that machine to see what it reports.",
+                MeasuringStoppedSubheading(hasValuesOnScreen)),
 
             // The service answers: it is not unreachable, but it is not sampling either.
             // Staying on "Service is starting" for ever, with text promising it will sort
@@ -138,6 +175,15 @@ public static class StatusEscalation
 
     private static StatusMessage ErrorMessage(string title, string problem, bool hasValuesOnScreen) =>
         new(StatusTone.Error, title, problem, DisconnectedSubheading(hasValuesOnScreen));
+
+    // Its own line, and neither of the two below would do. "Reconnecting" and "Not connected"
+    // both describe a machine that is not answering, and this one is: it answers, promptly, and
+    // hands back the same reading every time. That is what has to be said, because it is the
+    // only fault in here where everything on screen looks right.
+    private static string MeasuringStoppedSubheading(bool hasValuesOnScreen) =>
+        hasValuesOnScreen
+            ? "Not measuring: the values shown are the last reading that machine produced."
+            : "Not measuring.";
 
     private static string WaitingSubheading(bool hasValuesOnScreen) =>
         hasValuesOnScreen

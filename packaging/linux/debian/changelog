@@ -1,3 +1,34 @@
+observer (0.22.1) unstable; urgency=medium
+
+  * A machine that has stopped measuring no longer looks healthy. The
+    endpoints read from a cache the sampler fills and never sample
+    themselves, so a sampling loop that dies leaves the service answering
+    promptly with the same reading for ever: the dashboard drew those
+    numbers once a second under a green dot, and a machine that had
+    stopped measuring looked better than one that was switched off. The
+    service now refuses to serve a reading more than fifteen seconds old.
+  * Fifteen seconds is fifteen missed rounds, not five: one round is
+    allowed to overrun its second, and the service already logs when it
+    does. The age is measured on the machine's own monotonic counter and
+    never on the reading's timestamp, so a clock that is wrong, or that
+    gets corrected while the service runs, changes nothing.
+  * The window says which of the two it is, for any machine it has seen
+    measure. "It still hasn't produced a reading" was the only sentence
+    available, and in front of a screen full of numbers that machine
+    measured it was false - as was "not connected", because the machine
+    is answering. It now reads "Not measuring", and the status bar and
+    that machine's row in the sidebar say the same thing, including just
+    after switching to it, when the panels have been cleared and there is
+    nothing on screen to go by.
+  * A dashboard newer than its service gets nothing from this: the older
+    service has no such check and answers as it always did. An OLDER
+    dashboard against this service is still protected - it stops showing
+    the frozen values and raises a warning - it just cannot tell this
+    fault from a service that has never sampled. Update both sides
+    together.
+
+ -- Federico Cardinali <noreply@example.invalid>  Sun, 20 Sep 2026 11:30:12 +0200
+
 observer (0.22.0) unstable; urgency=medium
 
   * Ending a process now says which process it means, and the service
