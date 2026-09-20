@@ -99,7 +99,20 @@ public sealed partial class MachineRow : ObservableObject
     internal DateTimeOffset? FailingSince { get; private set; }
 
     /// <summary>Whether this machine has ever answered with a reading, since the window opened.</summary>
-    private bool hasMeasured;
+    /// <remarks>
+    /// Read by the view model as well as by this class: the status bar reports the WATCHED
+    /// machine and has no memory of its own, so without asking the row it would contradict it
+    /// on screen a moment after a machine switch.
+    /// <para>
+    /// Note what the duration beside "Not measuring" therefore means: it is
+    /// <see cref="FailingSince"/>, that is how long THIS WINDOW has been seeing the refusal, not
+    /// how long that machine has been stopped - a sampler that died three hours before the
+    /// window opened reads "for 10 s". That is the same lower bound every other fault here
+    /// carries, for the reason written on <see cref="FailingSince"/>, and it is left alone on
+    /// purpose rather than made different for this one arm.
+    /// </para>
+    /// </remarks>
+    internal bool HasMeasured { get; private set; }
 
     /// <summary>True while a probe is in flight: the next one does not start on top of it.</summary>
     /// <remarks>Readable from outside because a test observes it; only the view model writes it.</remarks>
@@ -225,7 +238,7 @@ public sealed partial class MachineRow : ObservableObject
         // Latched on purpose: read as "was it reachable last time", it would be true on the
         // first failed reading and false on the second, and the row would alternate between the
         // two sentences once a probe.
-        hasMeasured |= outcome == ServiceOutcome.Ok;
+        HasMeasured |= outcome == ServiceOutcome.Ok;
 
         if (outcome == ServiceOutcome.Ok)
         {
@@ -240,7 +253,7 @@ public sealed partial class MachineRow : ObservableObject
         FailingSince ??= now;
 
         StatusMessage message = StatusEscalation.MessageFor(
-            outcome, reason, now - FailingSince.Value, Endpoint, hasMeasured);
+            outcome, reason, now - FailingSince.Value, Endpoint, hasValuesOnScreen: false, HasMeasured);
 
         Status = message.Tone == StatusTone.Error ? MachineStatus.Faulted : MachineStatus.Warning;
         Detail = message.Title;

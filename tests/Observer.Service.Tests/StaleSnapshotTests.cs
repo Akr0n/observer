@@ -51,12 +51,18 @@ public class StaleSnapshotTests
         // moment ago - which is exactly what a machine whose clock is wrong looks like.
         cache.Publish(new MachineSnapshot(MachineSnapshot.CurrentSchemaVersion, DateTimeOffset.UnixEpoch, []));
 
+        // At EXACTLY the threshold it is still served - the check is "older than", not "as old
+        // as" - and taking this reading after advancing the clock is the point: asserted at age
+        // zero it would agree with any threshold at all, a millisecond included, and a service
+        // built that way answers 503 to every request it ever gets.
+        time.Advance(MetricSnapshotCache.StaleAfter);
+
         using (HttpResponseMessage fresh = await client.GetAsync(new Uri("/metrics/latest", UriKind.Relative)))
         {
             Assert.Equal(HttpStatusCode.OK, fresh.StatusCode);
         }
 
-        time.Advance(MetricSnapshotCache.StaleAfter + TimeSpan.FromSeconds(1));
+        time.Advance(TimeSpan.FromSeconds(1));
 
         using HttpResponseMessage stale = await client.GetAsync(new Uri("/metrics/latest", UriKind.Relative));
 
@@ -85,6 +91,52 @@ public class StaleSnapshotTests
         string body = await response.Content.ReadAsStringAsync();
         Assert.Contains("first reading", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("stopped", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TheThresholdIsWellAboveOneRoundAndWellBelowAnyonesPatience()
+    {
+        // The number itself, because every other assertion in this file is written in terms of
+        // it and would agree with any value whatsoever. Below about ten seconds it would start
+        // firing on a round that overran its second, which is ordinary under load and which the
+        // service logs separately; above about half a minute a machine that has stopped
+        // measuring goes on looking healthy for longer than anybody watches one screen.
+        Assert.InRange(
+            MetricSnapshotCache.StaleAfter,
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromSeconds(30));
+    }
+
+    [Fact]
+    public async Task AServiceWhoseSamplerIsRunningServesItsReadings()
+    {
+        // The whole real wiring, sampler included. It is the only place that asks this endpoint
+        // of a service that is genuinely measuring, and without it the refusal has nothing
+        // holding it down from above: an endpoint that answered 503 to everything would leave
+        // every other test in this repository green.
+        using HttpClient client = service.CreateAuthorizedClient();
+
+        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(15));
+
+        HttpStatusCode? answered = null;
+
+        // A budget, not a wait: the first sample lands within a second of the host starting, and
+        // the loop leaves as soon as it does. The fifteen are for a busy runner.
+        while (!stop.IsCancellationRequested && answered != HttpStatusCode.OK)
+        {
+            using (HttpResponseMessage response =
+                await client.GetAsync(new Uri("/metrics/latest", UriKind.Relative)))
+            {
+                answered = response.StatusCode;
+            }
+
+            if (answered != HttpStatusCode.OK)
+            {
+                await Task.Delay(100, CancellationToken.None);
+            }
+        }
+
+        Assert.Equal(HttpStatusCode.OK, answered);
     }
 
     /// <summary>The real service, on a clock the test moves, and with nobody publishing.</summary>

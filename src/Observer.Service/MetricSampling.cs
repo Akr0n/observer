@@ -20,8 +20,10 @@ namespace Observer.Service;
 /// same snapshot for ever. Served with a 200 it reads as current, and a machine that has stopped
 /// measuring then looks healthier on a dashboard than one that is switched off.
 /// <para>
-/// The age is taken from a MONOTONIC counter - <see cref="TimeProvider.GetTimestamp"/>, the same
-/// mechanism the sampler already uses to time its own rounds - and never from the snapshot's
+/// The age is taken from a MONOTONIC counter - <see cref="TimeProvider.GetTimestamp"/>, which on
+/// <see cref="TimeProvider.System"/> is the counter behind <see cref="Stopwatch"/>, the one the
+/// sampler below times its own rounds on; they are the same counter in the running service, and
+/// a test that injects its own provider moves this one alone. It is never taken from the snapshot's
 /// <c>CapturedAt</c>, which is a wall clock. A wall clock steps: NTP corrects it, a virtual
 /// machine resumes with it behind, somebody sets it by hand. Any of those would invent a stale
 /// snapshot out of a perfectly healthy sampler, or hide a dead one. Here there is one process,
@@ -44,9 +46,18 @@ public sealed class MetricSnapshotCache
     /// </remarks>
     public static readonly TimeSpan StaleAfter = TimeSpan.FromSeconds(15);
 
+    /// <summary>A sample and the instant it was published, inseparably.</summary>
+    /// <remarks>
+    /// One reference and not two fields, and that is the whole concurrency argument. With a
+    /// snapshot and a stamp written separately, a reader can land between the two writes and
+    /// pair one publish's snapshot with another's stamp - in one of the two orders that skews
+    /// the age UP, which is harmless, and in the other DOWN, which is not. Neither can happen
+    /// to a single reference: what is read is what was written.
+    /// </remarks>
+    private sealed record Published(MachineSnapshot Snapshot, long At);
+
     private readonly TimeProvider time;
-    private MachineSnapshot? latest;
-    private long publishedAt;
+    private Published? published;
 
     /// <summary>Creates the cache on a clock.</summary>
     /// <param name="time">Where the monotonic timestamps come from.</param>
@@ -58,23 +69,21 @@ public sealed class MetricSnapshotCache
     }
 
     /// <summary>The latest sample, or null if it has not happened yet.</summary>
-    public MachineSnapshot? Latest => Volatile.Read(ref latest);
+    public MachineSnapshot? Latest => Volatile.Read(ref published)?.Snapshot;
 
     /// <summary>The latest sample and how long ago it was published.</summary>
     /// <returns>The sample, null if there has never been one, and its age.</returns>
     /// <remarks>
-    /// Both in one call, deliberately: read separately they could come from two different
-    /// publishes, and the age would belong to a snapshot other than the one returned.
+    /// Both in one call, deliberately, and from one read: asked for separately they could come
+    /// from two different publishes, and the age would belong to a snapshot other than the one
+    /// returned. The age of a cache that has never published is zero and means nothing - the
+    /// null is what the caller has to look at, and it comes first.
     /// </remarks>
     public (MachineSnapshot? Snapshot, TimeSpan Age) Read()
     {
-        long stamp = Volatile.Read(ref publishedAt);
-        MachineSnapshot? snapshot = Volatile.Read(ref latest);
+        Published? current = Volatile.Read(ref published);
 
-        // The stamp is read FIRST. A publish landing between the two lines then gives an age
-        // that is slightly too large for a snapshot that is slightly too new - erring towards
-        // calling something stale a moment early, which is the harmless direction.
-        return (snapshot, snapshot is null ? TimeSpan.Zero : time.GetElapsedTime(stamp));
+        return current is null ? (null, TimeSpan.Zero) : (current.Snapshot, time.GetElapsedTime(current.At));
     }
 
     /// <summary>Publishes a new sample.</summary>
@@ -82,11 +91,7 @@ public sealed class MetricSnapshotCache
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
-        // The stamp goes down BEFORE the snapshot, so a reader that sees the new snapshot can
-        // never still be holding the old stamp - it would age this publish by the whole gap
-        // since the previous one.
-        Volatile.Write(ref publishedAt, time.GetTimestamp());
-        Volatile.Write(ref latest, snapshot);
+        Volatile.Write(ref published, new Published(snapshot, time.GetTimestamp()));
     }
 }
 

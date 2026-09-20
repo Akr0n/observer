@@ -28,8 +28,10 @@ public class StatusEscalationTests
         ServiceOutcome outcome,
         TimeSpan failingFor,
         ObserverEndpoint endpoint,
-        bool hasValuesOnScreen = false) =>
-        StatusEscalation.MessageFor(outcome, "technical detail from the test", failingFor, endpoint, hasValuesOnScreen);
+        bool hasValuesOnScreen = false,
+        bool hasMeasured = false) =>
+        StatusEscalation.MessageFor(
+            outcome, "technical detail from the test", failingFor, endpoint, hasValuesOnScreen, hasMeasured);
 
     [Fact]
     public void TheFirstFailedAttempt_IsNotAnError()
@@ -94,6 +96,12 @@ public class StatusEscalationTests
         StatusMessage message = MessageFor(ServiceOutcome.NotReadyYet, TimeSpan.Zero, Local);
 
         Assert.Equal(StatusTone.Informational, message.Tone);
+
+        // The title and the text too, and not the tone alone. A machine that has never answered
+        // and one that has stopped answering produce the same tone here, so a test that checked
+        // only the colour agreed with an arm that had lost its guard and swallowed both.
+        Assert.Equal("Service is starting", message.Title);
+        Assert.Contains("technical detail from the test", message.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -119,7 +127,7 @@ public class StatusEscalationTests
         // connected: that is precisely what makes this case worth telling apart. What separates
         // them is already an argument of this function.
         StatusMessage message =
-            MessageFor(ServiceOutcome.NotReadyYet, TimeSpan.FromMinutes(5), Remote, hasValuesOnScreen: true);
+            MessageFor(ServiceOutcome.NotReadyYet, TimeSpan.FromMinutes(5), Remote, hasValuesOnScreen: true, hasMeasured: true);
 
         Assert.Equal(StatusTone.Warning, message.Tone);
         Assert.Contains("stopped", message.Text, StringComparison.OrdinalIgnoreCase);
@@ -142,13 +150,35 @@ public class StatusEscalationTests
     }
 
     [Fact]
+    public void AfterSwitchingToAStoppedMachineTheBarSaysWhatItsRowSays()
+    {
+        // The machine measured, the panels were cleared by the switch, so nothing is drawn. Both
+        // facts are true at once and they answer different questions: the dashboard KNOWS this
+        // machine was measuring - its row in the sidebar watched it - and it knows the screen is
+        // empty. Read as one fact, the bar said the machine had never produced a reading while
+        // the row beside it said it had stopped. Two sentences about one machine, at once.
+        StatusMessage message = MessageFor(
+            ServiceOutcome.NotReadyYet,
+            TimeSpan.FromMinutes(5),
+            Remote,
+            hasValuesOnScreen: false,
+            hasMeasured: true);
+
+        Assert.Equal("Not measuring", message.Title);
+
+        // And it does not promise values that are not there.
+        Assert.DoesNotContain("values below", message.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("values shown", message.Subheading, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void AMachineThatWasMeasuringIsNotPromisedItWillSortItselfOut()
     {
         // The same lie, in smaller type: inside the grace the bar shows the CLIENT's sentence,
         // which says the service "hasn't produced its FIRST reading yet" and that it "usually
         // clears on its own". Neither is true of a machine that was measuring a moment ago.
         StatusMessage message =
-            MessageFor(ServiceOutcome.NotReadyYet, TimeSpan.Zero, Remote, hasValuesOnScreen: true);
+            MessageFor(ServiceOutcome.NotReadyYet, TimeSpan.Zero, Remote, hasValuesOnScreen: true, hasMeasured: true);
 
         Assert.Equal(StatusTone.Informational, message.Tone);
         Assert.DoesNotContain("technical detail from the test", message.Text, StringComparison.Ordinal);

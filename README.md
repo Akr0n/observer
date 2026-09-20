@@ -177,17 +177,26 @@ tool. From the **network** the bearer token remains mandatory.
 raw data has been deleted, and returning an empty chart would read as "machine not
 monitored".
 
-**A sample that has stopped advancing is not served.** The endpoints read from a cache that the
-sampler fills, and never sample themselves — two requests at once would skew the CPU arithmetic.
-The price of that is a sampling loop which dies while the rest of the service keeps answering:
-the cache goes on handing out the same snapshot, and a `200` says "this is the machine right
-now". So `/metrics/latest` answers `503` once its newest reading is more than fifteen seconds
-old, with a sentence saying which of the two silences it is. Fifteen seconds is fifteen missed
-rounds; a single slow round is normal under load and the service logs those separately. The age
-is measured on the service's own monotonic counter, never on the reading's timestamp, so a clock
-that is wrong or gets corrected changes nothing. **A dashboard older than the service is
-unaffected either way, and one newer than the service gets nothing from this** — the old service
-has no such check. Update both sides together.
+**A sample that has stopped advancing is not served.** `/metrics/latest` reads from a cache that
+the sampler fills, and never samples itself — two requests at once would skew the CPU
+arithmetic. The price of that is a sampling loop which dies while the rest of the service keeps
+answering: the cache goes on handing out the same snapshot, and a `200` says "this is the
+machine right now". So that endpoint answers `503` once its newest reading is more than fifteen
+seconds old, with a sentence saying which of the two silences it is. Fifteen seconds is fifteen
+missed rounds; a single slow round is normal under load and the service logs those separately.
+The age is measured on the service's own monotonic counter, never on the reading's timestamp, so
+a clock that is wrong or gets corrected changes nothing.
+
+`/processes` is **not** affected: it is served from its own live reading of the process table, so
+on a machine whose sampler has died the process list and the kill still work — which is what you
+want, because that list is how you find out what wedged it.
+
+An older dashboard against this service still gets the protection: a `503` reaches it as "the
+service is not sampling", and after ten seconds it raises a warning like any other — it just
+calls the fault "no readings yet" instead of "not measuring", and cannot tell the two apart. The
+other way round gets nothing: **a dashboard newer than its service** talks to a service with no
+such check, which answers `200` with the stale reading exactly as before. Update both sides
+together.
 
 `/processes/{pid}/kill` is the service's **only write**, and it is allowed from the network
 with the token, by deliberate choice: from another machine you see a runaway process and
