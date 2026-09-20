@@ -6,8 +6,12 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Transport.NamedPipes;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Observer.Core.Processes;
 using Observer.Service.Credentials;
 using Observer.Service.LocalChannel;
@@ -469,6 +473,38 @@ public class LocalChannelWindowsTests
     /// <summary>The same token as CREDENTIALS, the shape the service's access control takes.</summary>
     internal static MachineCredentials Token =>
         new(TokenText, null, null);
+
+    [WindowsOnly]
+    [SupportedOSPlatform("windows")]
+    public void ListenNamedPipeNamesTheProtocolItselfAndDoesNotInheritIt()
+    {
+        // The line this pins is the fix for the first review's blocking finding, and until this
+        // test it was observed by nothing: the protocol used to come from ServiceLimits.Apply's
+        // endpoint DEFAULT, which reaches only endpoints declared after it, so the restriction
+        // was an invariant of the order Program.cs registers its callbacks in.
+        //
+        // The trick is that ConfigureEndpointDefaults REPLACES rather than accumulates, so a
+        // default registered here, before WindowsNamedPipe.Listen, is the one in force when the
+        // endpoint is declared - it captures the ListenOptions and sets nothing. Whatever the
+        // protocol reads afterwards therefore came from the Listen call itself. Delete the
+        // argument in WindowsNamedPipe.Listen and this goes back to Kestrel's own default.
+        List<ListenOptions> declared = [];
+
+        WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
+        builder.Configuration.Sources.Clear();
+        builder.Logging.ClearProviders();
+        builder.WebHost.ConfigureKestrel(kestrel => kestrel.ConfigureEndpointDefaults(declared.Add));
+
+        WindowsNamedPipe.Listen(builder, UniquePipeName());
+
+        using WebApplication app = builder.Build();
+
+        // Resolving the options is what runs the registered callbacks. Nothing is bound: that
+        // happens on StartAsync, which is deliberately not called.
+        _ = app.Services.GetRequiredService<IOptions<KestrelServerOptions>>().Value;
+
+        Assert.Equal(ServiceLimits.Protocol, Assert.Single(declared).Protocols);
+    }
 
     /// <summary>Opens a pipe on a bench built with or without the limits, and speaks HTTP/2 to it.</summary>
     /// <param name="withLimits">Whether the bench applies <c>ServiceLimits</c>.</param>

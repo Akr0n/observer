@@ -8,16 +8,30 @@ observer (0.23.1) unstable; urgency=medium
   * At most 512 connections per endpoint. It is a budget each listener
     gets SEPARATELY - measured, not read: with the limit at two and two
     listeners open, filling the first leaves the second serving normally.
-    That is what makes the limit safe to set at all, because a flood on
-    the port the other machines use cannot close the local channel, which
-    is how the owner watches, and stops processes on, the machine they
-    are sitting at. One idle connection was measured at about 13 kB of
-    memory on the server in plain HTTP, and at about 30 kB over TLS for a
-    connection whose both ends lived in the measuring process - so the
-    server's own share is below that, and a flood at this limit costs at
-    most about 15 MB rather than all the memory the machine has. A
-    dashboard working hard holds around twenty connections: one per
-    history strip, plus the reading and the process list.
+    So a flood on the port the other machines use does not spend the
+    local channel's budget, and cannot lock the owner out of the machine
+    they are sitting at.
+  * What that does NOT do is make the local channel safe, and the first
+    draft of these notes said it did. The local channel has a budget of
+    its own, and on Windows the pipe admits every interactive user on
+    purpose - so an ordinary standard user can hold its 512 connections
+    and leave the administrator's elevated dashboard unable to connect,
+    including for the kill 0.23.0 exists to gate. Kestrel has no
+    per-endpoint override, so there is nothing to tune. Accepted, because
+    the alternative is no bound at all on the endpoint the whole network
+    can reach. On Linux the socket's own mode keeps this to the service's
+    group.
+  * The arithmetic behind 512, in the version that was measured last -
+    the first two were wrong the same way. All figures are managed heap
+    with both ends of the connection inside the measuring process, so the
+    server's own share is lower. An IDLE connection costs about 11 kB; a
+    connection holding an UNFINISHED REQUEST, which is what a flood
+    really looks like, costs about 31 kB. So 512 bounds one endpoint
+    under 16 MB and the service's two under 32 MB. A dashboard working
+    hard holds around twenty connections, and that is a peak and not a
+    sum: its loop awaits the reading, then the history, then the process
+    list, so only the history fan-out, the away summary and a read
+    started by a click are ever in flight together.
   * No request body at all. No endpoint reads one, and the kill takes its
     arguments in the URL precisely so that it does not need one. The
     limit fires when a body is READ, not when it is announced, and both
@@ -42,6 +56,21 @@ observer (0.23.1) unstable; urgency=medium
     service registers its start-up callbacks: moving one line put HTTP/2
     back in the TLS handshake with the whole test suite still green.
     Found by the review, by doing it. Position must not carry security.
+  * An endpoint declared in configuration is the one way left to put
+    HTTP/2 back within reach of a caller who has shown no token: it goes
+    through no Listen call, and its own Protocols key beats the default.
+    The service now refuses to start on such an entry, next to the check
+    that already refuses a malformed endpoint URL.
+  * Kestrel's connection-limit warning is kept OUT of the Windows event
+    log. Setting a budget installs the middleware that refuses
+    connections, and it logs one Warning per refusal with no throttle -
+    twenty refusals, twenty lines. The service runs as a Windows service,
+    where Warning and above reach the Application log, so without this a
+    caller holding no token would decide how often the machine writes to
+    a 20 MB log and could roll the machine's whole history over in
+    seconds. It is the same harm the repetition brake was built for in
+    0.14.1, except this line belongs to the framework and can only be
+    filtered. It still reaches the console and the journal.
 
  -- Federico Cardinali <noreply@example.invalid>  Sun, 20 Sep 2026 17:00:59 +0200
 

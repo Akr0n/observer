@@ -30,24 +30,52 @@ public static class ServiceLimits
     /// up to 1024 connections, because the service opens two, HTTPS and the local channel.
     /// </para>
     /// <para>
-    /// That per-endpoint behaviour is not a detail, it is the reason this limit is safe to set at
-    /// all. A flood on the port every other machine uses cannot lock the owner out of the local
-    /// channel, which is how they watch the machine they are sitting at and, since 0.23.0, how they
-    /// stop a process on it. Had the budget been shared, the cheapest denial of service would have
-    /// been to make the machine's own dashboard unreachable.
+    /// That per-endpoint behaviour is what makes the limit worth setting: a flood on the port
+    /// every other machine uses does not spend the local channel's budget, so it cannot lock the
+    /// owner out of the machine they are sitting at. It does NOT make the local channel safe, and
+    /// an earlier version of this remark claimed that it did. THE LOCAL CHANNEL HAS A BUDGET OF
+    /// ITS OWN AND IT CAN BE SPENT BY WHOEVER CAN OPEN IT. On Windows that is every interactive
+    /// user, because the pipe's DACL grants INTERACTIVE on purpose - so an ordinary standard user
+    /// can hold 512 pipe connections and leave the administrator's elevated dashboard unable to
+    /// connect, including for the kill that 0.23.0 exists to gate. Measured. Kestrel has no
+    /// per-endpoint override of this limit, so the two endpoints cannot be given different
+    /// budgets and there is nothing to tune. Accepted, because the alternative is no bound at all
+    /// on the endpoint the whole LAN can reach, and because that same user could already exhaust
+    /// memory instead - more slowly, and in plain view of the telemetry this service publishes.
+    /// On Linux the exposure is far narrower: the socket is 0660 inside a 0750 directory owned by
+    /// the service's user and group, so only that group can fill it.
     /// </para>
     /// <para>
-    /// WHY 512. One idle plain-HTTP connection was measured at about 13 kB of managed memory on
-    /// the server. The TLS figure that was isolated is weaker and is quoted as what it is: about
-    /// 30 kB for a connection whose BOTH ends lived in the measuring process, so the server's own
-    /// share is somewhere below that, and a flood at this limit costs at most about 15 MB per
-    /// endpoint - an upper bound that includes the attacker's half. Bounded either way, and small
-    /// next to the service it protects. The floor comes from the dashboard: see
-    /// <see cref="DashboardConnectionsWhenBusy"/>.
+    /// WHY 512, and the arithmetic is the one that was measured LAST, because the first two were
+    /// wrong in the same direction. All figures are managed heap, taken with both ends of the
+    /// connection inside the measuring process, so the server's own share is lower than each of
+    /// them. An IDLE connection costs about 11 kB. A connection HOLDING AN UNFINISHED REQUEST -
+    /// which is what a flood actually looks like, and what the first draft of this remark left
+    /// out - costs about 31 kB with 29 kB of headers on the way in, roughly three times as much.
+    /// So 512 bounds this endpoint at something under 16 MB, and the service's two endpoints at
+    /// something under 32 MB. Bounded, and small next to the machine this service exists to
+    /// watch. Note what the budget does NOT bound: it counts connections, not the buffers behind
+    /// them. <c>MaxRequestBufferSize</c> is the knob for that and is deliberately left at its
+    /// default here - lowering it was tried and measured, and
+    /// <c>MaxRequestHeadersTotalSize = 8 kB</c> changed the cost by 1 %, because the bytes are
+    /// buffered before they are parsed.
     /// </para>
     /// <para>
-    /// The number is deliberately not a knob: a limit that can be raised in a file is a limit that
+    /// The floor comes from the dashboard: see <see cref="DashboardConnectionsWhenBusy"/>. The
+    /// number is deliberately not a knob: a limit that can be raised in a file is a limit that
     /// gets raised instead of understood, and there is no measured case that needs more.
+    /// </para>
+    /// <para>
+    /// WHAT A REFUSAL LOOKS LIKE, at both ends, because neither is obvious. On the wire it is not
+    /// an HTTP status at all - Kestrel accepts the connection and disposes it - so the dashboard
+    /// reports <c>Unreachable</c>, which reads as "Service unreachable": a cable fault, with the
+    /// wrong remedy. Nothing can be sent on a refused connection, so that cannot be improved from
+    /// here. In the log it is one Warning per refusal from
+    /// <c>Microsoft.AspNetCore.Server.Kestrel.Connections</c>, with no throttle of any kind, and
+    /// that line is filtered OUT of the Windows event log in <c>appsettings.json</c> - see the
+    /// comment there. The two facts belong together: the log line is the only signal that the
+    /// budget was reached, and it is the one an attacker would otherwise use to evict the
+    /// machine's event history.
     /// </para>
     /// </remarks>
     public const int MaxConcurrentConnectionsPerEndpoint = 512;
@@ -56,11 +84,14 @@ public static class ServiceLimits
     /// <remarks>
     /// It is enforced nowhere - it is the floor the budget above has to clear, written down so the
     /// test guarding that budget has something to compare against instead of a number somebody
-    /// picked. The dashboard holds ONE connection per request in flight and caps nothing: a
-    /// history refresh starts every strip at once, one request per gauge row - six on a plain
-    /// desktop, more on a host with many disks - and on top of that sit the once-a-second reading,
-    /// the process list while its panel is open, and the "while you were away" summary. Twenty is
-    /// that, rounded up.
+    /// picked. The dashboard holds ONE connection per request in flight and caps nothing, so the
+    /// figure is a PEAK CONCURRENCY and not a sum of everything it asks for: the main loop awaits
+    /// the reading, then the history, then the process list, one after another, so those never
+    /// overlap and the same pooled connection serves them in turn. What can genuinely be in
+    /// flight together is the history fan-out - every strip at once, one connection per gauge
+    /// row, six on a plain desktop and more on a host with many disks - plus the two things the
+    /// loop does not await: the "while you were away" summary and a process read started by a
+    /// click. Twenty is that, rounded up for a machine with a lot of disks.
     /// </remarks>
     public const int DashboardConnectionsWhenBusy = 20;
 
@@ -128,6 +159,34 @@ public static class ServiceLimits
     /// </para>
     /// </remarks>
     public const HttpProtocols Protocol = HttpProtocols.Http1;
+
+    /// <summary>Why a configured endpoint's protocol is not acceptable, or null if it is.</summary>
+    /// <param name="protocols">The <c>Kestrel:Endpoints:NAME:Protocols</c> value, if there is one.</param>
+    /// <returns>The sentence to refuse it with, or null.</returns>
+    /// <remarks>
+    /// A pure rule beside the endpoint URL's, tested the same way and for the same reason: an
+    /// endpoint declared in configuration is the FOURTH way one can be opened here, and the only
+    /// one that does not pass through a <c>Listen</c> call in this repository - so
+    /// <see cref="Protocol"/> does not reach it. Measured: such an endpoint does inherit
+    /// <see cref="Apply"/>'s endpoint default when it names no protocol, but its own key is
+    /// applied AFTER that default and wins; and on a cleartext endpoint an explicit
+    /// <c>Http2</c> IS then served, answering the connection preface with SETTINGS where
+    /// <c>Http1</c> and the mixed default both answer GOAWAY. So this is the one place where
+    /// configuration can put the second protocol implementation back within reach of a caller who
+    /// has shown no token, and the service refuses to start instead.
+    /// </remarks>
+    public static string? ProblemWithConfiguredProtocol(string? protocols)
+    {
+        if (protocols is not { Length: > 0 }
+            || string.Equals(protocols, nameof(HttpProtocols.Http1), StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return $"it asks for Protocols '{protocols}'. This service speaks HTTP/1.1 only: HTTP/2 " +
+            "brings a second protocol implementation within reach of callers the access control " +
+            "has not admitted yet. Remove the line, or set it to " + nameof(HttpProtocols.Http1) + ".";
+    }
 
     /// <summary>Applies the limits that belong to the server as a whole.</summary>
     /// <param name="kestrel">The server options.</param>

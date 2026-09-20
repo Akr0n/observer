@@ -4,6 +4,7 @@ using Observer.Core.Metrics;
 using Observer.Core.Platform;
 using Observer.Core.Processes;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Hosting.Systemd;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Observer.Service;
@@ -126,6 +127,15 @@ foreach (IConfigurationSection endpoint in builder.Configuration.GetSection("Kes
     {
         throw new InvalidOperationException(
             $"Kestrel endpoint '{endpoint.Key}' is misconfigured. {problem}");
+    }
+
+    // And the same for its protocol, which is the one way configuration can put HTTP/2 back
+    // within reach of a caller who has shown no token: the rule is in ServiceLimits, beside the
+    // constant it defends.
+    if (ServiceLimits.ProblemWithConfiguredProtocol(endpoint["Protocols"]) is { } wrongProtocol)
+    {
+        throw new InvalidOperationException(
+            $"Kestrel endpoint '{endpoint.Key}' is misconfigured. {wrongProtocol}");
     }
 }
 

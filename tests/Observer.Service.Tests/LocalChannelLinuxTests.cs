@@ -2,6 +2,10 @@ using System.Net.Sockets;
 using System.Runtime.Versioning;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Observer.Service.LocalChannel;
 
@@ -159,6 +163,38 @@ public class LocalChannelLinuxTests
         string reported = await client.GetStringAsync("who", CancellationToken.None);
 
         Assert.Equal(nameof(CallerElevation.NotApplicable), reported);
+    }
+
+    [LinuxOnly]
+    public async Task ListenUnixSocketNamesTheProtocolItselfAndDoesNotInheritIt()
+    {
+        // The Linux twin of the Windows test on the same line, and it pins the fix for the first
+        // review's blocking finding: the protocol used to come from ServiceLimits.Apply's
+        // endpoint DEFAULT, which reaches only endpoints declared after it, so the restriction
+        // was an invariant of the order Program.cs registers its callbacks in.
+        //
+        // ConfigureEndpointDefaults REPLACES rather than accumulates, so the default registered
+        // here - before LocalChannelSetup declares anything - is the one in force: it captures
+        // the ListenOptions and sets nothing. Whatever the protocol reads afterwards came from
+        // the ListenUnixSocket call itself.
+        List<ListenOptions> declared = [];
+
+        WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
+        builder.Configuration.Sources.Clear();
+        builder.Logging.ClearProviders();
+        builder.WebHost.ConfigureKestrel(kestrel => kestrel.ConfigureEndpointDefaults(declared.Add));
+
+        LocalChannelOptions options = new() { SocketPath = ShortSocketPath() };
+
+        Assert.NotNull(await LocalChannelSetup.ConfigureAsync(builder, options));
+
+        using WebApplication app = builder.Build();
+
+        // Resolving the options runs the registered callbacks. Nothing is bound: that happens on
+        // StartAsync, which is deliberately not called, so no socket is left behind.
+        _ = app.Services.GetRequiredService<IOptions<KestrelServerOptions>>().Value;
+
+        Assert.Equal(ServiceLimits.Protocol, Assert.Single(declared).Protocols);
     }
 
     // There is deliberately no HTTP/2-preface test here, and the absence is the finding: on Linux

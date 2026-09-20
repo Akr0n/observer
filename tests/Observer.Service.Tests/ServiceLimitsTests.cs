@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Observer.Core.Composition;
@@ -46,14 +47,32 @@ public class ServiceLimitsTests(InMemoryService service)
     }
 
     [Fact]
+    public void TheRefusalWarningIsKeptOutOfTheWindowsEventLog()
+    {
+        // Setting a connection budget installs Kestrel's connection-limit middleware, which logs
+        // one Warning per refused connection with no throttle - measured, twenty refusals gave
+        // twenty lines. UseWindowsService sends Warning and above to the Application log, so
+        // without this filter a caller holding no token decides how often the machine writes to
+        // a 20 MB log. This asserts the CONFIGURATION rather than the behaviour, and that is the
+        // honest limit of what a test can do here: the EventLog provider does not exist on Linux
+        // and is not registered under TestServer, so there is no sink to observe. What it does
+        // catch is the line being deleted from appsettings.json, which is how it would be lost.
+        Assert.Equal(
+            "Error",
+            service.Services.GetRequiredService<IConfiguration>()
+                ["Logging:EventLog:LogLevel:Microsoft.AspNetCore.Server.Kestrel.Connections"]);
+    }
+
+    [Fact]
     public void TheConnectionBudgetLeavesRoomForManyDashboardsAndStaysFinite()
     {
         // The floor is DERIVED, not picked: a budget below what one busy dashboard holds would
-        // start refusing connections to the second person who opens a window on a host with many
-        // disks, and that reads as a network fault, not as a limit. Eight times it is the margin,
-        // and naming the dashboard's own figure is what makes the assertion mean something -
-        // an earlier version compared against a bare 64, which is two dashboards, and would have
-        // stayed green through the change it existed to catch.
+        // start refusing connections to the third person who opens a window on a host with many
+        // disks, and that reads as a network fault, not as a limit - the dashboard has no way to
+        // tell a refusal from a cable. Eight times it is the margin, and naming the dashboard's
+        // own figure is what makes the assertion mean something: an earlier version compared
+        // against a bare 64, a number that followed from nothing, and stayed green through the
+        // change it existed to catch.
         Assert.InRange(
             ServiceLimits.MaxConcurrentConnectionsPerEndpoint,
             8 * ServiceLimits.DashboardConnectionsWhenBusy,
@@ -183,6 +202,38 @@ public class ServiceLimitsTests(InMemoryService service)
         await raw.ConnectAsync(IPAddress.Loopback, new Uri(bench.Addresses.Single()).Port);
 
         return await Http2Preface.AskWhatItSpeaks(raw.GetStream());
+    }
+
+    [Theory]
+    // Nothing configured, or the one value the service speaks: the endpoint is fine.
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("Http1", false)]
+    [InlineData("http1", false)]
+    // Everything that would put the second protocol implementation back within reach of a caller
+    // the access control has not admitted. Http1AndHttp2 is refused too, and deliberately: on the
+    // HTTPS endpoint it is exactly what advertises h2 in the handshake.
+    [InlineData("Http2", true)]
+    [InlineData("Http1AndHttp2", true)]
+    [InlineData("Http3", true)]
+    [InlineData("Http1AndHttp2AndHttp3", true)]
+    public void AConfiguredEndpointMayNotAskForAProtocolTheServiceDoesNotSpeak(string? configured, bool refused)
+    {
+        // A configured endpoint does not go through any Listen call in this repository, so the
+        // protocol named at each of those does not reach it - and its own key beats the endpoint
+        // default. This is the rule that closes that gap, and it is pure so the table can say
+        // what it covers.
+        string? problem = ServiceLimits.ProblemWithConfiguredProtocol(configured);
+
+        Assert.Equal(refused, problem is not null);
+
+        if (refused)
+        {
+            // The message has to name the value it refused: an operator who set it in
+            // appsettings.Local.json and an operator who set it in the environment are reading
+            // the same sentence and looking in two different places.
+            Assert.Contains(configured!, problem!, StringComparison.Ordinal);
+        }
     }
 
     [Fact]
