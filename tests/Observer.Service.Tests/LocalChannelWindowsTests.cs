@@ -142,15 +142,18 @@ public class LocalChannelWindowsTests
     [SupportedOSPlatform("windows")]
     public async Task AKillIsRefusedToACallerWhoseTokenIsNotElevated()
     {
-        // The wiring, end to end through a real pipe: the rule is pure and has its own table,
-        // but nothing there would notice if the endpoint forgot to ask it.
+        // The real row, on a machine where somebody can actually be non-elevated. The pid
+        // cannot exist on either system, so this is safe to ask for whatever the answer is, and
+        // the two answers are what tells the gate from the lookup: not elevated gives 403,
+        // refused before the request was even examined, elevated gives 404 because the gate let
+        // it through and the pid is simply not there.
         //
-        // The pid cannot exist on either system, so this is safe to ask for whatever the answer
-        // is - and the two answers are what tells the gate from the lookup. Not elevated: 403,
-        // refused before the request was even examined. Elevated: 404, the gate let it through
-        // and the pid is simply not there. The expectation is computed from what this process
-        // really is, so the test holds on a developer's unelevated session and on a CI runner,
-        // which is elevated.
+        // WHAT THIS ONE DOES NOT DO, and why the test below it exists: the expectation is
+        // computed from what THIS PROCESS is, and the Windows CI runner is elevated - so on the
+        // machine that gates every merge this degrades to asserting the 404 that the endpoint
+        // gave before the gate existed. On its own it would let the guard be deleted and stay
+        // green there. The LocalIdentified+No row still has no home on an elevated runner; what
+        // the next test pins on every host is that the endpoint ASKS the rule at all.
         string pipe = UniquePipeName();
 
         await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
@@ -182,6 +185,45 @@ public class LocalChannelWindowsTests
         // And the refusal says which 403 it is. On this route the same status also means "the
         // operating system protects that process", and the two have opposite remedies: one is
         // "pick another process", the other is "start the dashboard as an administrator".
+        string body = await response.Content.ReadAsStringAsync(CancellationToken.None);
+
+        Assert.Contains("may not stop processes", body, StringComparison.Ordinal);
+    }
+
+    [WindowsOnly]
+    public async Task AKillFromACallerWhoCannotBeIdentifiedIsRefusedOnAnyHost()
+    {
+        // The same wiring, pinned WITHOUT depending on what this machine's own token carries.
+        // The impersonation level is the CLIENT's to choose, and Anonymous makes the caller
+        // unreadable: the classification is then Unidentified, whose row in the table is false
+        // for every elevation there is. So the endpoint must answer 403 on a developer's
+        // unelevated session and on the elevated CI runner alike - and it answers 404 the moment
+        // the endpoint stops asking the rule, which is the mutation the test above cannot catch
+        // where it matters.
+        //
+        // Note what makes this a check on the ENDPOINT and not on the middleware: this bench
+        // mounts no access control, so the request really does reach Terminate. In the running
+        // service Decide would have refused it one layer earlier, which is the belt to this
+        // pair of braces.
+        string pipe = UniquePipeName();
+
+        await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
+            options => options.ListenNamedPipe(pipe),
+            app => app.MapProcessEndpoints(),
+            middleware: null,
+            services => services.AddSingleton<ProcessRanking>()
+                .AddSingleton<IProcessLister>(new SystemProcessLister()));
+
+        using HttpClient client = RealKestrelBench.ClientOn(
+            PipeHandler(pipe, TokenImpersonationLevel.Anonymous));
+
+        using HttpResponseMessage response = await client.PostAsync(
+            new Uri("processes/2147483646/kill?name=anything", UriKind.Relative),
+            content: null,
+            CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+
         string body = await response.Content.ReadAsStringAsync(CancellationToken.None);
 
         Assert.Contains("may not stop processes", body, StringComparison.Ordinal);

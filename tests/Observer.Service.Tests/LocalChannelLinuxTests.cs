@@ -137,6 +137,31 @@ public class LocalChannelLinuxTests
     }
 
     [LinuxOnly]
+    public async Task ACallerOnTheUnixSocketIsNotAskedAboutElevation()
+    {
+        // NotApplicable is a DECISION here, not an absence, and it is the only value that lets
+        // a kill through on this platform: the socket is 0660 inside a 0750 directory, both
+        // owned by the service's user and group, so the kernel has already turned away anyone
+        // outside that group. Windows has no equivalent - its pipe admits every interactive
+        // user on purpose - which is why the question is asked there and not here.
+        //
+        // Without this test, dropping that argument would leave every test on both runners
+        // green while EVERY kill from a Linux dashboard started answering 403: the default is
+        // No, and No refuses. A total functional break, invisible to 800 tests.
+        string path = ShortSocketPath();
+
+        await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
+            options => options.ListenUnixSocket(path),
+            app => app.MapGet("/who", (HttpContext context) =>
+                LocalCaller.Classify(context).Elevation.ToString()));
+
+        using HttpClient client = RealKestrelBench.ClientOn(SocketHandler(path));
+        string reported = await client.GetStringAsync("who", CancellationToken.None);
+
+        Assert.Equal(nameof(CallerElevation.NotApplicable), reported);
+    }
+
+    [LinuxOnly]
     public async Task TheUnixSocketNoLongerNeedsTheTokenButTcpStillDoes()
     {
         // The Linux counterpart of the change: on the local channel the caller is identified by

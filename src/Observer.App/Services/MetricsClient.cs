@@ -409,11 +409,6 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
                     ServiceOutcome.UnexpectedResponse,
                     "That process is no longer running."),
 
-                HttpStatusCode.Forbidden => new KillFetch(
-                    ServiceOutcome.UnexpectedResponse,
-                    $"The service on {Endpoint.Description} refused to terminate it: the operating system " +
-                    "protects that process."),
-
                 // The number is still in use, but not by what was on screen: that process ended
                 // and the system handed the pid to another one. Nothing was terminated, and the
                 // list is read again immediately after, so this sentence only has to say why.

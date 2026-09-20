@@ -228,7 +228,10 @@ The question asked is what the caller's own **token** can do, not what its accou
 of Administrators who has not elevated holds a token from which Windows removed the group, and
 honouring the account instead would hand back exactly the privilege it removed. In practice, to
 end a process on this machine you start the dashboard as an administrator; the gauges, the
-history and the process list need nothing. **On Linux there is no such check and none is
+history and the process list need nothing. Note that this has to be *your own* account
+elevating: if you are not an administrator, "Run as administrator" starts the dashboard as
+somebody else, with somebody else's profile — so it would look for `machines.json` and the
+stored tokens under that account and find neither. **On Linux there is no such check and none is
 needed**: the socket is `0660` inside a `0750` directory, both owned by the service's user and
 group, so the kernel has already turned away anyone outside that group. **From the network
 nothing changes** — there is no identity to read there, only the token, and refusing would
