@@ -120,4 +120,36 @@ public static class AccessPolicy
                 elevation is CallerElevation.Yes or CallerElevation.NotApplicable,
             _ => false,
         };
+
+    /// <summary>Whether this caller may make the service re-read its credential store.</summary>
+    /// <param name="caller">Where the request came from.</param>
+    /// <param name="elevation">What the caller's own token can do, where that question applies.</param>
+    /// <returns>True if the reload may go ahead.</returns>
+    /// <remarks>
+    /// A THIRD rule beside the other two, and not a widening of either. <see cref="Decide"/> says
+    /// who reaches an endpoint; <see cref="MayEndProcesses"/> says who may destroy a process;
+    /// this says who may change what the service itself will accept from now on. They answer
+    /// different questions about the same caller, and collapsing them would mean giving one of the
+    /// three away.
+    /// <para>
+    /// FROM THE NETWORK: never, and this is the one row where it differs from the kill. The
+    /// endpoint is marked local-only, so <see cref="Decide"/> has already answered 404 to a
+    /// network caller before this is asked - the comment on that branch has said since the rule
+    /// was written that whoever steals the token must not be able to rotate the keys and lock the
+    /// owner out, and this is the endpoint it was written for. Answered here as well so the rule
+    /// is total and the endpoint stays safe behind any other guard.
+    /// </para>
+    /// <para>
+    /// LOCALLY: the same elevation the kill asks for, and not merely for consistency. The reload
+    /// cannot be made to read a file the caller chose - the path comes from the service's own
+    /// configuration - so the worst an unelevated caller could do is make the service re-read a
+    /// file only an administrator can write, which changes nothing. But it is still a caller with
+    /// no credential reaching in and touching what the service will accept, on a channel Windows
+    /// opens to every interactive user; asking for the elevation costs the operator nothing,
+    /// because writing the store already required it.
+    /// </para>
+    /// </remarks>
+    public static bool MayReloadCredentials(CallerKind caller, CallerElevation elevation) =>
+        caller is CallerKind.LocalIdentified
+        && elevation is CallerElevation.Yes or CallerElevation.NotApplicable;
 }

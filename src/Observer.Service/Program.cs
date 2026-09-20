@@ -190,6 +190,15 @@ ProvisionedCredentials credentials = CredentialProvisioning.Provision(
     credentialStorePath,
     runningAsService);
 
+// The credentials the service SERVES, which from 0.24.0 are not the same thing as the ones it
+// was provisioned with: "observer rotate-key --now" can replace them while the service is
+// running, through the local-only endpoint below. Registered so the endpoint can reach it;
+// handed to the access control directly, because that one must not be able to resolve anything
+// else by mistake.
+CredentialSource credentialSource = new(credentials);
+
+builder.Services.AddSingleton(credentialSource);
+
 if (credentials.Origin == CredentialOrigin.Ephemeral)
 {
     // Console and not the logger: this line is for whoever has just launched the service from a
@@ -256,7 +265,7 @@ if (OperatingSystem.IsLinux() && socketPath is { } localSocketPath)
     LinuxUnixSocket.RestrictAfterStart(app.Lifetime, localSocketPath);
 }
 
-app.UseObserverAccessControl(credentials.Credentials);
+app.UseObserverAccessControl(credentialSource);
 
 // AFTER the access control, and the order is measured. This way the responses the middleware
 // short-circuits - 401 and 404 - do not go through the compressor: there is no point spending CPU
@@ -314,5 +323,10 @@ app.MapStorageEndpoints();
 // not just read: /processes/{pid}/kill destroys state, and for that reason it logs every
 // attempt with the caller's origin.
 app.MapProcessEndpoints();
+
+// The only endpoint that changes what the service itself will accept, and the first one in this
+// project that exists ONLY on the local channel - from the network it is a 404, not a 403, so a
+// stolen token cannot even discover that a way to rotate the keys is there.
+app.MapCredentialEndpoints();
 
 app.Run();

@@ -17,6 +17,16 @@ public static class EndpointScopeExtensions
     /// <remarks>
     /// It works on a route group too, and that is the intended way to use it: the pairing
     /// endpoints will be born together and are to be marked once, not one by one.
+    /// <para>
+    /// IT HIDES A ROUTE ONLY FROM THE VERB IT WAS MAPPED WITH, and neither marking the group nor
+    /// marking each endpoint changes that. A request matching the PATH but not the METHOD selects
+    /// a synthetic rejection endpoint whose metadata is empty, so there is no marker to read:
+    /// <see cref="ScopeOf"/> answers Anywhere and a caller from the network gets a 405 carrying
+    /// <c>Allow</c>, where every sibling path answers 404. Measured, twice, on the real pipeline.
+    /// A route that must not be discoverable therefore has to be mapped for ALL verbs, with the
+    /// method checked inside the handler - see <c>CredentialEndpoints</c>, which does exactly
+    /// that and says why. The pairing endpoints this remark anticipates will need the same.
+    /// </para>
     /// </remarks>
     public static TBuilder LocalOnly<TBuilder>(this TBuilder builder)
         where TBuilder : IEndpointConventionBuilder

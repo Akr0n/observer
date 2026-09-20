@@ -1,22 +1,34 @@
 using System.Globalization;
 using System.Text;
 using Observer.Core.Security;
+using Observer.Service;
 using Observer.Service.Credentials;
 
 namespace Observer.Cli;
 
 /// <summary>The command-line verbs.</summary>
 /// <remarks>
-/// Three verbs and no parser: <c>System.CommandLine</c> is in beta, and a beta package under
-/// TreatWarningsAsErrors is a risk that three verbs do not justify.
+/// Four verbs, two flags and no parser: <c>System.CommandLine</c> is in beta, and a beta package
+/// under TreatWarningsAsErrors is a risk this surface does not justify. The flags are matched by
+/// presence rather than position, which is why <c>--now</c> and <c>--stdout</c> are looked for in
+/// the whole argument list.
 /// <para>
-/// None of the three takes a secret as an ARGUMENT. That is not an accident: PowerShell's history
+/// NONE of them takes a secret as an ARGUMENT. That is not an accident: PowerShell's history
 /// records the typed line, not the output, so a verb like <c>set-key &lt;secret&gt;</c> would
 /// leave the key in a history file. Do not add one.
 /// </para>
 /// </remarks>
 public static class Commands
 {
+    /// <summary>The port the service listens on by default, taken from its own options.</summary>
+    /// <remarks>
+    /// Read from <see cref="NetworkOptions"/> rather than written again here. It is used for one
+    /// thing only - telling a stopped service apart from one whose local channel is switched off
+    /// - and a number that drifted from the service's would turn that into the wrong sentence,
+    /// which is the one failure this whole path exists to avoid.
+    /// </remarks>
+    private const int DefaultHttpsPort = NetworkOptions.DefaultPort;
+
     /// <summary>Runs the requested verb.</summary>
     /// <param name="args">The command-line arguments.</param>
     /// <returns>The exit code.</returns>
@@ -29,7 +41,7 @@ public static class Commands
         return verb switch
         {
             "share" => Share(args.Contains("--stdout", StringComparer.Ordinal)),
-            "rotate-key" => RotateKey(),
+            "rotate-key" => RotateKey(args.Contains("--now", StringComparer.Ordinal)),
             "token" => Token(args),
             "doctor" => Doctor(),
             "help" or "--help" or "-h" => PrintHelp(0),
@@ -50,6 +62,11 @@ public static class Commands
               observer rotate-key         Replace the machine token. The previous one keeps
                                           working for 24 hours so remote clients are not cut off
                                           at once. Needs an elevated terminal.
+
+              observer rotate-key --now   The same, for a token that has LEAKED: the old one
+                                          stops working immediately and is not left on disk.
+                                          Every machine watching this one is cut off until you
+                                          run "observer token set NAME" there.
 
               observer doctor             Explain where the credential store is, how well it is
                                           protected, and what a client would see. Needs nothing.
@@ -236,7 +253,19 @@ public static class Commands
         return 0;
     }
 
-    private static int RotateKey()
+    /// <summary>Replaces the machine token, gracefully or immediately.</summary>
+    /// <param name="immediately">True for <c>--now</c>: the old key stops working at once.</param>
+    /// <returns>The exit code. Zero only when the old key is provably accepted nowhere here.</returns>
+    /// <remarks>
+    /// The two forms answer two different situations and it is worth being exact about which.
+    /// The graceful one is for a key you are tired of: the previous key stays valid for a day so
+    /// the machines watching this one are not cut off while nobody is looking. <c>--now</c> is
+    /// for a key that has LEAKED, and it does two things the other does not - it leaves NO
+    /// previous key, so the leaked secret is not even written back to disk, and it makes the
+    /// RUNNING service adopt the new store instead of leaving it to a restart somebody has to
+    /// remember during an incident.
+    /// </remarks>
+    private static int RotateKey(bool immediately)
     {
         string storePath = CredentialDirectory.DefaultPath();
 
@@ -245,11 +274,12 @@ public static class Commands
             return 1;
         }
 
-        MachineCredentials rotated = credentials.Rotate(DateTimeOffset.UtcNow, MachineCredentials.GracePeriod);
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        MachineCredentials replacement = Replacement(credentials, immediately, now);
 
         try
         {
-            CredentialStore.Write(storePath, rotated);
+            CredentialStore.Write(storePath, replacement);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -257,21 +287,27 @@ public static class Commands
             return 1;
         }
 
-        Console.WriteLine("A new machine token has been written.");
-        Console.WriteLine();
-        Console.WriteLine(string.Create(
-            CultureInfo.InvariantCulture,
-            $"The previous one keeps working until {DateTimeOffset.UtcNow + MachineCredentials.GracePeriod:u}, so remote"));
-        Console.WriteLine("clients are not cut off at once. Update them before then.");
+        Console.WriteLine(immediately
+            ? "A new machine token has been written, and the previous one is gone."
+            : "A new machine token has been written.");
         Console.WriteLine();
 
-        // The restart has to be spelled out, because otherwise you try the new key, it does not work, and you
-        // conclude that rotation is broken. And the command depends on the system: printing one
-        // that does not exist here would send the user looking for why it does not work.
-        Console.WriteLine("The service keeps using the OLD key until it is restarted:");
-        Console.WriteLine(OperatingSystem.IsWindows()
-            ? "    Restart-Service Observer"
-            : "    sudo systemctl restart observer");
+        if (immediately)
+        {
+            Console.WriteLine("Every machine that watches this one is cut off until you run");
+            Console.WriteLine("\"observer token set NAME\" there with the new token.");
+        }
+        else
+        {
+            Console.WriteLine(string.Create(
+                CultureInfo.InvariantCulture,
+                $"The previous one keeps working until {now + MachineCredentials.GracePeriod:u}, so remote"));
+            Console.WriteLine("clients are not cut off at once. Update them before then.");
+        }
+
+        Console.WriteLine();
+
+        int exitCode = immediately ? TellTheRunningService(storePath) : DescribeTheRestart();
 
         // This verb does NOT print the token, and that is not an oversight: that way it stays
         // harmless to run where the output ends up in a log. But without the lines below whoever
@@ -281,7 +317,91 @@ public static class Commands
         Console.WriteLine("Then read the new token with \"observer share\", and hand it to the");
         Console.WriteLine("machines that watch this one with \"observer token set NAME\".");
 
+        return exitCode;
+    }
+
+    /// <summary>What replaces the credentials, for each of the two kinds of rotation.</summary>
+    /// <param name="current">What is in the store now.</param>
+    /// <param name="immediately">True for <c>--now</c>.</param>
+    /// <param name="now">The instant of the rotation.</param>
+    /// <returns>The credentials to write.</returns>
+    /// <remarks>
+    /// Public, and pure, so the one line that decides whether a LEAKED secret stays on disk can
+    /// be read off a table instead of inferred from a verb that also writes files and talks to a
+    /// service.
+    /// <para>
+    /// <see cref="MachineCredentials.Create"/> and NOT <c>Rotate(now, TimeSpan.Zero)</c>, which
+    /// is the shape that looks equivalent. A zero grace leaves the leaked key in the file with an
+    /// expiry in the past: a compromised secret written back to disk for no benefit at all, and
+    /// one that is still accepted at the exact instant of its expiry, because the comparison that
+    /// admits the previous key is inclusive.
+    /// </para>
+    /// </remarks>
+    public static MachineCredentials Replacement(
+        MachineCredentials current, bool immediately, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+
+        return immediately
+            ? MachineCredentials.Create()
+            : current.Rotate(now, MachineCredentials.GracePeriod);
+    }
+
+    /// <summary>The graceful path: the service picks the new key up when it is restarted.</summary>
+    /// <returns>Always zero: nothing was promised that has not happened.</returns>
+    /// <remarks>
+    /// The restart has to be spelled out, because otherwise you try the new key, it does not
+    /// work, and you conclude that rotation is broken. The command depends on the system:
+    /// printing one that does not exist here would send the reader looking for why.
+    /// </remarks>
+    private static int DescribeTheRestart()
+    {
+        Console.WriteLine("The service keeps using the OLD key until it is restarted:");
+        Console.WriteLine(OperatingSystem.IsWindows()
+            ? "    Restart-Service Observer"
+            : "    sudo systemctl restart observer");
+
         return 0;
+    }
+
+    /// <summary>The immediate path: make the RUNNING service adopt the store, and prove it did.</summary>
+    /// <param name="storePath">The store that was just written.</param>
+    /// <returns>Zero only if the old key is provably accepted nowhere on this machine.</returns>
+    /// <remarks>
+    /// The proof is the stamp. The service reports when the file it read had last been written,
+    /// and this compares it with the stamp of the file it just wrote: equal means the running
+    /// process read those exact bytes. "The service said OK" would not be the same claim - it
+    /// would not rule out a second service, a different store path, or a token that came from
+    /// configuration and was never going to change.
+    /// </remarks>
+    private static int TellTheRunningService(string storePath)
+    {
+        DateTimeOffset written = File.GetLastWriteTimeUtc(storePath);
+
+        LocalChannelAnswer answer = LocalChannelRequest.Post(
+            "credentials/reload",
+            LocalChannelProbe.DefaultPipeName,
+            LocalChannelProbe.DefaultSocketPath,
+            TimeSpan.FromSeconds(10));
+
+        // Only asked when the local channel said nothing, because that is the only case where it
+        // changes the answer - and it costs a connection attempt nobody needs otherwise.
+        bool listening = answer.Silent
+            && LocalChannelRequest.SomethingIsListeningOn(DefaultHttpsPort, TimeSpan.FromSeconds(1));
+
+        RevocationVerdict verdict = Revocation.Judge(
+            answer, storePath, written, Revocation.Read(answer.Body), listening);
+
+        Console.WriteLine("Store   : " + storePath);
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"Written : {written:u}"));
+        Console.WriteLine("Service : " + verdict.Headline);
+
+        if (verdict.Advice.Length > 0)
+        {
+            Console.WriteLine("          " + verdict.Advice);
+        }
+
+        return verdict.ExitCode;
     }
 
     private static int Doctor()

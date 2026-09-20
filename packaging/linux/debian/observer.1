@@ -1,4 +1,4 @@
-.TH OBSERVER 1 "2026-09-19" "observer 0.23.1" "User Commands"
+.TH OBSERVER 1 "2026-09-20" "observer 0.24.0" "User Commands"
 .SH NAME
 observer \- manage this machine's Observer service and its stored tokens
 .SH SYNOPSIS
@@ -45,6 +45,21 @@ and hand it to the machines that watch this one with
 .BR "token set" .
 Requires privileges.
 .TP
+.B rotate\-key " \-\-now"
+The same, for a token that has
+.I leaked.
+The previous key is not kept: it stops working at once and is not written back
+to the store, so the compromised secret is not left on disk. The command then
+tells the
+.I running
+service to adopt the new store through the local channel, and reports whether
+it did \- comparing the moment the service says it read the file with the moment
+this command wrote it, so that success is observed rather than assumed. It exits
+0 only when the old key is provably accepted nowhere on this machine. Every
+computer that watches this one is cut off until
+.B token set
+is run there with the new token. Requires privileges.
+.TP
 .B doctor
 Report where the credential store is, how well it is protected, what identity
 this terminal has, and what a client would see on the local channel. Requires
@@ -67,11 +82,22 @@ Remove that machine's token from this computer.
 .SH EXIT STATUS
 .TP
 .B 0
-Success.
+Success. For
+.B rotate\-key \-\-now
+it means more than that, and it is the only thing it means: the old key is
+provably accepted nowhere on this machine \- either because the running service
+was seen to adopt the new store, or because nothing answered on the default
+local channel and the default port.
 .TP
 .B 1
 The credential store or the token store could not be read or written, or no
-token was given.
+token was given. For
+.B rotate\-key \-\-now
+it also covers the case where the store WAS rewritten but the running service
+was not seen to adopt it: it answers but has no such endpoint, it read a
+different file, it has no store to adopt, it refused, or nothing answered on the
+local channel while something is still listening on the port. The line printed
+says which, and in every one of them the old key may still be accepted.
 .TP
 .B 2
 The command was not recognised.

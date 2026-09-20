@@ -54,6 +54,88 @@ public class LocalChannelWindowsTests
     }
 
     [WindowsOnly]
+    public async Task TheCredentialReloadDoesNotExistForACallerFromTheNetworkEvenWithTheRightToken()
+    {
+        // The endpoint that can revoke this machine's key is the first production use of the
+        // local-only marker, and the reason that marker exists: whoever steals the token must
+        // not be able to rotate the keys and lock the owner out of their own machine. It answers
+        // 404 rather than 403 so a stolen token cannot even discover the route is there.
+        //
+        // This assertion does not depend on the runner's elevation, and that matters: the access
+        // rule short-circuits on the caller's ORIGIN before the reload's own gate is asked, so it
+        // reads the same on an elevated CI runner and an ordinary desktop. The elevation-
+        // dependent half is deliberately not tested here - see the Linux twin, where the
+        // question does not arise at all.
+        string pipe = UniquePipeName();
+
+        await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
+            options =>
+            {
+                options.Listen(IPAddress.Loopback, 0);
+                options.ListenNamedPipe(pipe);
+            },
+            app => app.MapCredentialEndpoints(),
+            middleware: app => app.UseObserverAccessControl(Token),
+            services: services => services.AddSingleton(Token));
+
+        string tcp = bench.Addresses.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
+
+        using HttpClient overTcp = new() { BaseAddress = new Uri(tcp) };
+        overTcp.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenText);
+
+        using HttpResponseMessage fromNetwork =
+            await overTcp.PostAsync("credentials/reload", content: null, CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.NotFound, fromNetwork.StatusCode);
+
+        // AND THE WRONG VERB ON THE SAME PATH, which is where this was getting it wrong. A
+        // request matching the path but not the method selects a synthetic rejection endpoint
+        // with no metadata on it, so the local-only marker was not there to be read and the
+        // answer came back 405 with "Allow: POST" - announcing the route to the very caller it
+        // is hidden from, while every sibling path answered 404. Mapping for all verbs and
+        // checking the method inside the handler is what closes it, and this is the assertion
+        // that keeps it closed.
+        foreach (HttpMethod method in new[] { HttpMethod.Get, HttpMethod.Put, HttpMethod.Delete })
+        {
+            using HttpRequestMessage wrongVerb = new(method, "credentials/reload");
+            using HttpResponseMessage answer = await overTcp.SendAsync(wrongVerb, CancellationToken.None);
+
+            Assert.Equal(HttpStatusCode.NotFound, answer.StatusCode);
+
+            // The 405 did not merely differ in status: it carried Allow, which names the verb
+            // outright. A 404 that still advertised it would be no better. Allow is a CONTENT
+            // header in .NET, not a response header - asking HttpResponseMessage.Headers for it
+            // throws "Misused header name" rather than answering false.
+            Assert.Empty(answer.Content.Headers.Allow);
+        }
+    }
+
+    [WindowsOnly]
+    public async Task ACallerWhoCannotBeIdentifiedDoesNotSeeTheCredentialEndpointEither()
+    {
+        // The other half that holds on ANY host: the impersonation level is chosen by the
+        // CLIENT, so a caller can unilaterally make itself unreadable. Unidentified is not
+        // LocalIdentified, so a local-only route is NotFound for it - before the reload's own
+        // rule is consulted, and whatever this runner's own token can do.
+        string pipe = UniquePipeName();
+
+        await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
+            options => options.ListenNamedPipe(pipe),
+            app => app.MapCredentialEndpoints(),
+            middleware: app => app.UseObserverAccessControl(Token),
+            services: services => services.AddSingleton(Token));
+
+        using HttpClient anonymous = RealKestrelBench.ClientOn(
+            PipeHandler(pipe, TokenImpersonationLevel.Anonymous));
+
+        using HttpResponseMessage answer =
+            await anonymous.PostAsync("credentials/reload", content: null, CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.NotFound, answer.StatusCode);
+    }
+
+    [WindowsOnly]
     public async Task ThePipeNeverOfferedHttp2InTheFirstPlace()
     {
         // The Windows twin of the cleartext measurement in ServiceLimitsTests, and it is here
@@ -470,9 +552,14 @@ public class LocalChannelWindowsTests
     /// <summary>The bench's token as TEXT, the shape a caller puts in an Authorization header.</summary>
     internal const string TokenText = "bench-token";
 
-    /// <summary>The same token as CREDENTIALS, the shape the service's access control takes.</summary>
-    internal static MachineCredentials Token =>
-        new(TokenText, null, null);
+    /// <summary>The same token as a SOURCE, the shape the service's access control takes.</summary>
+    /// <remarks>
+    /// The origin is Configuration with no path, which is what a bench really is: there is no
+    /// store behind it, so a reload here correctly finds nothing to adopt rather than reaching
+    /// for the machine's own credentials.
+    /// </remarks>
+    internal static CredentialSource Token =>
+        new(new ProvisionedCredentials(new MachineCredentials(TokenText, null, null), CredentialOrigin.Configuration, null));
 
     [WindowsOnly]
     [SupportedOSPlatform("windows")]
