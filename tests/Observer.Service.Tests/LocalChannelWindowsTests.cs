@@ -50,6 +50,24 @@ public class LocalChannelWindowsTests
     }
 
     [WindowsOnly]
+    public async Task ThePipeNeverOfferedHttp2InTheFirstPlace()
+    {
+        // The Windows twin of the cleartext measurement in ServiceLimitsTests, and it is here
+        // rather than there for one reason: the named pipe is the only endpoint in this service
+        // bound by a transport of its OWN. On Linux the unix socket and TCP are both the sockets
+        // transport, so the cross-platform test already covers that runner; here it would not.
+        //
+        // Both assertions are the same, and that IS the result: a caller writing the HTTP/2
+        // connection preface is refused with or without ServiceLimits, because Kestrel's mixed
+        // default means "HTTP/2 if ALPN chooses it" and a pipe has no ALPN. So the protocol named
+        // on this endpoint is belt, not brace - it costs nothing and it keeps the endpoint from
+        // depending on a default that could be narrowed later. The prose said otherwise until
+        // this test was written with a control in it.
+        Assert.Equal(Http2Preface.RefusedAsHttp1Required, await SpeakHttp2ToAPipe(withLimits: false));
+        Assert.Equal(Http2Preface.RefusedAsHttp1Required, await SpeakHttp2ToAPipe(withLimits: true));
+    }
+
+    [WindowsOnly]
     public async Task AFloodOnTheNetworkEndpointDoesNotCloseTheLocalChannel()
     {
         // The assumption ServiceLimits rests on, pinned where it can be seen. A connection budget
@@ -451,6 +469,33 @@ public class LocalChannelWindowsTests
     /// <summary>The same token as CREDENTIALS, the shape the service's access control takes.</summary>
     internal static MachineCredentials Token =>
         new(TokenText, null, null);
+
+    /// <summary>Opens a pipe on a bench built with or without the limits, and speaks HTTP/2 to it.</summary>
+    /// <param name="withLimits">Whether the bench applies <c>ServiceLimits</c>.</param>
+    /// <returns>What the endpoint answered, named by <see cref="Http2Preface"/>.</returns>
+    private static async Task<string> SpeakHttp2ToAPipe(bool withLimits)
+    {
+        string pipe = UniquePipeName();
+
+        await using RealKestrelBench bench = await RealKestrelBench.StartAsync(options =>
+        {
+            if (withLimits)
+            {
+                ServiceLimits.Apply(options);
+            }
+
+            options.ListenNamedPipe(pipe);
+        });
+
+        // A raw pipe and not the usual HttpClient handler: there is no HTTP request here, only
+        // the preface, and an HTTP client would never send one on its own.
+        await using NamedPipeClientStream raw = new(
+            ".", pipe, PipeDirection.InOut, PipeOptions.Asynchronous, TokenImpersonationLevel.Identification);
+
+        await raw.ConnectAsync(CancellationToken.None);
+
+        return await Http2Preface.AskWhatItSpeaks(raw);
+    }
 
     internal static string UniquePipeName() =>
         "observer-test-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);

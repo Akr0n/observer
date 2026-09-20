@@ -34,7 +34,12 @@ public static class LocalChannelSetup
         {
             string path = await PrepareUsablePathAsync(options.SocketPath).ConfigureAwait(false);
 
-            builder.WebHost.ConfigureKestrel(kestrel => kestrel.ListenUnixSocket(path));
+            // Named here rather than left to the endpoint defaults, for the reason written on
+            // ServiceLimits.Protocol: the defaults cover only endpoints declared after them. Like
+            // the named pipe, this endpoint is cleartext and already refuses HTTP/2 without the
+            // line - so it is belt, not the thing that closes the door.
+            builder.WebHost.ConfigureKestrel(kestrel =>
+                kestrel.ListenUnixSocket(path, listen => listen.Protocols = ServiceLimits.Protocol));
 
             return path;
         }

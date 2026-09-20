@@ -242,17 +242,20 @@ read on that machine.
 
 **What a caller may cost, before the token is even looked at.** A connection is accepted, and a
 request body received, by whoever can reach the port — the `401` comes after. So three limits sit
-on that side of the check, and this is a service whose whole job is to watch a machine: turning it
-into the machine's problem is the one failure it must not have. It accepts at most **512
-connections per endpoint**, which is a budget each listener gets separately — a flood on the port
-the other machines use therefore cannot close the local channel, which is how you watch, and stop
-processes on, the machine you are sitting at. It accepts **no request body at all**: no endpoint
-reads one, the kill takes its arguments in the URL precisely so that it does not need one, and a
-caller that sends one has its connection torn down rather than drained. And it speaks **HTTP/1.1
-only** — HTTP/2 is not merely unused, it is not offered in the TLS handshake, so a second protocol
-implementation with its own framing and its own header compression is not reachable by an
-unauthenticated caller. The numbers and what was measured to choose them are in
-`Observer.Service/ServiceLimits.cs`.
+on the near side of that check, before it rather than after, and this is a service whose whole job
+is to watch a machine: turning it into the machine's problem is the one failure it must not have.
+It accepts at most **512 connections per endpoint**, which is a budget each listener gets
+separately — a flood on the port the other machines use therefore cannot close the local channel,
+which is how you watch, and stop processes on, the machine you are sitting at. It reads **no
+request body**: no endpoint reads one, the kill takes its arguments in the URL precisely so that it
+does not need one, and a caller that sends one gets its connection torn down instead of the body
+drained — the limit fires on the read, not on the announcement, so a body is not refused at the
+door. And it speaks **HTTP/1.1 only** — on the HTTPS endpoint HTTP/2 is not merely unused, it is
+not offered in the TLS handshake, so a second protocol implementation with its own framing and its
+own header compression is not reachable by an unauthenticated caller. On the local channel that
+setting changes nothing and is kept only as a guard: a cleartext endpoint refuses HTTP/2 anyway,
+which was measured rather than assumed. The numbers, and what was measured to choose them, are in
+`src/Observer.Service/ServiceLimits.cs`.
 
 ## Requirements
 

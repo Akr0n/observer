@@ -42,11 +42,11 @@ builder.Configuration.AddCommandLine(args);
 builder.Host.UseWindowsService();
 builder.Host.UseSystemd();
 
-// What a caller may COST, before the access control has decided what they may read. It is
-// registered HERE, ahead of every other ConfigureKestrel in this file, and that position is the
-// point: these callbacks run in the order they are registered, and one of the three settings -
-// the protocol - applies only to endpoints declared after it. Registered later, the local channel
-// would silently keep the framework's HTTP/1.1-and-HTTP/2 default. See ServiceLimits.
+// What a caller may COST, before the access control has decided what they may read. See
+// ServiceLimits. It is registered first, which is where it reads best - but nothing SAFE depends
+// on that any more: the one setting whose reach depends on registration order, the protocol, is
+// also named at each Listen call. It used to depend on it, and moving this line to the bottom of
+// the file handed both endpoints HTTP/2 back with all 264 service tests still green.
 builder.WebHost.ConfigureKestrel(ServiceLimits.Apply);
 
 builder.Services.AddObserverMetrics();
@@ -223,7 +223,15 @@ if (network.Https)
     // ListenAnyIP and not ListenLocalhost: the point of this port is that the other machines
     // use it. Whoever watches the one they are sitting at goes through the local channel, not here.
     builder.WebHost.ConfigureKestrel(kestrel =>
-        kestrel.ListenAnyIP(network.HttpsPort, listenOptions => listenOptions.UseHttps(certificate.Certificate)));
+        kestrel.ListenAnyIP(network.HttpsPort, listenOptions =>
+        {
+            // Named here as well as in ServiceLimits.Apply's endpoint defaults, because the
+            // defaults reach only endpoints declared after them and this one must not depend on
+            // where the registrations sit. On this endpoint it also decides the TLS handshake:
+            // with it, "h2" is not advertised at all.
+            listenOptions.Protocols = ServiceLimits.Protocol;
+            listenOptions.UseHttps(certificate.Certificate);
+        }));
 }
 
 WebApplication app = builder.Build();

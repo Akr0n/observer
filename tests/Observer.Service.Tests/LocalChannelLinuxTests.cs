@@ -161,14 +161,21 @@ public class LocalChannelLinuxTests
         Assert.Equal(nameof(CallerElevation.NotApplicable), reported);
     }
 
+    // There is deliberately no HTTP/2-preface test here, and the absence is the finding: on Linux
+    // the unix socket and the TCP endpoint are bound by the SAME transport, so the cross-platform
+    // test in ServiceLimitsTests - which measures that a cleartext endpoint refuses the preface
+    // with or WITHOUT the restriction - already covers this socket. Windows keeps its own twin
+    // because the named pipe is a transport of its own.
+
     [LinuxOnly]
     public async Task AFloodOnTheNetworkEndpointDoesNotCloseTheLocalChannel()
     {
-        // The Linux half of the assumption ServiceLimits rests on. It has to be pinned on BOTH
-        // runners: the sockets transport and the named pipe transport are different code, and a
-        // budget that leaked between endpoints on one of them would be a denial of service only
-        // there - the kind of asymmetry this project has already been bitten by. The full
-        // reasoning is on the Windows twin.
+        // The Linux half of the assumption ServiceLimits rests on. What it pins HERE is narrower
+        // than on the Windows twin, and saying so is the point: on Linux both endpoints are bound
+        // by the SAME transport - SocketTransportFactory takes a UnixDomainSocketEndPoint as
+        // readily as a TCP one - so this proves the budget is per ENDPOINT rather than per server.
+        // The cross-TRANSPORT half, where a leak would be a denial of service on one runner only,
+        // is the Windows twin's alone, because only Windows has a second transport.
         string path = ShortSocketPath();
 
         int arrived = 0;

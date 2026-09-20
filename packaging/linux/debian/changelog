@@ -11,10 +11,13 @@ observer (0.23.1) unstable; urgency=medium
     That is what makes the limit safe to set at all, because a flood on
     the port the other machines use cannot close the local channel, which
     is how the owner watches, and stops processes on, the machine they
-    are sitting at. One idle connection was measured at about 13 kB, or
-    30 kB over TLS, so a flood at this limit costs megabytes rather than
-    whatever the machine has. A dashboard working hard holds around
-    twenty: one per history strip, plus the reading and the process list.
+    are sitting at. One idle connection was measured at about 13 kB of
+    memory on the server in plain HTTP, and at about 30 kB over TLS for a
+    connection whose both ends lived in the measuring process - so the
+    server's own share is below that, and a flood at this limit costs at
+    most about 15 MB rather than all the memory the machine has. A
+    dashboard working hard holds around twenty connections: one per
+    history strip, plus the reading and the process list.
   * No request body at all. No endpoint reads one, and the kill takes its
     arguments in the URL precisely so that it does not need one. The
     limit fires when a body is READ, not when it is announced, and both
@@ -24,10 +27,21 @@ observer (0.23.1) unstable; urgency=medium
     with the default limit, and 2 ms for a 64 kB body against a
     connection the default kept alive for the 30 s the measurement was
     willing to wait for.
-  * HTTP/1.1 only, so HTTP/2 is not merely unused - it is not offered in
-    the TLS handshake. Nothing here asks for it, and what it costs is a
-    second protocol implementation, with its own framing and its own
-    header compression, reachable before the token is checked.
+  * HTTP/1.1 only. On the HTTPS endpoint HTTP/2 is not merely unused - it
+    is not offered in the TLS handshake at all. Nothing here asks for it,
+    and what it costs is a second protocol implementation, with its own
+    framing and its own header compression, reachable before the token is
+    checked. On the LOCAL channel the setting changes nothing and is kept
+    only as a guard: a control measurement says a cleartext endpoint
+    already refuses the HTTP/2 preface without it, because the framework
+    default means "HTTP/2 if the TLS handshake chooses it" and there is
+    no handshake there. The first draft of this entry claimed otherwise.
+  * Every endpoint names the protocol itself, instead of inheriting it
+    from a default. The default reaches only endpoints declared after it,
+    so the restriction used to be an invariant of the ORDER in which the
+    service registers its start-up callbacks: moving one line put HTTP/2
+    back in the TLS handshake with the whole test suite still green.
+    Found by the review, by doing it. Position must not carry security.
 
  -- Federico Cardinali <noreply@example.invalid>  Sun, 20 Sep 2026 17:00:59 +0200
 

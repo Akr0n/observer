@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -45,16 +46,51 @@ public class ServiceLimitsTests(InMemoryService service)
     }
 
     [Fact]
-    public void TheConnectionBudgetIsFiniteAndWellClearOfWhatADashboardNeeds()
+    public void TheConnectionBudgetLeavesRoomForManyDashboardsAndStaysFinite()
     {
-        // Both ends of the range are failures, and neither one fails loudly on its own. Too low
-        // and a dashboard that refreshes every history strip at once - one connection per gauge
-        // row, plus the reading, the process list and the away summary - starts being refused on a
-        // machine with many disks, which looks like a network fault. Unbounded, and the limit is
-        // decoration: whoever reaches the port decides how much memory the measured machine gives
-        // up. The assertion is a range and not the constant itself on purpose: pinning 512 would
-        // only prove the number had not been retyped.
-        Assert.InRange(ServiceLimits.MaxConcurrentConnectionsPerEndpoint, 64, 4096);
+        // The floor is DERIVED, not picked: a budget below what one busy dashboard holds would
+        // start refusing connections to the second person who opens a window on a host with many
+        // disks, and that reads as a network fault, not as a limit. Eight times it is the margin,
+        // and naming the dashboard's own figure is what makes the assertion mean something -
+        // an earlier version compared against a bare 64, which is two dashboards, and would have
+        // stayed green through the change it existed to catch.
+        Assert.InRange(
+            ServiceLimits.MaxConcurrentConnectionsPerEndpoint,
+            8 * ServiceLimits.DashboardConnectionsWhenBusy,
+            4096);
+    }
+
+    [Fact]
+    public void EveryWayThisServiceOpensAnEndpointEndsUpSpeakingHttp11()
+    {
+        // What this pins is the endpoint default set in Apply, for every kind of endpoint this
+        // service opens on the platform it is running on. It is the only place the default's
+        // REACH can be observed: on the wire the restriction shows up only in the TLS handshake,
+        // because a cleartext endpoint never offers HTTP/2 to begin with - see the test below.
+        // It does NOT pin the protocol named at each Listen call in the service's own code; that
+        // is the belt for this brace, and the reason both exist is on ServiceLimits.Protocol.
+        //
+        // Declaring an endpoint does not bind it - that happens when the server starts - so no
+        // port is taken, no pipe is created and no socket file appears.
+        KestrelServerOptions options = new();
+        ServiceLimits.Apply(options);
+
+        HttpProtocols? overTcp = null;
+        options.Listen(IPAddress.Loopback, 0, listen => overTcp = listen.Protocols);
+        Assert.Equal(ServiceLimits.Protocol, overTcp);
+
+        HttpProtocols? locally = null;
+
+        if (OperatingSystem.IsWindows())
+        {
+            options.ListenNamedPipe("observer-limits-test", listen => locally = listen.Protocols);
+        }
+        else
+        {
+            options.ListenUnixSocket("/tmp/observer-limits-test.sock", listen => locally = listen.Protocols);
+        }
+
+        Assert.Equal(ServiceLimits.Protocol, locally);
     }
 
     [Fact]
@@ -106,6 +142,47 @@ public class ServiceLimitsTests(InMemoryService service)
         using HttpResponseMessage answer = await client.SendAsync(wouldTakeTwo, CancellationToken.None);
 
         Assert.Equal("HTTP/1.1", await answer.Content.ReadAsStringAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task OnCleartextHttp2IsNotOfferedWithOrWITHOUTTheRestriction()
+    {
+        // This test exists to keep a claim honest, and the claim it keeps honest is a NEGATIVE
+        // one. The instinct - it is the one this branch was written with - is that a cleartext
+        // endpoint is where the protocol restriction earns its keep, because there is no
+        // handshake in which to decline HTTP/2 and a caller can reach it by prior knowledge,
+        // writing the 24-byte preface and nothing else. That instinct is wrong here, and the
+        // CONTROL below is what proves it: with Kestrel's own Http1AndHttp2 default, and no
+        // restriction anywhere, a cleartext endpoint already answers the preface with GOAWAY and
+        // HTTP_1_1_REQUIRED. h2c needs HttpProtocols.Http2 asked for explicitly; the mixed
+        // default means "HTTP/2 if ALPN chooses it", and cleartext has no ALPN.
+        //
+        // So ServiceLimits.Protocol changes exactly one thing on the wire: it drops "h2" from
+        // what the HTTPS endpoint advertises in the handshake, which is what the TLS test above
+        // pins. On the local channel it is belt only. Writing that down cost one measurement and
+        // saved three paragraphs of documentation that would have been false.
+        Assert.Equal(Http2Preface.RefusedAsHttp1Required, await SpeakHttp2OverTcp(withLimits: false));
+        Assert.Equal(Http2Preface.RefusedAsHttp1Required, await SpeakHttp2OverTcp(withLimits: true));
+    }
+
+    private static async Task<string> SpeakHttp2OverTcp(bool withLimits)
+    {
+        await using RealKestrelBench bench = await RealKestrelBench.StartAsync(options =>
+        {
+            if (withLimits)
+            {
+                ServiceLimits.Apply(options);
+            }
+
+            options.Listen(IPAddress.Loopback, 0);
+        });
+
+        // A raw socket and not an HttpClient: there is no HTTP request here, only the preface,
+        // and an HTTP client would never send one by itself over cleartext.
+        using TcpClient raw = new();
+        await raw.ConnectAsync(IPAddress.Loopback, new Uri(bench.Addresses.Single()).Port);
+
+        return await Http2Preface.AskWhatItSpeaks(raw.GetStream());
     }
 
     [Fact]
