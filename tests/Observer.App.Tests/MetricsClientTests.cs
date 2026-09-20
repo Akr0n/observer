@@ -313,6 +313,39 @@ public class MetricsClientTests
     }
 
     [Fact]
+    public async Task KillProcessAsync_WhenTheRefusalIsAboutTheCaller_SaysSoAndNotTheProcess()
+    {
+        // 403 on this route now means two things with opposite remedies: the operating system
+        // protects that process - pick another one - and this caller may not stop processes
+        // here - start the dashboard as an administrator. Nothing on this side tells them
+        // apart, so the service's own sentence is what has to reach the screen.
+        using MetricsClient client = Create(new FakeHandler(_ => Json(
+            HttpStatusCode.Forbidden,
+            """{"status":403,"detail":"this caller may not stop processes on this machine"}""")));
+
+        KillFetch fetch = await client.KillProcessAsync(4312, "greedy", CancellationToken.None);
+
+        Assert.Equal(ServiceOutcome.UnexpectedResponse, fetch.Outcome);
+        Assert.Contains("may not stop processes", fetch.Problem, StringComparison.Ordinal);
+        Assert.DoesNotContain("operating system protects", fetch.Problem, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task KillProcessAsync_WhenA403CarriesNoBody_KeepsTheSentenceItAlreadyHad()
+    {
+        // An older service, or one whose body did not survive the connection. A refusal is not
+        // the moment to add a second way of failing: the status arrived, and that is enough to
+        // say something true.
+        using MetricsClient client =
+            Create(new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.Forbidden)));
+
+        KillFetch fetch = await client.KillProcessAsync(4312, "greedy", CancellationToken.None);
+
+        Assert.Equal(ServiceOutcome.UnexpectedResponse, fetch.Outcome);
+        Assert.Contains("operating system protects", fetch.Problem, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task KillProcessAsync_WhenTheServiceWantsAName_SaysTheDashboardIsTooOld()
     {
         // This build always sends one, so a 400 can only come from a service that wants
