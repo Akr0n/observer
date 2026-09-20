@@ -1,3 +1,45 @@
+observer (0.24.0) unstable; urgency=medium
+
+  * "observer rotate-key --now", for a machine token that has LEAKED.
+    Rewriting the credential store revokes nothing on its own: the
+    service reads it once, when it starts, so the plain rotation left
+    the old key being accepted until somebody restarted it. That is
+    tolerable for a key you are merely tired of - the previous one stays
+    valid for a day anyway - and useless for one that has just leaked,
+    because it is a revocation that depends on a human remembering a
+    second step at the worst possible moment.
+  * So --now does two more things. It writes NO previous key, so the
+    compromised secret is not left in the file at all; and it tells the
+    running service, through the local channel, to adopt the new store
+    there and then.
+  * It reports whether that worked instead of assuming it. The service
+    answers with WHEN THE FILE IT READ had last been written, and the
+    command compares that with the stamp of the file it has just
+    written: equal means the running process read those exact bytes,
+    which "the service said OK" would not - that would not rule out a
+    second service, another store path, or a token that came from
+    configuration and was never going to change.
+  * Exit 0 means the old key is provably accepted nowhere on this
+    machine, and nothing else. A service too old to have the endpoint, a
+    service that read a different store, one with no store to adopt, and
+    a refusal all exit 1 and say which. So does the dangerous case: a
+    silent local channel with something still listening on the port
+    means a service IS running and still holds the old key, and the
+    command probes the port precisely because the two causes of a silent
+    local channel mean opposite things.
+  * The endpoint is the first in this service that exists only on the
+    local channel. From the network it is not forbidden, it is ABSENT -
+    404 even with a valid token - so whoever steals the token cannot
+    discover that a way to rotate the keys is there, let alone lock the
+    machine's owner out with it. Locally it asks for the same elevated
+    token the process kill asks for.
+  * Every failure leaves the credentials in force untouched. A service
+    that loses sight of its store keeps serving the key it has: wiping
+    it would lock the owner out of a machine that is otherwise healthy,
+    which is the opposite of what the rotation asked for.
+
+ -- Federico Cardinali <noreply@example.invalid>  Sun, 20 Sep 2026 20:43:38 +0200
+
 observer (0.23.1) unstable; urgency=medium
 
   * Three limits on what a caller may COST the machine, before the token

@@ -62,6 +62,42 @@ public class AccessPolicyTests
     public void TheWholeTableForTheOneWrite(CallerKind caller, CallerElevation elevation, bool expected) =>
         Assert.Equal(expected, AccessPolicy.MayEndProcesses(caller, elevation));
 
+    [Theory]
+    // On the machine itself, and only with a token that really carries the group - the same
+    // question the kill asks, for a reason of its own: this is a caller with no credential
+    // reaching in and changing what the service will accept, on a channel Windows opens to every
+    // interactive user.
+    [InlineData(CallerKind.LocalIdentified, CallerElevation.Yes, true)]
+    [InlineData(CallerKind.LocalIdentified, CallerElevation.No, false)]
+    // Linux: the socket's own mode already turned away anyone outside the service's group.
+    [InlineData(CallerKind.LocalIdentified, CallerElevation.NotApplicable, true)]
+    // FROM THE NETWORK: NEVER, and this is the row where it parts company with the kill. The
+    // endpoint is local-only, so Decide has already answered 404 - but the rule says no on its
+    // own, because whoever steals the token must not be able to rotate the keys and lock the
+    // owner out of their own machine.
+    [InlineData(CallerKind.FromNetwork, CallerElevation.Yes, false)]
+    [InlineData(CallerKind.FromNetwork, CallerElevation.No, false)]
+    [InlineData(CallerKind.FromNetwork, CallerElevation.NotApplicable, false)]
+    // An identity that cannot be read is refused here too, so the function is total.
+    [InlineData(CallerKind.Unidentified, CallerElevation.Yes, false)]
+    [InlineData(CallerKind.Unidentified, CallerElevation.No, false)]
+    [InlineData(CallerKind.Unidentified, CallerElevation.NotApplicable, false)]
+    public void TheWholeTableForReloadingTheCredentials(
+        CallerKind caller, CallerElevation elevation, bool expected) =>
+        Assert.Equal(expected, AccessPolicy.MayReloadCredentials(caller, elevation));
+
+    [Fact]
+    public void TheNetworkMayStopAProcessButMayNeverTouchTheKeys()
+    {
+        // The pair that says why reloading is a THIRD rule and not a reuse of the kill's. The
+        // same caller - from the network, with a valid token - is allowed to destroy a process on
+        // the machine, by an explicit decision, and is refused the one operation that could lock
+        // the machine's owner out of it. Collapsing the two rules would give one of those away,
+        // and the dangerous direction is the silent one.
+        Assert.True(AccessPolicy.MayEndProcesses(CallerKind.FromNetwork, CallerElevation.Yes));
+        Assert.False(AccessPolicy.MayReloadCredentials(CallerKind.FromNetwork, CallerElevation.Yes));
+    }
+
     [Fact]
     public void ReachingTheEndpointAndBeingAllowedToKillAreTwoDifferentQuestions()
     {

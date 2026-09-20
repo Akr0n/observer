@@ -172,6 +172,7 @@ tool. From the **network** the bearer token remains mandatory.
 | `GET /metrics/storage` | where it writes, how much space it takes up, how far it has aggregated |
 | `GET /processes` | the processes using the most; `by` accepts `cpu` (default), `memory` or `io`, `top` from 1 to 100 (default 15); the response echoes the criterion applied in `by` |
 | `POST /processes/{pid}/kill` | terminates that process, and `name` is **required**: `204` if it worked, `400` if the request did not name its target, `404` if the pid does not exist, `409` if that pid is now a different process, `403` if the caller may not stop processes here or the operating system protects that one — the body says which |
+| `POST /credentials/reload` | **local channel only** — makes the service re-read its credential store, and answers with when the file it read had last been written. From the network it does not exist: `404`, even with a valid token |
 
 `auto` picks the finest resolution still available for the requested interval: yesterday's
 raw data has been deleted, and returning an empty chart would read as "machine not
@@ -337,7 +338,29 @@ not name its own cause.
 | --- | --- | --- |
 | `observer share` | yes | shows the machine token and the fingerprint, to configure ANOTHER computer |
 | `observer rotate-key` | yes | generates a new key; the previous one stays valid for another 24 hours, and the service uses the old one until it is restarted |
+| `observer rotate-key --now` | yes | for a key that has **leaked**: no previous key is kept, and the running service is told to adopt the new store immediately |
 | `observer doctor` | no | where the credential store is, how it is protected, and whether the local channel answers |
+
+**`--now` exists because rewriting the file revokes nothing on its own.** The service reads its
+store once, when it starts, so the plain `rotate-key` leaves the old key being accepted until
+somebody restarts it — which is fine for a key you are merely tired of, and useless for one that
+has just leaked. `--now` therefore does two more things: it writes no previous key at all, so the
+compromised secret is not left on disk, and it asks the running service, through the local
+channel, to adopt the new store there and then.
+
+It reports whether that worked rather than assuming it. The service answers with **when the file
+it read had last been written**, and the command compares that with the stamp of the file it just
+wrote: equal means the running process read those exact bytes, which "the service said OK" would
+not. It exits `0` only when the old key is provably accepted nowhere on this machine — including
+the case where nothing is running here at all, which is the one other way of being sure. Every
+other outcome is named and exits `1`: a service too old to have the endpoint, a service that read
+a different store, one that was given its token in configuration and never had a store to adopt,
+and the dangerous one — a silent local channel with something still listening on the port, which
+means a service is running and still holds the old key. That last case is why the command also
+probes the port: the two causes of a silent local channel mean opposite things.
+
+Once it has applied, every computer that watches this one is cut off until you run
+`observer token set NAME` there with the new token.
 | `observer token set NAME` | no | keeps the token of ANOTHER machine; it reads it from standard input and does not show it |
 | `observer token forget NAME` | no | forgets that token |
 

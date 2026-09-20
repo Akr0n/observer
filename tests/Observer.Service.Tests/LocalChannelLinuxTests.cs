@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using System.Text.Json;
 using System.Runtime.Versioning;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -7,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Observer.Service.Credentials;
 using Observer.Service.LocalChannel;
 
 namespace Observer.Service.Tests;
@@ -21,6 +23,9 @@ namespace Observer.Service.Tests;
 [SupportedOSPlatform("linux")]
 public class LocalChannelLinuxTests
 {
+    /// <summary>The shape the service really serialises with: camelCase, as ASP.NET Core does.</summary>
+    private static readonly JsonSerializerOptions WireOptions = new(JsonSerializerDefaults.Web);
+
     [LinuxOnly]
     public async Task TheUnixSocketServesTheSameEndpointsAsTcp()
     {
@@ -163,6 +168,71 @@ public class LocalChannelLinuxTests
         string reported = await client.GetStringAsync("who", CancellationToken.None);
 
         Assert.Equal(nameof(CallerElevation.NotApplicable), reported);
+    }
+
+    [LinuxOnly]
+    public async Task ReloadingTheCredentialsOverTheSocketAdoptsTheStoreAndSaysWhichFile()
+    {
+        // THE END-TO-END OF THE WHOLE FEATURE, and it lives on this runner rather than the other
+        // one for a reason that is not convenience. The reload asks for an elevated caller on
+        // Windows, and a test cannot choose its own process's elevation - so a Windows twin would
+        // have to branch on the host, which is exactly the mistake #95 shipped and then fixed.
+        // Here the question does not arise: the socket's own mode has already turned away anyone
+        // outside the service's group, so the elevation is NotApplicable on every host.
+        //
+        // What it proves is the claim the CLI makes to the operator: the running service read
+        // THAT file, identified by the stamp, and now refuses the key that was in it before.
+        string directory = Path.Combine(Path.GetTempPath(), "obs-reload-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(directory);
+
+        try
+        {
+            string store = Path.Combine(directory, CredentialDirectory.FileName);
+            CredentialStore.Write(store, new MachineCredentials("leaked-key", null, null));
+
+            CredentialSource source = new(new ProvisionedCredentials(
+                CredentialStore.Read(store)!, CredentialOrigin.Stored, store));
+
+            Assert.True(source.IsTokenValid("Bearer leaked-key", DateTimeOffset.UtcNow));
+
+            string path = ShortSocketPath();
+
+            await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
+                options => options.ListenUnixSocket(path),
+                app => app.MapCredentialEndpoints(),
+                middleware: app => app.UseObserverAccessControl(source),
+                services: services => services.AddSingleton(source));
+
+            // The rotation, exactly as the verb does it: a new key and NO previous one, so the
+            // leaked secret is not left on disk at all.
+            CredentialStore.Write(store, MachineCredentials.Create());
+            DateTimeOffset written = File.GetLastWriteTimeUtc(store);
+
+            using HttpClient client = RealKestrelBench.ClientOn(SocketHandler(path));
+            using HttpResponseMessage answer =
+                await client.PostAsync("credentials/reload", content: null, CancellationToken.None);
+
+            Assert.Equal(System.Net.HttpStatusCode.OK, answer.StatusCode);
+
+            string body = await answer.Content.ReadAsStringAsync(CancellationToken.None);
+
+            // Deserialised through the service's OWN wire record, so a field renamed on one side
+            // and not the other turns this red instead of quietly reading null.
+            CredentialReloadResponse? reported = JsonSerializer.Deserialize<CredentialReloadResponse>(
+                body, WireOptions);
+
+            Assert.Equal(written, reported!.StoreWrittenAt);
+            Assert.Equal(store, reported.StorePath);
+            Assert.Contains("no previous key", body, StringComparison.Ordinal);
+            Assert.DoesNotContain("leaked-key", body, StringComparison.Ordinal);
+
+            // And the part that is the point: the key that was in force is refused now.
+            Assert.False(source.IsTokenValid("Bearer leaked-key", DateTimeOffset.UtcNow));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     [LinuxOnly]

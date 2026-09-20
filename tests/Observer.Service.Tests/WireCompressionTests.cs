@@ -247,7 +247,9 @@ public class WireCompressionTests
                 // would make the test circular - it would measure the stub, and a 401 that one
                 // day learned to carry a body would stay green. The credentials are new and the
                 // test sends no header: it falls into the real refusal branch.
-                application.UseObserverAccessControl(MachineCredentials.Create());
+                application.UseObserverAccessControl(
+                    new CredentialSource(new ProvisionedCredentials(
+                        MachineCredentials.Create(), CredentialOrigin.Configuration, null)));
             }
 
             application.UseResponseCompression();
