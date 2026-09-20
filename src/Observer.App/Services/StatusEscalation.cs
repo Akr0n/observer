@@ -97,11 +97,35 @@ public static class StatusEscalation
                     : $"Contacting {endpoint.Description}…",
                 WaitingSubheading(hasValuesOnScreen)),
 
+            // A machine with readings already drawn is a machine that WAS measuring, and the
+            // client's sentence for this outcome promises the opposite twice over: that the
+            // service has not produced its FIRST reading, and that it usually sorts itself out
+            // in a second or two. Both are about a service that is starting. This one is not.
+            ServiceOutcome.NotReadyYet when withinGrace && hasValuesOnScreen => new StatusMessage(
+                StatusTone.Informational,
+                "Readings paused",
+                $"The service on {endpoint.Description} is answering but has not produced a new " +
+                "reading in the last few seconds.",
+                MeasuringStoppedSubheading),
+
             ServiceOutcome.NotReadyYet when withinGrace => new StatusMessage(
                 StatusTone.Informational,
                 "Service is starting",
                 problem,
                 WaitingSubheading(hasValuesOnScreen)),
+
+            // The same outcome, past the grace, and still two different things. With values on
+            // screen the machine measured until a moment ago and has stopped: saying it never
+            // produced a reading would be contradicted by every number below the message, and
+            // "Not connected" would be contradicted by the fact that it is ANSWERING - which is
+            // the whole peculiarity of this fault and the reason it went unnoticed for so long.
+            ServiceOutcome.NotReadyYet when hasValuesOnScreen => new StatusMessage(
+                StatusTone.Warning,
+                "Not measuring",
+                $"The service on {endpoint.Description} is answering, but it has stopped producing " +
+                "readings. The values below are the last ones it measured, and they are not moving: " +
+                "run \"observer doctor\" on that machine to see what it reports.",
+                MeasuringStoppedSubheading),
 
             // The service answers: it is not unreachable, but it is not sampling either.
             // Staying on "Service is starting" for ever, with text promising it will sort
@@ -138,6 +162,13 @@ public static class StatusEscalation
 
     private static StatusMessage ErrorMessage(string title, string problem, bool hasValuesOnScreen) =>
         new(StatusTone.Error, title, problem, DisconnectedSubheading(hasValuesOnScreen));
+
+    // Its own line, and neither of the two below would do. "Reconnecting" and "Not connected"
+    // both describe a machine that is not answering, and this one is: it answers, promptly, and
+    // hands back the same reading every time. That is what has to be said, because it is the
+    // only fault in here where everything on screen looks right.
+    private const string MeasuringStoppedSubheading =
+        "Not measuring: the values shown are the last reading that machine produced.";
 
     private static string WaitingSubheading(bool hasValuesOnScreen) =>
         hasValuesOnScreen

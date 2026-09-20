@@ -109,6 +109,52 @@ public class StatusEscalationTests
         Assert.DoesNotContain("second or two", message.Text, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void AMachineThatWasMeasuringAndStopped_IsNotToldItNeverStarted()
+    {
+        // Since the service refuses to serve a sample that has stopped advancing, this outcome
+        // arrives in TWO completely different situations, and they had one wording between
+        // them. "It still hasn't produced a reading" is false in front of a screen full of
+        // numbers that machine measured - and "Not connected" is false as well, because it IS
+        // connected: that is precisely what makes this case worth telling apart. What separates
+        // them is already an argument of this function.
+        StatusMessage message =
+            MessageFor(ServiceOutcome.NotReadyYet, TimeSpan.FromMinutes(5), Remote, hasValuesOnScreen: true);
+
+        Assert.Equal(StatusTone.Warning, message.Tone);
+        Assert.Contains("stopped", message.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("still hasn't", message.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Not connected", message.Subheading, StringComparison.Ordinal);
+        Assert.Contains("measuring", message.Subheading, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AMachineWithNothingOnScreenIsStillToldItHasNotSampledYet()
+    {
+        // The other half of the pair, pinned so the branch cannot be collapsed in either
+        // direction: with nothing drawn, "no readings yet" is what the dashboard actually
+        // knows, whatever that machine did before it was being watched.
+        StatusMessage message =
+            MessageFor(ServiceOutcome.NotReadyYet, TimeSpan.FromMinutes(5), Remote, hasValuesOnScreen: false);
+
+        Assert.Contains("yet", message.Title, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("stopped", message.Text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AMachineThatWasMeasuringIsNotPromisedItWillSortItselfOut()
+    {
+        // The same lie, in smaller type: inside the grace the bar shows the CLIENT's sentence,
+        // which says the service "hasn't produced its FIRST reading yet" and that it "usually
+        // clears on its own". Neither is true of a machine that was measuring a moment ago.
+        StatusMessage message =
+            MessageFor(ServiceOutcome.NotReadyYet, TimeSpan.Zero, Remote, hasValuesOnScreen: true);
+
+        Assert.Equal(StatusTone.Informational, message.Tone);
+        Assert.DoesNotContain("technical detail from the test", message.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("first", message.Text, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [InlineData(ServiceOutcome.TokenRejected)]
     [InlineData(ServiceOutcome.IncompatibleVersion)]

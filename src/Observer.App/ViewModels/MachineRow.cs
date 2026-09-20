@@ -98,6 +98,9 @@ public sealed partial class MachineRow : ObservableObject
     /// </remarks>
     internal DateTimeOffset? FailingSince { get; private set; }
 
+    /// <summary>Whether this machine has ever answered with a reading, since the window opened.</summary>
+    private bool hasMeasured;
+
     /// <summary>True while a probe is in flight: the next one does not start on top of it.</summary>
     /// <remarks>Readable from outside because a test observes it; only the view model writes it.</remarks>
     public bool IsProbing { get; internal set; }
@@ -215,6 +218,15 @@ public sealed partial class MachineRow : ObservableObject
         // time it answered under the name of a machine that is not answering.
         MachineLoad = outcome == ServiceOutcome.Ok ? MachineLoad.From(snapshot) : MachineLoad.None;
 
+        // Once, and never unset. It is what lets the wording below tell a machine that has never
+        // answered from one that was measuring until a moment ago and has stopped - two states
+        // that arrive as the SAME outcome, because a service which refuses to serve a sample
+        // that stopped advancing answers exactly like a service that has not sampled yet.
+        // Latched on purpose: read as "was it reachable last time", it would be true on the
+        // first failed reading and false on the second, and the row would alternate between the
+        // two sentences once a probe.
+        hasMeasured |= outcome == ServiceOutcome.Ok;
+
         if (outcome == ServiceOutcome.Ok)
         {
             FailingSince = null;
@@ -228,7 +240,7 @@ public sealed partial class MachineRow : ObservableObject
         FailingSince ??= now;
 
         StatusMessage message = StatusEscalation.MessageFor(
-            outcome, reason, now - FailingSince.Value, Endpoint, hasValuesOnScreen: false);
+            outcome, reason, now - FailingSince.Value, Endpoint, hasMeasured);
 
         Status = message.Tone == StatusTone.Error ? MachineStatus.Faulted : MachineStatus.Warning;
         Detail = message.Title;

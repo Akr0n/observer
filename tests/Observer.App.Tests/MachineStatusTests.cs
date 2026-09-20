@@ -22,6 +22,42 @@ public class MachineStatusTests
         ObserverEndpoint.Remote(new Uri($"https://{host}:5058/"), "token", host, new string('a', 64));
 
     [Fact]
+    public void ARowThatWasMeasuringSaysItStopped_NotThatItNeverStarted()
+    {
+        // The sidebar has the same two cases as the status bar, and the same one wording had to
+        // cover both: a machine that has never answered, and one that answered with readings
+        // until a moment ago and whose service now refuses to serve a sample that stopped
+        // advancing. The row knows which of the two it is - it recorded the readings itself.
+        MachineRow row = new(RemoteAt("other"));
+
+        row.Record(
+            ServiceOutcome.Ok,
+            string.Empty,
+            T0,
+            new MachineSnapshot(MachineSnapshot.CurrentSchemaVersion, T0, []));
+
+        Assert.Equal("Reachable", row.Detail);
+
+        // The first failed reading starts the clock, so it is INSIDE the ten-second tolerance -
+        // the row's own rule, unchanged: a counter that starts on every blip teaches you to
+        // ignore it. But even there the wording must not claim the machine never started.
+        row.Record(ServiceOutcome.NotReadyYet, "stopped sampling", T0 + TimeSpan.FromMinutes(5));
+
+        Assert.Equal("Readings paused", row.Detail);
+
+        row.Record(ServiceOutcome.NotReadyYet, "stopped sampling", T0 + TimeSpan.FromMinutes(6));
+
+        Assert.Equal("Not measuring", row.Detail);
+
+        // And it does not flip back to the other wording on the next reading of the same run,
+        // which is what a check on "was it reachable a moment ago" would have done: the row
+        // would have alternated between the two sentences once a probe.
+        row.Record(ServiceOutcome.NotReadyYet, "stopped sampling", T0 + TimeSpan.FromMinutes(7));
+
+        Assert.Equal("Not measuring", row.Detail);
+    }
+
+    [Fact]
     public void AFreshRowHasNoStatusYet()
     {
         MachineRow row = new(RemoteAt("other"));
