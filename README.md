@@ -179,18 +179,25 @@ monitored".
 
 `/processes/{pid}/kill` is the service's **only write**, and it is allowed from the network
 with the token, by deliberate choice: from another machine you see a runaway process and
-stop it from there. Every attempt, successful or refused, ends up in the service log with the
-pid, the process name and where the caller came from.
+stop it from there. Every attempt ends up in the service log with the pid and where the caller
+came from; the process name is there too whenever there was one to read, which means on the kill
+that worked, on the one the operating system refused, and on the one refused because that pid
+had become a different process — that last line carries both names.
 
 **A pid on its own is not accepted.** It is a number the system reuses, and the one the caller
 holds came from a list that is at least a second old — longer if somebody stopped to think
 before confirming. So the request must carry `?name=` with the name that list showed, and the
-service compares it with the live process before signalling anything: a mismatch is refused with
-`409` and nothing is stopped. A missing name is refused with `400` rather than carried out on
-whatever holds the number now, which means a dashboard older than the service stops being able
-to kill — loudly, and that is the intent. The other way round there is no signal at all: a
-dashboard newer than the service sends a name that the old service ignores, and both answer
-`204`. **Update the service and the dashboard together.** The kill
+service compares it with the live process before killing anything: a mismatch is refused with
+`409` and nothing is stopped. A request that names nothing is refused with `400` rather than
+carried out on whatever holds the number now, which means a dashboard older than the service
+stops being able to kill — loudly, and that is the intent. The other way round nothing warns
+you: a dashboard newer than the service sends a name the old service ignores, and the answer is
+the same `204` either way. **Update the service and the dashboard together.**
+
+What the check buys is worth being exact about: it refuses a pid that has become a *different*
+program, not one that has become another copy of the *same* program — every instance of Chrome
+is called Chrome, and the short-lived processes that free pids fastest are exactly the ones that
+come in copies. The kill
 endpoint is also why the token is no longer kept in a file
 (see "Watching another machine"). `GET /processes` returns `503` when the list cannot be
 read on that machine.

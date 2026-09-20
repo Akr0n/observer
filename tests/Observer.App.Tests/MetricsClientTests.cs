@@ -285,6 +285,33 @@ public class MetricsClientTests
         Assert.DoesNotContain("409", fetch.Problem, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("x\nKill refused")]
+    public async Task KillProcessAsync_WhenTheNameCannotBeSent_RefusesHereInsteadOfThrowing(string name)
+    {
+        // ProcessRowState.Name is Process.ProcessName verbatim, and on Linux that is the
+        // kernel's comm - whatever the process wrote there, empty included. That is DATA, not a
+        // programming error, and throwing on it would reach no catch at all: the End button runs
+        // an AsyncRelayCommand with the default options, which rethrows a faulted task on the UI
+        // thread. The service would refuse these anyway, so nothing is lost by not asking - and
+        // asking would come back as 400, which this client reads as "the service is newer".
+        bool asked = false;
+
+        using MetricsClient client = Create(new FakeHandler(_ =>
+        {
+            asked = true;
+
+            return new HttpResponseMessage(HttpStatusCode.NoContent);
+        }));
+
+        KillFetch fetch = await client.KillProcessAsync(4312, name, CancellationToken.None);
+
+        Assert.Equal(ServiceOutcome.UnexpectedResponse, fetch.Outcome);
+        Assert.False(asked, "a name the service is bound to refuse was put on the wire anyway");
+        Assert.DoesNotContain("Update Observer", fetch.Problem, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task KillProcessAsync_WhenTheServiceWantsAName_SaysTheDashboardIsTooOld()
     {

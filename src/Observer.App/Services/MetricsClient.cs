@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Security.Authentication;
 using System.Text.Json;
 using Observer.Core.Metrics;
+using Observer.Core.Processes;
 
 namespace Observer.App.Services;
 
@@ -325,13 +326,33 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
     public async Task<KillFetch> KillProcessAsync(
         int pid, string name, CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrEmpty(name);
+        // The same rule the service applies, applied here first, and NOT as an exception. Two
+        // reasons. A name that cannot be sent is not a version problem, and the 400 arm below
+        // would call it one - telling somebody to update a program that would behave exactly the
+        // same afterwards. And throwing would not be caught anywhere: this runs under an
+        // AsyncRelayCommand with the default options, which rethrows a faulted task onto the UI
+        // thread. The name comes from Process.ProcessName, which on Linux is the kernel's comm
+        // and can be anything the process wrote there, so this is data, not a programming error.
+        // The same rule the service applies, applied here first, and NOT as an exception. Two
+        // reasons. A name that cannot be sent is not a version problem, and the 400 arm below
+        // would call it one - telling somebody to update a program that would behave exactly the
+        // same afterwards. And throwing would not be caught anywhere: this runs under an
+        // AsyncRelayCommand with the default options, which rethrows a faulted task onto the UI
+        // thread. The name comes from Process.ProcessName, which on Linux is the kernel's comm
+        // and can be anything the process wrote there, so this is data, not a programming error.
+        if (!ProcessNameRule.IsUsable(name))
+        {
+            return new KillFetch(
+                ServiceOutcome.UnexpectedResponse,
+                "That process's name cannot be carried in a request, so it cannot be ended from " +
+                "here. Stop it on that machine instead.");
+        }
 
-        // In the query string, not in a body: this request has none, and one of the limits this
-        // service means to set on Kestrel is a request body of zero bytes. Escaped, because a
-        // process name may carry a space, a plus or an ampersand, and an unescaped ampersand
-        // would arrive as a truncated name - which the service would then refuse as a mismatch,
-        // reporting a name conflict where there is only a bad URL.
+        // In the query string, not in a body: this request has no body at all, and no route in
+        // this service reads one. Escaped, because a process name may carry a space, a plus or
+        // an ampersand, and an unescaped ampersand would arrive as a truncated name - which the
+        // service would then refuse as a mismatch, reporting a conflict of names where there is
+        // only a badly built URL.
         Uri address = new(
             BaseAddress,
             "processes/" + pid.ToString(CultureInfo.InvariantCulture) + "/kill?name=" +
@@ -378,9 +399,10 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
                     "Pid " + pid.ToString(CultureInfo.InvariantCulture) + " is no longer " + name +
                     ": it ended, and that number now belongs to another process. Nothing was stopped."),
 
-                // This build always names its target, so a service asking for one can only be
-                // NEWER than this dashboard. Saying "replied 400" would send whoever reads it
-                // to look at the network for a problem that is solved by an update.
+                // This build names its target, and refuses above to send a name the service would
+                // not accept, so a 400 arriving here is a service asking for something this
+                // dashboard does not know how to give: it is newer. Saying "replied 400" would
+                // send whoever reads it to look at the network for a problem an update solves.
                 HttpStatusCode.BadRequest => new KillFetch(
                     ServiceOutcome.IncompatibleVersion,
                     $"The service on {Endpoint.Description} refused a kill that did not name its " +

@@ -347,6 +347,72 @@ public class ProcessPanelTests
     }
 
     [Fact]
+    public async Task TheAnswerToARefusedKillOutlivesTheNextRead()
+    {
+        // Writing the refusal AFTER the reread was only half the fix. The loop reads this list
+        // once a second while the panel is open, and a read that goes well used to clear the
+        // line - so the sentence somebody clicked twice to get was on screen for under a second.
+        // A read's problem and a kill's answer share one place and have opposite lifetimes.
+        FakeProcessClient client = new()
+        {
+            AnswersPoll = true,
+            Killing = new KillFetch(ServiceOutcome.UnexpectedResponse, "the system protects it"),
+        };
+
+        MainViewModel viewModel = new(client, configurationProblem: null);
+
+        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(15));
+        Task loop = viewModel.RunAsync(stop.Token);
+
+        await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("cpu|cpu.usage.total|"));
+        viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 11);
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
+        Assert.Equal("the system protects it", viewModel.ProcessesProblem);
+
+        // New numbers, so that the wait below ends on a read that really happened and really
+        // went well - which is the read that used to wipe the line.
+        client.Cpu = ["9.0 %", "3.0 %"];
+
+        while (!stop.IsCancellationRequested
+            && !viewModel.Processes.Any(row => string.Equals(row.Cpu, "9.0 %", StringComparison.Ordinal)))
+        {
+            await Task.Delay(50, CancellationToken.None);
+        }
+
+        // Without this the test would pass vacuously if the loop never refreshed: nothing would
+        // have had the chance to clear anything.
+        Assert.True(
+            viewModel.Processes.Any(row => string.Equals(row.Cpu, "9.0 %", StringComparison.Ordinal)),
+            $"the panel was never refreshed: reads={client.Requested.Count}");
+
+        Assert.Equal("the system protects it", viewModel.ProcessesProblem);
+
+        // And it does not stay for ever: touching End again means the person is acting on this
+        // list once more, and from there a good read owns the line again.
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
+        while (!stop.IsCancellationRequested && viewModel.ProcessesProblem.Length != 0)
+        {
+            await Task.Delay(50, CancellationToken.None);
+        }
+
+        Assert.Equal(string.Empty, viewModel.ProcessesProblem);
+
+        await stop.CancelAsync();
+
+        try
+        {
+            await loop;
+        }
+        catch (OperationCanceledException)
+        {
+            // End of the test.
+        }
+    }
+
+    [Fact]
     public async Task ARefusedKillSaysSoAndTheListIsReadAgain()
     {
         // The other half of the kill: the service can refuse - a process the operating system

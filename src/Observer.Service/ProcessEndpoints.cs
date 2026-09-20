@@ -57,9 +57,17 @@ public sealed record ProcessListResponse(
 /// Every way this can fail refuses rather than proceeds - no name, the wrong name, a name that
 /// cannot be read at all because the process went away or the system would not say. "I cannot
 /// prove this is the right process" and "this is the wrong process" lead to the same place, and
-/// neither of them leads to <see cref="Process.Kill()"/>. It is also what makes a retry safe: a
-/// kill whose answer never arrived can be clicked again, because the second request carries the
-/// same name and will be refused if the number has meanwhile become somebody else's.
+/// neither of them leads to <see cref="Process.Kill()"/>.
+/// </para>
+/// <para>
+/// <b>What the comparison buys, and what it does not.</b> It refuses a pid that has become a
+/// DIFFERENT program. It does not refuse a pid that has become another copy of the SAME program
+/// - every instance of chrome is called chrome - and the processes that free pids fastest are
+/// exactly the ones that come in copies. So a kill whose answer never arrived is safer to send
+/// again than it was, not safe: the second attempt can no longer hit something unrelated, but it
+/// can hit the next chrome. Closing that needs something unique to one process, its start time
+/// beside its name, and that is a change rather than a correction: the list would have to carry
+/// it, and on Linux the start time is not readable for every process.
 /// </para>
 /// </remarks>
 public static partial class ProcessEndpoints
@@ -70,12 +78,6 @@ public static partial class ProcessEndpoints
     /// <summary>The most that can be returned, so as not to send the whole process table.</summary>
     private const int MaxTop = 100;
 
-    /// <summary>
-    /// The longest name a kill request may carry. No real process name comes near it - on Linux
-    /// the kernel keeps fifteen characters - and the bound is what keeps a caller from writing
-    /// as much as it likes into the machine's log.
-    /// </summary>
-    private const int MaxNameLength = 260;
 
     /// <summary>Maps /processes and /processes/{pid}/kill.</summary>
     /// <param name="endpoints">The application's route builder.</param>
@@ -145,13 +147,22 @@ public static partial class ProcessEndpoints
         // WHAT it meant to stop, and a request that says nothing is refused rather than carried
         // out on whatever holds the number now. Refusing is also what makes a dashboard older
         // than this service stop working LOUDLY, instead of going on killing by pid in silence.
-        // The length and the control characters are not pedantry: this value is echoed into the
-        // answer and into the log, and a newline in it would forge a second log line.
-        if (string.IsNullOrEmpty(requestedName)
-            || requestedName.Length > MaxNameLength
-            || requestedName.Any(char.IsControl))
+        // What counts as a usable name is ProcessNameRule, in Core, because the dashboard has to
+        // apply the same rule before sending - see the remarks there.
+        if (!ProcessNameRule.IsUsable(requestedName))
         {
-            LogKillWithoutAName(logger, pid, origin.Reason);
+            // Which of the three it was, in the log, because they do not mean the same thing to
+            // whoever reads it: a dashboard too old to send a name at all is a reminder to
+            // update, and a name full of control characters is somebody trying to write lines
+            // into this machine's log. The rejected string itself is NOT recorded - writing it
+            // down is exactly what the rule refuses.
+            string reason = string.IsNullOrEmpty(requestedName)
+                ? "it named no process"
+                : requestedName.Length > ProcessNameRule.MaxLength
+                    ? "the name it carried is too long"
+                    : "the name it carried contains control characters";
+
+            LogKillNameUnusable(logger, pid, reason, origin.Reason);
 
             return Results.Problem(
                 detail: "a kill must name the process it means, as ?name=<process name>",
@@ -245,8 +256,9 @@ public static partial class ProcessEndpoints
     [LoggerMessage(
         EventId = 14,
         Level = LogLevel.Warning,
-        Message = "Kill refused: the request for pid {Pid} did not name the process it meant, requested by {Origin}.")]
-    private static partial void LogKillWithoutAName(ILogger logger, int pid, string origin);
+        Message = "Kill refused for pid {Pid}: {Reason}, requested by {Origin}.")]
+    private static partial void LogKillNameUnusable(
+        ILogger logger, int pid, string reason, string origin);
 
     [LoggerMessage(
         EventId = 15,

@@ -14,6 +14,13 @@ observer (0.22.0) unstable; urgency=medium
     quietly by pid alone: update both sides together. There is no warning
     for the opposite pair - a service older than the dashboard ignores
     the name and answers exactly as it always did.
+  * The reason a process was not ended now stays on screen. Writing it
+    after the list was read again, in 0.21.4, was only half the fix: the
+    window rereads that list once a second, and a read that went well
+    cleared the line, so the sentence somebody clicked twice to get was
+    there for under a second. It stays until the next thing that makes
+    it meaningless - another attempt, another list, or closing the panel
+    - and a machine that stops answering still takes its place.
 
  -- Federico Cardinali <noreply@example.invalid>  Sun, 20 Sep 2026 09:16:45 +0200
 
