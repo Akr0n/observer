@@ -1,3 +1,36 @@
+observer (0.23.1) unstable; urgency=medium
+
+  * Three limits on what a caller may COST the machine, before the token
+    is looked at. A connection is accepted, and a request body received,
+    by whoever can reach the port: the 401 comes afterwards. This is a
+    service whose whole job is to watch a machine, so turning it into the
+    machine's problem is the one failure it must not have.
+  * At most 512 connections per endpoint. It is a budget each listener
+    gets SEPARATELY - measured, not read: with the limit at two and two
+    listeners open, filling the first leaves the second serving normally.
+    That is what makes the limit safe to set at all, because a flood on
+    the port the other machines use cannot close the local channel, which
+    is how the owner watches, and stops processes on, the machine they
+    are sitting at. One idle connection was measured at about 13 kB, or
+    30 kB over TLS, so a flood at this limit costs megabytes rather than
+    whatever the machine has. A dashboard working hard holds around
+    twenty: one per history strip, plus the reading and the process list.
+  * No request body at all. No endpoint reads one, and the kill takes its
+    arguments in the URL precisely so that it does not need one. The
+    limit fires when a body is READ, not when it is announced, and both
+    halves were measured: an endpoint that reads gets a clean 413, while
+    against the endpoints here the connection is torn down instead of the
+    body being drained - 115 ms for an announced megabyte, against 6 s
+    with the default limit, and 2 ms for a 64 kB body against a
+    connection the default kept alive for the 30 s the measurement was
+    willing to wait for.
+  * HTTP/1.1 only, so HTTP/2 is not merely unused - it is not offered in
+    the TLS handshake. Nothing here asks for it, and what it costs is a
+    second protocol implementation, with its own framing and its own
+    header compression, reachable before the token is checked.
+
+ -- Federico Cardinali <noreply@example.invalid>  Sun, 20 Sep 2026 17:00:59 +0200
+
 observer (0.23.0) unstable; urgency=medium
 
   * On Windows, ending a process from this machine now requires a caller
