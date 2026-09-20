@@ -4,6 +4,7 @@ using Observer.Core.Metrics;
 using Observer.Core.Platform;
 using Observer.Core.Processes;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Hosting.Systemd;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Observer.Service;
@@ -41,6 +42,13 @@ builder.Configuration.AddCommandLine(args);
 // the service collects without anyone keeping a window open.
 builder.Host.UseWindowsService();
 builder.Host.UseSystemd();
+
+// What a caller may COST, before the access control has decided what they may read. See
+// ServiceLimits. It is registered first, which is where it reads best - but nothing SAFE depends
+// on that any more: the one setting whose reach depends on registration order, the protocol, is
+// also named at each Listen call. It used to depend on it, and moving this line to the bottom of
+// the file handed both endpoints HTTP/2 back with all 264 service tests still green.
+builder.WebHost.ConfigureKestrel(ServiceLimits.Apply);
 
 builder.Services.AddObserverMetrics();
 // Registered explicitly, and not left to a default: the cache takes it as a constructor
@@ -119,6 +127,15 @@ foreach (IConfigurationSection endpoint in builder.Configuration.GetSection("Kes
     {
         throw new InvalidOperationException(
             $"Kestrel endpoint '{endpoint.Key}' is misconfigured. {problem}");
+    }
+
+    // And the same for its protocol, which is the one way configuration can put HTTP/2 back
+    // within reach of a caller who has shown no token: the rule is in ServiceLimits, beside the
+    // constant it defends.
+    if (ServiceLimits.ProblemWithConfiguredProtocol(endpoint["Protocols"]) is { } wrongProtocol)
+    {
+        throw new InvalidOperationException(
+            $"Kestrel endpoint '{endpoint.Key}' is misconfigured. {wrongProtocol}");
     }
 }
 
@@ -216,7 +233,15 @@ if (network.Https)
     // ListenAnyIP and not ListenLocalhost: the point of this port is that the other machines
     // use it. Whoever watches the one they are sitting at goes through the local channel, not here.
     builder.WebHost.ConfigureKestrel(kestrel =>
-        kestrel.ListenAnyIP(network.HttpsPort, listenOptions => listenOptions.UseHttps(certificate.Certificate)));
+        kestrel.ListenAnyIP(network.HttpsPort, listenOptions =>
+        {
+            // Named here as well as in ServiceLimits.Apply's endpoint defaults, because the
+            // defaults reach only endpoints declared after them and this one must not depend on
+            // where the registrations sit. On this endpoint it also decides the TLS handshake:
+            // with it, "h2" is not advertised at all.
+            listenOptions.Protocols = ServiceLimits.Protocol;
+            listenOptions.UseHttps(certificate.Certificate);
+        }));
 }
 
 WebApplication app = builder.Build();

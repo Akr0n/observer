@@ -6,8 +6,12 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Transport.NamedPipes;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Observer.Core.Processes;
 using Observer.Service.Credentials;
 using Observer.Service.LocalChannel;
@@ -47,6 +51,92 @@ public class LocalChannelWindowsTests
 
         Assert.False(options.CurrentUserOnly);
         Assert.NotNull(options.PipeSecurity);
+    }
+
+    [WindowsOnly]
+    public async Task ThePipeNeverOfferedHttp2InTheFirstPlace()
+    {
+        // The Windows twin of the cleartext measurement in ServiceLimitsTests, and it is here
+        // rather than there for one reason: the named pipe is the only endpoint in this service
+        // bound by a transport of its OWN. On Linux the unix socket and TCP are both the sockets
+        // transport, so the cross-platform test already covers that runner; here it would not.
+        //
+        // Both assertions are the same, and that IS the result: a caller writing the HTTP/2
+        // connection preface is refused with or without ServiceLimits, because Kestrel's mixed
+        // default means "HTTP/2 if ALPN chooses it" and a pipe has no ALPN. So the protocol named
+        // on this endpoint is belt, not brace - it costs nothing and it keeps the endpoint from
+        // depending on a default that could be narrowed later. The prose said otherwise until
+        // this test was written with a control in it.
+        Assert.Equal(Http2Preface.RefusedAsHttp1Required, await SpeakHttp2ToAPipe(withLimits: false));
+        Assert.Equal(Http2Preface.RefusedAsHttp1Required, await SpeakHttp2ToAPipe(withLimits: true));
+    }
+
+    [WindowsOnly]
+    public async Task AFloodOnTheNetworkEndpointDoesNotCloseTheLocalChannel()
+    {
+        // The assumption ServiceLimits rests on, pinned where it can be seen. A connection budget
+        // that were shared by the whole server would turn the limit into the cheapest denial of
+        // service there is: fill the port the other machines use, and the person sitting at this
+        // machine can no longer open their own dashboard - nor, since 0.23.0, stop a process on
+        // it. Measured here instead of assumed, because the option is spelled
+        // MaxConcurrentConnections on the SERVER and reads as if it belonged to the server.
+        //
+        // TWO and not ServiceLimits' own 512: the number under test is not the budget, it is
+        // whether one endpoint can spend another's. Filling 512 connections would only make the
+        // same test slower and give the accept loop room to be raced.
+        string pipe = UniquePipeName();
+
+        int arrived = 0;
+        TaskCompletionSource bothHolding = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
+            options =>
+            {
+                options.Limits.MaxConcurrentConnections = 2;
+                options.Listen(IPAddress.Loopback, 0);
+                options.ListenNamedPipe(pipe);
+            },
+            app => app.MapGet("/hold", async () =>
+            {
+                // A held request, not a raw socket and a sleep: this way the budget is known to
+                // be full when the test moves on, instead of probably full after a delay.
+                if (Interlocked.Increment(ref arrived) == 2)
+                {
+                    bothHolding.TrySetResult();
+                }
+
+                await release.Task;
+
+                return "released";
+            }));
+
+        string tcp = bench.Addresses.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
+
+        using HttpClient first = new() { BaseAddress = new Uri(tcp), Timeout = TimeSpan.FromSeconds(30) };
+        using HttpClient second = new() { BaseAddress = new Uri(tcp), Timeout = TimeSpan.FromSeconds(30) };
+
+        Task<string> holdingOne = first.GetStringAsync("hold", CancellationToken.None);
+        Task<string> holdingTwo = second.GetStringAsync("hold", CancellationToken.None);
+
+        try
+        {
+            await bothHolding.Task.WaitAsync(TimeSpan.FromSeconds(20), CancellationToken.None);
+
+            // The budget for the network endpoint is now spent: one more there is refused.
+            using HttpClient third = new() { BaseAddress = new Uri(tcp), Timeout = TimeSpan.FromSeconds(10) };
+            await Assert.ThrowsAsync<HttpRequestException>(
+                () => third.GetStringAsync("ping", CancellationToken.None));
+
+            // And the local channel, which is a different endpoint, is untouched.
+            using HttpClient overPipe = RealKestrelBench.ClientOn(PipeHandler(pipe));
+            Assert.Equal("pong", await overPipe.GetStringAsync("ping", CancellationToken.None));
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(holdingOne, holdingTwo);
+        }
     }
 
     [WindowsOnly]
@@ -383,6 +473,65 @@ public class LocalChannelWindowsTests
     /// <summary>The same token as CREDENTIALS, the shape the service's access control takes.</summary>
     internal static MachineCredentials Token =>
         new(TokenText, null, null);
+
+    [WindowsOnly]
+    [SupportedOSPlatform("windows")]
+    public void ListenNamedPipeNamesTheProtocolItselfAndDoesNotInheritIt()
+    {
+        // The line this pins is the fix for the first review's blocking finding, and until this
+        // test it was observed by nothing: the protocol used to come from ServiceLimits.Apply's
+        // endpoint DEFAULT, which reaches only endpoints declared after it, so the restriction
+        // was an invariant of the order Program.cs registers its callbacks in.
+        //
+        // The trick is that ConfigureEndpointDefaults REPLACES rather than accumulates, so a
+        // default registered here, before WindowsNamedPipe.Listen, is the one in force when the
+        // endpoint is declared - it captures the ListenOptions and sets nothing. Whatever the
+        // protocol reads afterwards therefore came from the Listen call itself. Delete the
+        // argument in WindowsNamedPipe.Listen and this goes back to Kestrel's own default.
+        List<ListenOptions> declared = [];
+
+        WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
+        builder.Configuration.Sources.Clear();
+        builder.Logging.ClearProviders();
+        builder.WebHost.ConfigureKestrel(kestrel => kestrel.ConfigureEndpointDefaults(declared.Add));
+
+        WindowsNamedPipe.Listen(builder, UniquePipeName());
+
+        using WebApplication app = builder.Build();
+
+        // Resolving the options is what runs the registered callbacks. Nothing is bound: that
+        // happens on StartAsync, which is deliberately not called.
+        _ = app.Services.GetRequiredService<IOptions<KestrelServerOptions>>().Value;
+
+        Assert.Equal(ServiceLimits.Protocol, Assert.Single(declared).Protocols);
+    }
+
+    /// <summary>Opens a pipe on a bench built with or without the limits, and speaks HTTP/2 to it.</summary>
+    /// <param name="withLimits">Whether the bench applies <c>ServiceLimits</c>.</param>
+    /// <returns>What the endpoint answered, named by <see cref="Http2Preface"/>.</returns>
+    private static async Task<string> SpeakHttp2ToAPipe(bool withLimits)
+    {
+        string pipe = UniquePipeName();
+
+        await using RealKestrelBench bench = await RealKestrelBench.StartAsync(options =>
+        {
+            if (withLimits)
+            {
+                ServiceLimits.Apply(options);
+            }
+
+            options.ListenNamedPipe(pipe);
+        });
+
+        // A raw pipe and not the usual HttpClient handler: there is no HTTP request here, only
+        // the preface, and an HTTP client would never send one on its own.
+        await using NamedPipeClientStream raw = new(
+            ".", pipe, PipeDirection.InOut, PipeOptions.Asynchronous, TokenImpersonationLevel.Identification);
+
+        await raw.ConnectAsync(CancellationToken.None);
+
+        return await Http2Preface.AskWhatItSpeaks(raw);
+    }
 
     internal static string UniquePipeName() =>
         "observer-test-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);

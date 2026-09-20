@@ -29,7 +29,15 @@ public static class WindowsNamedPipe
         // UseNamedPipes is NOT needed to open the pipe: on Windows the transport is already
         // registered and ListenNamedPipe is enough on its own. It serves only these two options.
         builder.WebHost.UseNamedPipes(ConfigureTransport);
-        builder.WebHost.ConfigureKestrel(kestrel => kestrel.ListenNamedPipe(pipeName));
+
+        // The protocol is named HERE and not left to the endpoint defaults, and the reason is on
+        // ServiceLimits.Protocol: the defaults reach only endpoints declared after them, so
+        // without this line the restriction would depend on where Program.cs happens to register
+        // its callbacks. On THIS endpoint it changes nothing today - measured: a cleartext
+        // endpoint refuses the HTTP/2 preface either way - so it is belt, kept because it costs
+        // one argument and stops this endpoint depending on a default that could be narrowed.
+        builder.WebHost.ConfigureKestrel(kestrel =>
+            kestrel.ListenNamedPipe(pipeName, listen => listen.Protocols = ServiceLimits.Protocol));
     }
 
     /// <summary>Sets the transport's two options. Together, never just one.</summary>
