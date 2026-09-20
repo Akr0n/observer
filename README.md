@@ -171,7 +171,7 @@ tool. From the **network** the bearer token remains mandatory.
 | `GET /metrics/history` | the historical points; `resolution` accepts `auto`, `raw`, `1m`, `5m` |
 | `GET /metrics/storage` | where it writes, how much space it takes up, how far it has aggregated |
 | `GET /processes` | the processes using the most; `by` accepts `cpu` (default), `memory` or `io`, `top` from 1 to 100 (default 15); the response echoes the criterion applied in `by` |
-| `POST /processes/{pid}/kill` | terminates that process, and `name` is **required**: `204` if it worked, `400` if the request did not name its target, `404` if the pid does not exist, `409` if that pid is now a different process, `403` if the operating system protects it |
+| `POST /processes/{pid}/kill` | terminates that process, and `name` is **required**: `204` if it worked, `400` if the request did not name its target, `404` if the pid does not exist, `409` if that pid is now a different process, `403` if the caller may not stop processes here or the operating system protects that one — the body says which |
 
 `auto` picks the finest resolution still available for the requested interval: yesterday's
 raw data has been deleted, and returning an empty chart would read as "machine not
@@ -218,7 +218,24 @@ the same `204` either way. **Update the service and the dashboard together.**
 What the check buys is worth being exact about: it refuses a pid that has become a *different*
 program, not one that has become another copy of the *same* program — every instance of Chrome
 is called Chrome, and the short-lived processes that free pids fastest are exactly the ones that
-come in copies. The kill
+come in copies.
+
+**On Windows, the local channel requires an elevated caller.** The pipe admits INTERACTIVE —
+every user with a session on that machine — deliberately, so the person at the console can watch
+the gauges without being put in a group. Watching is not stopping: the service runs as
+LocalSystem, so without this an ordinary interactive user could end any process on the machine.
+The question asked is what the caller's own **token** can do, not what its account is: a member
+of Administrators who has not elevated holds a token from which Windows removed the group, and
+honouring the account instead would hand back exactly the privilege it removed. In practice, to
+end a process on this machine you start the dashboard as an administrator; the gauges, the
+history and the process list need nothing. Note that this has to be *your own* account
+elevating: if you are not an administrator, "Run as administrator" starts the dashboard as
+somebody else, with somebody else's profile — so it would look for `machines.json` and the
+stored tokens under that account and find neither. **On Linux there is no such check and none is
+needed**: the socket is `0660` inside a `0750` directory, both owned by the service's user and
+group, so the kernel has already turned away anyone outside that group. **From the network
+nothing changes** — there is no identity to read there, only the token, and refusing would
+remove the reason the kill is reachable from another machine at all. The kill
 endpoint is also why the token is no longer kept in a file
 (see "Watching another machine"). `GET /processes` returns `503` when the list cannot be
 read on that machine.

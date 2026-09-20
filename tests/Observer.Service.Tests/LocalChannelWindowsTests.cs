@@ -7,6 +7,8 @@ using System.Security.Principal;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Transport.NamedPipes;
+using Microsoft.Extensions.DependencyInjection;
+using Observer.Core.Processes;
 using Observer.Service.Credentials;
 using Observer.Service.LocalChannel;
 
@@ -107,6 +109,124 @@ public class LocalChannelWindowsTests
         string outcome = await client.GetStringAsync("who", CancellationToken.None);
 
         Assert.StartsWith(nameof(CallerKind.LocalIdentified) + "|S-1-", outcome, StringComparison.Ordinal);
+    }
+
+    [WindowsOnly]
+    [SupportedOSPlatform("windows")]
+    public async Task TheElevationReportedIsTheCallersOwn()
+    {
+        // What this test CANNOT prove, said plainly because it matters: both ends live in this
+        // one process, so it cannot show the service reads the CLIENT's token rather than its
+        // own - the two are the same token here. That is why the elevation is read inside the
+        // impersonated callback and why the comment there carries the argument. What this pins
+        // is that a value arrives at all, that Windows never answers NotApplicable (which would
+        // wave every caller through the one write), and that it agrees with what this process
+        // really is.
+        string pipe = UniquePipeName();
+
+        await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
+            options => options.ListenNamedPipe(pipe),
+            app => app.MapGet("/who", (HttpContext context) => LocalCaller.Classify(context).Elevation.ToString()));
+
+        using HttpClient client = RealKestrelBench.ClientOn(PipeHandler(pipe));
+        string reported = await client.GetStringAsync("who", CancellationToken.None);
+
+        using WindowsIdentity me = WindowsIdentity.GetCurrent();
+        bool elevated = new WindowsPrincipal(me).IsInRole(WindowsBuiltInRole.Administrator);
+
+        Assert.Equal(elevated ? nameof(CallerElevation.Yes) : nameof(CallerElevation.No), reported);
+        Assert.NotEqual(nameof(CallerElevation.NotApplicable), reported);
+    }
+
+    [WindowsOnly]
+    [SupportedOSPlatform("windows")]
+    public async Task AKillIsRefusedToACallerWhoseTokenIsNotElevated()
+    {
+        // The real row, on a machine where somebody can actually be non-elevated. The pid
+        // cannot exist on either system, so this is safe to ask for whatever the answer is, and
+        // the two answers are what tells the gate from the lookup: not elevated gives 403,
+        // refused before the request was even examined, elevated gives 404 because the gate let
+        // it through and the pid is simply not there.
+        //
+        // WHAT THIS ONE DOES NOT DO, and why the test below it exists: the expectation is
+        // computed from what THIS PROCESS is, and the Windows CI runner is elevated - so on the
+        // machine that gates every merge this degrades to asserting the 404 that the endpoint
+        // gave before the gate existed. On its own it would let the guard be deleted and stay
+        // green there. The LocalIdentified+No row still has no home on an elevated runner; what
+        // the next test pins on every host is that the endpoint ASKS the rule at all.
+        string pipe = UniquePipeName();
+
+        await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
+            options => options.ListenNamedPipe(pipe),
+            app => app.MapProcessEndpoints(),
+            middleware: null,
+            // /processes needs the ranking, and without it NO route on this host works at
+            // all - see the remark on the parameter. The lister it wraps is the real one.
+            services => services.AddSingleton<ProcessRanking>()
+                .AddSingleton<IProcessLister>(new SystemProcessLister()));
+
+        using HttpClient client = RealKestrelBench.ClientOn(PipeHandler(pipe));
+
+        using HttpResponseMessage response = await client.PostAsync(
+            new Uri("processes/2147483646/kill?name=anything", UriKind.Relative),
+            content: null,
+            CancellationToken.None);
+
+        using WindowsIdentity me = WindowsIdentity.GetCurrent();
+        bool elevated = new WindowsPrincipal(me).IsInRole(WindowsBuiltInRole.Administrator);
+
+        Assert.Equal(elevated ? HttpStatusCode.NotFound : HttpStatusCode.Forbidden, response.StatusCode);
+
+        if (elevated)
+        {
+            return;
+        }
+
+        // And the refusal says which 403 it is. On this route the same status also means "the
+        // operating system protects that process", and the two have opposite remedies: one is
+        // "pick another process", the other is "start the dashboard as an administrator".
+        string body = await response.Content.ReadAsStringAsync(CancellationToken.None);
+
+        Assert.Contains("may not stop processes", body, StringComparison.Ordinal);
+    }
+
+    [WindowsOnly]
+    public async Task AKillFromACallerWhoCannotBeIdentifiedIsRefusedOnAnyHost()
+    {
+        // The same wiring, pinned WITHOUT depending on what this machine's own token carries.
+        // The impersonation level is the CLIENT's to choose, and Anonymous makes the caller
+        // unreadable: the classification is then Unidentified, whose row in the table is false
+        // for every elevation there is. So the endpoint must answer 403 on a developer's
+        // unelevated session and on the elevated CI runner alike - and it answers 404 the moment
+        // the endpoint stops asking the rule, which is the mutation the test above cannot catch
+        // where it matters.
+        //
+        // Note what makes this a check on the ENDPOINT and not on the middleware: this bench
+        // mounts no access control, so the request really does reach Terminate. In the running
+        // service Decide would have refused it one layer earlier, which is the belt to this
+        // pair of braces.
+        string pipe = UniquePipeName();
+
+        await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
+            options => options.ListenNamedPipe(pipe),
+            app => app.MapProcessEndpoints(),
+            middleware: null,
+            services => services.AddSingleton<ProcessRanking>()
+                .AddSingleton<IProcessLister>(new SystemProcessLister()));
+
+        using HttpClient client = RealKestrelBench.ClientOn(
+            PipeHandler(pipe, TokenImpersonationLevel.Anonymous));
+
+        using HttpResponseMessage response = await client.PostAsync(
+            new Uri("processes/2147483646/kill?name=anything", UriKind.Relative),
+            content: null,
+            CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+
+        string body = await response.Content.ReadAsStringAsync(CancellationToken.None);
+
+        Assert.Contains("may not stop processes", body, StringComparison.Ordinal);
     }
 
     [WindowsOnly]

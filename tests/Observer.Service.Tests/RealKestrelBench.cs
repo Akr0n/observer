@@ -42,10 +42,19 @@ public sealed class RealKestrelBench : IAsyncDisposable
     /// access control, so the tests exercise it instead of checking a copy of it.
     /// </param>
     /// <returns>The bench, already started.</returns>
+    /// <param name="services">
+    /// Services to register before the host is built. It is needed by any test that mounts a
+    /// REAL endpoint group rather than a lambda, and the failure without it is worth knowing:
+    /// endpoints are built lazily on the first request, and one endpoint whose parameters cannot
+    /// be bound takes the whole build down - so EVERY route answers 500, including routes that
+    /// have nothing to do with the missing service and including <c>/ping</c>. It looks like a
+    /// broken host, not like a missing registration.
+    /// </param>
     public static async Task<RealKestrelBench> StartAsync(
         Action<KestrelServerOptions> listen,
         Action<WebApplication>? map = null,
-        Action<WebApplication>? middleware = null)
+        Action<WebApplication>? middleware = null,
+        Action<IServiceCollection>? services = null)
     {
         ArgumentNullException.ThrowIfNull(listen);
 
@@ -62,6 +71,8 @@ public sealed class RealKestrelBench : IAsyncDisposable
 
         builder.WebHost.ConfigureKestrel(listen);
         builder.Logging.ClearProviders();
+
+        services?.Invoke(builder.Services);
 
         WebApplication app = builder.Build();
 

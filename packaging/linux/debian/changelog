@@ -1,3 +1,32 @@
+observer (0.23.0) unstable; urgency=medium
+
+  * On Windows, ending a process from this machine now requires a caller
+    whose own token carries administrative rights. The pipe the dashboard
+    talks to admits every user with a session on the machine, on purpose,
+    so that whoever is at the console can watch the gauges without being
+    put in a group - but the service runs as LocalSystem, so the same
+    user could until now end any process on it. Watching and stopping are
+    not the same thing, and they no longer take the same rights.
+  * It is the TOKEN that is asked, not the account. A member of the
+    administrators group who has not elevated holds a token from which
+    Windows removed that group, and reading the account instead would
+    hand back the very privilege the system had taken away. In practice:
+    to end a process, start the dashboard as an administrator. Nothing
+    else needs it - the gauges, the history and the process list are
+    reads and are untouched.
+  * On Linux nothing changes, and nothing needs to: the socket is 0660
+    inside a 0750 directory, both owned by the service's user and group,
+    so anyone outside that group was already turned away by the kernel.
+    From the network nothing changes either - there is no identity to
+    read there, only the token.
+  * Every refusal is still logged, and now with the caller's identifier
+    and whether it was elevated. The window says which refusal it was:
+    "the operating system protects that process" and "this caller may
+    not stop processes here" have opposite remedies, and used to read
+    the same. An older dashboard shows only that it was refused.
+
+ -- Federico Cardinali <noreply@example.invalid>  Sun, 20 Sep 2026 14:52:30 +0200
+
 observer (0.22.1) unstable; urgency=medium
 
   * A machine that has stopped measuring no longer looks healthy. The

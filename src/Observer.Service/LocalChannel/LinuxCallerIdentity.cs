@@ -54,9 +54,16 @@ public static class LinuxCallerIdentity
         // NATIVE order, and forcing little-endian would be wrong on a big-endian machine.
         uint uid = MemoryMarshal.Read<uint>(buffer[4..]);
 
+        // NotApplicable, stated and not left to the default, because the default means REFUSED
+        // and here there is nothing to refuse: the socket is 0660 in a 0750 directory, both owned
+        // by the service's user and group, so the kernel turned away everybody who is not the
+        // owner or in that group before this code ran. Windows has no equivalent - its pipe
+        // deliberately admits every interactive user - which is why the elevation question is
+        // asked there and not here.
         return new CallerOrigin(
             CallerKind.LocalIdentified,
             uid.ToString(CultureInfo.InvariantCulture),
-            "local caller identified by SO_PEERCRED");
+            string.Create(CultureInfo.InvariantCulture, $"local caller uid {uid}, admitted by the socket's mode"),
+            CallerElevation.NotApplicable);
     }
 }

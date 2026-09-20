@@ -107,6 +107,10 @@ public sealed record HistoryResponse(
     bool Truncated,
     IReadOnlyList<HistoryPoint> Points);
 
+/// <summary>The one field this client reads out of an <c>application/problem+json</c> body.</summary>
+/// <param name="Detail">The service's own sentence about what it refused, and why.</param>
+internal sealed record ProblemDetailWire(string? Detail);
+
 /// <summary>The outcome of a history read.</summary>
 /// <param name="Outcome">How it went.</param>
 /// <param name="Problem">What to tell whoever is watching, when it went badly.</param>
@@ -375,6 +379,25 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
                 return new KillFetch(ServiceOutcome.Ok, string.Empty);
             }
 
+            // The ONE answer on this route whose body is read, and only because this status now
+            // means two things with opposite remedies: "the operating system protects that
+            // process", which is answered by picking another one, and "this caller may not stop
+            // processes here", which is answered by starting the dashboard as an administrator.
+            // Nothing this side knows tells them apart - the service is the only one that can,
+            // and it says so in the problem detail.
+            if (response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                string? detail = await ReadProblemDetailAsync(response, cancellationToken)
+                    .ConfigureAwait(false);
+
+                return new KillFetch(
+                    ServiceOutcome.UnexpectedResponse,
+                    detail is { Length: > 0 }
+                        ? $"The service on {Endpoint.Description} refused: {detail}."
+                        : $"The service on {Endpoint.Description} refused to terminate it: the " +
+                          "operating system protects that process.");
+            }
+
             return response.StatusCode switch
             {
                 // The service answers 404 when that PID is gone. The same code would come
@@ -385,11 +408,6 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
                 HttpStatusCode.NotFound => new KillFetch(
                     ServiceOutcome.UnexpectedResponse,
                     "That process is no longer running."),
-
-                HttpStatusCode.Forbidden => new KillFetch(
-                    ServiceOutcome.UnexpectedResponse,
-                    $"The service on {Endpoint.Description} refused to terminate it: the operating system " +
-                    "protects that process."),
 
                 // The number is still in use, but not by what was on screen: that process ended
                 // and the system handed the pid to another one. Nothing was terminated, and the
@@ -428,6 +446,55 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             return new KillFetch(ServiceOutcome.TimedOut, DescribeTimeout());
+        }
+    }
+
+    /// <summary>The <c>detail</c> of a problem+json answer, or null if there is not one.</summary>
+    /// <remarks>
+    /// Every way of not finding one returns null and the caller falls back to its own sentence:
+    /// a body that is not JSON, a JSON without that field, an older service that sends no body
+    /// at all. A refusal is not the moment to add a second way of failing.
+    /// <para>
+    /// The text is TRUNCATED. It comes from the machine being watched - trusted, since its
+    /// certificate is pinned - but it lands in a status bar with one line, and a service that
+    /// answered with a megabyte of prose would make the window useless rather than wrong.
+    /// </para>
+    /// </remarks>
+    private static async Task<string?> ReadProblemDetailAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        const int LongestUsefulDetail = 300;
+
+        try
+        {
+            ProblemDetailWire? problem = await response.Content
+                .ReadFromJsonAsync<ProblemDetailWire>(WireOptions, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (problem?.Detail is not { Length: > 0 } detail)
+            {
+                return null;
+            }
+
+            string trimmed = detail.Trim();
+
+            return trimmed.Length <= LongestUsefulDetail ? trimmed : trimmed[..LongestUsefulDetail] + "…";
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (NotSupportedException)
+        {
+            // The body is not JSON at all: ReadFromJsonAsync refuses the content type.
+            return null;
+        }
+        catch (HttpRequestException)
+        {
+            // The connection died while the body was being read. The status code already
+            // arrived, so the refusal stands; only its explanation is missing.
+            return null;
         }
     }
 
