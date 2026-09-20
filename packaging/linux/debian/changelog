@@ -34,6 +34,14 @@ observer (0.24.0) unstable; urgency=medium
     discover that a way to rotate the keys is there, let alone lock the
     machine's owner out with it. Locally it asks for the same elevated
     token the process kill asks for.
+  * That needed the route to be mapped for EVERY verb, with the method
+    checked inside. A request matching the path but not the method does
+    not select the endpoint at all: the framework picks a rejection
+    endpoint carrying no metadata, so the local-only marker is not there
+    to be read and the answer came back 405 with "Allow: POST" - naming
+    the route to the one caller it is hidden from, while every sibling
+    path answered 404. Found by the review and measured twice. Marking
+    the route group does not help either, and the marker now says so.
   * Every failure leaves the credentials in force untouched. A service
     that loses sight of its store keeps serving the key it has: wiping
     it would lock the owner out of a machine that is otherwise healthy,

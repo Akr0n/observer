@@ -88,6 +88,27 @@ public class LocalChannelWindowsTests
             await overTcp.PostAsync("credentials/reload", content: null, CancellationToken.None);
 
         Assert.Equal(HttpStatusCode.NotFound, fromNetwork.StatusCode);
+
+        // AND THE WRONG VERB ON THE SAME PATH, which is where this was getting it wrong. A
+        // request matching the path but not the method selects a synthetic rejection endpoint
+        // with no metadata on it, so the local-only marker was not there to be read and the
+        // answer came back 405 with "Allow: POST" - announcing the route to the very caller it
+        // is hidden from, while every sibling path answered 404. Mapping for all verbs and
+        // checking the method inside the handler is what closes it, and this is the assertion
+        // that keeps it closed.
+        foreach (HttpMethod method in new[] { HttpMethod.Get, HttpMethod.Put, HttpMethod.Delete })
+        {
+            using HttpRequestMessage wrongVerb = new(method, "credentials/reload");
+            using HttpResponseMessage answer = await overTcp.SendAsync(wrongVerb, CancellationToken.None);
+
+            Assert.Equal(HttpStatusCode.NotFound, answer.StatusCode);
+
+            // The 405 did not merely differ in status: it carried Allow, which names the verb
+            // outright. A 404 that still advertised it would be no better. Allow is a CONTENT
+            // header in .NET, not a response header - asking HttpResponseMessage.Headers for it
+            // throws "Misused header name" rather than answering false.
+            Assert.Empty(answer.Content.Headers.Allow);
+        }
     }
 
     [WindowsOnly]

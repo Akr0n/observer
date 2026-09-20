@@ -390,7 +390,7 @@ public static class Commands
             && LocalChannelRequest.SomethingIsListeningOn(DefaultHttpsPort, TimeSpan.FromSeconds(1));
 
         RevocationVerdict verdict = Revocation.Judge(
-            answer, written, Revocation.StampIn(answer.Body), listening);
+            answer, storePath, written, Revocation.Read(answer.Body), listening);
 
         Console.WriteLine("Store   : " + storePath);
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"Written : {written:u}"));

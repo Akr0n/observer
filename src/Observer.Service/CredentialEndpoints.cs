@@ -51,8 +51,22 @@ public static partial class CredentialEndpoints
     {
         ArgumentNullException.ThrowIfNull(endpoints);
 
-        endpoints.MapPost("/credentials/reload", (HttpContext context, ILoggerFactory loggerFactory) =>
-            Reload(context, loggerFactory)).LocalOnly();
+        // Map and NOT MapPost, with the verb checked inside, and that is the difference between
+        // this route being hidden and being announced. A request that matches the PATH but not
+        // the METHOD does not select this endpoint at all: ASP.NET Core selects a synthetic
+        // rejection endpoint whose metadata is EMPTY, so the local-only marker is not there to be
+        // read, the scope comes out Anywhere, and a caller from the network is served a 405
+        // carrying "Allow: POST" - while every sibling path answers 404. Measured on the real
+        // pipeline. The difference is exactly the disclosure the marker exists to prevent: a
+        // stolen token could not USE the route, but it could learn that the route is there.
+        //
+        // Marking the route GROUP does not help, which is worth knowing because the marker's own
+        // remarks call that the intended way to use it: group metadata does not reach the
+        // synthetic endpoint either. Measured.
+        endpoints.Map("/credentials/reload", (HttpContext context, ILoggerFactory loggerFactory) =>
+            HttpMethods.IsPost(context.Request.Method)
+                ? Reload(context, loggerFactory)
+                : Results.StatusCode(StatusCodes.Status405MethodNotAllowed)).LocalOnly();
     }
 
     private static IResult Reload(HttpContext context, ILoggerFactory loggerFactory)

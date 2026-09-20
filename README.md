@@ -199,7 +199,8 @@ other way round gets nothing: **a dashboard newer than its service** talks to a 
 such check, which answers `200` with the stale reading exactly as before. Update both sides
 together.
 
-`/processes/{pid}/kill` is the service's **only write**, and it is allowed from the network
+`/processes/{pid}/kill` is the only write the service allows **from the network** — since 0.24.0
+`/credentials/reload` is a second one, reachable on the local channel alone — and it is allowed there
 with the token, by deliberate choice: from another machine you see a runaway process and
 stop it from there. Every attempt ends up in the service log with the pid and where the caller
 came from; the process name is there too whenever there was one to read, which means on the kill
@@ -340,6 +341,8 @@ not name its own cause.
 | `observer rotate-key` | yes | generates a new key; the previous one stays valid for another 24 hours, and the service uses the old one until it is restarted |
 | `observer rotate-key --now` | yes | for a key that has **leaked**: no previous key is kept, and the running service is told to adopt the new store immediately |
 | `observer doctor` | no | where the credential store is, how it is protected, and whether the local channel answers |
+| `observer token set NAME` | no | keeps the token of ANOTHER machine; it reads it from standard input and does not show it |
+| `observer token forget NAME` | no | forgets that token |
 
 **`--now` exists because rewriting the file revokes nothing on its own.** The service reads its
 store once, when it starts, so the plain `rotate-key` leaves the old key being accepted until
@@ -348,21 +351,26 @@ has just leaked. `--now` therefore does two more things: it writes no previous k
 compromised secret is not left on disk, and it asks the running service, through the local
 channel, to adopt the new store there and then.
 
-It reports whether that worked rather than assuming it. The service answers with **when the file
-it read had last been written**, and the command compares that with the stamp of the file it just
-wrote: equal means the running process read those exact bytes, which "the service said OK" would
-not. It exits `0` only when the old key is provably accepted nowhere on this machine — including
-the case where nothing is running here at all, which is the one other way of being sure. Every
-other outcome is named and exits `1`: a service too old to have the endpoint, a service that read
-a different store, one that was given its token in configuration and never had a store to adopt,
-and the dangerous one — a silent local channel with something still listening on the port, which
-means a service is running and still holds the old key. That last case is why the command also
-probes the port: the two causes of a silent local channel mean opposite things.
+It reports whether that worked rather than assuming it. The service answers with **which file it
+read and when that file had last been written** — both from the part that did the reading — and
+the command compares them with the file it just wrote: the same path with the same stamp means
+the running process read those exact bytes, which "the service said OK" would not. It exits `0`
+only when the old key is provably accepted nowhere on this machine — including the case where
+nothing is running here at all, which is the one other way of being sure. Every other outcome is
+named and exits `1`: a service too old to have the endpoint, a service that read a different
+store, one that was given its token in configuration and never had a store to adopt, and the
+dangerous one — a silent local channel with something still listening on the port, which means a
+service is running and still holds the old key. That last case is why the command also probes the
+port: the two causes of a silent local channel mean opposite things.
+
+One limit, because it decides what `0` is worth: the command looks for the service on the
+**default** local channel and the default port. A service deliberately moved to another pipe name,
+socket path or port is not found there, and a machine with no service running looks the same as
+one whose service has been moved — so on such an installation, read the "NOT RUNNING" line as
+"not found where I looked", and restart the service yourself.
 
 Once it has applied, every computer that watches this one is cut off until you run
 `observer token set NAME` there with the new token.
-| `observer token set NAME` | no | keeps the token of ANOTHER machine; it reads it from standard input and does not show it |
-| `observer token forget NAME` | no | forgets that token |
 
 ### Watching another machine
 

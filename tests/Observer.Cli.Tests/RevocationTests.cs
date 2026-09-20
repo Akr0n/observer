@@ -19,11 +19,16 @@ public class RevocationTests
     private static readonly DateTimeOffset Written =
         new(2026, 9, 20, 18, 30, 0, TimeSpan.Zero);
 
+    /// <summary>The store this command wrote, as an absolute path on either system.</summary>
+    private static readonly string Store =
+        Path.Combine(Path.GetTempPath(), "observer-revocation", "credentials.json");
+
     [Fact]
     public void TheStampMustMatchTheFileThatWasJustWritten()
     {
         // The proof, and the only assertion that earns an exit code of zero on a running service.
-        RevocationVerdict verdict = Revocation.Judge(Answer(HttpStatusCode.OK), Written, Written, false);
+        RevocationVerdict verdict = Revocation.Judge(
+            Answer(HttpStatusCode.OK), Store, Written, new Revocation.Adopted(Store, Written), false);
 
         Assert.Equal(RevocationState.Applied, verdict.State);
         Assert.Equal(0, verdict.ExitCode);
@@ -36,7 +41,8 @@ public class RevocationTests
         // reload that raced this write all land here, and every one of them may still be holding
         // the old key - so this must not read as success.
         RevocationVerdict verdict = Revocation.Judge(
-            Answer(HttpStatusCode.OK), Written, Written.AddMinutes(-5), false);
+            Answer(HttpStatusCode.OK), Store, Written,
+            new Revocation.Adopted(Store, Written.AddMinutes(-5)), false);
 
         Assert.Equal(RevocationState.DifferentStore, verdict.State);
         Assert.Equal(1, verdict.ExitCode);
@@ -48,7 +54,8 @@ public class RevocationTests
         // An older or unexpected body shape. It has to degrade into a warning, not into a
         // success and not into a stack trace: this is the verb someone runs during an incident.
         RevocationVerdict verdict = Revocation.Judge(
-            new LocalChannelAnswer(HttpStatusCode.OK, "{}", Silent: false), Written, null, false);
+            new LocalChannelAnswer(HttpStatusCode.OK, "{}", Silent: false), Store, Written,
+            new Revocation.Adopted(null, null), false);
 
         Assert.Equal(RevocationState.DifferentStore, verdict.State);
         Assert.Equal(1, verdict.ExitCode);
@@ -57,7 +64,8 @@ public class RevocationTests
     [Fact]
     public void ASilentChannelWithNothingOnThePortMeansNothingHereAcceptsAnything()
     {
-        RevocationVerdict verdict = Revocation.Judge(Silent(), Written, null, somethingOnThePort: false);
+        RevocationVerdict verdict = Revocation.Judge(
+            Silent(), Store, Written, Nothing, somethingOnThePort: false);
 
         Assert.Equal(RevocationState.NotRunning, verdict.State);
         Assert.Equal(0, verdict.ExitCode);
@@ -69,7 +77,8 @@ public class RevocationTests
         // The case the whole port probe exists for: the local channel can be switched off in
         // configuration while the service goes on answering the network with the leaked key.
         // Collapsing this into "not running" would print reassurance over an open door.
-        RevocationVerdict verdict = Revocation.Judge(Silent(), Written, null, somethingOnThePort: true);
+        RevocationVerdict verdict = Revocation.Judge(
+            Silent(), Store, Written, Nothing, somethingOnThePort: true);
 
         Assert.Equal(RevocationState.StillAccepted, verdict.State);
         Assert.Equal(1, verdict.ExitCode);
@@ -88,7 +97,7 @@ public class RevocationTests
         // A 404 on the LOCAL channel cannot mean "hidden from you" - the access rule answers
         // NotFound only to a caller that is not local and identified - so it genuinely means the
         // service has no such route, which is to say it predates this command.
-        RevocationVerdict verdict = Revocation.Judge(Answer(status), Written, null, false);
+        RevocationVerdict verdict = Revocation.Judge(Answer(status), Store, Written, Nothing, false);
 
         Assert.Equal(expected, verdict.State);
         Assert.Equal(1, verdict.ExitCode);
@@ -107,9 +116,44 @@ public class RevocationTests
 
         Assert.Contains(
             "not serving a stored token",
-            Revocation.Judge(answer, Written, null, false).Headline,
+            Revocation.Judge(answer, Store, Written, Nothing, false).Headline,
             StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void AServiceReadingANOTHERFileIsNotSuccessEvenWithTheSameStamp()
+    {
+        // The hole the path closes. A service configured with its own
+        // Observer:CredentialStorePath answers happily about a file this command never touched:
+        // the rotation would have rewritten a store nobody uses while the leaked key went on
+        // being accepted. Two files sharing a modification time is not far-fetched either - a
+        // copy preserves it.
+        RevocationVerdict verdict = Revocation.Judge(
+            Answer(HttpStatusCode.OK),
+            Store,
+            Written,
+            new Revocation.Adopted(Path.Combine(Path.GetTempPath(), "elsewhere", "credentials.json"), Written),
+            false);
+
+        Assert.Equal(RevocationState.DifferentStore, verdict.State);
+        Assert.Equal(1, verdict.ExitCode);
+        Assert.Contains("elsewhere", verdict.Headline, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheSamePathWrittenTwoWaysIsStillTheSamePath() =>
+        // A configured path that is unnormalised must not read as a different store: that would
+        // turn a rotation that DID apply into a warning, and send the operator round again.
+        Assert.Equal(
+            RevocationState.Applied,
+            Revocation.Judge(
+                Answer(HttpStatusCode.OK),
+                Store,
+                Written,
+                new Revocation.Adopted(
+                    Path.Combine(Path.GetTempPath(), "observer-revocation", ".", "credentials.json"),
+                    Written),
+                false).State);
 
     [Theory]
     [InlineData("")]
@@ -118,16 +162,24 @@ public class RevocationTests
     [InlineData("[]")]
     [InlineData("{\"storeWrittenAt\":\"yesterday\"}")]
     [InlineData("{\"somethingElse\":1}")]
-    public void AStampThatCannotBeReadIsNullRatherThanAnException(string body) =>
-        Assert.Null(Revocation.StampIn(body));
+    public void AnAnswerThatCannotBeReadCarriesNothingRatherThanThrowing(string body)
+    {
+        Revocation.Adopted adopted = Revocation.Read(body);
+
+        Assert.Null(adopted.StorePath);
+        Assert.Null(adopted.WrittenAt);
+    }
 
     [Fact]
-    public void AStampThatCanBeReadComesBackAsWritten() =>
-        Assert.Equal(
-            Written,
-            Revocation.StampIn(string.Create(
-                CultureInfo.InvariantCulture,
-                $"{{\"storePath\":\"somewhere\",\"storeWrittenAt\":\"{Written:O}\",\"keys\":\"one current key, no previous key\"}}")));
+    public void AnAnswerThatCanBeReadComesBackWhole()
+    {
+        Revocation.Adopted adopted = Revocation.Read(string.Create(
+            CultureInfo.InvariantCulture,
+            $"{{\"storePath\":\"{Store.Replace("\\", "\\\\", StringComparison.Ordinal)}\",\"storeWrittenAt\":\"{Written:O}\",\"keys\":\"one current key, no previous key\"}}"));
+
+        Assert.Equal(Store, adopted.StorePath);
+        Assert.Equal(Written, adopted.WrittenAt);
+    }
 
     [Fact]
     public void AnImmediateRotationLeavesTheLeakedKeyNowhereOnDisk()
@@ -172,4 +224,7 @@ public class RevocationTests
 
     private static LocalChannelAnswer Silent() =>
         new(null, string.Empty, Silent: true);
+
+    /// <summary>An answer that named neither a file nor a stamp.</summary>
+    private static Revocation.Adopted Nothing => new(null, null);
 }

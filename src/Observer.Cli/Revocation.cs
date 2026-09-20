@@ -60,50 +60,80 @@ public sealed record RevocationVerdict(RevocationState State, string Headline, s
 /// </remarks>
 public static class Revocation
 {
-    /// <summary>Reads the stamp the service reported, if the answer carries one.</summary>
+    /// <summary>What the service said it read: which file, and when it was written.</summary>
+    /// <param name="StorePath">The store the service adopted, or null if it named none.</param>
+    /// <param name="WrittenAt">When that file had last been written, or null.</param>
+    public sealed record Adopted(string? StorePath, DateTimeOffset? WrittenAt);
+
+    /// <summary>Reads what the service reported, if the answer carries it.</summary>
     /// <param name="body">The body of a 200.</param>
-    /// <returns>The stamp, or null if the body does not carry one.</returns>
+    /// <returns>The path and the stamp, either of which may be null.</returns>
     /// <remarks>
-    /// A body that cannot be parsed yields null, which the judgement below turns into "did not
+    /// A body that cannot be parsed yields nulls, which the judgement below turns into "did not
     /// apply" rather than into an exception: an older or unexpected shape must degrade into a
     /// warning, never into a stack trace on the verb someone runs during an incident.
     /// </remarks>
-    public static DateTimeOffset? StampIn(string body)
+    public static Adopted Read(string body)
     {
         if (string.IsNullOrWhiteSpace(body))
         {
-            return null;
+            return new Adopted(null, null);
         }
 
         try
         {
             using JsonDocument document = JsonDocument.Parse(body);
 
-            return document.RootElement.ValueKind == JsonValueKind.Object
-                && document.RootElement.TryGetProperty("storeWrittenAt", out JsonElement stamp)
-                && stamp.TryGetDateTimeOffset(out DateTimeOffset value)
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return new Adopted(null, null);
+            }
+
+            string? path = document.RootElement.TryGetProperty("storePath", out JsonElement store)
+                && store.ValueKind == JsonValueKind.String
+                    ? store.GetString()
+                    : null;
+
+            DateTimeOffset? stamp =
+                document.RootElement.TryGetProperty("storeWrittenAt", out JsonElement written)
+                && written.TryGetDateTimeOffset(out DateTimeOffset value)
                     ? value
                     : null;
+
+            return new Adopted(path, stamp);
         }
         catch (JsonException)
         {
-            return null;
+            return new Adopted(null, null);
         }
     }
 
     /// <summary>Judges what happened to the running service.</summary>
     /// <param name="answer">What the local channel said.</param>
-    /// <param name="written">When the store this command wrote was last written.</param>
-    /// <param name="reported">The stamp the service reported reading, if any.</param>
+    /// <param name="storePath">The store this command wrote.</param>
+    /// <param name="written">When it was written.</param>
+    /// <param name="reported">What the service said it adopted.</param>
     /// <param name="somethingOnThePort">Whether the machine's HTTPS port accepted a connection.</param>
     /// <returns>The verdict.</returns>
+    /// <remarks>
+    /// BOTH halves of the answer are compared, the path and the stamp, and the path is not
+    /// decoration. The command writes to the store path it knows; the service reports the one it
+    /// actually read. A service configured with a different <c>Observer:CredentialStorePath</c>
+    /// answers happily about a file this command never touched - the rotation would then have
+    /// rewritten a store nobody is using, while the leaked key went on being accepted. Comparing
+    /// only the stamp would let that pass whenever the two files happened to share a modification
+    /// time, and would report success for a rotation that achieved nothing.
+    /// </remarks>
     public static RevocationVerdict Judge(
         LocalChannelAnswer answer,
+        string storePath,
         DateTimeOffset written,
-        DateTimeOffset? reported,
+        Adopted reported,
         bool somethingOnThePort)
     {
         ArgumentNullException.ThrowIfNull(answer);
+        ArgumentNullException.ThrowIfNull(reported);
+        ArgumentException.ThrowIfNullOrWhiteSpace(storePath);
 
         if (answer.Silent)
         {
@@ -119,16 +149,20 @@ public static class Revocation
                     1)
                 : new RevocationVerdict(
                     RevocationState.NotRunning,
-                    "NOT RUNNING - nothing answered on the local channel and nothing is " +
-                    "listening on this machine's port. Nothing here accepts the old key, because " +
-                    "nothing here is answering. The service will read the new store when it starts.",
+                    "NOT FOUND - nothing answered on the DEFAULT local channel and nothing is " +
+                    "listening on the default port. On a standard installation that means " +
+                    "nothing here accepts the old key, because nothing here is answering, and " +
+                    "the service will read the new store when it starts. On a service moved to " +
+                    "another pipe, socket or port, it means only that it was not found where " +
+                    "this command looked.",
                     string.Empty,
                     0);
         }
 
         return answer.Status switch
         {
-            HttpStatusCode.OK when reported == written => new RevocationVerdict(
+            HttpStatusCode.OK when SamePlace(storePath, reported.StorePath) && reported.WrittenAt == written =>
+                new RevocationVerdict(
                 RevocationState.Applied,
                 "APPLIED - the running service re-read that exact file. The old key is refused " +
                 "from now on.",
@@ -184,10 +218,28 @@ public static class Revocation
             ? "restart it NOW: Restart-Service Observer"
             : "restart it NOW: sudo systemctl restart observer";
 
-    private static string Describe(DateTimeOffset? reported) =>
-        reported is { } stamp
-            ? string.Create(CultureInfo.InvariantCulture, $" (it read one written at {stamp:u})")
-            : " (it reported no stamp at all)";
+    /// <summary>Whether two paths name the same file, as this system decides it.</summary>
+    /// <remarks>
+    /// Resolved before comparing, so a relative or unnormalised configuration value does not read
+    /// as a different file; and case-insensitive on Windows only, because on Linux two paths
+    /// differing in case really are two files - and two credential stores.
+    /// </remarks>
+    private static bool SamePlace(string written, string? reported) =>
+        reported is { Length: > 0 } other
+        && string.Equals(
+            Path.GetFullPath(written),
+            Path.GetFullPath(other),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
+    private static string Describe(Adopted reported) =>
+        (reported.StorePath, reported.WrittenAt) switch
+        {
+            (null or "", null) => " (it named no file and reported no stamp)",
+            (null or "", _) => " (it named no file at all)",
+            (string path, null) => " (it read " + path + ", and reported no stamp)",
+            (string path, DateTimeOffset stamp) => string.Create(
+                CultureInfo.InvariantCulture, $" (it read {path}, written at {stamp:u})"),
+        };
 
     /// <summary>The service's own sentence, pulled out of the problem body it answered with.</summary>
     private static string Detail(string body)

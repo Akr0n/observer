@@ -147,10 +147,17 @@ public sealed class CredentialSourceTests : IDisposable
 
         Assert.DoesNotContain("fresh", graceful, StringComparison.Ordinal);
         Assert.DoesNotContain("leaked", graceful, StringComparison.Ordinal);
-        Assert.Contains("previous key", graceful, StringComparison.Ordinal);
+
+        // "previous key" would match INSIDE "no previous key", so the graceful case has to be
+        // asserted on something the immediate one cannot satisfy - and on the absence of the
+        // immediate one's own phrase. An earlier version checked only the substring and passed
+        // for both, which is to say it did not tell them apart at all.
+        Assert.Contains("one previous key valid until", graceful, StringComparison.Ordinal);
+        Assert.DoesNotContain("no previous key", graceful, StringComparison.Ordinal);
 
         Assert.DoesNotContain("fresh", immediate, StringComparison.Ordinal);
         Assert.Contains("no previous key", immediate, StringComparison.Ordinal);
+        Assert.DoesNotContain("valid until", immediate, StringComparison.Ordinal);
     }
 
     [Fact]

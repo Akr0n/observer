@@ -82,11 +82,22 @@ Remove that machine's token from this computer.
 .SH EXIT STATUS
 .TP
 .B 0
-Success.
+Success. For
+.B rotate\-key \-\-now
+it means more than that, and it is the only thing it means: the old key is
+provably accepted nowhere on this machine \- either because the running service
+was seen to adopt the new store, or because nothing answered on the default
+local channel and the default port.
 .TP
 .B 1
 The credential store or the token store could not be read or written, or no
-token was given.
+token was given. For
+.B rotate\-key \-\-now
+it also covers the case where the store WAS rewritten but the running service
+was not seen to adopt it: it answers but has no such endpoint, it read a
+different file, it has no store to adopt, it refused, or nothing answered on the
+local channel while something is still listening on the port. The line printed
+says which, and in every one of them the old key may still be accepted.
 .TP
 .B 2
 The command was not recognised.
