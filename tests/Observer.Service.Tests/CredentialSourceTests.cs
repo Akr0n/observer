@@ -49,18 +49,39 @@ public sealed class CredentialSourceTests : IDisposable
     }
 
     [Fact]
-    public void TheStampReportedIsTheOneOfTheFileThatWasREAD()
+    public void TheStampAndThePathReportedAreTheOnesOfTheFileThatWasREAD()
     {
-        // It is the only thing that lets the caller believe the answer: it wrote the store and
-        // knows its stamp, so an equal stamp here says the running service read those bytes,
-        // rather than that some service re-read something.
+        // The pair is the only thing that lets the caller believe the answer: it wrote the store
+        // and knows both, so an equal stamp on the SAME path says the running service read those
+        // bytes, rather than that some service re-read something.
+        //
+        // The path matters as much as the stamp, and that was learnt the hard way: the endpoint
+        // first resolved it from configuration instead of from here, and CI caught it naming the
+        // system default while the source had read a file under the temp directory. A path from a
+        // second source of truth undermines the one claim the answer makes.
         string path = StoreAt();
         CredentialStore.Write(path, new MachineCredentials("k", null, null));
 
         ReloadOutcome outcome = Reading(path).Reload();
 
         Assert.Equal(ReloadResult.Applied, outcome.Result);
+        Assert.Equal(path, outcome.StorePath);
         Assert.Equal(File.GetLastWriteTimeUtc(path), outcome.StoreWrittenAt);
+    }
+
+    [Fact]
+    public void AFailureStillNamesTheFileItWasLookingAt()
+    {
+        // An operator reading "there is no credential store" needs to know WHERE it looked, or
+        // the sentence sends them to check the wrong path - which on a service configured with
+        // Observer:CredentialStorePath is exactly the mistake they would make.
+        string path = StoreAt();
+        CredentialStore.Write(path, new MachineCredentials("k", null, null));
+
+        CredentialSource source = Reading(path);
+        File.Delete(path);
+
+        Assert.Equal(path, source.Reload().StorePath);
     }
 
     [Fact]

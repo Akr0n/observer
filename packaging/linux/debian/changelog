@@ -13,12 +13,13 @@ observer (0.24.0) unstable; urgency=medium
     running service, through the local channel, to adopt the new store
     there and then.
   * It reports whether that worked instead of assuming it. The service
-    answers with WHEN THE FILE IT READ had last been written, and the
-    command compares that with the stamp of the file it has just
-    written: equal means the running process read those exact bytes,
-    which "the service said OK" would not - that would not rule out a
-    second service, another store path, or a token that came from
-    configuration and was never going to change.
+    answers with WHICH FILE IT READ and WHEN that file had last been
+    written, both reported by the part that did the reading, and the
+    command compares them with the file it has just written: an equal
+    stamp on the same path means the running process read those exact
+    bytes. "The service said OK" would not be the same claim - it would
+    not rule out a second service, another store path, or a token that
+    came from configuration and was never going to change.
   * Exit 0 means the old key is provably accepted nowhere on this
     machine, and nothing else. A service too old to have the endpoint, a
     service that read a different store, one with no store to adopt, and

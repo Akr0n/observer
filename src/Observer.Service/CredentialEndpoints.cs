@@ -4,7 +4,11 @@ using Observer.Service.LocalChannel;
 namespace Observer.Service;
 
 /// <summary>What <c>POST /credentials/reload</c> answers when it worked.</summary>
-/// <param name="StorePath">The store the service read, so the caller knows WHICH file.</param>
+/// <param name="StorePath">
+/// The store the service actually READ, reported by the thing that read it. Not resolved from
+/// configuration: an earlier version did that and CI caught it naming the default path while the
+/// service had adopted another file, which is the one claim this answer exists to make.
+/// </param>
 /// <param name="StoreWrittenAt">
 /// When that file had last been written. This is the field the whole endpoint exists for: the
 /// caller has just written the store and knows its stamp, so an equal stamp here means the
@@ -78,7 +82,7 @@ public static partial class CredentialEndpoints
                 LogReloadApplied(logger, outcome.StoreWrittenAt ?? default, origin.Reason);
 
                 return Results.Ok(new CredentialReloadResponse(
-                    StorePathOf(context),
+                    outcome.StorePath ?? string.Empty,
                     outcome.StoreWrittenAt ?? default,
                     outcome.Detail));
 
@@ -102,11 +106,6 @@ public static partial class CredentialEndpoints
                     statusCode: StatusCodes.Status500InternalServerError);
         }
     }
-
-    /// <summary>The store this service was configured with, resolved the way Program.cs does.</summary>
-    private static string StorePathOf(HttpContext context) =>
-        context.RequestServices.GetRequiredService<IConfiguration>()["Observer:CredentialStorePath"]
-        ?? CredentialDirectory.DefaultPath();
 
     [LoggerMessage(
         EventId = 20,

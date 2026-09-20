@@ -30,14 +30,23 @@ public enum ReloadResult
 
 /// <summary>The outcome of a reload, with what the operator needs in order to believe it.</summary>
 /// <param name="Result">What happened.</param>
+/// <param name="StorePath">
+/// The file that was actually read, or null when none was. It comes from the source that did the
+/// reading and from nowhere else - an earlier version let the endpoint resolve the path from
+/// configuration instead, and CI caught it answering with the default path while the service had
+/// read a different file. That is not a cosmetic mismatch: the whole answer exists to identify
+/// WHICH file the running service adopted, so a path from a second source of truth undermines the
+/// one claim being made.
+/// </param>
 /// <param name="StoreWrittenAt">
-/// When the file that was read had last been written, or null if nothing was read. It is the
-/// point of the whole answer: whoever wrote the store can compare this with the stamp of the file
-/// they wrote and know the running service read those exact bytes - rather than trusting a
-/// service that says "reloaded" about a file nobody has identified.
+/// When that file had last been written, or null if nothing was read. It is the point of the
+/// whole answer: whoever wrote the store can compare this with the stamp of the file they wrote
+/// and know the running service read those exact bytes - rather than trusting a service that says
+/// "reloaded" about a file nobody has identified.
 /// </param>
 /// <param name="Detail">A sentence for the operator. It never contains a key.</param>
-public sealed record ReloadOutcome(ReloadResult Result, DateTimeOffset? StoreWrittenAt, string Detail);
+public sealed record ReloadOutcome(
+    ReloadResult Result, string? StorePath, DateTimeOffset? StoreWrittenAt, string Detail);
 
 /// <summary>
 /// The machine credentials the service is serving RIGHT NOW, and the one way to replace them.
@@ -133,6 +142,7 @@ public sealed class CredentialSource
             return new ReloadOutcome(
                 ReloadResult.NoStore,
                 null,
+                null,
                 "this service is not serving a stored token: it was given one in its configuration, " +
                 "or it is running on a throwaway one. Rewriting the store changes nothing here.");
         }
@@ -145,6 +155,7 @@ public sealed class CredentialSource
         {
             return new ReloadOutcome(
                 ReloadResult.DirectoryNotTrusted,
+                path,
                 null,
                 "the directory holding the credential store can no longer be secured, so its " +
                 "contents were not adopted: " + error.Message);
@@ -160,6 +171,7 @@ public sealed class CredentialSource
             {
                 return new ReloadOutcome(
                     ReloadResult.StoreMissing,
+                    path,
                     null,
                     "there is no credential store at " + path + ", so nothing was adopted.");
             }
@@ -168,11 +180,11 @@ public sealed class CredentialSource
         }
         catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException)
         {
-            return new ReloadOutcome(ReloadResult.StoreUnusable, null, error.Message);
+            return new ReloadOutcome(ReloadResult.StoreUnusable, path, null, error.Message);
         }
 
         Volatile.Write(ref current, loaded);
 
-        return new ReloadOutcome(ReloadResult.Applied, writtenAt, Describe());
+        return new ReloadOutcome(ReloadResult.Applied, path, writtenAt, Describe());
     }
 }
