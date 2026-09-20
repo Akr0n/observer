@@ -166,7 +166,7 @@ tool. From the **network** the bearer token remains mandatory.
 | Endpoint | What it returns |
 | --- | --- |
 | `GET /metrics/catalog` | the metrics that exist, with a readable name and unit |
-| `GET /metrics/latest` | the latest sample |
+| `GET /metrics/latest` | the latest sample, or `503` when there is none to give: the service has not sampled yet, or it has **stopped** sampling |
 | `GET /metrics/series` | which series have actually been measured on this machine |
 | `GET /metrics/history` | the historical points; `resolution` accepts `auto`, `raw`, `1m`, `5m` |
 | `GET /metrics/storage` | where it writes, how much space it takes up, how far it has aggregated |
@@ -176,6 +176,18 @@ tool. From the **network** the bearer token remains mandatory.
 `auto` picks the finest resolution still available for the requested interval: yesterday's
 raw data has been deleted, and returning an empty chart would read as "machine not
 monitored".
+
+**A sample that has stopped advancing is not served.** The endpoints read from a cache that the
+sampler fills, and never sample themselves — two requests at once would skew the CPU arithmetic.
+The price of that is a sampling loop which dies while the rest of the service keeps answering:
+the cache goes on handing out the same snapshot, and a `200` says "this is the machine right
+now". So `/metrics/latest` answers `503` once its newest reading is more than fifteen seconds
+old, with a sentence saying which of the two silences it is. Fifteen seconds is fifteen missed
+rounds; a single slow round is normal under load and the service logs those separately. The age
+is measured on the service's own monotonic counter, never on the reading's timestamp, so a clock
+that is wrong or gets corrected changes nothing. **A dashboard older than the service is
+unaffected either way, and one newer than the service gets nothing from this** — the old service
+has no such check. Update both sides together.
 
 `/processes/{pid}/kill` is the service's **only write**, and it is allowed from the network
 with the token, by deliberate choice: from another machine you see a runaway process and
