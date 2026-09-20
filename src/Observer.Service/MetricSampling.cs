@@ -14,17 +14,78 @@ namespace Observer.Service;
 /// percentages, intermittently and plausibly, the worst kind of bug. With a single sampler
 /// and reads from the cache, that situation cannot happen.
 /// </remarks>
+/// <remarks>
+/// It also knows HOW OLD what it is holding is, and that is not bookkeeping: the endpoint reads
+/// from here and never samples, so a sampling loop that dies leaves this cache handing out the
+/// same snapshot for ever. Served with a 200 it reads as current, and a machine that has stopped
+/// measuring then looks healthier on a dashboard than one that is switched off.
+/// <para>
+/// The age is taken from a MONOTONIC counter - <see cref="TimeProvider.GetTimestamp"/>, the same
+/// mechanism the sampler already uses to time its own rounds - and never from the snapshot's
+/// <c>CapturedAt</c>, which is a wall clock. A wall clock steps: NTP corrects it, a virtual
+/// machine resumes with it behind, somebody sets it by hand. Any of those would invent a stale
+/// snapshot out of a perfectly healthy sampler, or hide a dead one. Here there is one process,
+/// one counter, and the difference between two of its readings.
+/// </para>
+/// </remarks>
 public sealed class MetricSnapshotCache
 {
+    /// <summary>
+    /// How long the same sample may be the newest one before the service stops calling it
+    /// current.
+    /// </summary>
+    /// <remarks>
+    /// Fifteen seconds, that is fifteen missed rounds at the sampler's 1 Hz. It is deliberately
+    /// well above one round: a round is ALLOWED to overrun the period - the sampler logs it when
+    /// it does, precisely because it happens on a loaded machine - so a threshold of a handful of
+    /// periods would fire on ordinary load. Fifteen seconds of nothing is not a slow round, it is
+    /// a loop that is not running. The cost of the margin is that the dashboard learns fifteen
+    /// seconds later, against a fault that otherwise lasts until somebody restarts the service.
+    /// </remarks>
+    public static readonly TimeSpan StaleAfter = TimeSpan.FromSeconds(15);
+
+    private readonly TimeProvider time;
     private MachineSnapshot? latest;
+    private long publishedAt;
+
+    /// <summary>Creates the cache on a clock.</summary>
+    /// <param name="time">Where the monotonic timestamps come from.</param>
+    public MetricSnapshotCache(TimeProvider time)
+    {
+        ArgumentNullException.ThrowIfNull(time);
+
+        this.time = time;
+    }
 
     /// <summary>The latest sample, or null if it has not happened yet.</summary>
     public MachineSnapshot? Latest => Volatile.Read(ref latest);
+
+    /// <summary>The latest sample and how long ago it was published.</summary>
+    /// <returns>The sample, null if there has never been one, and its age.</returns>
+    /// <remarks>
+    /// Both in one call, deliberately: read separately they could come from two different
+    /// publishes, and the age would belong to a snapshot other than the one returned.
+    /// </remarks>
+    public (MachineSnapshot? Snapshot, TimeSpan Age) Read()
+    {
+        long stamp = Volatile.Read(ref publishedAt);
+        MachineSnapshot? snapshot = Volatile.Read(ref latest);
+
+        // The stamp is read FIRST. A publish landing between the two lines then gives an age
+        // that is slightly too large for a snapshot that is slightly too new - erring towards
+        // calling something stale a moment early, which is the harmless direction.
+        return (snapshot, snapshot is null ? TimeSpan.Zero : time.GetElapsedTime(stamp));
+    }
 
     /// <summary>Publishes a new sample.</summary>
     public void Publish(MachineSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+
+        // The stamp goes down BEFORE the snapshot, so a reader that sees the new snapshot can
+        // never still be holding the old stamp - it would age this publish by the whole gap
+        // since the previous one.
+        Volatile.Write(ref publishedAt, time.GetTimestamp());
         Volatile.Write(ref latest, snapshot);
     }
 }

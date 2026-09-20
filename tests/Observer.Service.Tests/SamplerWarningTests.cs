@@ -30,7 +30,7 @@ public class SamplerWarningTests
 
         using MetricSamplingService sampler = new(
             [first, second],
-            new MetricSnapshotCache(),
+            new MetricSnapshotCache(TimeProvider.System),
             sink,
             recorder);
 
@@ -61,7 +61,7 @@ public class SamplerWarningTests
 
         using MetricSamplingService sampler = new(
             [flaky, healthy],
-            new MetricSnapshotCache(),
+            new MetricSnapshotCache(TimeProvider.System),
             sink,
             recorder);
 

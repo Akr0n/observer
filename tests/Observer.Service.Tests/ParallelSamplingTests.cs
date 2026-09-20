@@ -33,7 +33,7 @@ public class ParallelSamplingTests
         // machine runs.
         OverlapCounter counter = new();
         RecordingSink sink = new();
-        MetricSnapshotCache cache = new();
+        MetricSnapshotCache cache = new(TimeProvider.System);
 
         using MetricSamplingService sampler = new(
             [
@@ -66,7 +66,7 @@ public class ParallelSamplingTests
         // swap places every second, and nothing would flag it except the eye of whoever is
         // watching.
         RecordingSink sink = new();
-        MetricSnapshotCache cache = new();
+        MetricSnapshotCache cache = new(TimeProvider.System);
 
         using MetricSamplingService sampler = new(
             [

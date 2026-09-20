@@ -15,7 +15,7 @@ public class MetricSamplingSinkTests
     [Fact]
     public async Task Sampler_DeliversTheSnapshotToHistoryAsWell()
     {
-        MetricSnapshotCache cache = new();
+        MetricSnapshotCache cache = new(TimeProvider.System);
 
         // The sink reads the cache AT THE MOMENT the snapshot arrives, not afterwards. The sampler
         // publishes once a second: reading cache.Latest after the wait compared the first
