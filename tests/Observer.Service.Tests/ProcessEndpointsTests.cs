@@ -112,9 +112,65 @@ public class ProcessEndpointsTests
         // A PID this high cannot be assigned on either system: the case is "not there", and
         // the right answer is to say so, not a server error.
         using HttpResponseMessage response = await client.PostAsync(
-            new Uri("/processes/2147483646/kill", UriKind.Relative), content: null);
+            new Uri("/processes/2147483646/kill?name=anything", UriKind.Relative), content: null);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AKillThatDoesNotNameItsTargetIsRefused()
+    {
+        // A pid is not an identity. The list this request comes from was read a second ago at
+        // best, and a whole confirmation click before that at worst; in between the process can
+        // end and the system is free to hand the number to another one. A request that names
+        // nothing cannot be checked at all, so it is refused instead of being carried out on
+        // whatever holds the number now.
+        using HttpClient client = service.CreateAuthorizedClient();
+
+        // On a pid that does not exist, deliberately: the refusal has to come from the missing
+        // name, and this way it cannot be the lookup answering.
+        using HttpResponseMessage response = await client.PostAsync(
+            new Uri("/processes/2147483646/kill", UriKind.Relative), content: null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AKillIsRefusedWhenThatPidIsNoLongerThatProcess()
+    {
+        // The same two untouchable processes as the refusal test below, and for the same
+        // reason: this has to be safe to ask for. The name sent is one nobody has, so the
+        // service must refuse BEFORE Kill - and what says that it did is the answer being 409
+        // and not the 403 the operating system would have produced.
+        int pid = OperatingSystem.IsWindows() ? 4 : 1;
+        string name;
+
+        using (Process target = Process.GetProcessById(pid))
+        {
+            name = target.ProcessName;
+        }
+
+        LogRecorder recorder = new();
+        service.Services.GetRequiredService<ILoggerFactory>().AddProvider(recorder);
+
+        using HttpClient client = service.CreateAuthorizedClient();
+
+        using HttpResponseMessage response = await client.PostAsync(
+            new Uri($"/processes/{pid}/kill?name=nobody-has-this-name", UriKind.Relative),
+            content: null);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+
+        // The answer says what is really there. Without it the dashboard could only say "not
+        // that one", and whoever clicked would be left guessing what they nearly stopped.
+        string body = await response.Content.ReadAsStringAsync();
+        Assert.Contains(name, body, StringComparison.Ordinal);
+
+        // And the log keeps both: this is the line that separates a stale list - which happens
+        // by itself - from somebody sending pids at the service to see what sticks.
+        string line = Assert.Single(recorder.LinesFor(eventId: 15));
+        Assert.Contains("nobody-has-this-name", line, StringComparison.Ordinal);
+        Assert.Contains(name, line, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -139,8 +195,11 @@ public class ProcessEndpointsTests
 
         using HttpClient client = service.CreateAuthorizedClient();
 
+        // With the RIGHT name, which is also what makes this the test that proves the identity
+        // check lets the intended process through: reaching the operating system's refusal at
+        // all means the comparison passed.
         using HttpResponseMessage response = await client.PostAsync(
-            new Uri($"/processes/{pid}/kill", UriKind.Relative), content: null);
+            new Uri($"/processes/{pid}/kill?name={name}", UriKind.Relative), content: null);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
 
