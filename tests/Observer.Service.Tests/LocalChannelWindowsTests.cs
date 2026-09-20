@@ -7,6 +7,8 @@ using System.Security.Principal;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Transport.NamedPipes;
+using Microsoft.Extensions.DependencyInjection;
+using Observer.Core.Processes;
 using Observer.Service.Credentials;
 using Observer.Service.LocalChannel;
 
@@ -107,6 +109,82 @@ public class LocalChannelWindowsTests
         string outcome = await client.GetStringAsync("who", CancellationToken.None);
 
         Assert.StartsWith(nameof(CallerKind.LocalIdentified) + "|S-1-", outcome, StringComparison.Ordinal);
+    }
+
+    [WindowsOnly]
+    [SupportedOSPlatform("windows")]
+    public async Task TheElevationReportedIsTheCallersOwn()
+    {
+        // What this test CANNOT prove, said plainly because it matters: both ends live in this
+        // one process, so it cannot show the service reads the CLIENT's token rather than its
+        // own - the two are the same token here. That is why the elevation is read inside the
+        // impersonated callback and why the comment there carries the argument. What this pins
+        // is that a value arrives at all, that Windows never answers NotApplicable (which would
+        // wave every caller through the one write), and that it agrees with what this process
+        // really is.
+        string pipe = UniquePipeName();
+
+        await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
+            options => options.ListenNamedPipe(pipe),
+            app => app.MapGet("/who", (HttpContext context) => LocalCaller.Classify(context).Elevation.ToString()));
+
+        using HttpClient client = RealKestrelBench.ClientOn(PipeHandler(pipe));
+        string reported = await client.GetStringAsync("who", CancellationToken.None);
+
+        using WindowsIdentity me = WindowsIdentity.GetCurrent();
+        bool elevated = new WindowsPrincipal(me).IsInRole(WindowsBuiltInRole.Administrator);
+
+        Assert.Equal(elevated ? nameof(CallerElevation.Yes) : nameof(CallerElevation.No), reported);
+        Assert.NotEqual(nameof(CallerElevation.NotApplicable), reported);
+    }
+
+    [WindowsOnly]
+    [SupportedOSPlatform("windows")]
+    public async Task AKillIsRefusedToACallerWhoseTokenIsNotElevated()
+    {
+        // The wiring, end to end through a real pipe: the rule is pure and has its own table,
+        // but nothing there would notice if the endpoint forgot to ask it.
+        //
+        // The pid cannot exist on either system, so this is safe to ask for whatever the answer
+        // is - and the two answers are what tells the gate from the lookup. Not elevated: 403,
+        // refused before the request was even examined. Elevated: 404, the gate let it through
+        // and the pid is simply not there. The expectation is computed from what this process
+        // really is, so the test holds on a developer's unelevated session and on a CI runner,
+        // which is elevated.
+        string pipe = UniquePipeName();
+
+        await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
+            options => options.ListenNamedPipe(pipe),
+            app => app.MapProcessEndpoints(),
+            middleware: null,
+            // /processes needs the ranking, and without it NO route on this host works at
+            // all - see the remark on the parameter. The lister it wraps is the real one.
+            services => services.AddSingleton<ProcessRanking>()
+                .AddSingleton<IProcessLister>(new SystemProcessLister()));
+
+        using HttpClient client = RealKestrelBench.ClientOn(PipeHandler(pipe));
+
+        using HttpResponseMessage response = await client.PostAsync(
+            new Uri("processes/2147483646/kill?name=anything", UriKind.Relative),
+            content: null,
+            CancellationToken.None);
+
+        using WindowsIdentity me = WindowsIdentity.GetCurrent();
+        bool elevated = new WindowsPrincipal(me).IsInRole(WindowsBuiltInRole.Administrator);
+
+        Assert.Equal(elevated ? HttpStatusCode.NotFound : HttpStatusCode.Forbidden, response.StatusCode);
+
+        if (elevated)
+        {
+            return;
+        }
+
+        // And the refusal says which 403 it is. On this route the same status also means "the
+        // operating system protects that process", and the two have opposite remedies: one is
+        // "pick another process", the other is "start the dashboard as an administrator".
+        string body = await response.Content.ReadAsStringAsync(CancellationToken.None);
+
+        Assert.Contains("may not stop processes", body, StringComparison.Ordinal);
     }
 
     [WindowsOnly]

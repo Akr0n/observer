@@ -86,4 +86,38 @@ public static class AccessPolicy
 
         return tokenIsValid ? AccessDecision.Allowed : AccessDecision.Denied;
     }
+
+    /// <summary>Whether this caller may perform the one thing that is not a read.</summary>
+    /// <param name="caller">How the one calling was classified.</param>
+    /// <param name="elevation">What the caller's own token can do.</param>
+    /// <returns>True when the kill may go ahead.</returns>
+    /// <remarks>
+    /// A SECOND rule and not a change to <see cref="Decide"/>, because they answer different
+    /// questions. That one asks who may reach an endpoint at all, and its remarks say - still
+    /// rightly - that WHICH local users are admitted is the operating system's decision and not
+    /// this file's. This one asks who may destroy state, and there the operating system's answer
+    /// is the wrong one to accept: the pipe's DACL admits INTERACTIVE, every user with a session
+    /// on the machine, which is exactly right for WATCHING and exactly wrong for a process that
+    /// LocalSystem will then stop on their behalf.
+    /// <para>
+    /// From the NETWORK the token stays the only credential, by decision. There is no identity
+    /// to read on that route - only the secret, and whoever holds it holds it - and refusing the
+    /// kill there would remove the reason it is allowed from the network at all: seeing a
+    /// runaway process on another machine and stopping it from here.
+    /// </para>
+    /// <para>
+    /// <see cref="CallerKind.Unidentified"/> is already refused by <see cref="Decide"/> before a
+    /// request reaches the endpoint. It is answered here as well, so that this function is total
+    /// and so that the endpoint stays safe if it is ever called from somewhere with a different
+    /// guard in front of it.
+    /// </para>
+    /// </remarks>
+    public static bool MayEndProcesses(CallerKind caller, CallerElevation elevation) =>
+        caller switch
+        {
+            CallerKind.FromNetwork => true,
+            CallerKind.LocalIdentified =>
+                elevation is CallerElevation.Yes or CallerElevation.NotApplicable,
+            _ => false,
+        };
 }

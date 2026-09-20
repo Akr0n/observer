@@ -92,9 +92,22 @@ public static partial class WindowsCallerIdentity
             return UnidentifiedOrigin(ex);
         }
 
-        return capture.Sid is { } sid
-            ? new CallerOrigin(CallerKind.LocalIdentified, sid, "local caller identified")
-            : new CallerOrigin(CallerKind.Unidentified, null, "the caller token carried no user SID");
+        if (capture.Sid is not { } sid)
+        {
+            return new CallerOrigin(CallerKind.Unidentified, null, "the caller token carried no user SID");
+        }
+
+        // The SID and the elevation go into the reason, and that is not decoration: the reason is
+        // what every one of the kill's log lines already prints, so the audit trail for the only
+        // action this service cannot undo arrives on all of them at once, instead of on whichever
+        // one somebody remembers to change.
+        return new CallerOrigin(
+            CallerKind.LocalIdentified,
+            sid,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"local caller {sid}, {(capture.Elevated ? "elevated" : "not elevated")}"),
+            capture.Elevated ? CallerElevation.Yes : CallerElevation.No);
     }
 
     private static CallerOrigin UnidentifiedOrigin(Exception ex) =>
@@ -114,10 +127,33 @@ public static partial class WindowsCallerIdentity
     {
         public string? Sid { get; private set; }
 
+        /// <summary>Whether the CALLER's token carries the administrators group.</summary>
+        /// <remarks>
+        /// Read here, inside the impersonated callback, and nowhere else: outside it
+        /// <see cref="WindowsIdentity.GetCurrent()"/> is the SERVICE, which runs as LocalSystem
+        /// and is therefore always an administrator - a check written one line lower would
+        /// answer yes to everybody, silently and for ever.
+        /// <para>
+        /// <see cref="WindowsPrincipal.IsInRole(WindowsBuiltInRole)"/> asks what the token can
+        /// DO, which is the question. A member of Administrators who has not elevated fails it,
+        /// because UAC hands the process a token with the group filtered out, and that is
+        /// intended: this service's one write is exactly the kind of thing that filter exists
+        /// to withhold.
+        /// </para>
+        /// </remarks>
+        public bool Elevated { get; private set; }
+
         public void Run()
         {
             using WindowsIdentity? caller = WindowsIdentity.GetCurrent(ifImpersonating: true);
-            Sid = caller?.User?.Value;
+
+            if (caller?.User?.Value is not { } sid)
+            {
+                return;
+            }
+
+            Sid = sid;
+            Elevated = new WindowsPrincipal(caller).IsInRole(WindowsBuiltInRole.Administrator);
         }
     }
 }

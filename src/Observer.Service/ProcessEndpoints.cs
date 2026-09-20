@@ -141,6 +141,23 @@ public static partial class ProcessEndpoints
         ILogger logger = loggerFactory.CreateLogger(typeof(ProcessEndpoints).FullName!);
         CallerOrigin origin = LocalCaller.Classify(context);
 
+        // FIRST, before the request is even looked at. A caller that may not stop anything here
+        // must not learn from the answer whether its request was well formed, and the order is
+        // also the honest one: this is not a bad request, it is a request from somebody who does
+        // not get to make it.
+        //
+        // The rule is AccessPolicy's, next to the one that decides who reaches an endpoint at
+        // all, because that is the file this project points every authorization question at.
+        if (!AccessPolicy.MayEndProcesses(origin.Kind, origin.Elevation))
+        {
+            LogKillRefusedToCaller(logger, pid, origin.Reason);
+
+            return Results.Problem(
+                detail: "this caller may not stop processes on this machine: the local channel " +
+                    "requires a caller whose own token carries administrative rights",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
         // A pid is not an identity. The list the caller is looking at was read a second ago at
         // best, and a confirmation click before that at worst; in between the process can end
         // and the system is free to hand the number to another one. So the caller has to say
@@ -252,6 +269,12 @@ public static partial class ProcessEndpoints
         Message = "Kill refused by the operating system: {Name} (pid {Pid}), requested by {Origin}: {Error}")]
     private static partial void LogKillRefusedBySystem(
         ILogger logger, string? name, int pid, string origin, string error);
+
+    [LoggerMessage(
+        EventId = 16,
+        Level = LogLevel.Warning,
+        Message = "Kill refused: this caller may not stop processes here, pid {Pid} ({Origin}).")]
+    private static partial void LogKillRefusedToCaller(ILogger logger, int pid, string origin);
 
     [LoggerMessage(
         EventId = 14,

@@ -37,6 +37,45 @@ public class AccessPolicyTests
         AccessDecision expected) =>
         Assert.Equal(expected, AccessPolicy.Decide(caller, scope, tokenIsValid));
 
+    [Theory]
+    // On the machine itself the token is not the question - there is no token on that channel -
+    // and the operating system's own answer is too generous: the pipe admits every INTERACTIVE
+    // user, on purpose, so that the person at the console can WATCH without being put in a
+    // group. Stopping a process that LocalSystem will then kill on their behalf is a different
+    // matter, and it takes a token that really carries the group.
+    [InlineData(CallerKind.LocalIdentified, CallerElevation.Yes, true)]
+    [InlineData(CallerKind.LocalIdentified, CallerElevation.No, false)]
+    // Linux: the socket's own mode already turned away anyone outside the service's group, so
+    // there is nothing left here to ask. NotApplicable is a decision, not an absence.
+    [InlineData(CallerKind.LocalIdentified, CallerElevation.NotApplicable, true)]
+    // From the network the token stays the only credential, by decision: there is no identity to
+    // read on that route, and refusing there would remove the reason the kill is reachable from
+    // the network at all. The elevation column is therefore meaningless, and all three agree.
+    [InlineData(CallerKind.FromNetwork, CallerElevation.Yes, true)]
+    [InlineData(CallerKind.FromNetwork, CallerElevation.No, true)]
+    [InlineData(CallerKind.FromNetwork, CallerElevation.NotApplicable, true)]
+    // Already refused by Decide before the endpoint is reached. Answered here too, so the
+    // function is total and the endpoint stays safe behind any other guard.
+    [InlineData(CallerKind.Unidentified, CallerElevation.Yes, false)]
+    [InlineData(CallerKind.Unidentified, CallerElevation.No, false)]
+    [InlineData(CallerKind.Unidentified, CallerElevation.NotApplicable, false)]
+    public void TheWholeTableForTheOneWrite(CallerKind caller, CallerElevation elevation, bool expected) =>
+        Assert.Equal(expected, AccessPolicy.MayEndProcesses(caller, elevation));
+
+    [Fact]
+    public void ReachingTheEndpointAndBeingAllowedToKillAreTwoDifferentQuestions()
+    {
+        // The pair that says why this is a second rule and not a change to the first. The same
+        // caller passes Decide - it is local and identified, so it reads everything with no
+        // token, which is the project's whole point - and is refused the one write. Collapsing
+        // the two would either lock the console user out of the gauges or hand them the kill.
+        Assert.Equal(
+            AccessDecision.Allowed,
+            AccessPolicy.Decide(CallerKind.LocalIdentified, EndpointScope.Anywhere, tokenIsValid: false));
+
+        Assert.False(AccessPolicy.MayEndProcesses(CallerKind.LocalIdentified, CallerElevation.No));
+    }
+
     [Fact]
     public void AValidTokenDoesNotSaveAnUnidentifiableCaller()
     {
