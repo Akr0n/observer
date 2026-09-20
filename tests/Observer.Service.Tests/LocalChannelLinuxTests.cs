@@ -162,6 +162,65 @@ public class LocalChannelLinuxTests
     }
 
     [LinuxOnly]
+    public async Task AFloodOnTheNetworkEndpointDoesNotCloseTheLocalChannel()
+    {
+        // The Linux half of the assumption ServiceLimits rests on. It has to be pinned on BOTH
+        // runners: the sockets transport and the named pipe transport are different code, and a
+        // budget that leaked between endpoints on one of them would be a denial of service only
+        // there - the kind of asymmetry this project has already been bitten by. The full
+        // reasoning is on the Windows twin.
+        string path = ShortSocketPath();
+
+        int arrived = 0;
+        TaskCompletionSource bothHolding = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
+            options =>
+            {
+                options.Limits.MaxConcurrentConnections = 2;
+                options.Listen(System.Net.IPAddress.Loopback, 0);
+                options.ListenUnixSocket(path);
+            },
+            app => app.MapGet("/hold", async () =>
+            {
+                if (Interlocked.Increment(ref arrived) == 2)
+                {
+                    bothHolding.TrySetResult();
+                }
+
+                await release.Task;
+
+                return "released";
+            }));
+
+        string tcp = bench.Addresses.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
+
+        using HttpClient first = new() { BaseAddress = new Uri(tcp), Timeout = TimeSpan.FromSeconds(30) };
+        using HttpClient second = new() { BaseAddress = new Uri(tcp), Timeout = TimeSpan.FromSeconds(30) };
+
+        Task<string> holdingOne = first.GetStringAsync("hold", CancellationToken.None);
+        Task<string> holdingTwo = second.GetStringAsync("hold", CancellationToken.None);
+
+        try
+        {
+            await bothHolding.Task.WaitAsync(TimeSpan.FromSeconds(20), CancellationToken.None);
+
+            using HttpClient third = new() { BaseAddress = new Uri(tcp), Timeout = TimeSpan.FromSeconds(10) };
+            await Assert.ThrowsAsync<HttpRequestException>(
+                () => third.GetStringAsync("ping", CancellationToken.None));
+
+            using HttpClient overSocket = RealKestrelBench.ClientOn(SocketHandler(path));
+            Assert.Equal("pong", await overSocket.GetStringAsync("ping", CancellationToken.None));
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(holdingOne, holdingTwo);
+        }
+    }
+
+    [LinuxOnly]
     public async Task TheUnixSocketNoLongerNeedsTheTokenButTcpStillDoes()
     {
         // The Linux counterpart of the change: on the local channel the caller is identified by

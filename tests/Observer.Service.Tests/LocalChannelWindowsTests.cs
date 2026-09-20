@@ -50,6 +50,74 @@ public class LocalChannelWindowsTests
     }
 
     [WindowsOnly]
+    public async Task AFloodOnTheNetworkEndpointDoesNotCloseTheLocalChannel()
+    {
+        // The assumption ServiceLimits rests on, pinned where it can be seen. A connection budget
+        // that were shared by the whole server would turn the limit into the cheapest denial of
+        // service there is: fill the port the other machines use, and the person sitting at this
+        // machine can no longer open their own dashboard - nor, since 0.23.0, stop a process on
+        // it. Measured here instead of assumed, because the option is spelled
+        // MaxConcurrentConnections on the SERVER and reads as if it belonged to the server.
+        //
+        // TWO and not ServiceLimits' own 512: the number under test is not the budget, it is
+        // whether one endpoint can spend another's. Filling 512 connections would only make the
+        // same test slower and give the accept loop room to be raced.
+        string pipe = UniquePipeName();
+
+        int arrived = 0;
+        TaskCompletionSource bothHolding = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using RealKestrelBench bench = await RealKestrelBench.StartAsync(
+            options =>
+            {
+                options.Limits.MaxConcurrentConnections = 2;
+                options.Listen(IPAddress.Loopback, 0);
+                options.ListenNamedPipe(pipe);
+            },
+            app => app.MapGet("/hold", async () =>
+            {
+                // A held request, not a raw socket and a sleep: this way the budget is known to
+                // be full when the test moves on, instead of probably full after a delay.
+                if (Interlocked.Increment(ref arrived) == 2)
+                {
+                    bothHolding.TrySetResult();
+                }
+
+                await release.Task;
+
+                return "released";
+            }));
+
+        string tcp = bench.Addresses.Single(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
+
+        using HttpClient first = new() { BaseAddress = new Uri(tcp), Timeout = TimeSpan.FromSeconds(30) };
+        using HttpClient second = new() { BaseAddress = new Uri(tcp), Timeout = TimeSpan.FromSeconds(30) };
+
+        Task<string> holdingOne = first.GetStringAsync("hold", CancellationToken.None);
+        Task<string> holdingTwo = second.GetStringAsync("hold", CancellationToken.None);
+
+        try
+        {
+            await bothHolding.Task.WaitAsync(TimeSpan.FromSeconds(20), CancellationToken.None);
+
+            // The budget for the network endpoint is now spent: one more there is refused.
+            using HttpClient third = new() { BaseAddress = new Uri(tcp), Timeout = TimeSpan.FromSeconds(10) };
+            await Assert.ThrowsAsync<HttpRequestException>(
+                () => third.GetStringAsync("ping", CancellationToken.None));
+
+            // And the local channel, which is a different endpoint, is untouched.
+            using HttpClient overPipe = RealKestrelBench.ClientOn(PipeHandler(pipe));
+            Assert.Equal("pong", await overPipe.GetStringAsync("ping", CancellationToken.None));
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(holdingOne, holdingTwo);
+        }
+    }
+
+    [WindowsOnly]
     public async Task PipeAndTcpCoexistInTheSameHostAndServeTheSameEndpoints()
     {
         // The two transports coexisting is the premise of the whole project: if ListenNamedPipe

@@ -42,6 +42,13 @@ builder.Configuration.AddCommandLine(args);
 builder.Host.UseWindowsService();
 builder.Host.UseSystemd();
 
+// What a caller may COST, before the access control has decided what they may read. It is
+// registered HERE, ahead of every other ConfigureKestrel in this file, and that position is the
+// point: these callbacks run in the order they are registered, and one of the three settings -
+// the protocol - applies only to endpoints declared after it. Registered later, the local channel
+// would silently keep the framework's HTTP/1.1-and-HTTP/2 default. See ServiceLimits.
+builder.WebHost.ConfigureKestrel(ServiceLimits.Apply);
+
 builder.Services.AddObserverMetrics();
 // Registered explicitly, and not left to a default: the cache takes it as a constructor
 // argument so a test can hand it a counter it moves by hand, and the built-in container does not
