@@ -580,6 +580,13 @@ public sealed partial class MainViewModel : ViewModelBase
     // ProcessRanking already uses against pid reuse: a pid alone is not an identity here.
     private (int Pid, string Name)? armedTarget;
 
+    // Whether ProcessesProblem currently holds the answer to a KILL rather than the state of
+    // the last read. They share one line on screen and their lifetimes are opposite: the read's
+    // problem stops being true at the next read, a second later, while the kill's answer is
+    // about something that has already happened. Without this the sentence a person clicked
+    // twice to get - "nothing was stopped", and why - was wiped by the loop's next tick.
+    private bool problemAnswersAKill;
+
     /// <summary>The machines to choose from, each with its status. The first is always this one.</summary>
     public ObservableCollection<MachineRow> Machines { get; } = [];
 
@@ -1523,6 +1530,7 @@ public sealed partial class MainViewModel : ViewModelBase
         armedTarget = null;
         IsAwaitingEndConfirmation = false;
         ProcessesProblem = string.Empty;
+        problemAnswersAKill = false;
 
         await RefreshProcessesAsync(CancellationToken.None);
     }
@@ -1630,6 +1638,7 @@ public sealed partial class MainViewModel : ViewModelBase
         SelectedProcess = null;
         IsAwaitingEndConfirmation = false;
         ProcessesProblem = string.Empty;
+        problemAnswersAKill = false;
         Processes.Clear();
     }
 
@@ -1642,6 +1651,11 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             return;
         }
+
+        // Whatever the previous attempt answered is about the previous attempt, and touching End
+        // again - even to arm - means the person is acting on this list once more. From here the
+        // next good read owns the line again, and the sentence goes without anyone dismissing it.
+        problemAnswersAKill = false;
 
         // First click: it only arms, on THIS process. The button changes text and names it, and
         // whoever clicked by mistake notices before anything happens. A click on a row the
@@ -1659,7 +1673,13 @@ public sealed partial class MainViewModel : ViewModelBase
 
         int killEpoch = processEpoch;
 
-        KillFetch fetch = await client.KillProcessAsync(process.Pid, CancellationToken.None);
+        // The name goes with the pid, and the service refuses the kill if it is not the live
+        // process's: a number on screen is as old as the last list, and by the time this second
+        // click arrives it may belong to something else. It is the name the confirmation was
+        // armed on - the check a few lines above has just proved the selected row carries the
+        // same one - so what is sent is what the person read before agreeing to it.
+        KillFetch fetch = await client.KillProcessAsync(
+            process.Pid, process.Name, CancellationToken.None);
 
         // The machine may have changed while the request was in flight - the panel is closed by
         // then, and the answer describes a machine that is no longer on screen.
@@ -1680,6 +1700,11 @@ public sealed partial class MainViewModel : ViewModelBase
         // process" - appeared and was wiped within the same click, leaving the user with a
         // process still there and no reason why.
         ProcessesProblem = fetch.Outcome == ServiceOutcome.Ok ? string.Empty : fetch.Problem;
+
+        // And the flag is what keeps it there for longer than a second: the loop rereads this
+        // list once a second while the panel is open, and a read that goes well clears the line.
+        // Writing it after the reread was only half the fix.
+        problemAnswersAKill = fetch.Outcome != ServiceOutcome.Ok;
     }
 
     /// <summary>Changing row disarms the confirmation.</summary>
@@ -1731,12 +1756,24 @@ public sealed partial class MainViewModel : ViewModelBase
 
         if (fetch.Outcome != ServiceOutcome.Ok)
         {
+            // A read that fails overwrites even the answer to a kill: a machine that has stopped
+            // answering is the more urgent of the two things to say, and it also explains why
+            // nothing on this panel is moving any more.
             ProcessesProblem = fetch.Problem;
+            problemAnswersAKill = false;
 
             return;
         }
 
-        ProcessesProblem = string.Empty;
+        // A read that goes well clears the line - unless the line is the answer to a kill. The
+        // two share one place on screen and have opposite lifetimes: a read's problem is only
+        // true until the next read, a second from now, while a kill's answer is about something
+        // that has already happened and will not happen again. Cleared on the loop's next tick,
+        // it was on screen for under a second, which for whoever clicked is the same as never.
+        if (!problemAnswersAKill)
+        {
+            ProcessesProblem = string.Empty;
+        }
 
         // The selection is kept on the PID and not on the object: the rows arrive new on every
         // loop, and without this the selection would be lost once a second — that is, exactly

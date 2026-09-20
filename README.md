@@ -171,7 +171,7 @@ tool. From the **network** the bearer token remains mandatory.
 | `GET /metrics/history` | the historical points; `resolution` accepts `auto`, `raw`, `1m`, `5m` |
 | `GET /metrics/storage` | where it writes, how much space it takes up, how far it has aggregated |
 | `GET /processes` | the processes using the most; `by` accepts `cpu` (default), `memory` or `io`, `top` from 1 to 100 (default 15); the response echoes the criterion applied in `by` |
-| `POST /processes/{pid}/kill` | terminates that process: `204` if it worked, `404` if the pid does not exist |
+| `POST /processes/{pid}/kill` | terminates that process, and `name` is **required**: `204` if it worked, `400` if the request did not name its target, `404` if the pid does not exist, `409` if that pid is now a different process, `403` if the operating system protects it |
 
 `auto` picks the finest resolution still available for the requested interval: yesterday's
 raw data has been deleted, and returning an empty chart would read as "machine not
@@ -179,8 +179,25 @@ monitored".
 
 `/processes/{pid}/kill` is the service's **only write**, and it is allowed from the network
 with the token, by deliberate choice: from another machine you see a runaway process and
-stop it from there. Every attempt, successful or refused by the operating system, ends up in
-the service log with the pid, the process name and where the caller came from. The kill
+stop it from there. Every attempt ends up in the service log with the pid and where the caller
+came from; the process name is there too whenever there was one to read, which means on the kill
+that worked, on the one the operating system refused, and on the one refused because that pid
+had become a different process — that last line carries both names.
+
+**A pid on its own is not accepted.** It is a number the system reuses, and the one the caller
+holds came from a list that is at least a second old — longer if somebody stopped to think
+before confirming. So the request must carry `?name=` with the name that list showed, and the
+service compares it with the live process before killing anything: a mismatch is refused with
+`409` and nothing is stopped. A request that names nothing is refused with `400` rather than
+carried out on whatever holds the number now, which means a dashboard older than the service
+stops being able to kill — loudly, and that is the intent. The other way round nothing warns
+you: a dashboard newer than the service sends a name the old service ignores, and the answer is
+the same `204` either way. **Update the service and the dashboard together.**
+
+What the check buys is worth being exact about: it refuses a pid that has become a *different*
+program, not one that has become another copy of the *same* program — every instance of Chrome
+is called Chrome, and the short-lived processes that free pids fastest are exactly the ones that
+come in copies. The kill
 endpoint is also why the token is no longer kept in a file
 (see "Watching another machine"). `GET /processes` returns `503` when the list cannot be
 read on that machine.

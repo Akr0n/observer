@@ -1,3 +1,29 @@
+observer (0.22.0) unstable; urgency=medium
+
+  * Ending a process now says which process it means, and the service
+    checks before it signals anything. A pid is a number the system
+    reuses, and the one on screen comes from a list at least a second
+    old: between that list and the second click the process can end and
+    the number can become another program's. The request now carries the
+    name the list showed, the service compares it with what is really
+    running under that pid, and refuses if they differ. Nothing is
+    stopped, and the window says the number belongs to someone else now.
+  * A kill that names nothing is refused instead of being carried out on
+    whatever holds the number. A dashboard older than the service can
+    therefore no longer end anything, and says so rather than going on
+    quietly by pid alone: update both sides together. There is no warning
+    for the opposite pair - a service older than the dashboard ignores
+    the name and answers exactly as it always did.
+  * The reason a process was not ended now stays on screen. Writing it
+    after the list was read again, in 0.21.4, was only half the fix: the
+    window rereads that list once a second, and a read that went well
+    cleared the line, so the sentence somebody clicked twice to get was
+    there for under a second. It stays until the next thing that makes
+    it meaningless - another attempt, another list, or closing the panel
+    - and a machine that stops answering still takes its place.
+
+ -- Federico Cardinali <noreply@example.invalid>  Sun, 20 Sep 2026 09:16:45 +0200
+
 observer (0.21.4) unstable; urgency=medium
 
   * The process panel now belongs to the machine on screen. Switching

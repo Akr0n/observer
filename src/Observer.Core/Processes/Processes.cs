@@ -1,8 +1,35 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Observer.Core.Units;
 
 namespace Observer.Core.Processes;
+
+/// <summary>What a process name has to look like to be carried in a request and compared.</summary>
+/// <remarks>
+/// It lives in Core because BOTH ends apply it and they cannot reference each other, the same
+/// reason the fingerprint comparison lives here. The service refuses a kill whose name it cannot
+/// use; the dashboard has to know that BEFORE sending, or it reports the refusal as a version
+/// mismatch and tells someone to update a program that would behave identically afterwards.
+/// <para>
+/// Two rules, and neither is tidiness. A LENGTH, because the value is written into the machine's
+/// log and a caller must not get to choose how much it writes there - no real name comes near
+/// 260, and on Linux the kernel keeps fifteen characters. And NO CONTROL CHARACTERS, because a
+/// name is the kernel's <c>comm</c> on Linux and a process may set it to whatever it likes: a
+/// newline in it would forge a second line in the log.
+/// </para>
+/// </remarks>
+public static class ProcessNameRule
+{
+    /// <summary>The longest name a request may carry.</summary>
+    public const int MaxLength = 260;
+
+    /// <summary>Whether this name can be sent, logged and compared.</summary>
+    /// <param name="name">The name as it was read or as it arrived.</param>
+    /// <returns>True when it may be used.</returns>
+    public static bool IsUsable([NotNullWhen(true)] string? name) =>
+        name is { Length: > 0 and <= MaxLength } && !name.Any(char.IsControl);
+}
 
 /// <summary>The raw counters of ONE process, as the operating system gives them.</summary>
 /// <param name="Pid">Process identifier.</param>
