@@ -45,9 +45,14 @@ public interface IMetricsClient
 
     /// <summary>Terminates a process on that machine.</summary>
     /// <param name="pid">The process identifier.</param>
+    /// <param name="name">
+    /// The name shown for that pid. It travels with the request and the service compares it with
+    /// the live process before signalling anything: the pid on screen is as old as the last
+    /// list, and by then the system may have given the number to something else.
+    /// </param>
     /// <param name="cancellationToken">Cancelled on shutdown.</param>
     /// <returns>How it went.</returns>
-    Task<KillFetch> KillProcessAsync(int pid, CancellationToken cancellationToken) =>
+    Task<KillFetch> KillProcessAsync(int pid, string name, CancellationToken cancellationToken) =>
         Task.FromResult(new KillFetch(
             ServiceOutcome.Unknown, "this client cannot terminate processes"));
 }
@@ -317,10 +322,20 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task<KillFetch> KillProcessAsync(int pid, CancellationToken cancellationToken)
+    public async Task<KillFetch> KillProcessAsync(
+        int pid, string name, CancellationToken cancellationToken)
     {
+        ArgumentException.ThrowIfNullOrEmpty(name);
+
+        // In the query string, not in a body: this request has none, and one of the limits this
+        // service means to set on Kestrel is a request body of zero bytes. Escaped, because a
+        // process name may carry a space, a plus or an ampersand, and an unescaped ampersand
+        // would arrive as a truncated name - which the service would then refuse as a mismatch,
+        // reporting a name conflict where there is only a bad URL.
         Uri address = new(
-            BaseAddress, "processes/" + pid.ToString(CultureInfo.InvariantCulture) + "/kill");
+            BaseAddress,
+            "processes/" + pid.ToString(CultureInfo.InvariantCulture) + "/kill?name=" +
+            Uri.EscapeDataString(name));
 
         try
         {
@@ -354,6 +369,22 @@ public sealed class MetricsClient : IMetricsClient, IDisposable
                     ServiceOutcome.UnexpectedResponse,
                     $"The service on {Endpoint.Description} refused to terminate it: the operating system " +
                     "protects that process."),
+
+                // The number is still in use, but not by what was on screen: that process ended
+                // and the system handed the pid to another one. Nothing was terminated, and the
+                // list is read again immediately after, so this sentence only has to say why.
+                HttpStatusCode.Conflict => new KillFetch(
+                    ServiceOutcome.UnexpectedResponse,
+                    "Pid " + pid.ToString(CultureInfo.InvariantCulture) + " is no longer " + name +
+                    ": it ended, and that number now belongs to another process. Nothing was stopped."),
+
+                // This build always names its target, so a service asking for one can only be
+                // NEWER than this dashboard. Saying "replied 400" would send whoever reads it
+                // to look at the network for a problem that is solved by an update.
+                HttpStatusCode.BadRequest => new KillFetch(
+                    ServiceOutcome.IncompatibleVersion,
+                    $"The service on {Endpoint.Description} refused a kill that did not name its " +
+                    "target the way it expects: it is newer than this dashboard. Update Observer here."),
 
                 HttpStatusCode.Unauthorized => new KillFetch(
                     ServiceOutcome.TokenRejected,

@@ -1659,7 +1659,13 @@ public sealed partial class MainViewModel : ViewModelBase
 
         int killEpoch = processEpoch;
 
-        KillFetch fetch = await client.KillProcessAsync(process.Pid, CancellationToken.None);
+        // The name goes with the pid, and the service refuses the kill if it is not the live
+        // process's: a number on screen is as old as the last list, and by the time this second
+        // click arrives it may belong to something else. It is the name the confirmation was
+        // armed on - the check a few lines above has just proved the selected row carries the
+        // same one - so what is sent is what the person read before agreeing to it.
+        KillFetch fetch = await client.KillProcessAsync(
+            process.Pid, process.Name, CancellationToken.None);
 
         // The machine may have changed while the request was in flight - the panel is closed by
         // then, and the answer describes a machine that is no longer on screen.

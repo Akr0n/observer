@@ -129,8 +129,35 @@ public class ProcessPanelTests
 
         await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
 
-        Assert.Equal([11], client.Killed);
+        Assert.Equal([(11, "greedy")], client.Killed);
         Assert.False(viewModel.IsAwaitingEndConfirmation);
+    }
+
+    [Fact]
+    public async Task TheKillCarriesTheNameThatWasOnScreen()
+    {
+        // The pid is not enough and the service will not act on it alone. Between the list that
+        // drew this row and the second click, that process can end and the system can hand the
+        // number to another one - so the window has to say WHAT it showed, and the service
+        // compares it with what is really running before signalling anything.
+        //
+        // The name sent is the one the confirmation was armed on. It is the same as the
+        // selected row's by the rule two lines above the send, and a test that reads it back
+        // from the selection would agree with any value the window chose to send, including
+        // none.
+        FakeProcessClient client = new();
+        MainViewModel viewModel = new(client, configurationProblem: null);
+
+        await viewModel.OpenProcessesCommand.ExecuteAsync(RowFor("cpu|cpu.usage.total|"));
+        viewModel.SelectedProcess = viewModel.Processes.Single(row => row.Pid == 22);
+
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+        await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
+
+        (int Pid, string Name) asked = Assert.Single(client.Killed);
+
+        Assert.Equal(22, asked.Pid);
+        Assert.Equal("quiet", asked.Name);
     }
 
     [Fact]
@@ -523,7 +550,7 @@ public class ProcessPanelTests
 
         await viewModel.EndSelectedProcessCommand.ExecuteAsync(parameter: null);
 
-        Assert.Equal([11], client.Killed);
+        Assert.Equal([(11, "greedy")], client.Killed);
     }
 
     [Fact]
@@ -606,7 +633,13 @@ public class ProcessPanelTests
         /// <summary>When true the list comes back without the process the tests arm on.</summary>
         public bool WithoutTheGreedyOne { get; set; }
 
-        public List<int> Killed { get; } = [];
+        /// <summary>
+        /// What the window actually asked to stop, pid AND name. The name is half the request:
+        /// the service refuses a kill whose name is not the live process's, so a window that
+        /// sent the wrong one would stop killing anything - or, against an older service that
+        /// ignores it, would go back to killing by number alone.
+        /// </summary>
+        public List<(int Pid, string Name)> Killed { get; } = [];
 
         public List<string> Requested { get; } = [];
 
@@ -668,9 +701,10 @@ public class ProcessPanelTests
         /// <summary>When set, the kill answers only when the test says so.</summary>
         public TaskCompletionSource<KillFetch>? PendingKill { get; set; }
 
-        public Task<KillFetch> KillProcessAsync(int pid, CancellationToken cancellationToken)
+        public Task<KillFetch> KillProcessAsync(
+            int pid, string name, CancellationToken cancellationToken)
         {
-            Killed.Add(pid);
+            Killed.Add((pid, name));
 
             if (PendingKill is { } pending)
             {

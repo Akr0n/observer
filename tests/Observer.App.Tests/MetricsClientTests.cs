@@ -243,6 +243,63 @@ public class MetricsClientTests
         Assert.Null(captured.Headers.Authorization);
     }
 
+    [Fact]
+    public async Task KillProcessAsync_SendsTheNameTheListShowed()
+    {
+        // The pid alone is what the service refuses to act on, and rightly: by the time the
+        // second click arrives the number may belong to something else. The name goes with it,
+        // escaped, because a process name is free to contain a space or a plus sign.
+        HttpRequestMessage? captured = null;
+
+        using MetricsClient client = Create(new FakeHandler(request =>
+        {
+            captured = request;
+            return new HttpResponseMessage(HttpStatusCode.NoContent);
+        }));
+
+        KillFetch fetch = await client.KillProcessAsync(4312, "my app", CancellationToken.None);
+
+        Assert.Equal(ServiceOutcome.Ok, fetch.Outcome);
+        Assert.NotNull(captured);
+        // AbsoluteUri and not ToString(): the second one UNESCAPES what it prints, so it would
+        // show "name=my app" and agree with a client that never escaped anything.
+        Assert.Equal(
+            "http://other-machine:5057/processes/4312/kill?name=my%20app",
+            captured.RequestUri!.AbsoluteUri);
+    }
+
+    [Fact]
+    public async Task KillProcessAsync_WhenThatPidIsAnotherProcessNow_SaysSoInsteadOfAStatusCode()
+    {
+        // 409 is the one answer that means "you nearly stopped the wrong program". Left to the
+        // generic arm it would read "replied 409, which this application doesn't know how to
+        // interpret", which sends whoever is watching to look at the network.
+        using MetricsClient client =
+            Create(new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.Conflict)));
+
+        KillFetch fetch = await client.KillProcessAsync(4312, "greedy", CancellationToken.None);
+
+        Assert.Equal(ServiceOutcome.UnexpectedResponse, fetch.Outcome);
+        Assert.Contains("4312", fetch.Problem, StringComparison.Ordinal);
+        Assert.Contains("greedy", fetch.Problem, StringComparison.Ordinal);
+        Assert.DoesNotContain("409", fetch.Problem, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task KillProcessAsync_WhenTheServiceWantsAName_SaysTheDashboardIsTooOld()
+    {
+        // This build always sends one, so a 400 can only come from a service that wants
+        // something this dashboard does not know how to give: that is a version problem, and
+        // saying so is the difference between updating and hunting a phantom.
+        using MetricsClient client =
+            Create(new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)));
+
+        KillFetch fetch = await client.KillProcessAsync(4312, "greedy", CancellationToken.None);
+
+        Assert.Equal(ServiceOutcome.IncompatibleVersion, fetch.Outcome);
+        Assert.Contains("other-machine", fetch.Problem, StringComparison.Ordinal);
+    }
+
     private static MetricsClient Create(HttpMessageHandler handler) =>
         new(
             ObserverEndpoint.Remote(new Uri("http://other-machine:5057/"), "the-token", "from the tests"),
