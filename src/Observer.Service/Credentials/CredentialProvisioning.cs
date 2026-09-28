@@ -32,6 +32,53 @@ public sealed record ProvisionedCredentials(
 /// This is the piece that makes an installer possible. As long as the service demands a token in
 /// configuration, whoever installs it has to generate one — that is, know it, record it in their
 /// own log, and leave it behind if they fail halfway.
+/// <para>
+/// THE FIRST START WILL ADOPT A STORE THAT IS ALREADY THERE, and that is the intended behaviour —
+/// it is what makes the second start reuse the key instead of cutting off every remote client. What
+/// keeps it safe is not anything in this file: it is that
+/// <see cref="WindowsDirectoryTrust.Prepare"/> refuses a directory owned by an untrusted account
+/// when it is not empty, and refuses it BEFORE repairing anything. Do not weaken that guard on the
+/// grounds that this class checks the store afterwards. It does not, and it cannot.
+/// </para>
+/// <para>
+/// What it is there for, measured on Windows 11 from an UNELEVATED session: a standard user creates
+/// <c>C:\ProgramData\Observer</c>, OWNS it, writes <c>credentials.json</c> into it, and the file
+/// inherits <c>SYSTEM: FullControl</c> from <c>ProgramData</c> — so the service, as LocalSystem,
+/// can read it. The installer never creates that directory (the service does, at its first start)
+/// and removes it again on uninstall, so the window reopens at every reinstall. No race is needed:
+/// the name is public and can be planted months ahead. <c>Prepare</c> then saw
+/// <see cref="DirectoryVerdict.UntrustedOwner"/>, took ownership, rewrote the DACL, confirmed the
+/// directory safe — and the file still lying in it was read back and served as the machine token.
+/// The payoff was not only telemetry: <c>AccessPolicy.MayEndProcesses</c> answers true for
+/// <c>CallerKind.FromNetwork</c>, so an unprivileged local user chose a key and with it terminated
+/// any process on the machine, from the LAN, carried out by LocalSystem.
+/// </para>
+/// <para>
+/// WHY THE REFUSAL HAS TO COME BEFORE THE REPAIR, which is the part that is easy to get wrong and
+/// was got wrong once here. Repairing first and refusing afterwards — on the verdict observed
+/// before the repair — reads correctly and does not hold for one restart: the first attempt leaves
+/// the directory genuinely safe, and the package configures Windows to restart the service five
+/// seconds after a failed start (<c>util:ServiceConfig</c> in <c>Observer.wxs</c>, restart on the
+/// first, second and every later failure). The second attempt therefore sees a spotless directory
+/// and adopts the planted file, automatically, five seconds later. The repair is what destroys the
+/// only evidence, so nothing after it can be trusted to decide; the refusal has to be the thing
+/// that prevents it.
+/// </para>
+/// <para>
+/// A store is REFUSED and never overwritten or moved aside. Overwriting would destroy a real
+/// operator's token together with the evidence of an attempt, and quarantining it would silently
+/// cut off every paired dashboard in the case where the file is genuine. And the refusal is narrow
+/// on both sides: an untrusted-owner directory that is EMPTY is repaired and used, so squatting a
+/// folder name cannot keep the monitor from ever starting, while a directory owned by SYSTEM or the
+/// administrators whose DACL merely drifted is repaired with its store intact, so an
+/// <c>icacls /reset</c> does not take the monitoring down. The guard's own comment says what that
+/// narrowness leaves behind.
+/// </para>
+/// <para>
+/// On Linux none of it is reachable: <c>/etc</c> is root-only, so planting takes root, and root
+/// needs no planted token. That reasoning sits in <see cref="CredentialDirectory.Prepare"/>, beside
+/// the silence which depends on it.
+/// </para>
 /// </remarks>
 public static class CredentialProvisioning
 {

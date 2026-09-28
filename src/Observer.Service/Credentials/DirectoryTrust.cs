@@ -49,6 +49,34 @@ public static class DirectoryVerdictExtensions
     /// </remarks>
     public static bool CanHoldSecret(this DirectoryVerdict verdict) =>
         verdict == DirectoryVerdict.Safe;
+
+    /// <summary>
+    /// Whether something ALREADY inside a directory in this state can be taken to have been put
+    /// there by SYSTEM or an administrator.
+    /// </summary>
+    /// <param name="verdict">The outcome of the evaluation, as observed BEFORE any repair.</param>
+    /// <returns>False when an account outside the trusted ones may have written it.</returns>
+    /// <remarks>
+    /// A SECOND question, and not a rewording of <see cref="CanHoldSecret"/>. That one asks whether
+    /// the directory can hold a secret from now on, which a repair can make true; this one asks who
+    /// wrote what is in there already, which no repair can change — and after the repair nothing
+    /// can tell any more. Both have to be asked, in that order, before a stored token is adopted.
+    /// <para>
+    /// An ALLOW-list, for the reason spelled out on <see cref="CanHoldSecret"/>: a negative verdict
+    /// added to the enum tomorrow must not become a permission through inattention.
+    /// </para>
+    /// <para>
+    /// <see cref="DirectoryVerdict.Missing"/> is in the list because there is nothing inside a
+    /// directory that does not exist. <see cref="DirectoryVerdict.OpenDacl"/> is in it on a
+    /// judgement: the owner IS trusted there, so the container was made by a trusted principal and
+    /// only its permissions drifted, and refusing would take a healthy monitor down over an
+    /// <c>icacls /reset</c>. What that admits, and what the facts collected cannot rule out, is a
+    /// DACL whose ACEs granted a standard user write — which takes an administrator to have
+    /// granted, while <see cref="DirectoryVerdict.UntrustedOwner"/> takes no privilege at all.
+    /// </para>
+    /// </remarks>
+    public static bool ContentsHaveTrustedAuthor(this DirectoryVerdict verdict) =>
+        verdict is DirectoryVerdict.Safe or DirectoryVerdict.Missing or DirectoryVerdict.OpenDacl;
 }
 
 /// <summary>

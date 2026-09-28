@@ -130,6 +130,14 @@ public static class WindowsDirectoryTrust
     /// <remarks>
     /// A junction is NOT repaired: it is a security incident and not a hiccup, and "fixing it"
     /// would mean applying the corrections to the directory of whoever planted it.
+    /// <para>
+    /// A DIRECTORY OWNED BY AN UNTRUSTED ACCOUNT AND NOT EMPTY IS NOT REPAIRED EITHER, and for the
+    /// same reason. Repairing secures the directory from now on; it says nothing about who wrote
+    /// what is already inside, and once the repair is done nothing can tell the two apart — so
+    /// whatever was planted there is read back as if the service had written it. See
+    /// <see cref="CredentialProvisioning"/> for what that bought an attacker, and for why the
+    /// refusal has to come BEFORE the repair rather than after it.
+    /// </para>
     /// </remarks>
     public static void Prepare(string path)
     {
@@ -160,8 +168,56 @@ public static class WindowsDirectoryTrust
                 "Remove it and restart the service.");
         }
 
+        // A directory that already holds something nobody trusted wrote is NOT repaired at all: see
+        // the type's remarks for what gets adopted otherwise. Which states those are is
+        // ContentsHaveTrustedAuthor's decision and not this method's, for the same reason the
+        // verdict itself is decided by a pure function: it is load-bearing, and the cases that
+        // matter cannot all be built on an ordinary machine.
+        //
+        // AFTER the reparse-point check and never before it: enumerating a junction would follow it
+        // and report on the contents of whoever planted the link.
+        if (!verdict.ContentsHaveTrustedAuthor() && !IsEmpty(path))
+        {
+            throw new InvalidOperationException(
+                $"The credential directory '{path}' is not owned by SYSTEM or the administrators " +
+                $"({verdict}) and it is not empty. Observer will not secure it and will not read " +
+                "what is in it: a machine token or certificate found in a directory another " +
+                "account owns was chosen by whoever owns it, and the token is valid FROM THE " +
+                "NETWORK. Nothing has been changed here, so the files are as you left them. If " +
+                "you did not put them there, delete them and restart, and the service will " +
+                "generate its own. If you did, give the directory back to SYSTEM or " +
+                "Administrators, granting no other account, and the service will adopt them.");
+        }
+
         Repair(path, verdict);
         ConfirmSafe(path);
+    }
+
+    /// <summary>Whether the directory holds nothing at all.</summary>
+    /// <param name="path">The directory to look into.</param>
+    /// <returns>True only when it is demonstrably empty.</returns>
+    /// <remarks>
+    /// Files AND directories, because a subdirectory in there is as unexplained as a file. A
+    /// directory that cannot be enumerated counts as NOT empty: the point of the question is
+    /// whether anything unproven might be adopted, and "I could not look" is not an answer that
+    /// should authorize it.
+    /// <para>
+    /// Not <c>File.Exists</c> on the store, which is what this replaced in the first draft:
+    /// <see cref="CredentialStore.Read"/> explains why that probe lies on a genuinely protected
+    /// file, and a leftover <c>credentials.json.new</c> or a planted <c>certificate.pfx</c> is just
+    /// as unproven as the store itself.
+    /// </para>
+    /// </remarks>
+    private static bool IsEmpty(string path)
+    {
+        try
+        {
+            return !Directory.EnumerateFileSystemEntries(path).Any();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Looks at the directory again after touching it, and refuses if it is not safe.</summary>

@@ -119,6 +119,55 @@ public class DirectoryTrustTests
         }
     }
 
+    [Fact]
+    public void ContentsAreTrustedONLYWhereNoOutsiderCouldHaveWrittenThem()
+    {
+        // The rule that decides whether a token already sitting in the directory may be adopted at
+        // all. Repairing the directory cannot answer it: the repair makes the container safe from
+        // then on and leaves whoever planted the file the author of it, while destroying the only
+        // evidence of that. A table and not a sample, for the same reason as the verdict itself.
+        Assert.True(DirectoryVerdict.Safe.ContentsHaveTrustedAuthor());
+
+        // Nothing is inside a directory that does not exist.
+        Assert.True(DirectoryVerdict.Missing.ContentsHaveTrustedAuthor());
+
+        // The owner IS trusted here, so the container was made by a trusted principal and only its
+        // permissions drifted. Refusing would stop a healthy monitor over an icacls /reset.
+        Assert.True(DirectoryVerdict.OpenDacl.ContentsHaveTrustedAuthor());
+
+        // The case that costs nothing to reach: a standard user creates a subdirectory of
+        // ProgramData, owns it, and plants a token before the service has ever run.
+        Assert.False(DirectoryVerdict.UntrustedOwner.ContentsHaveTrustedAuthor());
+
+        // "I could not look" must not authorise anything.
+        Assert.False(DirectoryVerdict.Unknown.ContentsHaveTrustedAuthor());
+
+        // Whose contents they even are is the attacker's choice.
+        Assert.False(DirectoryVerdict.ReparsePoint.ContentsHaveTrustedAuthor());
+
+        // Totality: a verdict added to the enum tomorrow has to be decided here on purpose.
+        foreach (DirectoryVerdict verdict in Enum.GetValues<DirectoryVerdict>())
+        {
+            Assert.Equal(
+                verdict is DirectoryVerdict.Safe or DirectoryVerdict.Missing or DirectoryVerdict.OpenDacl,
+                verdict.ContentsHaveTrustedAuthor());
+        }
+    }
+
+    [Fact]
+    public void TheTwoQuestionsAboutADirectoryAreNotTheSameQuestion()
+    {
+        // Collapsing them is the tempting simplification, and it breaks in both directions: an
+        // OpenDacl directory may not hold the secret until it is repaired, yet a store already in
+        // it was written by a trusted principal; a Missing one holds nothing and cannot be adopted
+        // from, yet has nothing untrusted in it either.
+        Assert.False(DirectoryVerdict.OpenDacl.CanHoldSecret());
+        Assert.True(DirectoryVerdict.OpenDacl.ContentsHaveTrustedAuthor());
+
+        Assert.False(DirectoryVerdict.Missing.CanHoldSecret());
+        Assert.True(DirectoryVerdict.Missing.ContentsHaveTrustedAuthor());
+    }
+
     private static DirectoryFacts Facts(
         bool exists = true,
         bool isReparsePoint = false,

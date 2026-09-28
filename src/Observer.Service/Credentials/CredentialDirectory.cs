@@ -24,6 +24,24 @@ public static class CredentialDirectory
     /// <summary>Brings the store's directory into a state where it can hold a secret.</summary>
     /// <param name="filePath">The path of the store's file.</param>
     /// <exception cref="InvalidOperationException">If that is not possible.</exception>
+    /// <remarks>
+    /// The two branches do not answer the same number of questions, and that asymmetry is the
+    /// point rather than an omission. On Windows the directory's trust has to be established
+    /// (<see cref="WindowsDirectoryTrust.Prepare"/>), because any standard user can create a
+    /// subdirectory of <c>C:\ProgramData</c> and owns it. On Linux nothing is asked, because
+    /// <c>/etc</c> is owned by root and mode 0755: nobody but root can create <c>/etc/observer</c>,
+    /// the package creates it in a postinst already running as root, and hands it to a
+    /// <c>--system</c> account with <c>nologin</c> and no home, which takes root to become. A file
+    /// found in there was put there by root, and root has no need to plant a token to own the
+    /// machine.
+    /// <para>
+    /// The ceiling of that reasoning, named because the silence on this branch hides it: it is a
+    /// claim about <c>/etc</c>, not about any directory. Pointed by
+    /// <c>Observer:CredentialStorePath</c> at a directory other accounts can write, the Linux
+    /// branch checks no owner that would notice. Configuring the secret store somewhere
+    /// world-writable is an operator error the shipped path does not have.
+    /// </para>
+    /// </remarks>
     public static void Prepare(string filePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
