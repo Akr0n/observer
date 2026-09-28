@@ -145,13 +145,31 @@ public class DirectoryTrustTests
         // Whose contents they even are is the attacker's choice.
         Assert.False(DirectoryVerdict.ReparsePoint.ContentsHaveTrustedAuthor());
 
-        // Totality: a verdict added to the enum tomorrow has to be decided here on purpose.
+        // Totality, as a COUNT and not as a copy of the implementation's own pattern: restating
+        // "Safe or Missing or OpenDacl" here would be the same expression twice and could not fail.
+        // A seventh verdict, or a change of mind about one of the six, moves this number.
+        Assert.Equal(3, Enum.GetValues<DirectoryVerdict>().Count(v => v.ContentsHaveTrustedAuthor()));
+    }
+
+    [Fact]
+    public void AnEMPTYDirectoryMayBeUsedEvenWhenNothingVouchesForIt()
+    {
+        // The gate the service actually applies, over both facts it depends on. The empty column is
+        // not a detail: without it, creating a folder in ProgramData would keep Observer from ever
+        // starting, which any standard user can do and no operator would understand.
         foreach (DirectoryVerdict verdict in Enum.GetValues<DirectoryVerdict>())
         {
+            Assert.True(verdict.MayAdoptContents(isEmpty: true), verdict.ToString());
+
             Assert.Equal(
-                verdict is DirectoryVerdict.Safe or DirectoryVerdict.Missing or DirectoryVerdict.OpenDacl,
-                verdict.ContentsHaveTrustedAuthor());
+                verdict.ContentsHaveTrustedAuthor(),
+                verdict.MayAdoptContents(isEmpty: false));
         }
+
+        // The two rows that carry the security decision, spelled out so a reader sees them.
+        Assert.False(DirectoryVerdict.UntrustedOwner.MayAdoptContents(isEmpty: false));
+        Assert.True(DirectoryVerdict.UntrustedOwner.MayAdoptContents(isEmpty: true));
+        Assert.True(DirectoryVerdict.Safe.MayAdoptContents(isEmpty: false));
     }
 
     [Fact]

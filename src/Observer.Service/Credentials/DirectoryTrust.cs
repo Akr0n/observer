@@ -67,7 +67,10 @@ public static class DirectoryVerdictExtensions
     /// </para>
     /// <para>
     /// <see cref="DirectoryVerdict.Missing"/> is in the list because there is nothing inside a
-    /// directory that does not exist. <see cref="DirectoryVerdict.OpenDacl"/> is in it on a
+    /// directory that does not exist — which is true AT THE INSTANT THE VERDICT WAS TAKEN and not
+    /// afterwards. No verdict is durable: this answer is only worth what the observation behind it
+    /// is worth, so ask it about a verdict just taken, never about one carried across an operation
+    /// that gave somebody else a chance to write. <see cref="DirectoryVerdict.OpenDacl"/> is in it on a
     /// judgement: the owner IS trusted there, so the container was made by a trusted principal and
     /// only its permissions drifted, and refusing would take a healthy monitor down over an
     /// <c>icacls /reset</c>. What that admits, and what the facts collected cannot rule out, is a
@@ -77,6 +80,27 @@ public static class DirectoryVerdictExtensions
     /// </remarks>
     public static bool ContentsHaveTrustedAuthor(this DirectoryVerdict verdict) =>
         verdict is DirectoryVerdict.Safe or DirectoryVerdict.Missing or DirectoryVerdict.OpenDacl;
+
+    /// <summary>Whether a directory in this state may be secured and what is in it then read.</summary>
+    /// <param name="verdict">The outcome of the evaluation, as observed BEFORE any repair.</param>
+    /// <param name="isEmpty">Whether the directory demonstrably holds nothing.</param>
+    /// <returns>False when it must be left exactly as it is.</returns>
+    /// <remarks>
+    /// The gate itself, kept here rather than written as an <c>&amp;&amp;</c> at the call site, and for
+    /// the reason this whole file exists: it is the decision that either stops the attack or lets it
+    /// through, and a boolean expression buried in a Windows-only method cannot be put in a table on
+    /// an ordinary machine, while this can.
+    /// <para>
+    /// An EMPTY directory is let through even when nothing vouches for it, so that creating a folder
+    /// cannot stop the monitor from ever starting — a denial of service any standard user could
+    /// mount, against the one program whose not running is the worst outcome it has. There is
+    /// nothing to adopt in an empty directory, which is what makes that safe to allow. What it is
+    /// NOT safe against is a file appearing DURING the repair that follows: see the note at that
+    /// call site.
+    /// </para>
+    /// </remarks>
+    public static bool MayAdoptContents(this DirectoryVerdict verdict, bool isEmpty) =>
+        verdict.ContentsHaveTrustedAuthor() || isEmpty;
 }
 
 /// <summary>
