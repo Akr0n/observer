@@ -135,9 +135,13 @@ public static class Diagnosis
             "NOT PROTECTED - other accounts on this machine can read it. Anyone who reads it " +
             "gets permanent access to this machine FROM THE NETWORK.",
         DirectoryVerdict.UntrustedOwner =>
-            "FALSELY PROTECTED - the permissions name only SYSTEM and Administrators, but the " +
+            "FALSELY PROTECTED - the permissions may name only SYSTEM and Administrators, but the " +
             "OWNER is an ordinary account, and an owner can grant itself access again whenever " +
-            "it likes. This looks safe and is not.",
+            "it likes. This looks safe and is not. If the directory is NOT empty the service will " +
+            "refuse to start and will change nothing, because a token or certificate found here " +
+            "cannot be shown to be its own - a store copied in by hand or restored from a backup " +
+            "belongs to the account that copied it. Give the directory back to SYSTEM or " +
+            "Administrators, granting no other account, and the service will adopt what is in it.",
         DirectoryVerdict.ReparsePoint =>
             "HIJACKED - the path is a junction or symbolic link, so the token would be written " +
             "wherever it points. A standard user can create one without any privilege. Remove it.",

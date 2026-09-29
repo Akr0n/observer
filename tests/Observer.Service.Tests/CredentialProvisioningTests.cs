@@ -89,8 +89,14 @@ public class CredentialProvisioningTests : IDisposable
         // are using, over a fault that could be a botched hand edit from a minute earlier.
         File.WriteAllText(StorePath, "not JSON {{{");
 
-        Assert.Throws<InvalidOperationException>(
+        InvalidOperationException error = Assert.Throws<InvalidOperationException>(
             () => CredentialProvisioning.Provision(null, StorePath, runningAsService: false));
+
+        // The MESSAGE and not just the type. Several guards on this path throw
+        // InvalidOperationException - the directory-trust refusal among them - so a type-only
+        // assertion would go on passing while this test had stopped being about corrupt JSON at all.
+        Assert.Contains("isn't valid JSON", error.Message, StringComparison.Ordinal);
+        Assert.Equal("not JSON {{{", File.ReadAllText(StorePath));
     }
 
     /// <summary>A path where no user, on any system, can create a directory.</summary>
