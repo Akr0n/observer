@@ -66,10 +66,10 @@ public class WindowsDirectoryTrustTests
         // - valid FROM THE NETWORK and, through AccessPolicy.MayEndProcesses, able to end any
         // process on the machine.
         //
-        // Judged against SYSTEM and the administrators ALONE, which is what the service sees, a
-        // directory this process created stands in for the attacker's: from the outside the two are
-        // identical, and an unelevated session cannot build a genuinely foreign-owned directory
-        // (SetOwner rejects every SID in its token, BUILTIN\Users included - measured).
+        // A directory this process created stands in for the attacker's: from the outside the two
+        // are identical, and an unelevated session cannot build a genuinely foreign-owned directory
+        // (SetOwner rejects every SID in its token, BUILTIN\Users included - measured). Which is
+        // why the trusted set is passed in: see OnlySystemIsTrusted.
         string path = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
         Directory.CreateDirectory(path);
         string store = Path.Combine(path, CredentialDirectory.FileName);
@@ -82,7 +82,7 @@ public class WindowsDirectoryTrustTests
             string ownerBefore = OwnerOf(path);
 
             InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(
-                () => WindowsDirectoryTrust.Prepare(path, DirectoryTrust.DefaultTrustedSids));
+                () => WindowsDirectoryTrust.Prepare(path, OnlySystemIsTrusted));
 
             Assert.Contains("is not empty", refusal.Message, StringComparison.Ordinal);
 
@@ -98,13 +98,13 @@ public class WindowsDirectoryTrustTests
             Assert.Contains("planted-by-a-standard-user", File.ReadAllText(store), StringComparison.Ordinal);
             Assert.Equal(
                 DirectoryVerdict.UntrustedOwner,
-                DirectoryTrust.Evaluate(WindowsDirectoryTrust.Observe(path)));
+                DirectoryTrust.Evaluate(WindowsDirectoryTrust.Observe(path), OnlySystemIsTrusted));
 
             // And so the next start refuses in exactly the same way instead of curing itself.
             Assert.Contains(
                 "is not empty",
                 Assert.Throws<InvalidOperationException>(
-                    () => WindowsDirectoryTrust.Prepare(path, DirectoryTrust.DefaultTrustedSids)).Message,
+                    () => WindowsDirectoryTrust.Prepare(path, OnlySystemIsTrusted)).Message,
                 StringComparison.Ordinal);
         }
         finally
@@ -117,27 +117,47 @@ public class WindowsDirectoryTrustTests
     public void AnUntrustedButEMPTYDirectoryIsStillRepairedAndNotRefused()
     {
         // The other half of the rule: squatting a folder NAME must not keep the monitor from ever
-        // starting, so an untrusted directory with nothing in it is repaired and used. Unelevated
-        // the repair cannot finish - SetOwner to Administrators needs privileges LocalSystem has and
-        // this process does not - so what is asserted is WHICH refusal comes out: the repair's, not
-        // the guard's. Deleting "&& !IsEmpty(path)" from the guard flips this message, which is the
-        // only witness that clause has.
+        // starting, so an untrusted directory with nothing in it is repaired and not refused.
+        //
+        // What comes out of the repair afterwards is NOT asserted, because it is not the same
+        // everywhere and that is a property of the machine, not of the rule: unelevated the repair
+        // cannot finish (SetOwner to Administrators needs privileges only LocalSystem has), while
+        // elevated it finishes and then ConfirmSafe objects, since the descriptor it writes grants
+        // the current account, which OnlySystemIsTrusted does not name. What is asserted is the one
+        // thing true in both: the refusal is never the GUARD'S. Deleting "&& !IsEmpty(path)" makes
+        // the guard fire here, and this is the only witness that clause has.
         string path = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
         Directory.CreateDirectory(path);
 
         try
         {
-            InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(
-                () => WindowsDirectoryTrust.Prepare(path, DirectoryTrust.DefaultTrustedSids));
+            Exception? refusal = Record.Exception(
+                () => WindowsDirectoryTrust.Prepare(path, OnlySystemIsTrusted));
 
-            Assert.Contains("lacks the rights to repair it", refusal.Message, StringComparison.Ordinal);
-            Assert.DoesNotContain("is not empty", refusal.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "is not empty",
+                refusal?.Message ?? string.Empty,
+                StringComparison.Ordinal);
         }
         finally
         {
             Directory.Delete(path, recursive: true);
         }
     }
+
+    /// <summary>SYSTEM alone, so that a directory these tests create is never owned by a
+    /// trusted account.</summary>
+    /// <remarks>
+    /// NOT <see cref="DirectoryTrust.DefaultTrustedSids"/>, and the difference is the whole reason
+    /// these tests are deterministic. Who owns a newly created directory depends on the session:
+    /// unelevated it is the user, but on an ELEVATED one — which a CI runner is — Windows hands it
+    /// to <c>BUILTIN\Administrators</c>, which the default set trusts. Measured the hard way: with
+    /// the default set these two tests passed here and failed on windows-latest, where the verdict
+    /// was <see cref="DirectoryVerdict.OpenDacl"/> and the refusal came from <c>ConfirmSafe</c>
+    /// instead of the guard. Nobody creating a directory is ever SYSTEM, so this set is the same
+    /// answer on both.
+    /// </remarks>
+    private static readonly IReadOnlyList<string> OnlySystemIsTrusted = [DirectoryTrust.SystemSid];
 
     private static string OwnerOf(string path) =>
         ((SecurityIdentifier)new DirectoryInfo(path)
