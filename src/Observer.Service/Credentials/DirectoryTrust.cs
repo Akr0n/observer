@@ -70,16 +70,32 @@ public static class DirectoryVerdictExtensions
     /// directory that does not exist — which is true AT THE INSTANT THE VERDICT WAS TAKEN and not
     /// afterwards. No verdict is durable: this answer is only worth what the observation behind it
     /// is worth, so ask it about a verdict just taken, never about one carried across an operation
-    /// that gave somebody else a chance to write. <see cref="DirectoryVerdict.OpenDacl"/> is in it on a
-    /// judgement: the owner IS trusted there, so the container was made by a trusted principal and
-    /// only its permissions drifted, and refusing would take a healthy monitor down over an
-    /// <c>icacls /reset</c>. What that admits, and what the facts collected cannot rule out, is a
-    /// DACL whose ACEs granted a standard user write — which takes an administrator to have
-    /// granted, while <see cref="DirectoryVerdict.UntrustedOwner"/> takes no privilege at all.
+    /// that gave somebody else a chance to write.
+    /// </para>
+    /// <para>
+    /// <see cref="DirectoryVerdict.OpenDacl"/> IS NOT IN THE LIST, and the reason it briefly was is
+    /// worth keeping, because it is a mistake that reads well. The argument was: the owner is trusted
+    /// there, so a trusted principal made the container, so a store inside it was written by a
+    /// trusted principal too — and refusing would take a healthy monitor down over an
+    /// <c>icacls /reset</c>. The last step is false on a default machine. MEASURED: the real ACL of
+    /// <c>C:\ProgramData</c> grants <c>BUILTIN\Users:(CI)(WD,AD,WEA,WA)</c> with no inherit-only
+    /// flag, so a subdirectory that merely INHERITS is writable by every account on the machine. An
+    /// open DACL therefore needs no administrator to have granted anything — inheriting is enough —
+    /// and a store found behind one may have been planted by anyone, with no race and no privilege.
+    /// An <c>icacls /reset</c> leaves exactly that state, so the case the allowance was protecting is
+    /// itself the unsafe one: after it the token is readable and writable by everyone, and refusing
+    /// to start is the right answer rather than the regrettable one.
+    /// </para>
+    /// <para>
+    /// So the rule is the one this file wanted all along: contents are adopted only from a directory
+    /// that was ALREADY <see cref="DirectoryVerdict.Safe"/>. The cost is a start failure on a machine
+    /// whose credential directory lost its protection, and the recovery is NOT merely giving the
+    /// directory back to a trusted owner: the DACL has to be PROTECTED too, or the next start reads
+    /// the same unvouched store. The refusal message says so, and so does <c>observer diagnose</c>.
     /// </para>
     /// </remarks>
     public static bool ContentsHaveTrustedAuthor(this DirectoryVerdict verdict) =>
-        verdict is DirectoryVerdict.Safe or DirectoryVerdict.Missing or DirectoryVerdict.OpenDacl;
+        verdict is DirectoryVerdict.Safe or DirectoryVerdict.Missing;
 
     /// <summary>Whether a directory in this state may be secured and what is in it then read.</summary>
     /// <param name="verdict">The outcome of the evaluation, as observed BEFORE any repair.</param>

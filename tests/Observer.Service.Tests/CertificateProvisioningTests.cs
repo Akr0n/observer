@@ -26,6 +26,13 @@ public class CertificateProvisioningTests : IDisposable
 
         Directory.CreateDirectory(folder);
         storePath = Path.Combine(folder, CredentialDirectory.FileName);
+
+        // Secured before anything is written into it, which is the order production has. On Windows a
+        // fresh temp directory inherits its DACL and evaluates as OpenDacl, and a certificate found
+        // in a directory whose permissions vouch for nobody is now refused rather than adopted - so
+        // without this line the tests that plant a damaged PFX would be testing that refusal instead
+        // of what their names say.
+        CredentialDirectory.Prepare(storePath);
     }
 
     public void Dispose()

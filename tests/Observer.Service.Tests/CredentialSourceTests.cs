@@ -18,7 +18,17 @@ public sealed class CredentialSourceTests : IDisposable
         Path.GetTempPath(),
         "observer-source-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
 
-    public CredentialSourceTests() => Directory.CreateDirectory(directory);
+    public CredentialSourceTests()
+    {
+        Directory.CreateDirectory(directory);
+
+        // SECURED BEFORE ANY STORE IS WRITTEN INTO IT, which is the order production has: the
+        // service only ever writes the store after Prepare has made the directory safe. Without
+        // this line the tests below would be building a state the service now refuses on purpose -
+        // a store sitting in a directory whose permissions vouch for nobody - because on Windows a
+        // fresh temp directory inherits its DACL and so evaluates as OpenDacl.
+        CredentialDirectory.Prepare(Path.Combine(directory, CredentialDirectory.FileName));
+    }
 
     public void Dispose()
     {

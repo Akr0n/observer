@@ -19,6 +19,12 @@ public class CredentialProvisioningTests : IDisposable
     {
         directory = Path.Combine(Path.GetTempPath(), "obs-prov-" + Guid.NewGuid().ToString("N")[..10]);
         Directory.CreateDirectory(directory);
+
+        // Secured before anything is written into it, which is the order production has: the service
+        // writes the store only after Prepare made the directory safe. On Windows a fresh temp
+        // directory inherits its DACL and evaluates as OpenDacl, and a store found in a directory
+        // whose permissions vouch for nobody is now refused rather than adopted.
+        CredentialDirectory.Prepare(StorePath);
     }
 
     private string StorePath => Path.Combine(directory, "credentials.json");

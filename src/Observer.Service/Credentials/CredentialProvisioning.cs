@@ -66,12 +66,11 @@ public sealed record ProvisionedCredentials(
 /// </para>
 /// <para>
 /// A store is REFUSED and never overwritten or moved aside. Overwriting would destroy a real
-/// operator's token together with the evidence of an attempt, and quarantining it would silently
-/// cut off every paired dashboard in the case where the file is genuine. And the refusal is narrow
-/// on both sides: an untrusted-owner directory that is EMPTY is repaired and used, so squatting a
-/// folder name cannot keep the monitor from ever starting, while a directory owned by SYSTEM or the
-/// administrators whose DACL merely drifted is repaired with its store intact, so an
-/// <c>icacls /reset</c> does not take the monitoring down.
+/// operator's token together with the evidence of an attempt, and quarantining it would silently cut
+/// off every paired dashboard in the case where the file is genuine. An EMPTY directory is a
+/// different question: nothing can be adopted from one, so it is REPLACED with a protected directory
+/// and the service starts — which is what keeps squatting a folder name from stopping the monitor for
+/// good.
 /// </para>
 /// <para>
 /// WHAT THE RULE COSTS, stated properly because the obvious guess is wrong. It is not the drifted
@@ -89,12 +88,24 @@ public sealed record ProvisionedCredentials(
 /// folder is still owned by <c>S-1-5-18</c>, which is trusted unconditionally).
 /// </para>
 /// <para>
-/// AND WHAT IT STILL DOES NOT CLOSE. The empty-directory exemption leaves a race: see the note at
-/// the <c>Repair</c> call in <see cref="WindowsDirectoryTrust.Prepare"/>. Patience is no longer
-/// enough for an attacker, a race still is, and closing it takes a change to <c>Repair</c> that is
-/// not this one. Do not read a green suite as proof otherwise — the refusal's own call site could
-/// only be tested through the two-argument <c>Prepare</c> overload, because no process can see a
-/// directory it created itself as <see cref="DirectoryVerdict.UntrustedOwner"/>.
+/// THE RACE IN THE EMPTY CASE IS CLOSED, and it took replacing the container rather than repairing
+/// it: <see cref="WindowsDirectoryTrust.Replace"/> says how, and why no interleaving adopts anything.
+/// What remains open is written there and in the two paragraphs below, and none of it is an adoption
+/// path. Do not read a green suite as proof of any of this — the guard's own call site can only be
+/// tested through the two-argument <c>Prepare</c> overload, because no process can see a directory it
+/// created itself as <see cref="DirectoryVerdict.UntrustedOwner"/>.
+/// </para>
+/// <para>
+/// WHAT IS STILL OPEN, all of it availability and none of it adoption. A standard user can create a
+/// FILE directly at <c>C:\ProgramData\Observer</c> — measured, because ProgramData grants
+/// <c>BUILTIN\Users</c> add-file without an inherit-only flag — and a file there is not a directory,
+/// so the service refuses at every start. That one predates all of this and is not closed by it. An
+/// attacker who keeps a process alive holding the directory open, or who re-sets the read-only bit in
+/// a race, can also keep the service from starting; the passive versions of both are closed. And
+/// because <c>Observer:CredentialStorePath</c> can point anywhere, replacing the container means
+/// LocalSystem will remove an EMPTY untrusted directory at whatever path is configured — a new
+/// destructive act in a file whose rule is never to delete a store, bounded to a directory the
+/// operating system itself proved empty.
 /// </para>
 /// <para>
 /// On Linux none of it is reachable: <c>/etc</c> is root-only, so planting takes root, and root

@@ -131,12 +131,19 @@ public static class WindowsDirectoryTrust
     /// A junction is NOT repaired: it is a security incident and not a hiccup, and "fixing it"
     /// would mean applying the corrections to the directory of whoever planted it.
     /// <para>
-    /// A DIRECTORY OWNED BY AN UNTRUSTED ACCOUNT AND NOT EMPTY IS NOT REPAIRED EITHER, and for the
-    /// same reason. Repairing secures the directory from now on; it says nothing about who wrote
-    /// what is already inside, and once the repair is done nothing can tell the two apart — so
-    /// whatever was planted there is read back as if the service had written it. See
-    /// <see cref="CredentialProvisioning"/> for what that bought an attacker, and for why the
-    /// refusal has to come BEFORE the repair rather than after it.
+    /// A DIRECTORY NOTHING VOUCHES FOR AND NOT EMPTY IS NOT REPAIRED EITHER, and for the same
+    /// reason. Repairing secures the directory from now on; it says nothing about who wrote what is
+    /// already inside, and once the repair is done nothing can tell the two apart — so whatever was
+    /// planted there is read back as if the service had written it. See
+    /// <see cref="CredentialProvisioning"/> for what that bought an attacker, and for why the refusal
+    /// has to come BEFORE the repair rather than after it.
+    /// </para>
+    /// <para>
+    /// AND WHEN IT IS EMPTY, the container is REPLACED rather than repaired — see
+    /// <see cref="Replace"/>. Repairing an untrusted directory in place needed two calls in a fixed
+    /// order, and the gap between them was a race that adopted whatever was created in it. Replacing
+    /// leaves no such gap. Only a directory whose owner is already trusted is still repaired, with
+    /// its contents left alone.
     /// </para>
     /// </remarks>
     public static void Prepare(string path) => Prepare(path, TrustedSids());
@@ -169,11 +176,7 @@ public static class WindowsDirectoryTrust
 
         if (verdict == DirectoryVerdict.Missing)
         {
-            // Created ALREADY protected, in one shot: creating and then applying would leave a
-            // window in which the directory inherits. The extension on the descriptor is the
-            // only form that does it; Directory.CreateDirectory(path, mode) is the Unix twin
-            // and has nothing to do with this.
-            SecurityDescriptor().CreateDirectory(path);
+            Create(path);
             ConfirmSafe(path, trustedSids);
             return;
         }
@@ -207,28 +210,126 @@ public static class WindowsDirectoryTrust
                 "them. If you did not put them there, delete them and restart, and the service " +
                 "will generate its own. If you did - a store copied in by hand or restored from a " +
                 "backup is owned by the account that copied it, not by Administrators - give the " +
-                "directory back to SYSTEM or Administrators, granting no other account, and the " +
-                "service will adopt them.");
+                "directory back to SYSTEM or Administrators AND protect its permissions so no other " +
+                "account is granted - handing back the ownership alone leaves the DACL inheriting " +
+                "from ProgramData, which every account on the machine can write - and the service " +
+                "will adopt them.");
         }
 
-        // KNOWN GAP, and it is the reason MayAdoptContents' allowance for an empty directory is a
-        // trade and not a proof. Getting here with an untrusted owner means the directory was empty
-        // a moment ago, so it is being repaired instead of refused. But Repair has to set the OWNER
-        // first and the DACL second - its own comment says why the other order achieves nothing -
-        // and until that second call lands, whoever owned it still has write access. A file created
-        // in that window is adopted, because ConfirmSafe re-reads the owner and the DACL, which are
-        // exactly the two things Repair just fixed, and never asks again what is in there.
+        // Only an empty directory reaches here, and the two branches differ in ONE thing: whether
+        // anything inside has to survive.
         //
-        // Not closable by re-checking after the repair: at that point the directory really is safe,
-        // so a refusal would be cured by the 5-second restart the package configures, which is the
-        // same trap the whole ordering above exists to avoid. Nor by refusing on an empty directory
-        // too, which is the denial of service. It needs Repair to stop repairing IN PLACE: move the
-        // hostile directory aside and create a fresh one already protected, in one shot, so no
-        // window exists and a failure to move is itself a durable refusal. That is a change to
-        // Repair, with its own measurements (open handles, delete rights on ProgramData), and it is
-        // not this one. Patience is no longer enough for an attacker; a race still is.
-        Repair(path, verdict);
+        // An untrusted OWNER, or an owner that could not even be read, is not repaired IN PLACE. It
+        // used to be, and that was a race: Repair has to set the owner first and the DACL second -
+        // the other order achieves nothing, because an owner holds implicit WRITE_DAC - so until the
+        // second call landed, whoever owned the directory could still create a file in it, and
+        // ConfirmSafe would not notice, because it re-reads the owner and the DACL, which are
+        // exactly the two things Repair just fixed. Replacing the container removes the window
+        // instead of narrowing it.
+        if (!verdict.ContentsHaveTrustedAuthor())
+        {
+            Replace(path);
+        }
+        else
+        {
+            // A trusted owner whose DACL merely drifted: the contents stay, so the permissions are
+            // rewritten in place. This is the only verdict that still reaches Repair.
+            Repair(path);
+        }
+
         ConfirmSafe(path, trustedSids);
+    }
+
+    /// <summary>Creates the directory, already protected, in one operation.</summary>
+    /// <param name="path">The directory to create.</param>
+    /// <remarks>
+    /// One shot, because creating and then applying would leave a window in which the directory
+    /// inherits. The extension on the descriptor is the only form that does it;
+    /// <c>Directory.CreateDirectory(path, mode)</c> is the Unix twin and has nothing to do with this.
+    /// <para>
+    /// It does NOT fail on a directory that already exists, and does not apply the descriptor
+    /// either — measured: a silent no-op that leaves the DACL inheriting. That is why every caller
+    /// follows it with <see cref="ConfirmSafe"/>, which is the thing that actually decides.
+    /// </para>
+    /// </remarks>
+    private static void Create(string path)
+    {
+        try
+        {
+            SecurityDescriptor().CreateDirectory(path);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException(
+                $"Observer could not create its credential directory at '{path}'. The usual cause " +
+                "is that something which is NOT a directory sits at that path: a standard user can " +
+                "create a file directly in C:\\ProgramData, measured, and a file there stops the " +
+                "service at every start. Check what is at that path and remove it.",
+                error);
+        }
+    }
+
+    /// <summary>Throws away an untrusted EMPTY container and puts a protected one in its place.</summary>
+    /// <param name="path">The directory to replace.</param>
+    /// <remarks>
+    /// Why replace instead of repair: see the call site. What makes it safe is not the delete but
+    /// <see cref="ConfirmSafe"/> afterwards. Walk the interleavings. A file present before we start
+    /// never gets here, because the guard refused. A file that appears between the emptiness check
+    /// and the delete makes <c>RemoveDirectory</c> fail, and nothing has been touched — the delete
+    /// is NON-RECURSIVE precisely so that it cannot destroy a store, and the operating system, not
+    /// our discipline, is what enforces that. After the delete succeeds the name does not exist, so
+    /// to plant anything the attacker must first create a container, and any container an
+    /// unprivileged account can create is one it OWNS: our create is then a no-op and
+    /// <see cref="ConfirmSafe"/> reads that hostile owner and refuses. A junction planted in the gap
+    /// is caught by the reparse check inside the same re-reading. The gap cannot be removed —
+    /// Windows has no atomic rename-over-a-directory — and it does not need to be: the OWNER is what
+    /// condemns whatever appears there, and a standard user cannot forge a trusted owner (measured:
+    /// SetOwner rejects every SID in their token).
+    /// <para>
+    /// THE READ-ONLY BIT IS CLEARED FIRST, and that line is the difference between this being a fix
+    /// and being an outage. MEASURED, unelevated: an EMPTY directory carrying
+    /// <see cref="FileAttributes.ReadOnly"/> makes <c>RemoveDirectory</c> fail with access denied,
+    /// and it keeps failing even under a DACL that grants the caller full control — the read-only
+    /// bit is a rule in the delete disposition, not an access check, so no permission fixes it. A
+    /// standard user creates the directory, is its CREATOR OWNER and so holds WRITE_ATTRIBUTES, runs
+    /// <c>attrib +r</c>, and walks away: no privilege, no running process, and the service would
+    /// never start again. Only that one bit is cleared, leaving every other attribute — including
+    /// the reparse flag, measured — untouched. The honest cost: the attacker can set the bit again
+    /// in a race, so a permanent passive denial of service becomes an active one.
+    /// </para>
+    /// </remarks>
+    private static void Replace(string path)
+    {
+        try
+        {
+            DirectoryInfo info = new(path);
+
+            if (info.Attributes.HasFlag(FileAttributes.ReadOnly))
+            {
+                info.Attributes &= ~FileAttributes.ReadOnly;
+            }
+
+            Directory.Delete(path);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // Three causes and not two, because they cannot be told apart from here: measured,
+            // "not empty" arrives as HRESULT 0x80070091 and a sharing violation as 0x80070020, but
+            // access denied arrives as 0x80131620, a bare COR_E_IO with no Win32 code inside - so a
+            // read-only bit reinstated in a race, a missing delete right and an explicit denial are
+            // one indistinguishable bucket.
+            throw new InvalidOperationException(
+                $"The credential directory '{path}' is not owned by SYSTEM or the administrators, " +
+                "and Observer could not replace it with one that is. NOTHING WAS DELETED: the " +
+                "removal is not recursive, so it cannot remove a file. Three causes are possible " +
+                "and cannot be told apart from here: a file appeared in the directory while this " +
+                "was running; a process is holding the directory open, including any process whose " +
+                "current directory is inside it; or the directory is marked read-only again, or " +
+                "SYSTEM lacks the right to remove it. Look at the directory, then restart.",
+                error);
+        }
+
+        Create(path);
     }
 
     /// <summary>Whether the directory holds nothing at all.</summary>
@@ -280,30 +381,29 @@ public static class WindowsDirectoryTrust
         }
     }
 
-    private static void Repair(string path, DirectoryVerdict verdict)
+    /// <summary>Rewrites the permissions of a trusted-owner directory, leaving its contents.</summary>
+    /// <param name="path">The directory to repair.</param>
+    /// <remarks>
+    /// One call now, where there used to be two. It used to take the OWNERSHIP first and then the
+    /// DACL, because fixing the DACL under an untrusted owner achieves nothing — the owner holds
+    /// implicit WRITE_DAC and undoes it at once — and the gap between those two calls was the race
+    /// this whole file was rewritten to close. An untrusted owner no longer comes here at all; see
+    /// <see cref="Replace"/>. So the ordering problem does not need mitigating, it is gone, and what
+    /// is left is the one case where the owner is already trusted and only the permissions drifted.
+    /// </remarks>
+    private static void Repair(string path)
     {
-        DirectoryInfo info = new(path);
-
         try
         {
-            if (verdict == DirectoryVerdict.UntrustedOwner)
-            {
-                // OWNERSHIP first. Fixing the DACL while leaving the owner as it is
-                // achieves nothing: it has implicit WRITE_DAC and undoes it right away.
-                DirectorySecurity ownership = new();
-                ownership.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
-                info.SetAccessControl(ownership);
-            }
-
-            info.SetAccessControl(SecurityDescriptor());
+            new DirectoryInfo(path).SetAccessControl(SecurityDescriptor());
         }
         catch (Exception error) when (error is UnauthorizedAccessException or InvalidOperationException)
         {
             throw new InvalidOperationException(
-                $"The credential directory '{path}' can't hold a secret ({verdict}), and " +
-                "this process lacks the rights to repair it. The machine token would be " +
-                "readable by other accounts on this machine. Run the service as LocalSystem, " +
-                $"or delete '{path}' and let the service recreate it.",
+                $"The credential directory '{path}' can't hold a secret, and this process lacks the " +
+                "rights to repair its permissions. The machine token would be readable by other " +
+                $"accounts on this machine. Run the service as LocalSystem, or delete '{path}' and " +
+                "let the service recreate it.",
                 error);
         }
     }
