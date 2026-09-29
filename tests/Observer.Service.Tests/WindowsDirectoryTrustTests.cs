@@ -114,18 +114,19 @@ public class WindowsDirectoryTrustTests
     }
 
     [WindowsOnly]
-    public void AnUntrustedButEMPTYDirectoryIsStillRepairedAndNotRefused()
+    public void AnUntrustedButEMPTYDirectoryIsNotRefusedByTheGuard()
     {
         // The other half of the rule: squatting a folder NAME must not keep the monitor from ever
-        // starting, so an untrusted directory with nothing in it is repaired and not refused.
+        // starting, so an untrusted directory with nothing in it is dealt with rather than refused.
+        // It is REPLACED, not repaired - the name of this test used to say repaired, which stopped
+        // being true when the container started being thrown away instead of fixed in place.
         //
-        // What comes out of the repair afterwards is NOT asserted, because it is not the same
-        // everywhere and that is a property of the machine, not of the rule: unelevated the repair
-        // cannot finish (SetOwner to Administrators needs privileges only LocalSystem has), while
-        // elevated it finishes and then ConfirmSafe objects, since the descriptor it writes grants
-        // the current account, which OnlySystemIsTrusted does not name. What is asserted is the one
-        // thing true in both: the refusal is never the GUARD'S. Deleting "&& !IsEmpty(path)" makes
-        // the guard fire here, and this is the only witness that clause has.
+        // What comes out afterwards is NOT asserted, because it is not the same everywhere and that
+        // is a property of the machine, not of the rule: ConfirmSafe objects either way, since the
+        // recreated directory is owned by its creator and OnlySystemIsTrusted does not name that
+        // account. What is asserted is the one thing true in both: the refusal is never the GUARD'S.
+        // Deleting "&& !IsEmpty(path)" makes the guard fire here, and this is the only witness that
+        // clause has.
         string path = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
         Directory.CreateDirectory(path);
 
@@ -138,6 +139,116 @@ public class WindowsDirectoryTrustTests
                 "is not empty",
                 refusal?.Message ?? string.Empty,
                 StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(path, recursive: true);
+        }
+    }
+
+    [WindowsOnly]
+    public void AnUntrustedEmptyDirectoryIsREPLACEDAndNotRepairedInPlace()
+    {
+        // The race this closes: repairing an untrusted directory in place took TWO calls in a fixed
+        // order - owner first, DACL second, because the other order achieves nothing under an owner
+        // with implicit WRITE_DAC - and until the second landed, the old owner could still create a
+        // file that ConfirmSafe would not notice, since it re-reads only the owner and the DACL.
+        //
+        // The witness is an ALTERNATE DATA STREAM on the directory, and it is chosen because it is
+        // the one probe that does not depend on the session. Measured: it enumerates as ZERO entries,
+        // so IsEmpty stays true and the guard still lets this through; it SURVIVES the old
+        // SetOwner + SetAccessControl repair; and it is destroyed when the directory is removed. So
+        // the stream being gone means the container was replaced, and the stream still being there
+        // means it was repaired in place. Asserting on the DACL instead would be a false green on an
+        // elevated runner, where the directory is already owned by BUILTIN\Administrators and the old
+        // repair therefore succeeded and left it protected anyway.
+        string path = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
+        Directory.CreateDirectory(path);
+        string witness = path + ":observer-witness";
+        File.WriteAllText(witness, "written before Prepare ran");
+
+        Assert.True(File.Exists(witness), "this volume does not support alternate data streams");
+        Assert.Empty(Directory.EnumerateFileSystemEntries(path));
+
+        try
+        {
+            // ConfirmSafe refuses afterwards in both environments, because the recreated directory
+            // belongs to its creator and OnlySystemIsTrusted does not name that account. That is not
+            // what is under test.
+            Record.Exception(() => WindowsDirectoryTrust.Prepare(path, OnlySystemIsTrusted));
+
+            Assert.False(File.Exists(witness), "the directory was repaired in place, not replaced");
+        }
+        finally
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+    }
+
+    [WindowsOnly]
+    public void AREADONLYEmptyDirectoryIsStillReplacedInsteadOfStoppingTheService()
+    {
+        // The line that decides whether replacing is a fix or an outage. MEASURED, unelevated: an
+        // EMPTY directory carrying the ReadOnly attribute makes RemoveDirectory fail with access
+        // denied, and it keeps failing under a DACL that grants the caller full control, because the
+        // read-only bit is a rule in the delete disposition and not an access check. A standard user
+        // creates the directory, is its CREATOR OWNER and so holds WRITE_ATTRIBUTES, runs
+        // "attrib +r" and walks away: no privilege, no running process, and without clearing that
+        // bit the service would never start again, retried every five seconds forever.
+        string path = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
+        DirectoryInfo info = Directory.CreateDirectory(path);
+        string witness = path + ":observer-witness";
+        File.WriteAllText(witness, "written before Prepare ran");
+        info.Attributes |= FileAttributes.ReadOnly;
+
+        try
+        {
+            Exception? refusal = Record.Exception(
+                () => WindowsDirectoryTrust.Prepare(path, OnlySystemIsTrusted));
+
+            // Replaced, not refused for being read-only: the witness is gone, and whatever ConfirmSafe
+            // then said, it did not say the directory could not be removed.
+            Assert.False(File.Exists(witness), "the read-only bit stopped the replacement");
+            Assert.DoesNotContain(
+                "could not replace it",
+                refusal?.Message ?? string.Empty,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(path))
+            {
+                new DirectoryInfo(path).Attributes &= ~FileAttributes.ReadOnly;
+                Directory.Delete(path, recursive: true);
+            }
+        }
+    }
+
+    [WindowsOnly]
+    public void ANonRecursiveDeleteIsWhatPROVESTheDirectoryWasEmpty()
+    {
+        // The platform fact the whole replacement rests on, pinned here so nobody has to re-measure
+        // it. What this does NOT pin is the call site: adding "recursive: true" in Replace leaves
+        // every test in this suite green, because the guard refuses a non-empty directory before
+        // Replace is ever reached, so the flag only matters inside the race window and no test can
+        // stand in that window. The flag is protected by the comment on Replace, not by a test.
+        //
+        // The HResult and NOT the message: the message is localised, and on this machine it reads
+        // "La directory non e' vuota".
+        string path = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
+        Directory.CreateDirectory(path);
+        string store = Path.Combine(path, CredentialDirectory.FileName);
+        File.WriteAllText(store, """{"current":"planted"}""");
+
+        try
+        {
+            IOException error = Assert.Throws<IOException>(() => Directory.Delete(path));
+
+            Assert.Equal(unchecked((int)0x80070091), error.HResult);   // ERROR_DIR_NOT_EMPTY
+            Assert.True(File.Exists(store), "a failed non-recursive delete must leave everything");
         }
         finally
         {
@@ -170,8 +281,12 @@ public class WindowsDirectoryTrustTests
         // A junction is created by a standard user with NO privileges: no
         // SeCreateSymbolicLinkPrivilege, no developer mode. If the service did not recognise it,
         // it would "secure" the attacker's directory and store the machine token inside it.
-        string target = Path.Combine(Path.GetTempPath(), "obs-target-" + Guid.NewGuid().ToString("N")[..8]);
-        string junction = Path.Combine(Path.GetTempPath(), "obs-junction-" + Guid.NewGuid().ToString("N")[..8]);
+        // NEITHER NAME CONTAINS "junction", and that is not tidiness. Every refusal in this file
+        // interpolates the path, so while the link was called "obs-junction-..." the assertion below
+        // was satisfied by ANY refusal raised for it - including the wrong one - and the misordering
+        // this test exists to catch went undetected.
+        string target = Path.Combine(Path.GetTempPath(), "obs-tgt-" + Guid.NewGuid().ToString("N")[..8]);
+        string junction = Path.Combine(Path.GetTempPath(), "obs-lnk-" + Guid.NewGuid().ToString("N")[..8]);
 
         Directory.CreateDirectory(target);
 
@@ -207,7 +322,9 @@ public class WindowsDirectoryTrustTests
             InvalidOperationException error =
                 Assert.Throws<InvalidOperationException>(() => WindowsDirectoryTrust.Prepare(junction));
 
-            Assert.Contains("junction", error.Message, StringComparison.OrdinalIgnoreCase);
+            // The whole phrase, which only the reparse-point refusal contains. "junction" alone also
+            // appears in any other refusal, because they all name the path.
+            Assert.Contains("junction or symbolic link", error.Message, StringComparison.Ordinal);
         }
         finally
         {

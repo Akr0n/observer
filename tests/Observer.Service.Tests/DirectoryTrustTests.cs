@@ -131,9 +131,11 @@ public class DirectoryTrustTests
         // Nothing is inside a directory that does not exist.
         Assert.True(DirectoryVerdict.Missing.ContentsHaveTrustedAuthor());
 
-        // The owner IS trusted here, so the container was made by a trusted principal and only its
-        // permissions drifted. Refusing would stop a healthy monitor over an icacls /reset.
-        Assert.True(DirectoryVerdict.OpenDacl.ContentsHaveTrustedAuthor());
+        // OpenDacl is NOT trusted, and the tempting argument for trusting it is wrong on a default
+        // machine: C:\ProgramData grants BUILTIN\Users:(CI)(WD,AD,WEA,WA) with no inherit-only flag,
+        // measured, so a subdirectory that merely inherits is writable by EVERY account. A store
+        // found behind an open DACL may have been planted by anyone, with no race and no privilege.
+        Assert.False(DirectoryVerdict.OpenDacl.ContentsHaveTrustedAuthor());
 
         // The case that costs nothing to reach: a standard user creates a subdirectory of
         // ProgramData, owns it, and plants a token before the service has ever run.
@@ -146,9 +148,10 @@ public class DirectoryTrustTests
         Assert.False(DirectoryVerdict.ReparsePoint.ContentsHaveTrustedAuthor());
 
         // Totality, as a COUNT and not as a copy of the implementation's own pattern: restating
-        // "Safe or Missing or OpenDacl" here would be the same expression twice and could not fail.
-        // A seventh verdict, or a change of mind about one of the six, moves this number.
-        Assert.Equal(3, Enum.GetValues<DirectoryVerdict>().Count(v => v.ContentsHaveTrustedAuthor()));
+        // "Safe or Missing" here would be the same expression twice and could not fail. A seventh
+        // verdict, or a change of mind about one of the six, moves this number. It moved once
+        // already, from 3 to 2, when OpenDacl was taken out.
+        Assert.Equal(2, Enum.GetValues<DirectoryVerdict>().Count(v => v.ContentsHaveTrustedAuthor()));
     }
 
     [Fact]
@@ -175,15 +178,17 @@ public class DirectoryTrustTests
     [Fact]
     public void TheTwoQuestionsAboutADirectoryAreNotTheSameQuestion()
     {
-        // Collapsing them is the tempting simplification, and it breaks in both directions: an
-        // OpenDacl directory may not hold the secret until it is repaired, yet a store already in
-        // it was written by a trusted principal; a Missing one holds nothing and cannot be adopted
-        // from, yet has nothing untrusted in it either.
-        Assert.False(DirectoryVerdict.OpenDacl.CanHoldSecret());
-        Assert.True(DirectoryVerdict.OpenDacl.ContentsHaveTrustedAuthor());
-
+        // Collapsing them is the tempting simplification, and Missing is where it breaks: the
+        // directory cannot hold the secret yet, because it does not exist, and at the same time
+        // there is nothing untrusted inside it, because there is nothing inside it at all. One
+        // question is about the future of the container, the other about the past of its contents.
         Assert.False(DirectoryVerdict.Missing.CanHoldSecret());
         Assert.True(DirectoryVerdict.Missing.ContentsHaveTrustedAuthor());
+
+        // And Safe is the only verdict for which both are true, which is what makes "was already
+        // Safe" the whole adoption rule.
+        Assert.True(DirectoryVerdict.Safe.CanHoldSecret());
+        Assert.True(DirectoryVerdict.Safe.ContentsHaveTrustedAuthor());
     }
 
     private static DirectoryFacts Facts(
