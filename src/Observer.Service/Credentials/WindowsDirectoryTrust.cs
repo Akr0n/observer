@@ -139,11 +139,12 @@ public static class WindowsDirectoryTrust
     /// has to come BEFORE the repair rather than after it.
     /// </para>
     /// <para>
-    /// AND WHEN IT IS EMPTY, the container is REPLACED rather than repaired — see
-    /// <see cref="Replace"/>. Repairing an untrusted directory in place needed two calls in a fixed
-    /// order, and the gap between them was a race that adopted whatever was created in it. Replacing
-    /// leaves no such gap. Only a directory whose owner is already trusted is still repaired, with
-    /// its contents left alone.
+    /// AND WHEN IT IS EMPTY, the container is REPLACED rather than repaired — always, whatever the
+    /// verdict, see <see cref="Replace"/>. Repairing in place needed two calls in a fixed order, and
+    /// the gap between them was a race that adopted whatever was created in it. There is no longer a
+    /// second branch that repairs: a trusted owner whose DACL merely drifted would have exactly the
+    /// same gap, because an inheriting DACL under <c>C:\ProgramData</c> grants
+    /// <c>BUILTIN\Users</c> write.
     /// </para>
     /// </remarks>
     public static void Prepare(string path) => Prepare(path, TrustedSids());
@@ -200,42 +201,48 @@ public static class WindowsDirectoryTrust
         // and report on the contents of whoever planted the link.
         if (!verdict.MayAdoptContents(IsEmpty(path)))
         {
+            // The message must fit every verdict that reaches here, and NOT assert who the owner is.
+            // OpenDacl means the owner IS trusted and the permissions are not; Unknown means the
+            // owner could not be read at all; only UntrustedOwner is about ownership. Naming the
+            // wrong one sends the operator to fix something that is already right.
             throw new InvalidOperationException(
-                $"The credential directory '{path}' is not empty, and it is not owned by SYSTEM or " +
-                $"the administrators ({verdict}) - where the verdict is Unknown, its owner could " +
-                "not be read at all. Observer will not secure it and will not read what is in it: " +
-                "a machine token or certificate found in a directory whose owner cannot be " +
-                "accounted for was chosen by whoever does own it, and the token is valid FROM THE " +
-                "NETWORK. Nothing has been changed here, so the files are exactly as you left " +
-                "them. If you did not put them there, delete them and restart, and the service " +
-                "will generate its own. If you did - a store copied in by hand or restored from a " +
-                "backup is owned by the account that copied it, not by Administrators - give the " +
-                "directory back to SYSTEM or Administrators AND protect its permissions so no other " +
-                "account is granted - handing back the ownership alone leaves the DACL inheriting " +
-                "from ProgramData, which every account on the machine can write - and the service " +
-                "will adopt them.");
+                $"The credential directory '{path}' is not empty, and as it stands nothing vouches " +
+                $"for what is in it ({verdict}): its owner is not SYSTEM or the administrators, or " +
+                "its permissions let other accounts write, or neither could be read. Observer will " +
+                "not secure it and will not read what is in it: a machine token or certificate " +
+                "found there was chosen by whoever could write it, and the token is valid FROM THE " +
+                "NETWORK. Nothing has been changed here, so the files are exactly as you left them. " +
+                "If you did not put them there, delete them and restart, and the service will " +
+                "generate its own. If you did - a store copied in by hand or restored from a backup " +
+                "belongs to the account that copied it - then give the directory to SYSTEM or " +
+                "Administrators AND protect its permissions so no other account is granted. Both, " +
+                "not either: ownership alone leaves the permissions inheriting from ProgramData, " +
+                "which every account on this machine can write, and the service would refuse again. " +
+                "Be sure before you do that, because it is the one action that ADOPTS what is " +
+                "already in the directory: nothing here can tell your file from a planted one, only " +
+                "you can, and the token in it is valid from the network.");
         }
 
-        // Only an empty directory reaches here, and the two branches differ in ONE thing: whether
-        // anything inside has to survive.
+        // Only an EMPTY directory reaches here, and it is always REPLACED, whatever the verdict.
         //
-        // An untrusted OWNER, or an owner that could not even be read, is not repaired IN PLACE. It
-        // used to be, and that was a race: Repair has to set the owner first and the DACL second -
-        // the other order achieves nothing, because an owner holds implicit WRITE_DAC - so until the
-        // second call landed, whoever owned the directory could still create a file in it, and
-        // ConfirmSafe would not notice, because it re-reads the owner and the DACL, which are
-        // exactly the two things Repair just fixed. Replacing the container removes the window
-        // instead of narrowing it.
-        if (!verdict.ContentsHaveTrustedAuthor())
-        {
-            Replace(path);
-        }
-        else
-        {
-            // A trusted owner whose DACL merely drifted: the contents stay, so the permissions are
-            // rewritten in place. This is the only verdict that still reaches Repair.
-            Repair(path);
-        }
+        // It used to be repaired in place, and that was the race this commit closes: Repair had to
+        // set the owner first and the DACL second - the other order achieves nothing, because an
+        // owner holds implicit WRITE_DAC - so until the second call landed, whoever could write the
+        // directory still could, and ConfirmSafe would not notice, because it re-reads the owner and
+        // the DACL, which are exactly the two things Repair just fixed.
+        //
+        // AND THAT APPLIES TO OpenDacl TOO, which is why there is no second branch and no Repair any
+        // more. The tempting version of this code repairs a trusted-owner directory in place, on the
+        // grounds that only its permissions drifted. But an inheriting DACL on a child of
+        // C:\ProgramData grants BUILTIN\Users write - measured - so exactly the same window exists
+        // there, and for exactly as many accounts. An empty container is worth nothing; replacing it
+        // is cheaper to reason about than proving a repair is safe.
+        //
+        // The cost, which is real: replacing needs the directory to be REMOVABLE, and repairing did
+        // not. A process holding it open - an operator's shell sitting in the folder they were just
+        // running icacls in - now produces a refusal where a repair would have succeeded, and a
+        // volume root or mount point cannot be removed at all. Replace's message names those causes.
+        Replace(path, verdict);
 
         ConfirmSafe(path, trustedSids);
     }
@@ -261,10 +268,12 @@ public static class WindowsDirectoryTrust
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             throw new InvalidOperationException(
-                $"Observer could not create its credential directory at '{path}'. The usual cause " +
-                "is that something which is NOT a directory sits at that path: a standard user can " +
+                $"Observer could not create its credential directory at '{path}'. The usual cause is " +
+                "that something which is NOT a directory sits at that path: a standard user can " +
                 "create a file directly in C:\\ProgramData, measured, and a file there stops the " +
-                "service at every start. Check what is at that path and remove it.",
+                "service at every start. If a directory was there a moment ago, it has been removed " +
+                "- it held nothing, or the removal would have failed - and the service will create " +
+                "the directory on the next start. Check what is at that path, then restart.",
                 error);
         }
     }
@@ -298,13 +307,17 @@ public static class WindowsDirectoryTrust
     /// in a race, so a permanent passive denial of service becomes an active one.
     /// </para>
     /// </remarks>
-    private static void Replace(string path)
+    private static void Replace(string path, DirectoryVerdict verdict)
     {
         try
         {
             DirectoryInfo info = new(path);
 
-            if (info.Attributes.HasFlag(FileAttributes.ReadOnly))
+            // Attributes on a path that no longer exists returns (FileAttributes)-1 rather than
+            // throwing - every bit set, read-only among them - so the existence check comes first.
+            // Without it a directory that vanished a moment ago would be "cleared" and then produce
+            // a refusal about permissions, for what is really a race with something else.
+            if (info.Exists && info.Attributes.HasFlag(FileAttributes.ReadOnly))
             {
                 info.Attributes &= ~FileAttributes.ReadOnly;
             }
@@ -319,13 +332,15 @@ public static class WindowsDirectoryTrust
             // read-only bit reinstated in a race, a missing delete right and an explicit denial are
             // one indistinguishable bucket.
             throw new InvalidOperationException(
-                $"The credential directory '{path}' is not owned by SYSTEM or the administrators, " +
-                "and Observer could not replace it with one that is. NOTHING WAS DELETED: the " +
-                "removal is not recursive, so it cannot remove a file. Three causes are possible " +
-                "and cannot be told apart from here: a file appeared in the directory while this " +
-                "was running; a process is holding the directory open, including any process whose " +
-                "current directory is inside it; or the directory is marked read-only again, or " +
-                "SYSTEM lacks the right to remove it. Look at the directory, then restart.",
+                $"The credential directory '{path}' cannot hold a secret as it stands ({verdict}), " +
+                "and Observer could not replace it with one that can. No file was deleted: the " +
+                "removal is not recursive, so it cannot remove one. Its read-only flag may have been " +
+                "cleared, which is the only change made here. Four causes are possible and cannot be " +
+                "told apart from here: a file appeared in the directory while this was running; a " +
+                "process is holding it open, including any process whose current directory is inside " +
+                "it; the read-only flag was set again; or the directory cannot be removed at all, " +
+                "which is the case for a volume root or a mount point, or if SYSTEM lacks the right. " +
+                "Look at the directory, then restart.",
                 error);
         }
 
@@ -378,33 +393,6 @@ public static class WindowsDirectoryTrust
                 $"The credential directory '{path}' is still not safe after being prepared " +
                 $"({verdict}). Another process may have created it first. The machine token " +
                 "will not be written.");
-        }
-    }
-
-    /// <summary>Rewrites the permissions of a trusted-owner directory, leaving its contents.</summary>
-    /// <param name="path">The directory to repair.</param>
-    /// <remarks>
-    /// One call now, where there used to be two. It used to take the OWNERSHIP first and then the
-    /// DACL, because fixing the DACL under an untrusted owner achieves nothing — the owner holds
-    /// implicit WRITE_DAC and undoes it at once — and the gap between those two calls was the race
-    /// this whole file was rewritten to close. An untrusted owner no longer comes here at all; see
-    /// <see cref="Replace"/>. So the ordering problem does not need mitigating, it is gone, and what
-    /// is left is the one case where the owner is already trusted and only the permissions drifted.
-    /// </remarks>
-    private static void Repair(string path)
-    {
-        try
-        {
-            new DirectoryInfo(path).SetAccessControl(SecurityDescriptor());
-        }
-        catch (Exception error) when (error is UnauthorizedAccessException or InvalidOperationException)
-        {
-            throw new InvalidOperationException(
-                $"The credential directory '{path}' can't hold a secret, and this process lacks the " +
-                "rights to repair its permissions. The machine token would be readable by other " +
-                $"accounts on this machine. Run the service as LocalSystem, or delete '{path}' and " +
-                "let the service recreate it.",
-                error);
         }
     }
 

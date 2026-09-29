@@ -114,10 +114,12 @@ public class WindowsDirectoryTrustTests
     }
 
     [WindowsOnly]
-    public void AnUntrustedButEMPTYDirectoryIsStillRepairedAndNotRefused()
+    public void AnUntrustedButEMPTYDirectoryIsNotRefusedByTheGuard()
     {
         // The other half of the rule: squatting a folder NAME must not keep the monitor from ever
-        // starting, so an untrusted directory with nothing in it is repaired and not refused.
+        // starting, so an untrusted directory with nothing in it is dealt with rather than refused.
+        // It is REPLACED, not repaired - the name of this test used to say repaired, which stopped
+        // being true when the container started being thrown away instead of fixed in place.
         //
         // What comes out afterwards is NOT asserted, because it is not the same everywhere and that
         // is a property of the machine, not of the rule: ConfirmSafe objects either way, since the
@@ -229,8 +231,13 @@ public class WindowsDirectoryTrustTests
     public void ANonRecursiveDeleteIsWhatPROVESTheDirectoryWasEmpty()
     {
         // The platform fact the whole replacement rests on, pinned here so nobody has to re-measure
-        // it and nobody can quietly turn the delete recursive. The HResult and NOT the message: the
-        // message is localised, and on this machine it reads "La directory non e' vuota".
+        // it. What this does NOT pin is the call site: adding "recursive: true" in Replace leaves
+        // every test in this suite green, because the guard refuses a non-empty directory before
+        // Replace is ever reached, so the flag only matters inside the race window and no test can
+        // stand in that window. The flag is protected by the comment on Replace, not by a test.
+        //
+        // The HResult and NOT the message: the message is localised, and on this machine it reads
+        // "La directory non e' vuota".
         string path = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
         Directory.CreateDirectory(path);
         string store = Path.Combine(path, CredentialDirectory.FileName);
@@ -274,8 +281,12 @@ public class WindowsDirectoryTrustTests
         // A junction is created by a standard user with NO privileges: no
         // SeCreateSymbolicLinkPrivilege, no developer mode. If the service did not recognise it,
         // it would "secure" the attacker's directory and store the machine token inside it.
-        string target = Path.Combine(Path.GetTempPath(), "obs-target-" + Guid.NewGuid().ToString("N")[..8]);
-        string junction = Path.Combine(Path.GetTempPath(), "obs-junction-" + Guid.NewGuid().ToString("N")[..8]);
+        // NEITHER NAME CONTAINS "junction", and that is not tidiness. Every refusal in this file
+        // interpolates the path, so while the link was called "obs-junction-..." the assertion below
+        // was satisfied by ANY refusal raised for it - including the wrong one - and the misordering
+        // this test exists to catch went undetected.
+        string target = Path.Combine(Path.GetTempPath(), "obs-tgt-" + Guid.NewGuid().ToString("N")[..8]);
+        string junction = Path.Combine(Path.GetTempPath(), "obs-lnk-" + Guid.NewGuid().ToString("N")[..8]);
 
         Directory.CreateDirectory(target);
 
@@ -311,7 +322,9 @@ public class WindowsDirectoryTrustTests
             InvalidOperationException error =
                 Assert.Throws<InvalidOperationException>(() => WindowsDirectoryTrust.Prepare(junction));
 
-            Assert.Contains("junction", error.Message, StringComparison.OrdinalIgnoreCase);
+            // The whole phrase, which only the reparse-point refusal contains. "junction" alone also
+            // appears in any other refusal, because they all name the path.
+            Assert.Contains("junction or symbolic link", error.Message, StringComparison.Ordinal);
         }
         finally
         {

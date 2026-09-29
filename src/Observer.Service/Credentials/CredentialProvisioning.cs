@@ -69,14 +69,25 @@ public sealed record ProvisionedCredentials(
 /// operator's token together with the evidence of an attempt, and quarantining it would silently cut
 /// off every paired dashboard in the case where the file is genuine. An EMPTY directory is a
 /// different question: nothing can be adopted from one, so it is REPLACED with a protected directory
-/// and the service starts — which is what keeps squatting a folder name from stopping the monitor for
-/// good.
+/// and the service starts.
 /// </para>
 /// <para>
-/// WHAT THE RULE COSTS, stated properly because the obvious guess is wrong. It is not the drifted
-/// DACL — that case is deliberately exempt. It is a store that an ADMINISTRATOR put here by hand:
-/// only two SIDs are trusted, <c>S-1-5-18</c> and <c>S-1-5-32-544</c>, and on Windows the default
-/// owner of a new object is its CREATOR, not the Administrators group. So a
+/// THAT DOES NOT MAKE SQUATTING HARMLESS, and an earlier draft of this paragraph claimed it did. The
+/// emptiness check counts subdirectories as well as files, so a standard user who creates
+/// <c>C:\ProgramData\Observer</c> AND puts anything at all inside it produces a non-empty directory
+/// nothing vouches for, which is refused at every start, forever, with no privilege and no running
+/// process. Only the EMPTY squat is absorbed. That is not an oversight to be fixed later: refusing is
+/// the whole point, and a monitor held down by a refusal it explains is the accepted price of not
+/// serving a key an attacker chose. What must not happen is claiming the class is closed.
+/// </para>
+/// <para>
+/// WHAT THE RULE COSTS. Two cases, and the second is the one nobody guesses. The first IS the drifted
+/// DACL, which an earlier draft of this paragraph claimed was exempt — it is not, and the exemption
+/// was the defect: an inheriting DACL under <c>C:\ProgramData</c> grants <c>BUILTIN\Users</c> write,
+/// measured, so a store found behind one may have been planted by any account on the machine and is
+/// refused like any other. The second is a store that an ADMINISTRATOR put here by hand: only two
+/// SIDs are trusted, <c>S-1-5-18</c> and <c>S-1-5-32-544</c>, and on Windows the default owner of a
+/// new object is its CREATOR, not the Administrators group. So a
 /// <c>credentials.json</c> restored from a backup, re-copied with <c>robocopy</c> without
 /// <c>/copyall</c>, or dragged in through Explorer is owned by that admin's own account, and the
 /// service will refuse to start — in a five-second restart loop, since nothing self-heals by
@@ -105,7 +116,9 @@ public sealed record ProvisionedCredentials(
 /// because <c>Observer:CredentialStorePath</c> can point anywhere, replacing the container means
 /// LocalSystem will remove an EMPTY untrusted directory at whatever path is configured — a new
 /// destructive act in a file whose rule is never to delete a store, bounded to a directory the
-/// operating system itself proved empty.
+/// operating system itself proved empty — and reachable not only at start-up, because
+/// <c>CredentialSource.Reload</c> calls <c>Prepare</c> on every reload, so a running service can take
+/// that action too.
 /// </para>
 /// <para>
 /// On Linux none of it is reachable: <c>/etc</c> is root-only, so planting takes root, and root
