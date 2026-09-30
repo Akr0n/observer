@@ -135,19 +135,22 @@ public static class Diagnosis
             "NOT PROTECTED - other accounts on this machine can read it, and on a default machine " +
             "they can WRITE it as well, because ProgramData grants that by inheritance. Anyone who " +
             "reads it gets permanent access to this machine FROM THE NETWORK. If the directory is " +
-            "not empty the service refuses to start rather than adopt a token anyone could have " +
-            "put there: protect its permissions so no other account is granted, then restart.",
+            "NOT empty the service will refuse to start and will change nothing, because a token " +
+            "or certificate found here cannot be shown to be its own. Protect its permissions so " +
+            "that only SYSTEM and Administrators are granted, then restart - and only if the " +
+            "files inside are yours, because that step makes the service trust them. If it IS " +
+            "empty the service replaces it with a protected one and starts.",
         DirectoryVerdict.UntrustedOwner =>
             "FALSELY PROTECTED - the permissions may name only SYSTEM and Administrators, but the " +
             "OWNER is an ordinary account, and an owner can grant itself access again whenever " +
             "it likes. This looks safe and is not. If the directory is NOT empty the service will " +
             "refuse to start and will change nothing, because a token or certificate found here " +
-            "cannot be shown to be its own - a store copied in by hand or restored from a backup " +
-            "belongs to the account that copied it. Give the directory back to SYSTEM or " +
-            "Administrators AND protect its permissions so no other account is granted: handing " +
-            "back the ownership alone leaves the permissions inheriting from ProgramData, which " +
-            "every account on this machine can write, and the service would refuse again. If the " +
-            "directory IS empty the service replaces it with a protected one and starts.",
+            "cannot be shown to be its own: the folder was recreated by hand, restored without " +
+            "its permissions, or left by a service run by hand. Make the Administrators group " +
+            "the owner AND protect the permissions: ownership alone leaves them inheriting from " +
+            "ProgramData, which every account on this machine can write, and the service would " +
+            "refuse again. Do it only if the files inside are yours. If the directory IS empty " +
+            "the service replaces it with a protected one and starts.",
         DirectoryVerdict.ReparsePoint =>
             "HIJACKED - the path is a junction or symbolic link, so the token would be written " +
             "wherever it points. A standard user can create one without any privilege. Remove it.",

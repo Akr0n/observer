@@ -207,20 +207,23 @@ public static class WindowsDirectoryTrust
             // wrong one sends the operator to fix something that is already right.
             throw new InvalidOperationException(
                 $"The credential directory '{path}' is not empty, and as it stands nothing vouches " +
-                $"for what is in it ({verdict}): its owner is not SYSTEM or the administrators, or " +
-                "its permissions let other accounts write, or neither could be read. Observer will " +
-                "not secure it and will not read what is in it: a machine token or certificate " +
-                "found there was chosen by whoever could write it, and the token is valid FROM THE " +
-                "NETWORK. Nothing has been changed here, so the files are exactly as you left them. " +
-                "If you did not put them there, delete them and restart, and the service will " +
-                "generate its own. If you did - a store copied in by hand or restored from a backup " +
-                "belongs to the account that copied it - then give the directory to SYSTEM or " +
-                "Administrators AND protect its permissions so no other account is granted. Both, " +
-                "not either: ownership alone leaves the permissions inheriting from ProgramData, " +
-                "which every account on this machine can write, and the service would refuse again. " +
-                "Be sure before you do that, because it is the one action that ADOPTS what is " +
-                "already in the directory: nothing here can tell your file from a planted one, only " +
-                "you can, and the token in it is valid from the network.");
+                $"for what is in it ({verdict}): its owner is not SYSTEM or the Administrators " +
+                "group, or its permissions let other accounts write, or neither could be read. " +
+                "Observer will not secure it and will not read what is in it: a machine token or " +
+                "certificate found there was chosen by whoever could write it, and the token is " +
+                "valid FROM THE NETWORK. Nothing has been changed here, so the files are exactly " +
+                "as you left them. If you did not put them there, delete the folder and restart, " +
+                "and the service will create its own with a new token and certificate. If you did " +
+                "- the folder was recreated by hand, restored from a backup without its " +
+                "permissions, or left by the service run by hand or under another account - then, " +
+                "from an elevated prompt, make the Administrators group the owner AND protect the " +
+                "permissions so that only SYSTEM and Administrators are granted. Both, not either: " +
+                "ownership alone leaves the permissions inheriting from ProgramData, which every " +
+                "account on this machine can write, and removing inheritance alone leaves a folder " +
+                "nobody can read. The README, section Packages, has the exact icacls lines. Be " +
+                "sure before you do that, because it is the one action that ADOPTS what is already " +
+                "in the folder: nothing here can tell your file from a planted one, only you can, " +
+                "and the token in it is valid from the network.");
         }
 
         // Only an EMPTY directory reaches here, and it is always REPLACED, whatever the verdict.

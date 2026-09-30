@@ -525,17 +525,46 @@ halfway.
 **The service refuses to start if the credential directory holds something nobody can vouch
 for.** On Windows a standard user can create `C:\ProgramData\Observer` and becomes its owner, so a
 `credentials.json` or `certificate.pfx` already inside is adopted only if the directory belongs
-to SYSTEM or the administrators **and** its permissions grant nobody else access. If it does not
-- a foreign owner, or permissions inherited from `ProgramData`, which lets every account write -
-and the directory is not empty, the service stops before touching anything and says why. An empty
-one is replaced by a protected one and the service starts. The usual way to hit this is a store
-copied in by hand or restored from a backup, which belongs to whoever copied it. The way out is
-to give the directory to SYSTEM or the administrators **and** protect its permissions, both:
-ownership alone leaves them inheriting and the refusal comes back. That step adopts what is
-inside, so take it only for files you know are yours; `observer diagnose` says which state the
-directory is in. Before 0.24.1 the service repaired such a directory and then read the file it
-found there, so a local user could choose the machine's network token. Linux was never affected
-with the default path: `/etc` can be written only by root.
+to SYSTEM or the Administrators group **and** its permissions grant nobody else access. If it does
+not - a foreign owner, or permissions that inherit from `ProgramData` (which lets every account
+write) or name another account - and the directory is not empty, the service stops before touching
+anything and says why. An empty one is replaced by a protected one and the service starts. Before
+0.24.1 the service repaired such a directory and then read the file it found there, so a local user
+could choose the machine's network token. Linux was never affected with the default path: `/etc`
+can be written only by root, and the package creates `/etc/observer` for the service's own account.
+
+**What trips it is the directory, not the files in it.** A `credentials.json` copied into the folder
+the service made itself is adopted as before. The refusal fires on a folder made by another hand
+that is not empty: recreated and restored into, restored from a backup without its permissions, or
+left by the service run by hand under any account, elevated or not, or by one that ran under a
+service account other than LocalSystem before an MSI upgrade re-registered it. The reason is written
+to the Windows **Application** event log (source `.NET Runtime`). The MSI starts the service and
+waits for it, so on such a machine an upgrade may stop with error 1920, which does not name the
+cause, and roll back. `observer doctor` says which state the directory is in, but it judges as the
+account that runs it: a folder that same account made reads `PROTECTED` while the service still
+refuses it, so the refusal is what counts.
+
+**The way out.** If the files are not yours, delete the folder as an administrator and run
+`Restart-Service Observer`: the service creates a fresh one with a new token and certificate. If
+they are yours, from an elevated prompt:
+
+```powershell
+icacls "C:\ProgramData\Observer" /setowner "*S-1-5-32-544"
+icacls "C:\ProgramData\Observer" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F"
+```
+
+Both lines, in that order. Ownership alone leaves the permissions inheriting, and removing
+inheritance alone leaves a folder nobody can read, not even the service. If the service was run by
+hand or under another account, that account's own entry survives the second line: add
+`/remove:g "<the account>"` to it. This makes the service trust whatever is inside, so do it only
+for files you know are yours.
+
+**Upgrading does not undo an earlier adoption.** A folder the old service already repaired now
+looks sound, so a token or certificate planted before is kept and used, and nothing records who
+wrote it. If someone else could have created `C:\ProgramData\Observer` before the service first
+started, replace both, certificate first: delete `certificate.pfx`, run `Restart-Service Observer`,
+then `observer rotate-key --now`, which rotates the token only. Every machine that watches this one
+then needs the new fingerprint and token from `observer share`.
 
 The `.deb` also installs `man observer` and `man observer-dashboard`, and it is checked by
 **lintian** in CI: the `pack-linux` job runs it with `--fail-on error,warning` on the package it

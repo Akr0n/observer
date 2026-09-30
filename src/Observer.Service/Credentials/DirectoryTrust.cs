@@ -91,7 +91,7 @@ public static class DirectoryVerdictExtensions
     /// that was ALREADY <see cref="DirectoryVerdict.Safe"/>. The cost is a start failure on a machine
     /// whose credential directory lost its protection, and the recovery is NOT merely giving the
     /// directory back to a trusted owner: the DACL has to be PROTECTED too, or the next start reads
-    /// the same unvouched store. The refusal message says so, and so does <c>observer diagnose</c>.
+    /// the same unvouched store. The refusal message says so, and so does <c>observer doctor</c>.
     /// </para>
     /// </remarks>
     public static bool ContentsHaveTrustedAuthor(this DirectoryVerdict verdict) =>
@@ -110,9 +110,10 @@ public static class DirectoryVerdictExtensions
     /// An EMPTY directory is let through even when nothing vouches for it, so that creating a folder
     /// cannot stop the monitor from ever starting — a denial of service any standard user could
     /// mount, against the one program whose not running is the worst outcome it has. There is
-    /// nothing to adopt in an empty directory, which is what makes that safe to allow. What it is
-    /// NOT safe against is a file appearing DURING the repair that follows: see the note at that
-    /// call site.
+    /// nothing to adopt in an empty directory, which is what makes that safe to allow. What could
+    /// still go wrong is a file appearing while the directory is being made safe, and that is why
+    /// it is REPLACED and not repaired in place: see <c>WindowsDirectoryTrust.Replace</c>, which
+    /// says why no interleaving adopts anything.
     /// </para>
     /// </remarks>
     public static bool MayAdoptContents(this DirectoryVerdict verdict, bool isEmpty) =>
