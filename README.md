@@ -340,7 +340,7 @@ not name its own cause.
 | `observer share` | yes | shows the machine token and the fingerprint, to configure ANOTHER computer |
 | `observer rotate-key` | yes | generates a new key; the previous one stays valid for another 24 hours, and the service uses the old one until it is restarted |
 | `observer rotate-key --now` | yes | for a key that has **leaked**: no previous key is kept, and the running service is told to adopt the new store immediately |
-| `observer doctor` | no | where the credential store is, how it is protected, and whether the local channel answers |
+| `observer doctor` | no | where the credential store is, how it is protected, and whether the local channel answers; on Linux also who owns the store file and its directory, with the commands that repair a file left to the wrong account (from an ordinary account the file's owner is out of reach: `sudo observer doctor`) |
 | `observer token set NAME` | no | keeps the token of ANOTHER machine; it reads it from standard input and does not show it |
 | `observer token forget NAME` | no | forgets that token |
 
