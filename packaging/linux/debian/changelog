@@ -1,3 +1,35 @@
+observer (0.24.4) unstable; urgency=low
+
+  * Windows only: the message the service writes when it refuses a
+    credential directory nothing vouches for no longer suggests
+    "takeown ... /D Y". The /D option takes the letter for "yes" of the
+    language of Windows, and the Y is rejected as a syntax error on every
+    Windows that is not English, on the one line meant for the case
+    where Windows refuses to delete the folder (measured on Italian
+    Windows). The message now says "takeown /F <folder> /A /R" and that
+    it may ask a yes/no question in the language of Windows: answer yes.
+  * The same message now says that a folder the service cannot list
+    counts as not empty. An empty folder whose owner took SYSTEM out of
+    its permissions was refused with "is not empty" and sent whoever
+    read it looking for files that are not there. "observer doctor"
+    says that the service does not replace such a folder.
+  * Measured on a real machine with the LocalSystem probe added to the
+    source tree (scripts/probe-credential-directory.ps1, not part of the
+    package): a start the service refuses is not retried by Windows. In
+    the run "sc start" waited about 30 seconds and failed with error
+    1053, the reason was only in the Application log (source .NET
+    Runtime, event 1026), and no restart followed in the 40 seconds
+    that were watched, although the recovery actions the package
+    configures (restart after five seconds) were in place. The
+    installer's comment and the code's said such a start would be
+    tried again every five seconds: they, and the README, now say what
+    was seen and what was not tried (a process that dies after it has
+    connected, the start at boot, the MSI upgrade rolling back).
+  * Nothing else changes: the service, the store and the Linux package
+    behave as in 0.24.3.
+
+ -- Federico Cardinali <noreply@example.invalid>  Wed, 30 Sep 2026 16:20:00 +0200
+
 observer (0.24.3) unstable; urgency=low
 
   * Linux only: "observer doctor" now says who owns the credential store.
