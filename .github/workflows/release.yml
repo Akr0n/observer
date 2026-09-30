@@ -125,6 +125,11 @@ jobs:
     needs: [windows, linux]
     runs-on: ubuntu-latest
     steps:
+      # BEFORE the download, and the order is not decoration: checkout cleans the workspace, so
+      # doing it after would delete packages/ - the MSI and the .deb - and the release would be
+      # created with nothing attached. It is here for one file, the release's own notes section.
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v4
         with:
           path: packages
@@ -136,11 +141,28 @@ jobs:
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
 
+          # A release can carry a section of its own - a security fix, an upgrade warning, anything
+          # a user has to read BEFORE the signing caveats below. It is the file
+          # .github/release-notes/<version>.md in the tagged commit; a release without one gets the
+          # template alone, exactly as before. It is a file and not the changelog because the
+          # changelog ships only inside the .deb: a Windows user who downloads the MSI would never
+          # see it, and a security fix that only Linux users can read is not announced to the
+          # people it affects. It is copied with cat, never expanded, so backticks and dollar signs
+          # in it are safe - which the heredoc below is not.
+          SECTION=".github/release-notes/${VERSION}.md"
+
+          {
+            echo "Observer $VERSION."
+            echo
+            if [ -f "$SECTION" ]; then
+              cat "$SECTION"
+              echo
+            fi
+          } > note.md
+
           # The notes say first what the user will run into first. The packages are not
           # signed: hiding it would turn an expected warning into a reason for suspicion.
-          cat > note.md <<NOTE
-          Observer $VERSION.
-
+          cat >> note.md <<NOTE
           ## The packages are NOT signed
 
           Windows will say so twice, in two different ways, and the two are not fixed
