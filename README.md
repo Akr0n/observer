@@ -533,38 +533,47 @@ anything and says why. An empty one is replaced by a protected one and the servi
 could choose the machine's network token. Linux was never affected with the default path: `/etc`
 can be written only by root, and the package creates `/etc/observer` for the service's own account.
 
-**What trips it is the directory, not the files in it.** A `credentials.json` copied into the folder
-the service made itself is adopted as before. The refusal fires on a folder made by another hand
-that is not empty: recreated and restored into, restored from a backup without its permissions, or
-left by the service run by hand under any account, elevated or not, or by one that ran under a
-service account other than LocalSystem before an MSI upgrade re-registered it. The reason is written
-to the Windows **Application** event log (source `.NET Runtime`). The MSI starts the service and
-waits for it, so on such a machine an upgrade may stop with error 1920, which does not name the
-cause, and roll back. `observer doctor` says which state the directory is in, but it judges as the
-account that runs it: a folder that same account made reads `PROTECTED` while the service still
-refuses it, so the refusal is what counts.
+**What trips it is the state of the directory, not who made it or who owns the files in it.** A
+`credentials.json` copied into a folder the service made itself and nobody has touched is adopted as
+before. The refusal fires when the folder is not empty and its owner or permissions are not SYSTEM
+and Administrators alone: recreated and restored into, restored from a backup without its
+permissions, left by the service run by hand under any account but SYSTEM (elevated or not), or by
+one that ran under a service account other than LocalSystem before an MSI upgrade re-registered it.
+A service-made folder gets there too if someone changes it - `takeown` without `/A` makes an
+individual account the owner, and an `icacls /grant` so that an account can read the token does the
+same to the permissions. You should find the reason in the Windows **Application** event log
+(source `.NET Runtime`, event 1026: the refusal ends the process before the service has a logger).
+The MSI starts the service and waits for it, so on such a machine an upgrade may stop with error
+1920, which does not name the cause, and roll back to the version that adopts. `observer doctor`
+says which state the directory is in, but it judges as the account that runs it: a folder that same
+account made reads `PROTECTED` while the service still refuses it, so the refusal is what counts.
 
-**The way out.** If the files are not yours, delete the folder as an administrator and run
-`Restart-Service Observer`: the service creates a fresh one with a new token and certificate. If
-they are yours, from an elevated prompt:
+**The way out.** If the files are not yours, delete the folder from an elevated prompt and start the
+service (`Restart-Service Observer`): it creates a fresh one with a new token and certificate. If
+Windows refuses, take ownership first: `takeown /F "C:\ProgramData\Observer" /A /R /D Y`. If the
+files are yours, run these three lines from an elevated prompt, all of them and in this order:
 
 ```powershell
-icacls "C:\ProgramData\Observer" /setowner "*S-1-5-32-544"
+icacls "C:\ProgramData\Observer" /setowner "*S-1-5-32-544" /T
+icacls "C:\ProgramData\Observer" /reset /T
 icacls "C:\ProgramData\Observer" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F"
 ```
 
-Both lines, in that order. Ownership alone leaves the permissions inheriting, and removing
-inheritance alone leaves a folder nobody can read, not even the service. If the service was run by
-hand or under another account, that account's own entry survives the second line: add
-`/remove:g "<the account>"` to it. This makes the service trust whatever is inside, so do it only
-for files you know are yours.
+Fewer is not enough. Ownership alone leaves the permissions inheriting from `ProgramData`, which every
+account can write; removing inheritance alone leaves a folder nobody can read, the service included;
+and the `/reset` is what drops an account that ran the service by hand without needing to name it.
+The `/T` matters too: it also resets the files, whose own owner and permissions would otherwise let
+whoever made them rewrite the token. This makes the service trust whatever is inside, so do it only
+for files you know are yours. If the installer had rolled back, run it again afterwards:
+`Restart-Service` alone would restart the old version, which does not refuse.
 
 **Upgrading does not undo an earlier adoption.** A folder the old service already repaired now
 looks sound, so a token or certificate planted before is kept and used, and nothing records who
-wrote it. If someone else could have created `C:\ProgramData\Observer` before the service first
-started, replace both, certificate first: delete `certificate.pfx`, run `Restart-Service Observer`,
-then `observer rotate-key --now`, which rotates the token only. Every machine that watches this one
-then needs the new fingerprint and token from `observer share`.
+wrote it. Worse, whoever planted them still OWNS those files and can rewrite them after the
+upgrade. If someone else could have created `C:\ProgramData\Observer` before the service first
+started, delete both `certificate.pfx` and `credentials.json` and run `Restart-Service Observer`:
+the service creates both again. Deleting them ends it; editing does not. Every machine that watches
+this one then needs the new fingerprint and token from `observer share`.
 
 The `.deb` also installs `man observer` and `man observer-dashboard`, and it is checked by
 **lintian** in CI: the `pack-linux` job runs it with `--fail-on error,warning` on the package it

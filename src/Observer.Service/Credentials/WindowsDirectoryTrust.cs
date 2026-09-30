@@ -192,7 +192,7 @@ public static class WindowsDirectoryTrust
         }
 
         // A directory that already holds something no trusted account can be shown to have written
-        // is NOT repaired at all: see the type's remarks for what gets adopted otherwise. The rule
+        // is NOT repaired at all: see Prepare's remarks for what gets adopted otherwise. The rule
         // itself is MayAdoptContents and not this method's business, for the same reason the verdict
         // is decided by a pure function - it is load-bearing, and the cases that matter cannot all
         // be built on an ordinary machine.
@@ -208,27 +208,35 @@ public static class WindowsDirectoryTrust
             throw new InvalidOperationException(
                 $"The credential directory '{path}' is not empty, and as it stands nothing vouches " +
                 $"for what is in it ({verdict}): its owner is not SYSTEM or the Administrators " +
-                "group, or its permissions let other accounts write, or neither could be read. " +
-                "Observer will not secure it and will not read what is in it: a machine token or " +
-                "certificate found there was chosen by whoever could write it, and the token is " +
-                "valid FROM THE NETWORK. Nothing has been changed here, so the files are exactly " +
-                "as you left them. If you did not put them there, delete the folder and restart, " +
-                "and the service will create its own with a new token and certificate. If you did " +
+                "group, or its permissions inherit or name another account (for instance the one " +
+                "that ran the service by hand), or neither could be read. Observer will not " +
+                "secure it and will not read what is in it: a machine token or certificate found " +
+                "there was chosen by whoever could write it, and the token is valid FROM THE " +
+                "NETWORK. Nothing has been changed here, so the files are exactly as you left " +
+                "them. If you did not put them there, delete the folder from an elevated prompt " +
+                $"(if Windows refuses, first run: takeown /F \"{path}\" /A /R /D Y) and restart " +
+                "the service: it creates its own with a new token and certificate. If you did " +
                 "- the folder was recreated by hand, restored from a backup without its " +
-                "permissions, or left by the service run by hand or under another account - then, " +
-                "from an elevated prompt, make the Administrators group the owner AND protect the " +
-                "permissions so that only SYSTEM and Administrators are granted. Both, not either: " +
-                "ownership alone leaves the permissions inheriting from ProgramData, which every " +
-                "account on this machine can write, and removing inheritance alone leaves a folder " +
-                "nobody can read. The README, section Packages, has the exact icacls lines. Be " +
+                "permissions, or left by the service run by hand or under another account - run " +
+                "these three lines, ALL of them and in this order, from an ELEVATED prompt:\n" +
+                $"  icacls \"{path}\" /setowner \"*S-1-5-32-544\" /T\n" +
+                $"  icacls \"{path}\" /reset /T\n" +
+                $"  icacls \"{path}\" /inheritance:r /grant:r \"*S-1-5-18:(OI)(CI)F\" " +
+                "\"*S-1-5-32-544:(OI)(CI)F\"\n" +
+                "Fewer is not enough: ownership alone leaves the " +
+                "permissions inheriting from ProgramData, which every account on this machine " +
+                "can write, and removing inheritance alone leaves a folder nobody can read. Be " +
                 "sure before you do that, because it is the one action that ADOPTS what is already " +
                 "in the folder: nothing here can tell your file from a planted one, only you can, " +
-                "and the token in it is valid from the network.");
+                "and the token in it is valid from the network. If this happened during an MSI " +
+                "upgrade the installer rolled back to the previous version, which does not refuse: " +
+                "after fixing the folder run the installer again, because restarting the service " +
+                "would only restart the old one.");
         }
 
         // Only an EMPTY directory reaches here, and it is always REPLACED, whatever the verdict.
         //
-        // It used to be repaired in place, and that was the race this commit closes: Repair had to
+        // It used to be repaired in place, and that was a race, since closed: Repair had to
         // set the owner first and the DACL second - the other order achieves nothing, because an
         // owner holds implicit WRITE_DAC - so until the second call landed, whoever could write the
         // directory still could, and ConfirmSafe would not notice, because it re-reads the owner and

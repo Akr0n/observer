@@ -17,18 +17,18 @@ observer (0.24.1) unstable; urgency=high
     published so far behaves like this, 0.1.2 being the earliest.
   * UPGRADING DOES NOT UNDO IT. A folder the old service already
     repaired now looks sound, so a token or certificate planted before
-    is kept and used, and nothing records who wrote it. If someone else
-    could have created C:\ProgramData\Observer before the service first
-    started, replace both, certificate first: delete certificate.pfx
-    and restart the service, then run "observer rotate-key --now",
-    which rotates the token only. Every machine that watches this one
-    then needs the new fingerprint and token from "observer share".
+    is kept and used, and nothing records who wrote it. Worse, whoever
+    planted them still OWNS those files and can rewrite them after the
+    upgrade. If someone else could have created C:\ProgramData\Observer
+    before the service first started, delete both certificate.pfx and
+    credentials.json and restart the service, which creates both again;
+    deleting ends it, editing does not. Every machine that watches this
+    one then needs the new fingerprint and token from "observer share".
   * Linux is not affected with the default path. /etc can be written
     only by root, and the package creates /etc/observer for the account
     the service runs as, with mode 0700, so planting a file there takes
     root or that account itself. Pointing Observer:CredentialStorePath
-    at a directory other accounts can write takes that argument away,
-    and the Linux side does not check who owns the directory.
+    at a directory other accounts can write takes that argument away.
   * The fix is to REFUSE, and the order matters. If the credential
     directory holds anything and nothing vouches for who wrote it, the
     service does not start, touches nothing, and says why. Nothing
@@ -50,31 +50,40 @@ observer (0.24.1) unstable; urgency=high
     and the read-only flag is cleared first: an empty folder marked
     read-only cannot be removed, and anyone could leave one behind to
     keep the service from ever starting.
-  * WHAT IT COSTS. The refusal looks at the DIRECTORY, never at who owns
-    the files in it: a file copied into the folder the service made
-    itself is adopted as before. It fires when the directory was made
-    by another hand and is not empty: recreated and restored into,
-    restored from a backup without its permissions, or left by the
-    service run by hand under any account, elevated or not, or by one
-    that ran under an account other than LocalSystem before an MSI
-    upgrade re-registered it. That account stays in the folder's
-    permissions and LocalSystem does not trust it. The MSI starts the
-    service and waits for it, so on such a machine an upgrade may stop
-    with error 1920, which does not name the cause, and roll back. The
-    reason is in the Windows Application event log, source .NET
-    Runtime. A folder the service made itself, an upgrade included, is
-    not affected.
-  * THE WAY OUT. If the files are not yours, delete the folder as an
-    administrator and restart the service: it makes a fresh one, with a
-    new token and certificate. If they are yours, make the
-    Administrators group the owner AND remove inheritance leaving only
-    SYSTEM and Administrators: both, because ownership alone leaves the
-    permissions inheriting and removing inheritance alone leaves a
-    folder nobody can read. The README, section Packages, has the exact
-    icacls lines. That step adopts what is inside, so take it only for
-    files that are yours. "observer doctor" says which state the folder
-    is in, judged as the account that runs it: a folder that same
-    account made reads PROTECTED, so trust the service's own refusal.
+  * WHAT IT COSTS. It is the STATE of the directory that counts, not
+    who made it or who owns the files in it: a file copied into a folder
+    the service made itself and nobody has touched is adopted as before.
+    The refusal fires when the directory is not empty and its owner or
+    permissions are not SYSTEM and Administrators alone: recreated and
+    restored into, restored from a backup without its permissions, left
+    by the service run by hand under any account but SYSTEM, elevated or
+    not, or by one that ran under an account other than LocalSystem
+    before an MSI upgrade re-registered it, because that account stays
+    in the permissions and LocalSystem does not trust it. A service-made
+    folder gets there too when someone changes it: takeown without /A
+    makes an individual account the owner, and an icacls /grant so that
+    an account can read the token does the same to the permissions. The
+    MSI starts the service and waits for it, so on such a machine an
+    upgrade may stop with error 1920, which does not name the cause, and
+    roll back to the version that adopts; after fixing the folder run
+    the installer again, since restarting the service restarts the old
+    one. The reason should be in the Windows Application event log,
+    source .NET Runtime, event 1026.
+  * THE WAY OUT. If the files are not yours, delete the folder from an
+    elevated prompt (takeown /F <folder> /A /R /D Y first, if Windows
+    refuses) and restart the service: it makes a fresh one, with a new
+    token and certificate. If they are yours, run three lines from an
+    elevated prompt, all of them and in this order: icacls <folder>
+    /setowner "*S-1-5-32-544" /T, then icacls <folder> /reset /T, then
+    icacls <folder> /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F"
+    "*S-1-5-32-544:(OI)(CI)F". Fewer is not enough: ownership alone
+    leaves the permissions inheriting, and removing inheritance alone
+    leaves a folder nobody can read. The refusal message carries the
+    exact lines with the real path, and so does the README, section
+    Packages. That step adopts what is inside, so take it only for files
+    that are yours. "observer doctor" says which state the folder is in,
+    judged as the account that runs it: a folder that same account made
+    reads PROTECTED, so trust the service's own refusal over it.
   * What stays open is availability, never adoption. Whoever creates the
     folder AND puts anything in it keeps the service from starting, at
     every start: only an EMPTY squat is absorbed. A FILE at

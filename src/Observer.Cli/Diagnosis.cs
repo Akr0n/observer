@@ -128,29 +128,33 @@ public static class Diagnosis
     public static string DescribeVerdict(DirectoryVerdict verdict) => verdict switch
     {
         DirectoryVerdict.Safe =>
-            "PROTECTED - owned by SYSTEM or Administrators, and nobody else is granted access.",
+            "PROTECTED - as this account sees it: owned by SYSTEM, Administrators or this very " +
+            "account, and nobody else is granted access. The installed service trusts only SYSTEM " +
+            "and Administrators, so if it still refuses to start, believe the service.",
         DirectoryVerdict.Missing =>
             "ABSENT - the service has not created it yet. Start it once.",
         DirectoryVerdict.OpenDacl =>
-            "NOT PROTECTED - other accounts on this machine can read it, and on a default machine " +
-            "they can WRITE it as well, because ProgramData grants that by inheritance. Anyone who " +
-            "reads it gets permanent access to this machine FROM THE NETWORK. If the directory is " +
-            "NOT empty the service will refuse to start and will change nothing, because a token " +
-            "or certificate found here cannot be shown to be its own. Protect its permissions so " +
-            "that only SYSTEM and Administrators are granted, then restart - and only if the " +
-            "files inside are yours, because that step makes the service trust them. If it IS " +
+            "NOT PROTECTED - the permissions name an account other than SYSTEM and Administrators, " +
+            "or they inherit from ProgramData, which on a default machine lets every account " +
+            "WRITE. Whoever can write the token can use it from anywhere FROM THE NETWORK. If the " +
+            "directory is NOT empty the service will refuse to start and will change nothing, " +
+            "because a token or certificate found here cannot be shown to be its own. Reset the " +
+            "permissions and lock them to SYSTEM and Administrators - the README, section Packages " +
+            "at github.com/Akr0n/observer, has the exact icacls lines - and only if the files " +
+            "inside are yours, because that makes the service trust them. If the directory IS " +
             "empty the service replaces it with a protected one and starts.",
         DirectoryVerdict.UntrustedOwner =>
             "FALSELY PROTECTED - the permissions may name only SYSTEM and Administrators, but the " +
-            "OWNER is an ordinary account, and an owner can grant itself access again whenever " +
-            "it likes. This looks safe and is not. If the directory is NOT empty the service will " +
-            "refuse to start and will change nothing, because a token or certificate found here " +
-            "cannot be shown to be its own: the folder was recreated by hand, restored without " +
-            "its permissions, or left by a service run by hand. Make the Administrators group " +
-            "the owner AND protect the permissions: ownership alone leaves them inheriting from " +
-            "ProgramData, which every account on this machine can write, and the service would " +
-            "refuse again. Do it only if the files inside are yours. If the directory IS empty " +
-            "the service replaces it with a protected one and starts.",
+            "OWNER is neither SYSTEM nor the Administrators group (an individual administrator's " +
+            "own account counts as untrusted), and an owner can grant itself access again " +
+            "whenever it likes. This looks safe and is not. If the directory is NOT empty the " +
+            "service will refuse to start and will change nothing, because a token or " +
+            "certificate found here cannot be shown to be its own: the folder was recreated by " +
+            "hand, restored without its permissions, or left by a service run by hand. Make the " +
+            "Administrators group the owner AND lock the permissions to SYSTEM and " +
+            "Administrators; the README, section Packages at github.com/Akr0n/observer, has the " +
+            "exact icacls lines. Do it only if the files inside are yours. If the directory IS " +
+            "empty the service replaces it with a protected one and starts.",
         DirectoryVerdict.ReparsePoint =>
             "HIJACKED - the path is a junction or symbolic link, so the token would be written " +
             "wherever it points. A standard user can create one without any privilege. Remove it.",

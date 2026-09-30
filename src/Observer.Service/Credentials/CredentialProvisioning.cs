@@ -57,12 +57,12 @@ public sealed record ProvisionedCredentials(
 /// WHY THE REFUSAL HAS TO COME BEFORE THE REPAIR, which is the part that is easy to get wrong and
 /// was got wrong once here. Repairing first and refusing afterwards — on the verdict observed
 /// before the repair — reads correctly and does not hold for one restart: the first attempt leaves
-/// the directory genuinely safe, and the package configures Windows to restart the service five
-/// seconds after a failed start (<c>util:ServiceConfig</c> in <c>Observer.wxs</c>, restart on the
-/// first, second and every later failure). The second attempt therefore sees a spotless directory
-/// and adopts the planted file, automatically, five seconds later. The repair is what destroys the
-/// only evidence, so nothing after it can be trusted to decide; the refusal has to be the thing
-/// that prevents it.
+/// the directory genuinely safe, so ANY next start sees a spotless directory and adopts the planted
+/// file. The next start needs no attacker: the package configures Windows to restart the service
+/// after five seconds (<c>util:ServiceConfig</c> in <c>Observer.wxs</c>), though whether that applies
+/// to a process that exits before it ever connects is unproven (see below), and an operator's own
+/// <c>Restart-Service</c> is enough. The repair is what destroys the only evidence, so nothing after
+/// it can be trusted to decide; the refusal has to be the thing that prevents it.
 /// </para>
 /// <para>
 /// A store is REFUSED and never overwritten or moved aside. Overwriting would destroy a real
@@ -86,7 +86,8 @@ public sealed record ProvisionedCredentials(
 /// owner. So a <c>credentials.json</c> copied into the folder the service made itself is adopted
 /// exactly as before, and what trips the rule is a folder made by another hand that is not empty:
 /// recreated and restored into, restored from a backup without its permissions, or left by the
-/// service run by hand under ANY account, elevated or not. That last one is subtler than it looks:
+/// service run by hand under any account but SYSTEM, elevated or not. That last one is subtler than
+/// it looks:
 /// the descriptor the service writes names the running account, and LocalSystem trusts only
 /// <c>S-1-5-18</c> and <c>S-1-5-32-544</c>, so the verdict is OpenDacl even when the owner is right.
 /// The same happens to a machine whose service ran under a domain account and is re-registered as
@@ -131,9 +132,10 @@ public sealed record ProvisionedCredentials(
 /// that action too.
 /// </para>
 /// <para>
-/// On Linux none of it is reachable: <c>/etc</c> is root-only, so planting takes root, and root
-/// needs no planted token. That reasoning sits in <see cref="CredentialDirectory.Prepare"/>, beside
-/// the silence which depends on it.
+/// On Linux none of it is reachable: <c>/etc</c> can be written only by root and the package creates
+/// <c>/etc/observer</c> for the <c>observer</c> account the service runs as, so planting takes root or
+/// that account, and neither needs a planted token. That reasoning sits in
+/// <see cref="CredentialDirectory.Prepare"/>, beside the silence which depends on it.
 /// </para>
 /// </remarks>
 public static class CredentialProvisioning
