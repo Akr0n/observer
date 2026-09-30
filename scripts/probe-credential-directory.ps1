@@ -7,7 +7,8 @@
     WHY THIS EXISTS. The credential-directory guard (WindowsDirectoryTrust) was written and tested
     from sessions with no elevation, where a folder owned by a foreign account cannot even be built
     and where SYSTEM's rights over C:\ProgramData cannot be exercised. Every claim that depends on
-    those rights was reasoned, not measured. This script measures them. It registers throwaway
+    those rights was reasoned, not measured, until this script was first run (2026-09-30: every
+    check passed; see the README and CLAUDE.md for what it settled). It measures them. It registers throwaway
     services that run the REAL Observer.Service.exe as LocalSystem - the account and the code path
     of production - each one pointed at a folder built to look like one of the cases the release
     notes describe, and records what happened.
@@ -1182,7 +1183,7 @@ $script:Scenarios = @(
             $fixed = Get-PathFacts $dir
             $fileAfter = Get-PathFacts $file
             $second = Start-Probe $probe -WaitSeconds 30
-            Add-Check '/setowner to the Administrators group worked (it needs elevation; unmeasured before)' ($codes[0] -eq 0) ('exit ' + $codes[0] + ': ' + $outputs[0])
+            Add-Check '/setowner to the Administrators group worked (it needs elevation)' ($codes[0] -eq 0) ('exit ' + $codes[0] + ': ' + $outputs[0])
             Add-Check 'the three lines all succeeded' (@($codes | Where-Object { $_ -ne 0 }).Count -eq 0) ('exit codes: ' + ($codes -join ', '))
             Add-Check 'the folder is now safe' (Test-Safe $fixed) (Format-Facts $fixed)
             Add-Check 'the FILE is now safe too: owner SYSTEM or Administrators, and nobody else in its permissions' (Test-SafeFile $fileAfter) ('before: ' + (Format-Facts $fileBefore) + ' | after: ' + (Format-Facts $fileAfter))

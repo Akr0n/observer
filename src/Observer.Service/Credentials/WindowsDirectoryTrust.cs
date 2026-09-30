@@ -209,7 +209,8 @@ public static class WindowsDirectoryTrust
                 $"The credential directory '{path}' is not empty, and as it stands nothing vouches " +
                 $"for what is in it ({verdict}): its owner is not SYSTEM or the Administrators " +
                 "group, or its permissions inherit or name another account (for instance the one " +
-                "that ran the service by hand), or neither could be read. Observer will not " +
+                "that ran the service by hand), or neither could be read. A folder that cannot be " +
+                "listed counts as not empty, even if nothing is in it. Observer will not " +
                 "secure it and will not read what is in it: a machine token or certificate found " +
                 "there was chosen by whoever could write it, and the token is valid FROM THE " +
                 "NETWORK. Nothing has been changed here, so the files are exactly as you left " +

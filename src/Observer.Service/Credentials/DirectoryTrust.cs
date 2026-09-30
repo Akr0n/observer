@@ -109,7 +109,10 @@ public static class DirectoryVerdictExtensions
     /// <para>
     /// An EMPTY directory is let through even when nothing vouches for it, so that creating a folder
     /// cannot stop the monitor from ever starting — a denial of service any standard user could
-    /// mount, against the one program whose not running is the worst outcome it has. There is
+    /// mount, against the one program whose not running is the worst outcome it has. It is closed
+    /// only for an empty directory the service can still LIST: <c>isEmpty</c> is false when listing
+    /// fails, and an empty directory whose owner took SYSTEM out of its permissions is therefore
+    /// refused all the same (measured on 2026-09-30, verdict Unknown). There is
     /// nothing to adopt in an empty directory, which is what makes that safe to allow. What could
     /// still go wrong is a file appearing while the directory is being made safe, and that is why
     /// it is REPLACED and not repaired in place: see <c>WindowsDirectoryTrust.Replace</c>, which
