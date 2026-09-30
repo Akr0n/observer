@@ -125,6 +125,16 @@ jobs:
     needs: [windows, linux]
     runs-on: ubuntu-latest
     steps:
+      # BEFORE the download, and the order is not decoration: checkout cleans the workspace, so
+      # doing it after would delete packages/ - the MSI and the .deb - and the release would be
+      # created with nothing attached. It is here for one file, the release's own notes section.
+      - uses: actions/checkout@v7
+        with:
+          # Nothing in this job pushes: gh uses GH_TOKEN below. Without this the checkout would leave
+          # the workflow's token (contents: write) on the runner's disk for the whole job, in a step
+          # that also reads a path controlled by the repository.
+          persist-credentials: false
+
       - uses: actions/download-artifact@v4
         with:
           path: packages
@@ -136,11 +146,51 @@ jobs:
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
 
+          # A release can carry a section of its own - a security fix, an upgrade warning, anything
+          # a user has to read BEFORE the signing caveats below. It is the file
+          # .github/release-notes/<version>.md in the tagged commit; a release without one gets the
+          # template alone, exactly as before. It is a file and not the changelog because the
+          # changelog ships only inside the .deb: a Windows user who downloads the MSI would never
+          # see it, and a security fix that only Linux users can read is not announced to the
+          # people it affects. It is copied, never expanded, so backticks and dollar signs in it are
+          # safe - which the heredoc below is not.
+          #
+          # The file goes in the RELEASE PR, before the tag: this reads the tagged commit, so one
+          # added afterwards is ignored. For a release that already exists the GitHub page is the
+          # truth, edited with gh release edit, and the file is only a record of what it said.
+          # Nothing makes the file mandatory, so the step SAYS in the log whether it found one:
+          # that line is what tells a misspelt name (v0.25.0.md for 0.25.0.md) from a release that
+          # simply has no section.
+          SECTION=".github/release-notes/${VERSION}.md"
+
+          # Refused, not ignored. cat would follow a symlink out of the folder and publish whatever
+          # it points to, and a directory would fall through to the template, which reads as "no
+          # section" when somebody meant to write one.
+          if [ -L "$SECTION" ] || { [ -e "$SECTION" ] && [ ! -f "$SECTION" ]; }; then
+            echo "$SECTION exists but is not a regular file." >&2
+            exit 1
+          fi
+
+          {
+            echo "Observer $VERSION."
+            echo
+            if [ -f "$SECTION" ]; then
+              echo "Release notes: section from $SECTION" >&2
+              # Two things an editor can leave behind. A UTF-8 byte order mark would land in the
+              # MIDDLE of the notes and stop the first heading being a heading; a file with no final
+              # newline would run into the template's first heading, and if it ended in an HTML
+              # block would swallow it.
+              sed -e '1s/^\xEF\xBB\xBF//' -e '$a\' "$SECTION"
+              echo
+            else
+              echo "Release notes: no $SECTION, template only. In .github/release-notes:" >&2
+              ls .github/release-notes >&2 2>/dev/null || echo "  (the folder does not exist)" >&2
+            fi
+          } > note.md
+
           # The notes say first what the user will run into first. The packages are not
           # signed: hiding it would turn an expected warning into a reason for suspicion.
-          cat > note.md <<NOTE
-          Observer $VERSION.
-
+          cat >> note.md <<NOTE
           ## The packages are NOT signed
 
           Windows will say so twice, in two different ways, and the two are not fixed

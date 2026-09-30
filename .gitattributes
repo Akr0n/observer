@@ -10,6 +10,10 @@
 # same failure already seen in the files under packaging/linux/debian.
 .github/workflows/*.yml text eol=lf
 
+# The per-release notes sections are copied verbatim into the GitHub release by release.yml, on
+# Linux. A carriage return in one would end up in the published notes.
+.github/release-notes/*.md text eol=lf
+
 # The rule applies to the DIRECTORY, not to individual files, and that is a fix: the list
 # of file names that used to be here covered the seven files that existed that day, and the
 # next day three more arrived - two man pages and the lintian overrides - which were

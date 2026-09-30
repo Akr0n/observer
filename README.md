@@ -528,7 +528,9 @@ for.** On Windows a standard user can create `C:\ProgramData\Observer` and becom
 to SYSTEM or the Administrators group **and** its permissions grant nobody else access. If it does
 not - a foreign owner, or permissions that inherit from `ProgramData` (which lets every account
 write) or name another account - and the directory is not empty, the service stops before touching
-anything and says why. An empty one is replaced by a protected one and the service starts. Before
+anything and says why. An empty one that kept the permissions it inherited is replaced by a
+protected one and the service starts; one whose owner took SYSTEM out of its permissions cannot
+even be read by the service, and is refused like a non-empty one. Before
 0.24.1 the service repaired such a directory and then read the file it found there, so a local user
 could choose the machine's network token. Linux was never affected with the default path: `/etc`
 can be written only by root, and the package creates `/etc/observer` for the service's own account.
@@ -550,7 +552,8 @@ account made reads `PROTECTED` while the service still refuses it, so the refusa
 
 **The way out.** If the files are not yours, delete the folder from an elevated prompt and start the
 service (`Restart-Service Observer`): it creates a fresh one with a new token and certificate. If
-Windows refuses, take ownership first: `takeown /F "C:\ProgramData\Observer" /A /R /D Y`. If the
+Windows refuses, take ownership first: `takeown /F "C:\ProgramData\Observer" /A /R` (it may ask a
+yes/no question, in the language of Windows: answer yes). If the
 files are yours, run these three lines from an elevated prompt, all of them and in this order:
 
 ```powershell
@@ -568,12 +571,22 @@ for files you know are yours. If the installer had rolled back, run it again aft
 `Restart-Service` alone would restart the old version, which does not refuse.
 
 **Upgrading does not undo an earlier adoption.** A folder the old service already repaired now
-looks sound, so a token or certificate planted before is kept and used, and nothing records who
-wrote it. Worse, whoever planted them still OWNS those files and can rewrite them after the
-upgrade. If someone else could have created `C:\ProgramData\Observer` before the service first
-started, delete both `certificate.pfx` and `credentials.json` and run `Restart-Service Observer`:
-the service creates both again. Deleting them ends it; editing does not. Every machine that watches
-this one then needs the new fingerprint and token from `observer share`.
+looks sound, so a token or certificate planted before is kept and used. The folder no longer says
+who made it, but the files do: the old service repaired the folder only, never the files in it, so
+a planted file keeps its planter as owner, while the service creates its own as SYSTEM or
+Administrators. From an elevated prompt:
+
+```powershell
+Get-ChildItem C:\ProgramData\Observer | ForEach-Object { '{0}  {1}' -f (Get-Acl $_.FullName).GetOwner([Security.Principal.SecurityIdentifier]).Value, $_.Name }
+```
+
+`S-1-5-18` is SYSTEM and `S-1-5-32-544` is Administrators (or the account the service runs as, if it
+is not LocalSystem); any other owner on either file means that account put it there. Whoever
+planted them still OWNS them and can rewrite them after the upgrade. If either file is owned by
+someone else, or you cannot tell, delete both `certificate.pfx` and `credentials.json` and run
+`Restart-Service Observer`: the service creates both again. Deleting them ends it; editing does
+not. Every machine that watches this one then needs the new fingerprint and token from
+`observer share`.
 
 The `.deb` also installs `man observer` and `man observer-dashboard`, and it is checked by
 **lintian** in CI: the `pack-linux` job runs it with `--fail-on error,warning` on the package it
