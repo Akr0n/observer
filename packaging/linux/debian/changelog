@@ -1,3 +1,62 @@
+observer (0.24.5) unstable; urgency=medium
+
+  * Linux only: "sudo observer share", "rotate-key" and "doctor" no longer
+    follow or wait on what the service account has put where
+    /etc/observer/credentials.json or certificate.pfx should be. Root works
+    inside a folder that belongs to that account and read those two files
+    with the ordinary file calls. Measured with the CLI of 0.24.4, as root:
+    a FIFO there made the command wait for ever, a link to /dev/zero grew
+    its memory until it ran out, a socket ended in an unhandled exception,
+    and a link to a file only root can read was read as root. When that file
+    was shaped like the store, "share" printed its secret, and a plain
+    "rotate-key" (not --now) copied it into "previous" in the new store,
+    which that account can read.
+  * Root now opens the file once, never through a link at the file's own
+    name, asks the open file what it is and only then reads it, up to 65536
+    bytes. A link, a FIFO, a device, a directory, a socket or a file over
+    65536 bytes is refused with a sentence that says which, and nothing of
+    it is read. So is a file with a second name (a hard link) that belongs
+    to another account than the folder; the service's own file with a backup
+    name is read as before. A link you made yourself is refused too: read
+    what it points at with "sudo cat". The sentence says what removing the
+    file costs (a new token, or a new certificate and fingerprint), and
+    when the machine could not check the file it says that nothing is known
+    to be wrong and that it is not to be deleted. It no longer says an
+    elevated terminal is required, which was never the problem.
+  * "rotate-key --now" does not need what the old store holds, so a link or
+    a FIFO at its name, a store that cannot be parsed and one that holds
+    something that is not a token no longer stop it: it says so and replaces
+    the name, never what the link pointed to. An access denied still stops
+    it. A plain "rotate-key" carries the old key over and still refuses.
+    Whenever a rotation does not happen, both say so.
+  * "share" and "rotate-key" refuse a token that holds a character a
+    terminal acts on, and do not print it; the text of a damaged store's
+    error, which may quote a key of the file, is shown without such
+    characters too. "doctor" says that what is where the store belongs is
+    not a regular file (a FIFO, a device, a directory, a socket), is over
+    65536 bytes, or has a second name of another account, and offers no
+    chown for it: a chown changes the file, which may be root's. It waits at
+    most its own time limit for the local channel, and reports a socket
+    whose accept queue is full as STUCK. The local channel's answer is read
+    up to 65536 bytes, and control characters in it are shown as "?".
+  * A service started by hand as root, in a folder another account owns,
+    now refuses to start with one sentence when the store or the certificate
+    is a file root will not read or could not check. The packaged service
+    is not root and is not affected, nor is root in a folder that root owns.
+    A missing file is reported as before.
+  * Windows: "rotate-key --now" no longer stops on a store it cannot parse,
+    "share" and "rotate-key" refuse a token that holds a control character,
+    and the local channel's answer is read as above. Nothing else changes.
+  * Not covered: the local channel socket that "rotate-key --now" and
+    "doctor" connect to is in a folder the same account controls, so an
+    answer forged there still reads as a verdict; a FUSE file system the
+    account mounts itself; with fs.protected_hardlinks=0 (not the default
+    on Debian and Ubuntu) a link count is only a snapshot. Only x86-64 was
+    measured: elsewhere, a wrong value of O_NOFOLLOW makes root refuse to
+    read.
+
+ -- Federico Cardinali <noreply@example.invalid>  Thu, 01 Oct 2026 00:30:00 +0200
+
 observer (0.24.4) unstable; urgency=low
 
   * Windows only: the message the service writes when it refuses a

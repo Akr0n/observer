@@ -1,4 +1,4 @@
-.TH OBSERVER 1 "2026-09-30" "observer 0.24.4" "User Commands"
+.TH OBSERVER 1 "2026-10-01" "observer 0.24.5" "User Commands"
 .SH NAME
 observer \- manage this machine's Observer service and its stored tokens
 .SH SYNOPSIS
@@ -72,7 +72,12 @@ run as root left behind before 0.24.2. It then prints the two commands that
 repair it, handing the file to the owner of the directory with
 .B "chown \-h"
 and restarting the service. If the store is a symbolic link it says so and
-offers no command, because the package leaves a link alone too. The
+offers no command, because the package leaves a link alone too. It says the
+same of a FIFO, a device, a directory or a socket where the store belongs, of a
+file over 64 KiB, and of a file with a second name that belongs to another
+account than its directory, because a change of owner would change the file
+behind the other name too. It asks the local channel for at most a few
+seconds, and reports a socket whose queue of connections is full as stuck. The
 directory is closed to every account but its owner and root, so from an
 ordinary account the owner of the file is reported as not readable; run
 .B "sudo observer doctor"
@@ -94,6 +99,42 @@ else, because it becomes a file name. Requires nothing.
 .TP
 .BI "token forget " NAME
 Remove that machine's token from this computer.
+.SH DIAGNOSTICS
+.B share ,
+.B rotate\-key
+and
+.B doctor
+run as root inside
+.IR /etc/observer ,
+a folder that belongs to the
+.B observer
+account the service runs as. That account faces the network, so root does not
+follow, wait on or read what it finds there in place of the store or of
+.IR certificate.pfx :
+a symbolic link at the name of the file, a FIFO, a device, a directory or a
+socket, a file of more than 64 KiB, or a file with a second name that belongs to
+another account than the folder. The command says which it found, says that
+nothing was changed, and does not print what the file holds. A link or a second
+name you made yourself is refused too: read what it points at with
+.B "sudo cat"
+instead.
+.PP
+Anything else is for you to judge. If you did not put the file there, stop the
+service, remove it and start the service again. The service then creates a
+.I new
+token, and every dashboard that holds the old one stops connecting until it is
+given the new one; for the certificate, the fingerprint changes and
+.B share
+shows the new one. A refusal that says nothing is known to be wrong with the
+file means that this machine could not check it: do not delete it.
+.B rotate\-key \-\-now
+does not need what the old store holds, so a link or a FIFO at that name, a
+file that cannot be parsed and one that holds something that is not a token do
+not stop it: it says that the old store was not read and replaces the name,
+and leaves what a link pointed to alone. An access denied still stops it. The
+plain
+.B rotate\-key
+carries the old key over, so it refuses all of these.
 .SH EXIT STATUS
 .TP
 .B 0
