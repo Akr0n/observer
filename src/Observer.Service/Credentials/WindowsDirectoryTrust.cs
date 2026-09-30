@@ -214,7 +214,8 @@ public static class WindowsDirectoryTrust
                 "there was chosen by whoever could write it, and the token is valid FROM THE " +
                 "NETWORK. Nothing has been changed here, so the files are exactly as you left " +
                 "them. If you did not put them there, delete the folder from an elevated prompt " +
-                $"(if Windows refuses, first run: takeown /F \"{path}\" /A /R /D Y) and restart " +
+                $"(if Windows refuses, first run: takeown /F \"{path}\" /A /R - it may ask a yes/no " +
+                "question in the language of Windows: answer yes) and restart " +
                 "the service: it creates its own with a new token and certificate. If you did " +
                 "- the folder was recreated by hand, restored from a backup without its " +
                 "permissions, or left by the service run by hand or under another account - run " +

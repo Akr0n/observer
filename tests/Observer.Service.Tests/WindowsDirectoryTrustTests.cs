@@ -90,7 +90,15 @@ public class WindowsDirectoryTrustTests
             // the .deb ship no README and this is the only text the operator has in front of them. A
             // typo in one of them is not cosmetic: "takeout" got in once, in a draft, and would have
             // sent an administrator to a command that does not exist at the moment they need it.
-            Assert.Contains($"takeown /F \"{path}\" /A /R /D Y", refusal.Message, StringComparison.Ordinal);
+            Assert.Contains($"takeown /F \"{path}\" /A /R", refusal.Message, StringComparison.Ordinal);
+
+            // ... and the takeown line has NO /D. That option takes the localized letter for "yes"
+            // (S on Italian Windows), and the Y this message used to print is rejected with a syntax
+            // error that does nothing - so the one line meant for the case where Windows refuses the
+            // delete was itself refused on every non-English machine. Measured. Without /D, takeown asks
+            // its yes/no question in the operator's own language, which the message says.
+            Assert.DoesNotContain("/D Y", refusal.Message, StringComparison.Ordinal);
+            Assert.Contains("in the language of Windows: answer yes", refusal.Message, StringComparison.Ordinal);
             Assert.Contains($"icacls \"{path}\" /setowner \"*S-1-5-32-544\" /T", refusal.Message, StringComparison.Ordinal);
             Assert.Contains($"icacls \"{path}\" /reset /T", refusal.Message, StringComparison.Ordinal);
             Assert.Contains(
