@@ -21,8 +21,8 @@ public static class CredentialFile
         }
 
         // On Unix the mode is passed at creation time, so no window exists. 0600: the owner
-        // only. The service runs as root and the owner is root by construction, which saves a
-        // call to chown that .NET does not offer.
+        // only. The service runs as the "observer" account and the owner is that account by
+        // construction, which saves a call to chown that .NET does not offer.
         return new FileStream(path, new FileStreamOptions
         {
             Mode = FileMode.CreateNew,

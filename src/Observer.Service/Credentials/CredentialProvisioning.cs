@@ -57,12 +57,12 @@ public sealed record ProvisionedCredentials(
 /// WHY THE REFUSAL HAS TO COME BEFORE THE REPAIR, which is the part that is easy to get wrong and
 /// was got wrong once here. Repairing first and refusing afterwards — on the verdict observed
 /// before the repair — reads correctly and does not hold for one restart: the first attempt leaves
-/// the directory genuinely safe, and the package configures Windows to restart the service five
-/// seconds after a failed start (<c>util:ServiceConfig</c> in <c>Observer.wxs</c>, restart on the
-/// first, second and every later failure). The second attempt therefore sees a spotless directory
-/// and adopts the planted file, automatically, five seconds later. The repair is what destroys the
-/// only evidence, so nothing after it can be trusted to decide; the refusal has to be the thing
-/// that prevents it.
+/// the directory genuinely safe, so ANY next start sees a spotless directory and adopts the planted
+/// file. The next start needs no attacker: the package configures Windows to restart the service
+/// after five seconds (<c>util:ServiceConfig</c> in <c>Observer.wxs</c>), though whether that applies
+/// to a process that exits before it ever connects is unproven (see below), and an operator's own
+/// <c>Restart-Service</c> is enough. The repair is what destroys the only evidence, so nothing after
+/// it can be trusted to decide; the refusal has to be the thing that prevents it.
 /// </para>
 /// <para>
 /// A store is REFUSED and never overwritten or moved aside. Overwriting would destroy a real
@@ -81,22 +81,33 @@ public sealed record ProvisionedCredentials(
 /// serving a key an attacker chose. What must not happen is claiming the class is closed.
 /// </para>
 /// <para>
-/// WHAT THE RULE COSTS. Two cases, and the second is the one nobody guesses. The first IS the drifted
-/// DACL, which an earlier draft of this paragraph claimed was exempt — it is not, and the exemption
-/// was the defect: an inheriting DACL under <c>C:\ProgramData</c> grants <c>BUILTIN\Users</c> write,
-/// measured, so a store found behind one may have been planted by any account on the machine and is
-/// refused like any other. The second is a store that an ADMINISTRATOR put here by hand: only two
-/// SIDs are trusted, <c>S-1-5-18</c> and <c>S-1-5-32-544</c>, and on Windows the default owner of a
-/// new object is its CREATOR, not the Administrators group. So a
-/// <c>credentials.json</c> restored from a backup, re-copied with <c>robocopy</c> without
-/// <c>/copyall</c>, or dragged in through Explorer is owned by that admin's own account, and the
-/// service will refuse to start — in a five-second restart loop, since nothing self-heals by
-/// design. The way out is one command and it is in the refusal message and in
-/// <c>observer diagnose</c>; it is still a real operational cost, and it is the price of not
-/// adopting a key whose author cannot be named. What does NOT regress, checked: an MSI upgrade
-/// (the folder survives it untouched and stays SYSTEM-owned), a disk clone or machine rename
-/// (both SIDs are well-known), and moving the service from LocalSystem to a domain account (the
-/// folder is still owned by <c>S-1-5-18</c>, which is trusted unconditionally).
+/// WHAT THE RULE COSTS, and the trigger is the DIRECTORY, never the files in it. Prepare looks at who
+/// owns the folder and what its permissions say; <c>CredentialStore.Read</c> never looks at a file's
+/// owner. So a <c>credentials.json</c> copied into the folder the service made itself is adopted
+/// exactly as before, and what trips the rule is a folder made by another hand that is not empty:
+/// recreated and restored into, restored from a backup without its permissions, or left by the
+/// service run by hand under any account but SYSTEM, elevated or not. That last one is subtler than
+/// it looks:
+/// the descriptor the service writes names the running account, and LocalSystem trusts only
+/// <c>S-1-5-18</c> and <c>S-1-5-32-544</c>, so the verdict is OpenDacl even when the owner is right.
+/// The same happens to a machine whose service ran under a domain account and is re-registered as
+/// LocalSystem by an MSI upgrade. A recreated folder inherits from <c>ProgramData</c>, which is
+/// open. Trusted owners are SYSTEM and the Administrators GROUP: an individual administrator's own
+/// account is not among them, and <c>takeown</c> without <c>/A</c> hands ownership to that account.
+/// </para>
+/// <para>
+/// WHAT THE OPERATOR SEES, none of it measured on a live service and all of it reasoned from the
+/// code: Provision runs before the host is built, so there is no logger yet and the refusal escapes as
+/// an unhandled exception, which Windows records in the Application log (source <c>.NET Runtime</c>).
+/// The MSI starts the service and waits for it, so an upgrade onto such a machine may stop with
+/// error 1920, which does not name the cause, and roll back to the version that adopts. The package
+/// configures Windows to restart the service after five seconds, but <c>sc qfailureflag</c> reports
+/// that recovery is off for non-crash failures, so whether a pre-connect exit counts is unproven. The
+/// way out is TWO steps and not one command — the owner, and the permissions — and the README, section
+/// Packages, has the exact <c>icacls</c> lines. It is a real operational cost, and it is the price
+/// of not adopting a key whose author cannot be named. What does NOT regress, checked: an MSI upgrade
+/// of a folder the service made itself (Safe, and the folder survives the upgrade), and a disk clone
+/// or machine rename (both trusted SIDs are well-known).
 /// </para>
 /// <para>
 /// THE RACE IN THE EMPTY CASE IS CLOSED, and it took replacing the container rather than repairing
@@ -121,9 +132,10 @@ public sealed record ProvisionedCredentials(
 /// that action too.
 /// </para>
 /// <para>
-/// On Linux none of it is reachable: <c>/etc</c> is root-only, so planting takes root, and root
-/// needs no planted token. That reasoning sits in <see cref="CredentialDirectory.Prepare"/>, beside
-/// the silence which depends on it.
+/// On Linux none of it is reachable: <c>/etc</c> can be written only by root and the package creates
+/// <c>/etc/observer</c> for the <c>observer</c> account the service runs as, so planting takes root or
+/// that account, and neither needs a planted token. That reasoning sits in
+/// <see cref="CredentialDirectory.Prepare"/>, beside the silence which depends on it.
 /// </para>
 /// </remarks>
 public static class CredentialProvisioning

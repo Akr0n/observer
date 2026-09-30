@@ -86,14 +86,26 @@ public class WindowsDirectoryTrustTests
 
             Assert.Contains("is not empty", refusal.Message, StringComparison.Ordinal);
 
+            // The recovery commands are IN the message, character for character, because the MSI and
+            // the .deb ship no README and this is the only text the operator has in front of them. A
+            // typo in one of them is not cosmetic: "takeout" got in once, in a draft, and would have
+            // sent an administrator to a command that does not exist at the moment they need it.
+            Assert.Contains($"takeown /F \"{path}\" /A /R /D Y", refusal.Message, StringComparison.Ordinal);
+            Assert.Contains($"icacls \"{path}\" /setowner \"*S-1-5-32-544\" /T", refusal.Message, StringComparison.Ordinal);
+            Assert.Contains($"icacls \"{path}\" /reset /T", refusal.Message, StringComparison.Ordinal);
+            Assert.Contains(
+                $"icacls \"{path}\" /inheritance:r /grant:r \"*S-1-5-18:(OI)(CI)F\" \"*S-1-5-32-544:(OI)(CI)F\"",
+                refusal.Message,
+                StringComparison.Ordinal);
+
             // The key is never echoed into a message that will end up in a log.
             Assert.DoesNotContain("planted-by-a-standard-user", refusal.Message, StringComparison.Ordinal);
 
             // NOTHING WAS TOUCHED, and this is the assertion that matters most. Moving the refusal
             // to after Repair would still throw on this first call and look correct - but the owner
-            // would already be fixed, so the 5-second restart the package configures would see a
-            // spotless directory and adopt the planted file. The owner staying put is what makes the
-            // refusal durable.
+            // would already be fixed, so the next start - the restart the package configures, or an
+            // operator's own - would see a spotless directory and adopt the planted file. The owner
+            // staying put is what makes the refusal durable.
             Assert.Equal(ownerBefore, OwnerOf(path));
             Assert.Contains("planted-by-a-standard-user", File.ReadAllText(store), StringComparison.Ordinal);
             Assert.Equal(
@@ -197,7 +209,7 @@ public class WindowsDirectoryTrustTests
         // read-only bit is a rule in the delete disposition and not an access check. A standard user
         // creates the directory, is its CREATOR OWNER and so holds WRITE_ATTRIBUTES, runs
         // "attrib +r" and walks away: no privilege, no running process, and without clearing that
-        // bit the service would never start again, retried every five seconds forever.
+        // bit the service would never start again.
         string path = Path.Combine(Path.GetTempPath(), "obs-" + Guid.NewGuid().ToString("N")[..10]);
         DirectoryInfo info = Directory.CreateDirectory(path);
         string witness = path + ":observer-witness";
