@@ -14,8 +14,9 @@ namespace Observer.Service.Credentials;
 /// restart loop (measured under systemd). The store belongs to its directory's owner, whoever is
 /// the one writing it.
 /// <para>
-/// The FILE is handled by descriptor and never by path (only the directory, which is just read, is
-/// looked up by path), and that is not a detail. The directory belongs to the service account,
+/// The FILE is handled by descriptor and never by path (what is only READ is looked up by path: the
+/// directory here and, for <see cref="OwnerOfPath"/>, whatever a diagnostic asks about), and that is
+/// not a detail. The directory belongs to the service account,
 /// which faces the network, and root works inside it: a chown by path follows a symbolic link, so a
 /// compromised service could put one where the file was created and have root hand over whatever it
 /// pointed at. Every other thing root does there (create exclusively, rename, unlink) is safe
@@ -89,7 +90,7 @@ public static partial class UnixOwnership
             ?? throw new ArgumentException("The file has no directory.", nameof(file));
 
         // Unknown is not a mismatch: without the answers there is nothing to hand over.
-        if (OwnerOfDirectory(directory) is not { } wanted
+        if (OwnerOfPath(directory) is not { } wanted
             || OwnerOfFile(file.SafeFileHandle) is not { } current
             || current == wanted)
         {
@@ -116,13 +117,23 @@ public static partial class UnixOwnership
             + wanted.Uid + ", gid " + wanted.Gid + "): " + Marshal.GetPInvokeErrorMessage(error) + ".");
     }
 
-    private static (uint Uid, uint Gid)? OwnerOfDirectory(string directory)
+    /// <summary>Who owns whatever an absolute path leads to, or null if that cannot be read.</summary>
+    /// <param name="path">An absolute path. A symbolic link is followed: the answer is the target's.</param>
+    /// <returns>The uid and gid, or null: the path is not there, this account cannot search the
+    /// directories on the way to it, or the system does not say (no statx, or one that filters it).</returns>
+    /// <remarks>
+    /// It needs no privilege beyond what reaching the path needs, and it never opens the file, so
+    /// it is what a diagnostic may use on a store whose content it has no business reading. It is
+    /// the lookup <see cref="FollowDirectory"/> makes for the directory, offered to callers that
+    /// have no open file to ask about: .NET can give the mode of a file and not its owner.
+    /// </remarks>
+    public static (uint Uid, uint Gid)? OwnerOfPath(string path)
     {
         Span<byte> buffer = stackalloc byte[StatxSize];
 
         try
         {
-            return StatX(AtFdcwd, directory, 0, UidAndGid, ref MemoryMarshal.GetReference(buffer)) == 0
+            return StatX(AtFdcwd, path, 0, UidAndGid, ref MemoryMarshal.GetReference(buffer)) == 0
                 ? Owner(buffer)
                 : null;
         }

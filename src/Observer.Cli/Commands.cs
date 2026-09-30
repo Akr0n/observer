@@ -69,7 +69,8 @@ public static class Commands
                                           run "observer token set NAME" there.
 
               observer doctor             Explain where the credential store is, how well it is
-                                          protected, and what a client would see. Needs nothing.
+                                          protected (on Linux, who owns it), and what a client
+                                          would see. Needs nothing.
 
               observer token set NAME     Keep ANOTHER machine's token here, so it stays out of
                                           machines.json. The token is read from standard input,
@@ -411,6 +412,21 @@ public static class Commands
 
         Console.WriteLine("Credential store: " + storePath);
         Console.WriteLine("Protection      : " + Diagnosis.DescribeProtection(storePath));
+
+        if (OperatingSystem.IsLinux())
+        {
+            // The Windows verdicts above already say who owns the directory. On Linux nothing
+            // did, and a store left to root by an old rotate-key is what stops the service.
+            IReadOnlyList<string> owner = Diagnosis.DescribeOwnership(storePath);
+
+            Console.WriteLine("Store owner     : " + owner[0]);
+
+            foreach (string line in owner.Skip(1))
+            {
+                Console.WriteLine("                  " + line);
+            }
+        }
+
         Console.WriteLine("Local channel   : " + LocalChannelProbe.Probe(LocalChannelProbe.DefaultPipeName, TimeSpan.FromSeconds(3)));
         Console.WriteLine("Certificate     : " + Diagnosis.DescribeCertificate(storePath));
         Console.WriteLine("Running as      : " + Diagnosis.CurrentAccountName());

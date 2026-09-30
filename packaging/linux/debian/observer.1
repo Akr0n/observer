@@ -1,4 +1,4 @@
-.TH OBSERVER 1 "2026-09-20" "observer 0.24.2" "User Commands"
+.TH OBSERVER 1 "2026-09-30" "observer 0.24.3" "User Commands"
 .SH NAME
 observer \- manage this machine's Observer service and its stored tokens
 .SH SYNOPSIS
@@ -62,8 +62,23 @@ is run there with the new token. Requires privileges.
 .TP
 .B doctor
 Report where the credential store is, how well it is protected, what identity
-this terminal has, and what a client would see on the local channel. Requires
-nothing, and it is the command that explains the others when they fail.
+this terminal has, and what a client would see on the local channel. On Linux it
+also reports who owns the store file and its directory, by number and, where
+/etc/passwd and /etc/group list one, by name, and flags a state that stops the
+service from starting: a file that belongs to another account than its
+directory, which is what
+.B rotate\-key
+run as root left behind before 0.24.2. It then prints the two commands that
+repair it, handing the file to the owner of the directory with
+.B "chown \-h"
+and restarting the service. If the store is a symbolic link it says so and
+offers no command, because the package leaves a link alone too. The
+directory is closed to every account but its owner and root, so from an
+ordinary account the owner of the file is reported as not readable; run
+.B "sudo observer doctor"
+to see it. The ownership check asks the system who owns the two paths and never
+opens the store. Requires nothing, and it is the command that explains the
+others when they fail.
 .TP
 .BI "token set " NAME
 Keep the token of another machine on this computer, under the

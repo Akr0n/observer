@@ -1,3 +1,33 @@
+observer (0.24.3) unstable; urgency=low
+
+  * Linux only: "observer doctor" now says who owns the credential store.
+    It prints the owner and group of /etc/observer/credentials.json and
+    of its directory, by number and, where /etc/passwd and /etc/group
+    list one, by name, and flags a state that stops the service from
+    starting: the file owned by another account than its directory,
+    typically root, which is what "sudo observer rotate-key" left behind
+    before 0.24.2. It then prints the two commands that repair it,
+    taking the account from the owner of the directory: "sudo chown -h
+    observer:observer /etc/observer/credentials.json" and "sudo
+    systemctl restart observer". Upgrading already repairs a store that
+    older versions left to root, so this is for what the upgrade leaves
+    alone and for what happens afterwards, such as a store copied in as
+    root.
+  * The -h makes chown act on the path itself and never on what a link
+    there points to: root runs it inside a directory the service
+    account owns. If the store is a symbolic link, doctor says so and
+    offers no command at all, as the package leaves a link alone.
+  * From an ordinary account the file is out of reach, because
+    /etc/observer is closed to every account but its owner and root:
+    doctor then says the owner of the file cannot be read from there and
+    that "sudo observer doctor" can. The ownership check only asks the
+    system who owns the two paths: it never opens the store and changes
+    nothing.
+  * Nothing else changes: the service, the store and the Windows package
+    behave as in 0.24.2.
+
+ -- Federico Cardinali <noreply@example.invalid>  Wed, 30 Sep 2026 11:27:00 +0200
+
 observer (0.24.2) unstable; urgency=medium
 
   * Linux only: "sudo observer rotate-key" could leave the service unable

@@ -16,7 +16,7 @@
          the changelog ships only inside the .deb - also needs .github/release-notes/<version>.md in
          the SAME pull request: release.yml reads it from the tagged commit, so a file added after
          the tag is ignored. -->
-    <Version>0.24.2</Version>
+    <Version>0.24.3</Version>
 
     <!-- The copyright holder, in one place. From here it ends up in the metadata of EVERY
          executable the build produces: the file properties on Windows, and the same
