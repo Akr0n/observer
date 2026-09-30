@@ -292,7 +292,7 @@ try {
         Assert-That 'recovery: foreach hands over one [file, arguments] pair at a time' (($command[0] -is [string]) -and ($command[1] -is [array]))
     }
 
-    $good = "The credential directory '$dir' is not empty ... run:`n  icacls `"$dir`" /setowner `"*S-1-5-32-544`" /T`n  icacls `"$dir`" /reset /T`n  icacls `"$dir`" /inheritance:r /grant:r `"*S-1-5-18:(OI)(CI)F`" `"*S-1-5-32-544:(OI)(CI)F`"`n(if Windows refuses, first run: takeown /F `"$dir`" /A /R /D Y)"
+    $good = "The credential directory '$dir' is not empty ... run:`n  icacls `"$dir`" /setowner `"*S-1-5-32-544`" /T`n  icacls `"$dir`" /reset /T`n  icacls `"$dir`" /inheritance:r /grant:r `"*S-1-5-18:(OI)(CI)F`" `"*S-1-5-32-544:(OI)(CI)F`"`n(if Windows refuses, first run: takeown /F `"$dir`" /A /R - it may ask a yes/no question in the language of Windows: answer yes)"
     $nothingMissing = Get-MissingRecoveryText $good $dir
     Assert-That 'message check: a complete message misses nothing, and .Count works on the empty result (StrictMode)' ($nothingMissing.Count -eq 0)
     Assert-That 'message check: the takeown typo is caught' ((Get-MissingRecoveryText $good.Replace('takeown', 'takeout') $dir).Count -eq 1)

@@ -894,7 +894,7 @@ function Get-MissingRecoveryText {
         ('icacls "{0}" /setowner "*S-1-5-32-544" /T' -f $Directory),
         ('icacls "{0}" /reset /T' -f $Directory),
         ('icacls "{0}" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F"' -f $Directory),
-        ('takeown /F "{0}" /A /R /D Y' -f $Directory)
+        ('takeown /F "{0}" /A /R' -f $Directory)
     )
     # Contains, not -like: the commands hold a literal asterisk (*S-1-5-32-544), which -like would
     # read as a wildcard and quietly accept a message that lacks it.
@@ -1062,6 +1062,9 @@ $script:Scenarios = @(
             if ($null -ne $refusal) {
                 $missing = Get-MissingRecoveryText $refusal.Text $dir
                 Add-Check 'the message carries the four recovery commands with the real path' ($missing.Count -eq 0) ('missing: ' + ($missing -join ' || '))
+                # Builds up to 0.24.3 print "takeown ... /D Y", which is rejected outside English Windows:
+                # this row is what tells a build with that line from one without it.
+                Add-Check 'the takeown line does NOT carry /D Y (it is rejected outside English Windows)' (-not $refusal.Text.Contains('/D Y')) ('the message ' + $(if ($refusal.Text.Contains('/D Y')) { 'still prints "/D Y": this is a build from before the fix' } else { 'has no /D' }))
             }
             else {
                 Add-Check 'the message carries the four recovery commands with the real path' $false 'there was no refusal message to read'
@@ -1221,15 +1224,17 @@ $script:Scenarios = @(
     },
     @{
         Name = 'takeown'
-        Description = 'The takeown line as the refusal prints it. Not a service test: whether that command runs on THIS Windows.'
+        Description = 'The takeown line the refusal prints, and the form it printed before. Not a service test: whether those commands run on THIS Windows.'
         Run = {
             $dir = New-ScenarioDirectory 'takeown'
             Add-PlantedStore $dir $script:PlantedToken
-            $printed = Invoke-Native 'takeown.exe' @('/F', $dir, '/A', '/R', '/D', 'Y')
-            $bare = Invoke-Native 'takeown.exe' @('/F', $dir, '/A', '/R')
-            Add-Check 'INFO: takeown /F <folder> /A /R /D Y (as printed by the service)' $null ('exit {0}: {1}' -f $printed.Code, ($printed.Output -replace '\s+', ' '))
-            Add-Check 'INFO: takeown /F <folder> /A /R (without /D)' $null ('exit {0}: {1}' -f $bare.Code, ($bare.Output -replace '\s+', ' '))
-            Add-Check 'the line as printed runs on this Windows' ($printed.Code -eq 0) ('a non-zero exit here means the printed recovery text is wrong on this language of Windows')
+            # Through cmd with stdin from NUL: takeown asks a yes/no question when it meets something it
+            # cannot open, and a question with nobody to answer would stop the whole run. (The folder is
+            # the run folder's own and has no spaces in its path, so the line needs no quotes.)
+            $printed = Invoke-Native 'cmd.exe' @('/c', ('takeown /F {0} /A /R < NUL' -f $dir))
+            $old = Invoke-Native 'cmd.exe' @('/c', ('takeown /F {0} /A /R /D Y < NUL' -f $dir))
+            Add-Check 'the takeown line the service prints now (no /D) runs on this Windows' ($printed.Code -eq 0) ('exit {0}: {1}' -f $printed.Code, ($printed.Output -replace '\s+', ' '))
+            Add-Check 'INFO: the line it printed before, with /D Y (a non-zero exit is the defect the change fixed, on this language of Windows)' $null ('exit {0}: {1}' -f $old.Code, ($old.Output -replace '\s+', ' '))
         }
     }
 )
