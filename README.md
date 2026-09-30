@@ -568,12 +568,22 @@ for files you know are yours. If the installer had rolled back, run it again aft
 `Restart-Service` alone would restart the old version, which does not refuse.
 
 **Upgrading does not undo an earlier adoption.** A folder the old service already repaired now
-looks sound, so a token or certificate planted before is kept and used, and nothing records who
-wrote it. Worse, whoever planted them still OWNS those files and can rewrite them after the
-upgrade. If someone else could have created `C:\ProgramData\Observer` before the service first
-started, delete both `certificate.pfx` and `credentials.json` and run `Restart-Service Observer`:
-the service creates both again. Deleting them ends it; editing does not. Every machine that watches
-this one then needs the new fingerprint and token from `observer share`.
+looks sound, so a token or certificate planted before is kept and used. The folder no longer says
+who made it, but the files do: the old service repaired the folder only, never the files in it, so
+a planted file keeps its planter as owner, while the service creates its own as SYSTEM or
+Administrators. From an elevated prompt:
+
+```powershell
+Get-ChildItem C:\ProgramData\Observer | ForEach-Object { '{0}  {1}' -f (Get-Acl $_.FullName).GetOwner([Security.Principal.SecurityIdentifier]).Value, $_.Name }
+```
+
+`S-1-5-18` is SYSTEM and `S-1-5-32-544` is Administrators (or the account the service runs as, if it
+is not LocalSystem); any other owner on either file means that account put it there. Whoever
+planted them still OWNS them and can rewrite them after the upgrade. If either file is owned by
+someone else, or you cannot tell, delete both `certificate.pfx` and `credentials.json` and run
+`Restart-Service Observer`: the service creates both again. Deleting them ends it; editing does
+not. Every machine that watches this one then needs the new fingerprint and token from
+`observer share`.
 
 The `.deb` also installs `man observer` and `man observer-dashboard`, and it is checked by
 **lintian** in CI: the `pack-linux` job runs it with `--fail-on error,warning` on the package it

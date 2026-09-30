@@ -11,7 +11,11 @@
          the .deb's control file and the package name in pack.sh - and bumping it meant
          remembering all three. From here it also reaches the binaries' metadata, which all
          used to declare 1.0.0.0 whatever the version of the package that carried them.
-         The .wixproj receives it because this file applies to it too. -->
+         The .wixproj receives it because this file applies to it too.
+         A release that carries something users must read FIRST - a security fix above all, since
+         the changelog ships only inside the .deb - also needs .github/release-notes/<version>.md in
+         the SAME pull request: release.yml reads it from the tagged commit, so a file added after
+         the tag is ignored. -->
     <Version>0.24.1</Version>
 
     <!-- The copyright holder, in one place. From here it ends up in the metadata of EVERY

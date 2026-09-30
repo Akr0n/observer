@@ -129,6 +129,11 @@ jobs:
       # doing it after would delete packages/ - the MSI and the .deb - and the release would be
       # created with nothing attached. It is here for one file, the release's own notes section.
       - uses: actions/checkout@v7
+        with:
+          # Nothing in this job pushes: gh uses GH_TOKEN below. Without this the checkout would leave
+          # the workflow's token (contents: write) on the runner's disk for the whole job, in a step
+          # that also reads a path controlled by the repository.
+          persist-credentials: false
 
       - uses: actions/download-artifact@v4
         with:
@@ -147,16 +152,39 @@ jobs:
           # template alone, exactly as before. It is a file and not the changelog because the
           # changelog ships only inside the .deb: a Windows user who downloads the MSI would never
           # see it, and a security fix that only Linux users can read is not announced to the
-          # people it affects. It is copied with cat, never expanded, so backticks and dollar signs
-          # in it are safe - which the heredoc below is not.
+          # people it affects. It is copied, never expanded, so backticks and dollar signs in it are
+          # safe - which the heredoc below is not.
+          #
+          # The file goes in the RELEASE PR, before the tag: this reads the tagged commit, so one
+          # added afterwards is ignored. For a release that already exists the GitHub page is the
+          # truth, edited with gh release edit, and the file is only a record of what it said.
+          # Nothing makes the file mandatory, so the step SAYS in the log whether it found one:
+          # that line is what tells a misspelt name (v0.25.0.md for 0.25.0.md) from a release that
+          # simply has no section.
           SECTION=".github/release-notes/${VERSION}.md"
+
+          # Refused, not ignored. cat would follow a symlink out of the folder and publish whatever
+          # it points to, and a directory would fall through to the template, which reads as "no
+          # section" when somebody meant to write one.
+          if [ -L "$SECTION" ] || { [ -e "$SECTION" ] && [ ! -f "$SECTION" ]; }; then
+            echo "$SECTION exists but is not a regular file." >&2
+            exit 1
+          fi
 
           {
             echo "Observer $VERSION."
             echo
             if [ -f "$SECTION" ]; then
-              cat "$SECTION"
+              echo "Release notes: section from $SECTION" >&2
+              # Two things an editor can leave behind. A UTF-8 byte order mark would land in the
+              # MIDDLE of the notes and stop the first heading being a heading; a file with no final
+              # newline would run into the template's first heading, and if it ended in an HTML
+              # block would swallow it.
+              sed -e '1s/^\xEF\xBB\xBF//' -e '$a\' "$SECTION"
               echo
+            else
+              echo "Release notes: no $SECTION, template only. In .github/release-notes:" >&2
+              ls .github/release-notes >&2 2>/dev/null || echo "  (the folder does not exist)" >&2
             fi
           } > note.md
 
