@@ -353,7 +353,7 @@ try {
     Assert-That 'report: the table has one row per check, a pipe in a name is escaped' (($md -like '*| one | a / pipe in a name | PASS |*') -and ($md -like '*| one | b | FAIL |*') -and ($md -like '*| one | c | INFO |*'))
     Assert-That 'report: carries the evidence, the build under test, the run id' (($md -like '*ev2*') -and ($md -like '*Service under test: exe, product version 9.9*') -and ($md -like '*ObserverProbe-test00*'))
     Assert-That 'report: unchanged installation is said as such' ($md -like '*Unchanged:*')
-    Assert-That 'report: nothing left behind is said as such' ($md -like '*Nothing: every service and folder*')
+    Assert-That 'report: nothing left behind is said as such' ($md -like '*Nothing of the probe''s own: every service and folder*')
     $md = (Get-ReportLines -Results $results -Before $snapA -After $snapDiff -Differences $diff -Build 'x') -join "`n"
     Assert-That 'report: a changed installation is CHANGED, with the before/after of the part' (($md -like '*CHANGED while the probe ran: service*') -and ($md -like '*before: state=Running*') -and ($md -like '*after:  state=Stopped*'))
     $md = (Get-ReportLines -Results $results -Before $snapA -After $snapBad -Differences (Compare-Snapshots $snapA $snapBad) -Build 'x') -join "`n"
@@ -425,6 +425,42 @@ try {
     $maskB = [pscustomobject]@{ Parts = ([ordered]@{ 'data folder' = 'x credentials.json length=1 sha256=BA9876543210' }); Verified = $true; Nothing = $false }
     $mdMask = (Get-ReportLines -Results $results -Before $maskA -After $maskB -Differences (Compare-Snapshots $maskA $maskB) -Build 'x') -join "`n"
     Assert-That 'report: a differing part is shown WITHOUT the file hashes' (($mdMask -like '*CHANGED*') -and ($mdMask -notlike '*0123456789AB*') -and ($mdMask -notlike '*BA9876543210*') -and ($mdMask -like '*sha256=(not shown)*'))
+
+    # --- second round of the review ---------------------------------------------------------------
+    $names = Get-ProbeServiceNames
+    Assert-That 'service names: the SCM listing gives an array (not $null) that .Count can be read from' (($null -ne $names) -and ($names.Count -eq 0)) ($names -join ',')
+    Assert-That 'service sample: a name that is not registered is Gone (sc query 1060), not Unknown' ((Get-ServiceSample 'ObserverProbe-nothere-none').Status -eq 'Gone')
+
+    $only = @('a,b', 'c') | ForEach-Object { $_ -split ',' } | Where-Object { $_ }
+    Assert-That 'only: "a,b" as one string splits into two names' ($only.Count -eq 3)
+    $none = @($null | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
+    Assert-That 'only: nothing given is an EMPTY array under StrictMode' ($none.Count -eq 0)
+
+    $rf = Join-Path $root 'report-out.md'
+    Write-ReportFile -Lines @('one', 'two') -Path $rf
+    Assert-That 'report file: written, UTF-8 without a byte order mark' (([IO.File]::ReadAllText($rf) -eq ('one' + [Environment]::NewLine + 'two')) -and ([IO.File]::ReadAllBytes($rf)[0] -eq 111))
+    Write-ReportFile -Lines @('three') -Path $rf
+    Assert-That 'report file: an existing report is replaced' ([IO.File]::ReadAllText($rf) -eq 'three')
+    $rt = Join-Path $root 'report-target.txt'
+    [IO.File]::WriteAllText($rt, 'must stay')
+    $rl = Join-Path $root 'report-link.md'
+    $linked = $true
+    try { New-Item -ItemType SymbolicLink -Path $rl -Target $rt -ErrorAction Stop | Out-Null } catch { $linked = $false }
+    if ($linked) {
+        Assert-Throws 'report file: a symbolic link at the path is refused, and its target is untouched' { Write-ReportFile -Lines @('x') -Path $rl } '*is a link*'
+        Assert-That 'report file: the target of the link still holds what it held' ([IO.File]::ReadAllText($rt) -eq 'must stay')
+        [IO.File]::Delete($rl)
+    }
+    $rj = Join-Path $root 'report-dir-link'
+    New-Item -ItemType Junction -Path $rj -Target $target | Out-Null
+    Assert-Throws 'report file: a junction at the path is refused too' { Write-ReportFile -Lines @('x') -Path $rj } '*is a link*'
+    [IO.Directory]::Delete($rj, $false)
+    Assert-Throws 'report file: a folder that does not exist is an error, not a silent loss' { Write-ReportFile -Lines @('x') -Path (Join-Path $root 'nope\report.md') } '*'
+
+    $planText2 = (Show-Plan 6>&1 | Out-String)
+    Assert-That 'plan: shows the empty --Observer:ApiToken= argument and why' (($planText2 -like '*--Observer:ApiToken=*') -and ($planText2 -like '*skip the folder being measured*'))
+    $rl2 = (Get-ReportLines -Results $results -Before $snapA -After $snapSame -Differences (Compare-Snapshots $snapA $snapSame) -Build 'x') -join "`n"
+    Assert-That 'report: says "nothing of the probe''s own" and names what Windows keeps' (($rl2 -like '*Nothing of the probe''s own*') -and ($rl2 -like '*Windows itself keeps traces*'))
 
     # --- the plan -------------------------------------------------------------------------------
     $planText = (Show-Plan 6>&1 | Out-String)

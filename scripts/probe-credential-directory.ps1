@@ -120,6 +120,9 @@ param(
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Stop'
 
+# powershell -File hands "-Only a,b" over as the single string "a,b": split it, whichever way it came.
+$Only = @($Only | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
+
 $script:Prefix = 'ObserverProbe-'
 $script:ProgramData = [Environment]::GetFolderPath('CommonApplicationData')
 $script:SystemSid = 'S-1-5-18'
@@ -578,27 +581,31 @@ function New-Probe {
     return [pscustomobject]@{ Service = $service; Directory = $Directory; Store = $store; Port = $port; Recovery = $recovery }
 }
 
-# 'Gone' is said ONLY when the Service Control Manager itself answers that there is no such service.
-# A failed WMI query (the service is down, a timeout) is 'Unknown' and never "gone": taking it for
-# gone would skip the delete and leave a LocalSystem service registered on a folder that is about to
-# be removed, where a standard user could put whatever they like.
+# 'Gone' is said ONLY when the Service Control Manager itself says there is no such service: sc query
+# answers 1060 (ERROR_SERVICE_DOES_NOT_EXIST) for that, in any language. Get-Service cannot be used to
+# decide it - it returns nothing both for a service that is not there and for an SCM that did not
+# answer - and neither can a failed WMI query (the service is down, a timeout). Any other answer is
+# 'Unknown', which is never "gone": taking it for gone would skip the delete and leave a LocalSystem
+# service registered on a folder that is about to be removed, where a standard user could put whatever
+# they like. (1072, marked for deletion, is 'Unknown' too: it is still registered.)
 function Get-ServiceSample {
     param([string] $Name)
-    try {
-        $scm = Get-Service -Name $Name -ErrorAction SilentlyContinue
-    }
-    catch {
-        return [pscustomobject]@{ Status = 'Unknown'; ProcessId = 0; ExitCode = -1 }
-    }
-    if ($null -eq $scm) { return [pscustomobject]@{ Status = 'Gone'; ProcessId = 0; ExitCode = -1 } }
+    $query = Invoke-Native 'sc.exe' @('query', $Name)
+    if ($query.Code -eq 1060) { return [pscustomobject]@{ Status = 'Gone'; ProcessId = 0; ExitCode = -1 } }
+    if ($query.Code -ne 0) { return [pscustomobject]@{ Status = 'Unknown'; ProcessId = 0; ExitCode = -1 } }
     try {
         $cim = Get-CimInstance -ClassName Win32_Service -Filter ("Name = '{0}'" -f $Name) -ErrorAction Stop
     }
     catch {
         $cim = $null
     }
-    if ($null -eq $cim) { return [pscustomobject]@{ Status = [string] $scm.Status; ProcessId = 0; ExitCode = -1 } }
-    return [pscustomobject]@{ Status = [string] $cim.State; ProcessId = [int] $cim.ProcessId; ExitCode = [int] $cim.ExitCode }
+    if ($null -ne $cim) {
+        return [pscustomobject]@{ Status = [string] $cim.State; ProcessId = [int] $cim.ProcessId; ExitCode = [int] $cim.ExitCode }
+    }
+    # The SCM says it exists but WMI would not say more: its state, without a process id.
+    $scm = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    if ($null -eq $scm) { return [pscustomobject]@{ Status = 'Unknown'; ProcessId = 0; ExitCode = -1 } }
+    return [pscustomobject]@{ Status = [string] $scm.Status; ProcessId = 0; ExitCode = -1 }
 }
 
 function Get-EventText {
@@ -677,7 +684,11 @@ function Remove-ProbeService {
     if ($Name -cnotmatch ('^' + [regex]::Escape($script:Prefix) + '[0-9a-f]{6}-[a-z]+$')) {
         throw "Refusing to remove a service that is not a probe: $Name"
     }
-    if ((Get-ServiceSample $Name).Status -eq 'Gone') { return $true }
+    if ((Get-ServiceSample $Name).Status -eq 'Gone') {
+        # Withdraw an earlier entry about this service, if a previous try left one: it is gone now.
+        $null = $script:Leftovers.RemoveAll([Predicate[string]] { param($entry) $entry.StartsWith('service ' + $Name + ' ') })
+        return $true
+    }
     Invoke-Native 'sc.exe' @('stop', $Name) | Out-Null
     for ($i = 0; $i -lt 30; $i++) {
         $status = (Get-ServiceSample $Name).Status
@@ -1248,7 +1259,9 @@ function Show-Plan {
     Write-Host 'Service command line, per probe:'
     Write-Host '  Observer.Service.exe --Observer:CredentialStorePath=<folder>\credentials.json'
     Write-Host '      --Observer:Network:HttpsPort=<free port> --Observer:LocalChannel:PipeName=<probe name>'
-    Write-Host '      --Observer:Storage:Enabled=false'
+    Write-Host '      --Observer:Storage:Enabled=false --Observer:ApiToken='
+    Write-Host '  (the empty ApiToken is deliberate: a token set in the machine environment or in an'
+    Write-Host '  appsettings.Local.json would make the service skip the folder being measured)'
     Write-Host ''
     Write-Host 'Scenarios (about ten minutes in all):'
     foreach ($scenario in $script:Scenarios) {
@@ -1257,21 +1270,44 @@ function Show-Plan {
     Write-Host ''
 }
 
+# The names of the probe services the Service Control Manager knows, asked of the SCM itself: by the
+# NAME PATTERN in sc's output, because its labels are translated. $null - not an empty list - when it
+# could not be asked, because "no services" and "could not ask" must never look alike to a caller that
+# is about to delete the folder those services run from.
+function Get-ProbeServiceNames {
+    $query = Invoke-Native 'sc.exe' @('query', 'type=', 'service', 'state=', 'all')
+    if ($query.Code -ne 0) { return $null }
+    $pattern = [regex]::Escape($script:Prefix) + '[0-9a-f]{6}-[a-z]+'
+    return , @([regex]::Matches($query.Output, $pattern) | ForEach-Object { $_.Value } | Sort-Object -Unique)
+}
+
 function Invoke-Cleanup {
-    $servicePattern = '^' + [regex]::Escape($script:Prefix) + '[0-9a-f]{6}-[a-z]+$'
-    $services = @(Get-Service -Name ($script:Prefix + '*') -ErrorAction SilentlyContinue)
-    foreach ($service in $services) {
-        if ($service.Name -cnotmatch $servicePattern) {
-            Write-Host ('skipping ' + $service.Name + ': not a name this script gives') -ForegroundColor Yellow
-            continue
-        }
-        Write-Host ('removing service ' + $service.Name)
-        Remove-ProbeService $service.Name | Out-Null
+    $names = Get-ProbeServiceNames
+    if ($null -eq $names) {
+        # Without the list there is no telling whether a service still points into a folder, and
+        # removing the folder would leave it pointing at a path anyone can re-create.
+        $script:Leftovers.Add('The list of services could not be read, so nothing was removed. Try again from an elevated PowerShell.')
+        Write-Host 'NOT REMOVED:' -ForegroundColor Red
+        foreach ($left in $script:Leftovers) { Write-Host ('  ' + $left) -ForegroundColor Red }
+        return $false
     }
+    $stuckRuns = New-Object Collections.Generic.HashSet[string]
+    foreach ($name in $names) {
+        Write-Host ('removing service ' + $name)
+        if (-not (Remove-ProbeService $name)) {
+            # <prefix><six hex digits> is the run folder this service was started from.
+            $null = $stuckRuns.Add($name.Substring(0, $script:Prefix.Length + 6))
+        }
+    }
+    $services = $names
     $roots = @(Get-ChildItem -LiteralPath $script:ProgramData -Force -Filter ($script:Prefix + '*') -ErrorAction SilentlyContinue)
     foreach ($item in $roots) {
         if (-not (Test-ProbeRootName $item.Name)) {
             Write-Host ('skipping ' + $item.FullName + ': not a name this script gives') -ForegroundColor Yellow
+            continue
+        }
+        if ($stuckRuns.Contains($item.Name)) {
+            $script:Leftovers.Add($item.FullName + ' was left in place on purpose: a service still points into it. Run this script with -Cleanup once that service is gone.')
             continue
         }
         $facts = Get-PathFacts $item.FullName
@@ -1369,12 +1405,27 @@ function Get-ReportLines {
     $lines.Add('## What was left behind')
     $lines.Add('')
     if ($script:Leftovers.Count -eq 0) {
-        $lines.Add('Nothing: every service and folder the probe made was removed and looked for again afterwards.')
+        $lines.Add('Nothing of the probe''s own: every service and folder it made was removed and looked for again afterwards.')
     }
     else {
         foreach ($left in $script:Leftovers) { $lines.Add('- ' + $left) }
     }
+    $lines.Add('')
+    $lines.Add('Windows itself keeps traces the probe cannot remove: crash reports and Application log events (.NET Runtime 1026 and 1000) naming Observer.Service.exe, and possibly a few certificate key files in the key store of the account the services ran as. They come from the services that were made to fail on purpose.')
     return , $lines.ToArray()
+}
+
+# Written to a path that is checked NOW, not ten minutes ago: a link is refused, and the file is
+# created exclusively (CreateNew fails if anything - a link included - has appeared at that name), so
+# an elevated write never goes through something planted in between.
+function Write-ReportFile {
+    param([string[]] $Lines, [string] $Path)
+    if (Test-IsLink $Path) { throw "The report path is a link: $Path" }
+    [IO.File]::Delete($Path)
+    $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($Lines -join [Environment]::NewLine)
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    try { $stream.Write($bytes, 0, $bytes.Length) }
+    finally { $stream.Dispose() }
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -1439,7 +1490,12 @@ if (Test-IsLink $ReportPath) {
     throw "The report path $ReportPath is a link, and this runs elevated: it will not write through one. Nothing was changed."
 }
 try {
+    # Tried and, if it was not there before, taken away again: no empty file is left behind, and the
+    # "Nothing was changed" of the refusals above stays true when the operator declines to go on. The
+    # link check is repeated at the moment of writing, which creates the file exclusively.
+    $reportExisted = $null -ne (Get-PathAttributes $ReportPath)
     [IO.File]::AppendAllText($ReportPath, '')
+    if (-not $reportExisted) { [IO.File]::Delete($ReportPath) }
 }
 catch {
     throw "The report cannot be written to $ReportPath ($($_.Exception.Message)). Give -ReportPath a folder that exists. Nothing was changed."
@@ -1549,8 +1605,14 @@ finally {
             # every service is gone: a service left registered on a path that then stops existing is a
             # LocalSystem service any account may put a program at, in a folder they can create.
             $servicesGone = $true
-            foreach ($service in @(Get-Service -Name ($script:Run + '-*') -ErrorAction SilentlyContinue)) {
-                if (-not (Remove-ProbeService $service.Name)) { $servicesGone = $false }
+            $names = Get-ProbeServiceNames
+            if ($null -eq $names) {
+                $servicesGone = $false
+            }
+            else {
+                foreach ($name in @($names | Where-Object { $_.StartsWith($script:Run + '-') })) {
+                    if (-not (Remove-ProbeService $name)) { $servicesGone = $false }
+                }
             }
             if ($servicesGone) {
                 Remove-ProbePath $script:Root | Out-Null
@@ -1579,7 +1641,7 @@ $untouched = $verified -and ($differences.Count -eq 0)
 $reportLines = Get-ReportLines -Results $results.ToArray() -Before $installedBefore -After $installedAfter -Differences $differences -Build $build
 $reportWritten = $true
 try {
-    [IO.File]::WriteAllText($ReportPath, ($reportLines -join [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
+    Write-ReportFile -Lines $reportLines -Path $ReportPath
 }
 catch {
     # The results exist nowhere else: print them rather than lose ten minutes of measurements.
