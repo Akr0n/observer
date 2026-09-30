@@ -16,6 +16,10 @@ namespace Observer.Service.Credentials;
 /// to readable by anyone, silently;</item>
 /// <item>it is created with CreateNew and never with Create, because Create on an existing file
 /// IGNORES the descriptor it is handed and leaves standing the one that was there;</item>
+/// <item>on Linux it is handed to the DIRECTORY's owner while still empty, because a new file
+/// belongs to whoever creates it and "sudo observer rotate-key" writes as root: the file that
+/// replaced the service's store was root's, the service could not read it, and it refused to
+/// start;</item>
 /// <item>it is deleted in a finally, because a failed replacement would leave it on the disk
 /// with the secret in the clear.</item>
 /// </list>

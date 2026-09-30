@@ -284,6 +284,7 @@ public static class Commands
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             Console.Error.WriteLine("Could not write the credential store: " + error.Message);
+            Console.Error.WriteLine("Nothing was rotated: the store that was working is unchanged, so its key is still the one in force.");
             return 1;
         }
 

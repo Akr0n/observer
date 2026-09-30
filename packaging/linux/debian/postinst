@@ -19,6 +19,27 @@ case "$1" in
         # and does not expire, so nobody else may read the folder.
         install -d -o observer -g observer -m 0700 /etc/observer
 
+        # Up to 0.24.1, "sudo observer rotate-key" wrote the store as root and left it root's:
+        # the service, running as "observer", could not read it and refused to start at its
+        # next start. The new release no longer does that, but a machine already hit still has
+        # the file, and the restart below would fail on it. Nothing to do when there is no store.
+        #
+        # Careful, because this runs as root inside a folder that belongs to the service
+        # account, which faces the network: a link put in place of the file would make a plain
+        # chown hand the target to that account. So a link, or a file with other names (a hard
+        # link to something that is not ours), is left alone and said so, and "chown -h" never
+        # follows a link anyway. A failure is reported and does not stop the configuration.
+        STORE=/etc/observer/credentials.json
+
+        if [ -f "$STORE" ]; then
+            if [ -L "$STORE" ] || [ "$(stat -c %h "$STORE")" != 1 ]; then
+                echo "observer: $STORE is a link or has other names, so it was left alone." >&2
+            else
+                chown -h observer:observer "$STORE" ||
+                    echo "observer: could not give $STORE back to the service account: chown observer:observer $STORE" >&2
+            fi
+        fi
+
         # NOT "systemctl enable" and "systemctl start", and the difference is not a formality.
         #
         # deb-systemd-invoke consults /usr/sbin/policy-rc.d, which is how an administrator

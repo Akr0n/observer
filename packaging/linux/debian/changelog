@@ -1,3 +1,34 @@
+observer (0.24.2) unstable; urgency=medium
+
+  * Linux only: "sudo observer rotate-key" could leave the service unable
+    to start. The command runs as root, and the file it wrote to replace
+    the machine token belonged to root, inside /etc/observer, which
+    belongs to the "observer" account the service runs as. That account
+    could no longer read its own store. The running service carried on;
+    the next start died on an exception nobody handles and restarted in
+    a loop until someone repaired the file by hand. Every package since
+    0.1.2 leaves the store like this. Since 0.24.0, "observer rotate-key
+    --now" also reported "DID NOT APPLY" and advised restarting the
+    service, which is the step that killed it. Measured under systemd,
+    with this package's own unit and postinst.
+  * The store now follows the owner of its directory, whoever writes it:
+    the file is handed over while it is still empty, before the token
+    goes into it. If root cannot hand it over, the command stops with an
+    error, says nothing was rotated, and the store that was working stays
+    as it was. Where the system will not say who owns a file, nothing is
+    handed over. The service's own behaviour is unchanged: it already
+    owned what it wrote.
+  * MACHINES ALREADY HIT. Upgrading is enough: the package gives
+    /etc/observer/credentials.json back to "observer" before it restarts
+    the service (a link, or a file with other names, it says so and
+    leaves alone). Without upgrading, run "sudo chown observer:observer
+    /etc/observer/credentials.json" and then "sudo systemctl restart
+    observer". The file holds the token the rotation wrote, so the
+    service uses that one once it runs again: read it with "observer
+    share" and hand it on with "observer token set NAME".
+
+ -- Federico Cardinali <noreply@example.invalid>  Wed, 30 Sep 2026 10:00:00 +0200
+
 observer (0.24.1) unstable; urgency=high
 
   * SECURITY, Windows only. On its first start the service ADOPTED a
