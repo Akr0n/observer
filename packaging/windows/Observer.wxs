@@ -223,12 +223,20 @@
                AND TO EVERY ONE AFTER IT, so this is not "restart three times" but "restart
                always, five seconds apart", with the count reset after a day without
                failures. That is intended, and it is also what the systemd unit does
-               (Restart=on-failure with RestartSec=5). The known cost: a fault that prevents
-               start-up - for example a credential store that cannot be secured, in which
-               case the service refuses to start - becomes a start attempt every five
-               seconds until someone steps in. That is better than the opposite, a monitor
-               that stays silent: a monitoring service that is not running is the worst
-               defect this program can have. -->
+               (Restart=on-failure with RestartSec=5). What was seen NOT to happen, on
+               2026-09-30 with scripts/probe-credential-directory.ps1 (the real service as a
+               throwaway LocalSystem service with a manual start, recovery actions of restart
+               after five seconds set by hand with sc failure and the failure flag left at its
+               default, as here; one machine, Windows 11 build 26300): a start that is
+               REFUSED before the service connects to the Service Control Manager - for
+               example a credential store that cannot be secured - was not retried. Windows
+               waited 30 seconds, reported error 1053 and ran no recovery action, so the
+               service stayed stopped instead of trying again every five seconds. The restart
+               is meant for a process that crashes after it has started, which that run did
+               not try; and the start at boot of this automatic service was not tried either.
+               A monitoring service that is not running is still the worst defect this
+               program can have, which is why the refusal writes its cause to the Application
+               log and the README says where to look. -->
           <util:ServiceConfig FirstFailureActionType="restart"
                               SecondFailureActionType="restart"
                               ThirdFailureActionType="restart"

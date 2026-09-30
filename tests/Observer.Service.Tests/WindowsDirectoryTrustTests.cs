@@ -86,6 +86,15 @@ public class WindowsDirectoryTrustTests
 
             Assert.Contains("is not empty", refusal.Message, StringComparison.Ordinal);
 
+            // A folder the service cannot LIST counts as not empty - an empty one whose owner took SYSTEM
+            // out of its permissions is refused with this very message (measured, verdict Unknown) - and
+            // the message has to say so, or it tells an operator who finds nothing inside that it is
+            // wrong. Every refusal carries the sentence; only that case needs it.
+            Assert.Contains(
+                "A folder that cannot be listed counts as not empty, even if nothing is in it.",
+                refusal.Message,
+                StringComparison.Ordinal);
+
             // The recovery commands are IN the message, character for character, because the MSI and
             // the .deb ship no README and this is the only text the operator has in front of them. A
             // typo in one of them is not cosmetic: "takeout" got in once, in a draft, and would have
@@ -111,9 +120,9 @@ public class WindowsDirectoryTrustTests
 
             // NOTHING WAS TOUCHED, and this is the assertion that matters most. Moving the refusal
             // to after Repair would still throw on this first call and look correct - but the owner
-            // would already be fixed, so the next start - the restart the package configures, or an
-            // operator's own - would see a spotless directory and adopt the planted file. The owner
-            // staying put is what makes the refusal durable.
+            // would already be fixed, so the next start - an operator's own, or the one at boot (reasoned,
+            // not tried; Windows was seen NOT to retry a refused start by itself) - would see a spotless
+            // directory and adopt the planted file. The owner staying put is what makes the refusal durable.
             Assert.Equal(ownerBefore, OwnerOf(path));
             Assert.Contains("planted-by-a-standard-user", File.ReadAllText(store), StringComparison.Ordinal);
             Assert.Equal(

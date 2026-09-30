@@ -58,10 +58,11 @@ public sealed record ProvisionedCredentials(
 /// was got wrong once here. Repairing first and refusing afterwards — on the verdict observed
 /// before the repair — reads correctly and does not hold for one restart: the first attempt leaves
 /// the directory genuinely safe, so ANY next start sees a spotless directory and adopts the planted
-/// file. The next start needs no attacker: the package configures Windows to restart the service
-/// after five seconds (<c>util:ServiceConfig</c> in <c>Observer.wxs</c>), though whether that applies
-/// to a process that exits before it ever connects is unproven (see below), and an operator's own
-/// <c>Restart-Service</c> is enough. The repair is what destroys the only evidence, so nothing after
+/// file. The next start needs no attacker: an operator's own <c>Restart-Service</c> is enough, and so,
+/// through the same code, is the start at boot of a service set to start automatically (reasoned; the
+/// probe did not reboot). Windows did NOT retry a refused start by itself in the probe, although the
+/// recovery actions the package configures were in place (see below), so the loop this paragraph
+/// used to lean on was never there. The repair is what destroys the only evidence, so nothing after
 /// it can be trusted to decide; the refusal has to be the thing that prevents it.
 /// </para>
 /// <para>
@@ -76,9 +77,12 @@ public sealed record ProvisionedCredentials(
 /// emptiness check counts subdirectories as well as files, so a standard user who creates
 /// <c>C:\ProgramData\Observer</c> AND puts anything at all inside it produces a non-empty directory
 /// nothing vouches for, which is refused at every start, forever, with no privilege and no running
-/// process. Only the EMPTY squat is absorbed. That is not an oversight to be fixed later: refusing is
-/// the whole point, and a monitor held down by a refusal it explains is the accepted price of not
-/// serving a key an attacker chose. What must not happen is claiming the class is closed.
+/// process. Only an EMPTY squat that SYSTEM can still list and remove is absorbed: an empty folder
+/// whose owner took SYSTEM out of its permissions is refused too (measured on 2026-09-30, verdict
+/// Unknown: it cannot be listed, so it counts as not empty). That is not an oversight to be fixed
+/// later: refusing is the whole point, and a monitor held down by a refusal it explains is the
+/// accepted price of not serving a key an attacker chose. What must not happen is claiming the class
+/// is closed.
 /// </para>
 /// <para>
 /// WHAT THE RULE COSTS, and the trigger is the DIRECTORY, never the files in it. Prepare looks at who
@@ -96,13 +100,22 @@ public sealed record ProvisionedCredentials(
 /// account is not among them, and <c>takeown</c> without <c>/A</c> hands ownership to that account.
 /// </para>
 /// <para>
-/// WHAT THE OPERATOR SEES, none of it measured on a live service and all of it reasoned from the
-/// code: Provision runs before the host is built, so there is no logger yet and the refusal escapes as
-/// an unhandled exception, which Windows records in the Application log (source <c>.NET Runtime</c>).
-/// The MSI starts the service and waits for it, so an upgrade onto such a machine may stop with
-/// error 1920, which does not name the cause, and roll back to the version that adopts. The package
-/// configures Windows to restart the service after five seconds, but <c>sc qfailureflag</c> reports
-/// that recovery is off for non-crash failures, so whether a pre-connect exit counts is unproven. The
+/// WHAT THE OPERATOR SEES, measured on 2026-09-30 with <c>scripts/probe-credential-directory.ps1</c>:
+/// the real service as a throwaway LocalSystem service (manual start) on ONE machine — Windows 11
+/// build 26300, Italian — with the recovery actions the package configures set by hand on it
+/// (restart after five seconds, failure flag at its default). Provision runs before the host is
+/// built, so there is no logger yet and the refusal escapes as an unhandled exception, which Windows
+/// records in the Application log (source <c>.NET Runtime</c>, event 1026, the message inside). The
+/// service never connects to the Service Control Manager, so <c>sc start</c> waits about 30 seconds
+/// and ends with error 1053, and the System log says only that the service did not respond in time
+/// (events 7000 and 7009): the reason was found in the Application log and in no other place the
+/// probe looked. NO recovery action ran: in the roughly 40 seconds observed after that timeout there
+/// was no second 1026 event and no 7031 or 7034 (the sampling of process ids saw no process at all,
+/// so it cannot tell), so a start refused before the service connects leaves it stopped until
+/// somebody starts it again, not in a restart loop. A process that dies AFTER it connected was not
+/// tried. What is NOT measured either: the MSI. It starts the service and waits for it, so an upgrade
+/// onto such a machine may stop with error 1920, which does not name the cause, and roll back to the
+/// version that adopts; that needs an installed previous version in a disposable machine. The
 /// way out is TWO steps and not one command — the owner, and the permissions — and the README, section
 /// Packages, has the exact <c>icacls</c> lines. It is a real operational cost, and it is the price
 /// of not adopting a key whose author cannot be named. What does NOT regress, checked: an MSI upgrade
@@ -122,6 +135,9 @@ public sealed record ProvisionedCredentials(
 /// FILE directly at <c>C:\ProgramData\Observer</c> — measured, because ProgramData grants
 /// <c>BUILTIN\Users</c> add-file without an inherit-only flag — and a file there is not a directory,
 /// so the service refuses at every start. That one predates all of this and is not closed by it. An
+/// EMPTY directory whose owner took SYSTEM out of its permissions is refused as well — measured: the
+/// verdict is Unknown, and a directory the service cannot list counts as not empty — with no
+/// privilege and no running process. An
 /// attacker who keeps a process alive holding the directory open, or who re-sets the read-only bit in
 /// a race, can also keep the service from starting; the passive versions of both are closed. And
 /// because <c>Observer:CredentialStorePath</c> can point anywhere, replacing the container means

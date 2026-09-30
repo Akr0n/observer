@@ -506,7 +506,9 @@ channel.
 
 **If the service dies, it restarts by itself.** The MSI sets Windows' recovery actions: a
 restart after five seconds, on the first failure and on every later one, with the count reset
-after a day without failures. On Linux the systemd unit does it; it has had
+after a day without failures. That is meant for a process that crashes after it has started; a
+start that is REFUSED before the service connects, such as the credential-folder check described
+under *Packages*, was not retried when it was measured. On Linux the systemd unit does it; it has had
 `Restart=on-failure` since the first version. Before 0.14.1 the Windows side had none, and a
 process that died left the service stopped until the machine was restarted, and nothing
 reported it.
@@ -530,7 +532,7 @@ not - a foreign owner, or permissions that inherit from `ProgramData` (which let
 write) or name another account - and the directory is not empty, the service stops before touching
 anything and says why. An empty one that kept the permissions it inherited is replaced by a
 protected one and the service starts; one whose owner took SYSTEM out of its permissions cannot
-even be read by the service, and is refused like a non-empty one. Before
+even be read by the service, and is refused like a non-empty one (measured). Before
 0.24.1 the service repaired such a directory and then read the file it found there, so a local user
 could choose the machine's network token. Linux was never affected with the default path: `/etc`
 can be written only by root, and the package creates `/etc/observer` for the service's own account.
@@ -543,10 +545,16 @@ permissions, left by the service run by hand under any account but SYSTEM (eleva
 one that ran under a service account other than LocalSystem before an MSI upgrade re-registered it.
 A service-made folder gets there too if someone changes it - `takeown` without `/A` makes an
 individual account the owner, and an `icacls /grant` so that an account can read the token does the
-same to the permissions. You should find the reason in the Windows **Application** event log
-(source `.NET Runtime`, event 1026: the refusal ends the process before the service has a logger).
-The MSI starts the service and waits for it, so on such a machine an upgrade may stop with error
-1920, which does not name the cause, and roll back to the version that adopts. `observer doctor`
+same to the permissions. Starting the service (`sc start`) waits about 30 seconds and then fails
+with error 1053 (the System log says only that the service did not respond in time, events 7000 and
+7009): the reason is in the Windows **Application** event log (source `.NET Runtime`, event 1026:
+the refusal ends the process before the service has a logger), and it was in no other place that
+was looked at. With the recovery actions the MSI sets - restart after five seconds - applied by hand
+to a throwaway service, Windows did not retry the refused start: the service stayed stopped until it
+was started again. That was measured once, on one machine (Windows 11, Italian) and with a manual
+start; the start at boot of an automatic service was not tried. The MSI starts the service and
+waits for it, so on such a machine an upgrade may stop with error 1920 (not measured), which does
+not name the cause, and roll back to the version that adopts. `observer doctor`
 says which state the directory is in, but it judges as the account that runs it: a folder that same
 account made reads `PROTECTED` while the service still refuses it, so the refusal is what counts.
 

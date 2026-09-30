@@ -325,7 +325,8 @@ public static class Diagnosis
             "permissions and lock them to SYSTEM and Administrators - the README, section Packages " +
             "at github.com/Akr0n/observer, has the exact icacls lines - and only if the files " +
             "inside are yours, because that makes the service trust them. If the directory IS " +
-            "empty the service replaces it with a protected one and starts.",
+            "empty the service replaces it with a protected one and starts (unless its owner " +
+            "took SYSTEM out of the permissions: then the service cannot list it and refuses).",
         DirectoryVerdict.UntrustedOwner =>
             "FALSELY PROTECTED - the permissions may name only SYSTEM and Administrators, but the " +
             "OWNER is neither SYSTEM nor the Administrators group (an individual administrator's " +
@@ -337,7 +338,8 @@ public static class Diagnosis
             "Administrators group the owner AND lock the permissions to SYSTEM and " +
             "Administrators; the README, section Packages at github.com/Akr0n/observer, has the " +
             "exact icacls lines. Do it only if the files inside are yours. If the directory IS " +
-            "empty the service replaces it with a protected one and starts.",
+            "empty the service replaces it with a protected one and starts (unless its owner " +
+            "took SYSTEM out of the permissions: then the service cannot list it and refuses).",
         DirectoryVerdict.ReparsePoint =>
             "HIJACKED - the path is a junction or symbolic link, so the token would be written " +
             "wherever it points. A standard user can create one without any privilege. Remove it.",
