@@ -550,8 +550,9 @@ with error 1053 (the System log says only that the service did not respond in ti
 7009): the reason is in the Windows **Application** event log (source `.NET Runtime`, event 1026:
 the refusal ends the process before the service has a logger), and it was in no other place that
 was looked at. With the recovery actions the MSI sets - restart after five seconds - applied by hand
-to a throwaway service, Windows did not retry the refused start: the service stayed stopped until it
-was started again. That was measured once, on one machine (Windows 11, Italian) and with a manual
+to a throwaway service, Windows did not retry the refused start in the roughly 40 seconds that were
+watched after the timeout, and the service stayed stopped. That was measured once, on one machine
+(Windows 11, Italian) and with a manual
 start; the start at boot of an automatic service was not tried. The MSI starts the service and
 waits for it, so on such a machine an upgrade may stop with error 1920 (not measured), which does
 not name the cause, and roll back to the version that adopts. `observer doctor`

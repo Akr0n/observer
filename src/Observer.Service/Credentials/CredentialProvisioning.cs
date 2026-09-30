@@ -111,9 +111,8 @@ public sealed record ProvisionedCredentials(
 /// (events 7000 and 7009): the reason was found in the Application log and in no other place the
 /// probe looked. NO recovery action ran: in the roughly 40 seconds observed after that timeout there
 /// was no second 1026 event and no 7031 or 7034 (the sampling of process ids saw no process at all,
-/// so it cannot tell), so a start refused before the service connects leaves it stopped until
-/// somebody starts it again, not in a restart loop. A process that dies AFTER it connected was not
-/// tried. What is NOT measured either: the MSI. It starts the service and waits for it, so an upgrade
+/// so it cannot tell), so a start refused before the service connects left it stopped for as long as
+/// it was watched, not in a restart loop. A process that dies AFTER it connected was not tried. What is NOT measured either: the MSI. It starts the service and waits for it, so an upgrade
 /// onto such a machine may stop with error 1920, which does not name the cause, and roll back to the
 /// version that adopts; that needs an installed previous version in a disposable machine. The
 /// way out is TWO steps and not one command — the owner, and the permissions — and the README, section
