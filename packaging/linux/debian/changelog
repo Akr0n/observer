@@ -84,10 +84,12 @@ observer (0.24.1) unstable; urgency=high
     that are yours. "observer doctor" says which state the folder is in,
     judged as the account that runs it: a folder that same account made
     reads PROTECTED, so trust the service's own refusal over it.
-  * What stays open is availability, never adoption. Whoever creates the
-    folder AND puts anything in it keeps the service from starting, at
-    every start: only an EMPTY squat is absorbed. A FILE at
-    C:\ProgramData\Observer does the same, which was already so.
+  * What stays open in the fixed service is availability, never
+    adoption. Whoever creates the folder AND puts anything in it keeps
+    the service from starting, at every start: only an EMPTY squat is
+    absorbed. A FILE at C:\ProgramData\Observer does the same, which was
+    already so. A machine that had already adopted a planted store is
+    the exception, and is what UPGRADING DOES NOT UNDO IT is about.
 
  -- Federico Cardinali <noreply@example.invalid>  Wed, 30 Sep 2026 07:44:00 +0200
 
