@@ -29,6 +29,26 @@ jobs:
       - name: Test
         run: dotnet test --no-build -c Release --verbosity normal
 
+      - name: Test what only root can set up (Linux)
+        # The runner is an ordinary account, so the tests above SKIP the ones that need to be root:
+        # a file of root's with a second name in a folder another account owns, and the switch
+        # that makes root (and only root) read strictly. Skipped is not the same as passed, and
+        # nothing else would notice. They are run here as root, by name, and the step fails
+        # unless all three are reported as passed: a filter that matched nothing would otherwise
+        # leave the branches they guard untested in silence. Not the whole suite: one test of the
+        # service's own expects it is NOT root.
+        #
+        # An extra STEP of the existing job, so the names of the required checks do not change.
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo -E env "PATH=$PATH" dotnet test --no-build -c Release --logger "console;verbosity=normal" \
+            --filter "FullyQualifiedName~ForRootASecondNameOfAnInode|FullyQualifiedName~ForRootTheSwitchIs|FullyQualifiedName~ASecondNameOfAFileOfAnotherAccountIsNamed" \
+            | tee root-tests.log
+          grep -q "Passed .*ForRootASecondNameOfAnInode" root-tests.log
+          grep -q "Passed .*ForRootTheSwitchIs" root-tests.log
+          grep -q "Passed .*ASecondNameOfAFileOfAnotherAccountIsNamed" root-tests.log
+
   # An ADDITIONAL job, and it must stay that way. The two contexts the main-protection ruleset
   # requires are the exact strings "build (ubuntu-latest)" and "build (windows-latest)": adding a
   # new job is safe, renaming "build" or the values of the "os" matrix is not. And the matrix does

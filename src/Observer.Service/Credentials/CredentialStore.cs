@@ -34,7 +34,10 @@ public static class CredentialStore
     /// <summary>Reads the store.</summary>
     /// <param name="path">The path of the file.</param>
     /// <returns>The credentials, or null if the store does not exist yet.</returns>
-    /// <exception cref="InvalidOperationException">If it exists but is not usable.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// If it exists but is not usable. That includes <see cref="StoreNotSafeToReadException"/>, for a
+    /// file that root will not read because of what it is (see <see cref="StoreFile"/>).
+    /// </exception>
     /// <remarks>
     /// It does not use File.Exists: on a file that is genuinely protected, File.Exists returns
     /// false even when the file is there. Branching on that would regenerate the key at every
@@ -48,7 +51,7 @@ public static class CredentialStore
 
         try
         {
-            content = File.ReadAllText(path);
+            content = StoreFile.ReadAllText(path);
         }
         catch (FileNotFoundException)
         {
@@ -77,7 +80,9 @@ public static class CredentialStore
         catch (JsonException error)
         {
             throw new InvalidOperationException(
-                $"The credential store '{path}' isn't valid JSON ({error.Message}). " +
+                // Printable: the parser quotes the name of a key as it is, and the file may be
+                // what the service account wrote, read by root.
+                $"The credential store '{path}' isn't valid JSON ({StoreFile.Printable(error.Message)}). " +
                 "Observer will not overwrite it: if the file was hand-edited, fix it; if it is " +
                 "damaged, delete it and the service will create a new machine token.",
                 error);

@@ -217,7 +217,13 @@ public static class CredentialProvisioning
     {
         try
         {
-            return File.ReadAllText(path).Length > 0;
+            return StoreFile.ReadAllText(path).Length > 0;
+        }
+        catch (StoreNotSafeToReadException)
+        {
+            // Not read, so not known to be empty: never something to write over. It has to be
+            // caught HERE, because an exception filter that throws counts as false in silence.
+            return true;
         }
         catch (IOException)
         {

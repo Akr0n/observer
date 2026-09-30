@@ -46,6 +46,11 @@ public static class LocalChannelRequest
             // under .invalid makes it explicit that it must not be looked up.
             BaseAddress = new Uri("http://local-channel.invalid/"),
             Timeout = timeout,
+
+            // What the service says is a few hundred bytes. Whatever is behind the socket can say
+            // gigabytes, and the default is to read them into memory before anyone looks. Past
+            // this the request fails like any other that got no usable answer.
+            MaxResponseContentBufferSize = 64 * 1024,
         };
 
         try

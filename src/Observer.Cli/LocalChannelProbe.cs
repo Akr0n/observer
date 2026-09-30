@@ -43,7 +43,7 @@ public static class LocalChannelProbe
 
         if (!OperatingSystem.IsWindows())
         {
-            return ProbeUnixSocket(socketPath);
+            return ProbeUnixSocket(socketPath, timeout);
         }
 
         // "." and not "localhost": localhost would go through SMB, and the service would classify
@@ -77,22 +77,39 @@ public static class LocalChannelProbe
 
     /// <summary>The Linux counterpart: the local channel there is a unix socket.</summary>
     /// <param name="socketPath">The socket path.</param>
+    /// <param name="timeout">How long to wait for the connection.</param>
     /// <returns>The line to print.</returns>
     /// <remarks>
     /// Before, nothing was probed here and the answer was "not checked", that is, the most useful
     /// line of the doctor output stayed empty on precisely the system where the local channel does exist.
     /// A refusal here has a precise meaning, and a different one from Windows: the socket is created
     /// owned by the service's group, so "access denied" means the user is not in that group.
+    /// <para>
+    /// The connection is bounded. The socket sits in a folder the service account owns, so that
+    /// account can leave one that is listening and never accepts, and a connect that waits for
+    /// room in its queue waits for ever, in the command an administrator runs to find out why
+    /// nothing works.
+    /// </para>
     /// </remarks>
-    private static string ProbeUnixSocket(string socketPath)
+    private static string ProbeUnixSocket(string socketPath, TimeSpan timeout)
     {
         using Socket socket = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        using CancellationTokenSource deadline = new(timeout);
 
         try
         {
-            socket.Connect(new UnixDomainSocketEndPoint(socketPath));
+            socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath), deadline.Token)
+                .AsTask().GetAwaiter().GetResult();
 
             return "ANSWERING - the dashboard can reach this machine without any token.";
+        }
+        catch (Exception error) when (error is OperationCanceledException
+            || error is SocketException { SocketErrorCode: SocketError.WouldBlock })
+        {
+            return
+                "STUCK - something is listening on " + socketPath + " but does not accept " +
+                "connections. The service may be hung (systemctl status observer), or " +
+                "something else has taken the socket.";
         }
         catch (SocketException error) when (error.SocketErrorCode == SocketError.AccessDenied)
         {

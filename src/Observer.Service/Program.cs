@@ -185,10 +185,28 @@ bool runningAsService = WindowsServiceHelpers.IsWindowsService() || SystemdHelpe
 string credentialStorePath =
     builder.Configuration["Observer:CredentialStorePath"] ?? CredentialDirectory.DefaultPath();
 
-ProvisionedCredentials credentials = CredentialProvisioning.Provision(
-    builder.Configuration["Observer:ApiToken"],
-    credentialStorePath,
-    runningAsService);
+ProvisionedCredentials credentials;
+
+try
+{
+    credentials = CredentialProvisioning.Provision(
+        builder.Configuration["Observer:ApiToken"],
+        credentialStorePath,
+        runningAsService);
+}
+catch (StoreNotSafeToReadException error)
+{
+    // Only a service started by hand as ROOT in a folder another account owns gets here: the
+    // packaged one runs as that account and reads as it always did. One sentence, and not the
+    // stack trace an unhandled exception would print for a file that root will not read.
+    Console.Error.WriteLine(
+        "Observer will not start: " + error.Message + " This process is root and the folder belongs to another account, "
+        + "so root reads there only an ordinary file that it can check, and does not follow, wait on "
+        + "or read anything else. Look at it with: sudo ls -l " + error.FilePath);
+    Environment.ExitCode = 1;
+
+    return;
+}
 
 // The credentials the service SERVES, which from 0.24.0 are not the same thing as the ones it
 // was provisioned with: "observer rotate-key --now" can replace them while the service is
@@ -223,11 +241,28 @@ network.Validate();
 
 if (network.Https)
 {
-    ProvisionedCertificate certificate = CertificateProvisioning.Provision(
-        credentialStorePath,
-        Environment.MachineName,
-        DateTimeOffset.UtcNow,
-        runningAsService);
+    ProvisionedCertificate certificate;
+
+    try
+    {
+        certificate = CertificateProvisioning.Provision(
+            credentialStorePath,
+            Environment.MachineName,
+            DateTimeOffset.UtcNow,
+            runningAsService);
+    }
+    catch (StoreNotSafeToReadException error)
+    {
+        // As for the token above: a file somebody put where the certificate belongs, and a
+        // service started by hand as root: or one that could not be checked. Removing it makes the service create a new one.
+        Console.Error.WriteLine(
+            "Observer will not start: " + error.Message + " This process is root and the folder belongs to another account, "
+            + "so root reads there only an ordinary file that it can check, and does not follow, wait on "
+            + "or read anything else. Look at it with: sudo ls -l " + error.FilePath);
+        Environment.ExitCode = 1;
+
+        return;
+    }
 
     if (certificate.Origin == CertificateOrigin.Ephemeral)
     {
