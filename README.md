@@ -522,6 +522,21 @@ message about someone in the middle of the connection. An upgrade must not look 
 is no secret to pass to the installation, to record in a log, or to leave behind if it fails
 halfway.
 
+**The service refuses to start if the credential directory holds something nobody can vouch
+for.** On Windows a standard user can create `C:\ProgramData\Observer` and becomes its owner, so a
+`credentials.json` or `certificate.pfx` already inside is adopted only if the directory belongs
+to SYSTEM or the administrators **and** its permissions grant nobody else access. If it does not
+- a foreign owner, or permissions inherited from `ProgramData`, which lets every account write -
+and the directory is not empty, the service stops before touching anything and says why. An empty
+one is replaced by a protected one and the service starts. The usual way to hit this is a store
+copied in by hand or restored from a backup, which belongs to whoever copied it. The way out is
+to give the directory to SYSTEM or the administrators **and** protect its permissions, both:
+ownership alone leaves them inheriting and the refusal comes back. That step adopts what is
+inside, so take it only for files you know are yours; `observer diagnose` says which state the
+directory is in. Before 0.24.1 the service repaired such a directory and then read the file it
+found there, so a local user could choose the machine's network token. Linux was never affected
+with the default path: `/etc` can be written only by root.
+
 The `.deb` also installs `man observer` and `man observer-dashboard`, and it is checked by
 **lintian** in CI: the `pack-linux` job runs it with `--fail-on error,warning` on the package it
 has just built. The only overridden tag is `embedded-library` - `libSkiaSharp.so` carries
