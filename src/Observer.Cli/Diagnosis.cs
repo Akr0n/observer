@@ -69,9 +69,15 @@ public static class Diagnosis
             // certificate to serve with, and Load would leave the private key in the key store
             // of whoever ran the command.
             using X509Certificate2 certificate =
-                MachineCertificate.LoadForInspection(File.ReadAllBytes(certificatePath));
+                MachineCertificate.LoadForInspection(StoreFile.ReadAllBytes(certificatePath));
 
             return CertificateFingerprint.ForHumans(MachineCertificate.Fingerprint(certificate));
+        }
+        catch (StoreNotSafeToReadException error)
+        {
+            // Root does not read what the service account may have put where the certificate
+            // belongs, and it says so instead of printing the fingerprint of whatever that is.
+            return ("NOT READ - " + DescribeRefusal(error) + " " + CostOfRemovingCertificate(error)).TrimEnd();
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -90,8 +96,162 @@ public static class Diagnosis
         }
         catch (CryptographicException error)
         {
-            return "DAMAGED - " + error.Message;
+            return "DAMAGED - " + StoreFile.Printable(error.Message);
         }
+    }
+
+    /// <summary>What to tell an operator whose store or certificate root refused to read.</summary>
+    /// <param name="error">The refusal.</param>
+    /// <returns>The sentence: what the file is, why root does not read it, how to look at it.</returns>
+    /// <remarks>
+    /// It names the reason and the way to look, and it does not say "elevated terminal": the account
+    /// IS elevated, and blaming the terminal for what somebody put in the folder sends the reader
+    /// to the wrong place.
+    /// </remarks>
+    public static string DescribeRefusal(StoreNotSafeToReadException error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+
+        string look = "Look at it with: sudo ls -l " + error.FilePath;
+
+        // The last two kinds are not something somebody put there, and saying so would accuse an
+        // account of what it did not do.
+        return error.Kind switch
+        {
+            StoreRefusalKind.Machine => error.Message
+                + " Nothing is known to be wrong with the file: this machine could not check it, "
+                + "so root did not read it. " + look,
+            StoreRefusalKind.Busy => error.Message
+                + " It may well be the service writing it, so root did not wait for it. " + look,
+            _ => error.Message
+                + " The account that runs the service owns that folder and can put anything in it, so "
+                + "root does not follow, wait on or read what it finds there. " + look,
+        };
+    }
+
+    /// <summary>What to do about a refusal, in lines to print under the sentence that names it.</summary>
+    /// <param name="error">The refusal.</param>
+    /// <returns>The lines. They say what removing the file costs when removing it is the way out,
+    /// and say it is NOT when the machine, and not the folder, is what is wrong.</returns>
+    public static IReadOnlyList<string> DescribeWayOut(StoreNotSafeToReadException error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+
+        return error.Kind switch
+        {
+            StoreRefusalKind.Machine =>
+            [
+                "Nothing is known to be wrong with the file, so do not delete it.",
+                "Look at it: sudo ls -li " + error.FilePath,
+                // Bounded: "could not check" is also "not known to be no FIFO", and a plain cat
+                // would wait on one, or print a file of any size.
+                "Read a little of it: sudo timeout 5 head -c 4096 " + error.FilePath,
+                "If that works and the file looks right, it is this machine that could",
+                "not check it: report what \"uname -m\" and \"uname -r\" print.",
+            ],
+            StoreRefusalKind.Busy =>
+            [
+                "Try again in a moment: something holds the file, often the service writing it.",
+            ],
+            StoreRefusalKind.SymbolicLink =>
+            [
+                "If you made that link yourself, read what it points at with:",
+                "        sudo cat <the file it points to>",
+                .. RemovalAdvice,
+            ],
+            StoreRefusalKind.SecondName =>
+            [
+                "See every name the file has: sudo find / -xdev -samefile " + error.FilePath,
+                "If the other name is a copy you made yourself, remove that copy.",
+                .. RemovalAdvice,
+            ],
+            _ => RemovalAdvice,
+        };
+    }
+
+    /// <summary>The way out when somebody put something in the folder, and what it costs.</summary>
+    internal static readonly string[] RemovalAdvice =
+    [
+        "Fix   : otherwise stop the service (sudo systemctl stop observer), remove what does",
+        "        not belong and start it again. Without credentials.json the service creates",
+        "        a NEW token, and every dashboard that holds the old one stops connecting",
+        "        until it is given that one.",
+    ];
+
+    /// <summary>What removing a refused certificate costs, or nothing when it should not be removed.</summary>
+    /// <param name="error">The refusal.</param>
+    /// <returns>The sentence, or an empty string for a refusal that is not somebody's doing.</returns>
+    public static string CostOfRemovingCertificate(StoreNotSafeToReadException error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+
+        return error.Kind is StoreRefusalKind.Machine or StoreRefusalKind.Busy
+            ? string.Empty
+            : "Removing it makes the service create a new certificate: its fingerprint changes, "
+                + "and \"observer share\" then shows the new one.";
+    }
+
+    /// <summary>What to say when the store cannot be read for a reason that is not a refusal.</summary>
+    /// <param name="error">An access denial, or a store that exists and is not usable.</param>
+    /// <param name="storePath">The store.</param>
+    /// <param name="windows">Whether this is Windows, where the answer is an elevated terminal.</param>
+    /// <returns>The lines to print on standard error.</returns>
+    /// <remarks>
+    /// The Windows text says "Run as administrator" and names SYSTEM, and on Linux it sent the
+    /// reader looking for a terminal setting that does not exist: there it is sudo, or a file that
+    /// is damaged, and the two are told apart.
+    /// </remarks>
+    public static IReadOnlyList<string> DescribeUnreadable(Exception error, string storePath, bool windows)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+
+        if (windows)
+        {
+            return
+            [
+                "Can't read the machine token: an elevated terminal is required.",
+                "Store : " + storePath,
+                "Why   : the file grants access only to SYSTEM and to local",
+                "        administrators. That is deliberate — this token is",
+                "        valid FROM THE NETWORK and does not expire.",
+                "You   : " + CurrentAccountName() + ", elevated: " + ElevatedAsText(),
+                "Fix   : reopen the terminal with 'Run as administrator'.",
+                string.Empty,
+                "Note  : to watch THIS machine you need no token at all.",
+                "        The dashboard connects through the local channel.",
+                "Detail: " + StoreFile.Printable(error.Message),
+            ];
+        }
+
+        if (error is UnauthorizedAccessException || error.InnerException is UnauthorizedAccessException)
+        {
+            return
+            [
+                "Can't read the machine token: this account is not allowed to.",
+                "Store : " + storePath,
+                "Why   : the file is closed to everyone but the account that owns it and",
+                "        root. That is deliberate: this token is valid FROM THE NETWORK",
+                "        and does not expire.",
+                "You   : " + CurrentAccountName() + ", root: " + ElevatedAsText(),
+                "Fix   : run the same command with sudo.",
+                string.Empty,
+                "Note  : to watch THIS machine you need no token at all.",
+                "        The dashboard connects through the local channel.",
+                "Detail: " + StoreFile.Printable(error.Message),
+            ];
+        }
+
+        return
+        [
+            "Can't read the machine token: the store exists but is not usable.",
+            "Store : " + storePath,
+            "Detail: " + StoreFile.Printable(error.Message),
+            "Look  : sudo cat -v " + storePath,
+            "Fix   : if it is damaged beyond repair, stop the service (sudo systemctl stop",
+            "        observer), remove the file and start it again. The service then creates",
+            "        a NEW token, and every dashboard that holds the old one stops connecting",
+            "        until it is given that one.",
+        ];
     }
 
     /// <summary>Whether this account can even list the store's directory.</summary>
@@ -173,11 +333,62 @@ public static class Diagnosis
         }
 
         string? directory = Path.GetDirectoryName(storePath);
+        StoreOwner? directoryOwner = directory is { Length: > 0 } ? OwnerOf(directory) : null;
 
-        return DescribeOwnership(
-            storePath,
-            OwnerOf(storePath),
-            directory is { Length: > 0 } ? OwnerOf(directory) : null);
+        // Before the owner is judged, for the same reason as the link above: a chown changes the
+        // INODE, so a second name of a file that belongs to another account must not be answered
+        // with one. The shape is judged by the very rule the read applies, so what doctor calls
+        // wrong is what share would refuse.
+        if (DescribeShape(storePath, directoryOwner?.Uid) is { } notPlain)
+        {
+            return notPlain;
+        }
+
+        return DescribeOwnership(storePath, OwnerOf(storePath), directoryOwner);
+    }
+
+    /// <summary>What the store is, when it is something root will not read.</summary>
+    /// <param name="storePath">The store.</param>
+    /// <param name="directoryOwner">The uid that owns its folder, or null if that cannot be read.</param>
+    /// <returns>The lines, or null when the store is an ordinary file or cannot be asked about.</returns>
+    private static IReadOnlyList<string>? DescribeShape(string storePath, uint? directoryOwner)
+    {
+        if (!OperatingSystem.IsLinux()
+            || UnixSafeRead.Examine(storePath) is not { } shape
+            || UnixSafeRead.Judge(storePath, shape, directoryOwner) is not { } refusal)
+        {
+            return null;
+        }
+
+        string[] look = ["Look at it by hand:", "sudo ls -li " + storePath];
+
+        return refusal.Kind switch
+        {
+            StoreRefusalKind.SecondName =>
+            [
+                "NOT A PLAIN FILE - the store has a second name.",
+                "It belongs to another account than its folder, so the other",
+                "name may lead to a file that is not the service's, and a",
+                "change of owner would change that file too.",
+                "See every name it has:",
+                "sudo find / -xdev -samefile " + storePath,
+                .. look,
+            ],
+            StoreRefusalKind.TooLarge =>
+            [
+                "TOO LARGE - the store is larger than 64 KiB.",
+                "A real one is a few hundred bytes. Root does not read it.",
+                .. look,
+            ],
+            _ =>
+            [
+                "NOT A PLAIN FILE - the store is not a regular file.",
+                "Root does not read what the service account can put in its",
+                "folder, so \"observer share\" refuses it. doctor offers no",
+                "change of owner for it either.",
+                .. look,
+            ],
+        };
     }
 
     /// <summary>The lines that say who owns the store and what to do if that is wrong.</summary>

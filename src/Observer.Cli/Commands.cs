@@ -270,8 +270,10 @@ public static class Commands
     {
         string storePath = CredentialDirectory.DefaultPath();
 
-        if (ReadCredentials(storePath) is not { } credentials)
+        if (ReadForRotation(storePath, immediately) is not { } credentials)
         {
+            PrintNothingRotated(immediately);
+
             return 1;
         }
 
@@ -285,7 +287,8 @@ public static class Commands
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             Console.Error.WriteLine("Could not write the credential store: " + error.Message);
-            Console.Error.WriteLine("Nothing was rotated: the store that was working is unchanged, so its key is still the one in force.");
+            PrintNothingRotated(immediately);
+
             return 1;
         }
 
@@ -438,13 +441,66 @@ public static class Commands
         return 0;
     }
 
-    private static MachineCredentials? ReadCredentials(string storePath)
+    /// <summary>Reads the machine token for a verb that needs it, explaining itself when it cannot.</summary>
+    /// <param name="storePath">The credential store.</param>
+    /// <returns>The credentials, or null after saying why not on standard error.</returns>
+    public static MachineCredentials? ReadCredentials(string storePath) =>
+        Read(storePath, replacing: false);
+
+    /// <summary>Reads what a rotation needs of the old store, which for <c>--now</c> is nothing.</summary>
+    /// <param name="storePath">The credential store.</param>
+    /// <param name="immediately">True for <c>--now</c>.</param>
+    /// <returns>The credentials, or null after saying why not on standard error.</returns>
+    /// <remarks>
+    /// <c>--now</c> writes a store with nothing of the old one in it (<see cref="Replacement"/>
+    /// ignores it), and it is what the operator runs when a key has LEAKED. A link or a FIFO put
+    /// where the store belongs, a store that cannot be parsed, one that holds something that is
+    /// not a token: each is exactly what they want gone, and refusing to read it would leave the
+    /// leaked key in force for the sake of a file nobody needs. The write replaces the name, and
+    /// never what a link pointed to. An access denied is the exception: it is for the operator to
+    /// fix, and the write would fail for the same reason. The graceful form carries the old key
+    /// over, so it still refuses what it cannot trust.
+    /// </remarks>
+    public static MachineCredentials? ReadForRotation(string storePath, bool immediately) =>
+        Read(storePath, replacing: immediately);
+
+    /// <summary>What to say when a rotation ended without writing anything.</summary>
+    /// <param name="immediately">True for <c>--now</c>.</param>
+    /// <returns>The lines, which say which key is still in force.</returns>
+    public static IReadOnlyList<string> DescribeNothingRotated(bool immediately) =>
+        immediately
+            ?
+            [
+                "Nothing was rotated: the store is as it was, so whichever key was in force still is.",
+                "--now is for a key that leaked: the running service still accepts the key you meant to revoke, if there is one.",
+            ]
+            :
+            [
+                "Nothing was rotated: the store is as it was, so whichever key was in force still is.",
+            ];
+
+    private static void PrintNothingRotated(bool immediately)
+    {
+        foreach (string line in DescribeNothingRotated(immediately))
+        {
+            Console.Error.WriteLine(line);
+        }
+    }
+
+    private static MachineCredentials? Read(string storePath, bool replacing)
     {
         try
         {
             if (CredentialStore.Read(storePath) is { } credentials)
             {
-                return credentials;
+                if (HoldsOnlyTokens(credentials))
+                {
+                    return credentials;
+                }
+
+                return replacing
+                    ? ReplaceWhatWasNotRead("It holds something that is not a token.")
+                    : RefuseWhatIsNotAToken(storePath);
             }
 
             Console.Error.WriteLine("There is no credential store at " + storePath + ".");
@@ -452,21 +508,84 @@ public static class Commands
 
             return null;
         }
-        catch (Exception error) when (error is InvalidOperationException or UnauthorizedAccessException)
+        catch (StoreNotSafeToReadException error) when (replacing)
         {
-            Console.Error.WriteLine("Can't read the machine token: an elevated terminal is required.");
+            return ReplaceWhatWasNotRead(error.Message);
+        }
+        catch (InvalidOperationException error) when (replacing && error.InnerException is not UnauthorizedAccessException)
+        {
+            // A store that cannot be parsed. Not an access denied, which the reader also reports as
+            // an InvalidOperationException: that one is the operator's to fix, and a write would fail
+            // for the same reason.
+            return ReplaceWhatWasNotRead("It is not a usable credential store.");
+        }
+        catch (StoreNotSafeToReadException error)
+        {
+            // Before the generic catch below, which would blame the terminal: the account IS
+            // elevated, and what is wrong is what somebody put in the folder. Nothing was changed
+            // (rotate-key has written nothing yet), and the way out says what it costs.
+            Console.Error.WriteLine("Refusing to read the machine token.");
             Console.Error.WriteLine("Store : " + storePath);
-            Console.Error.WriteLine("Why   : the file grants access only to SYSTEM and to local");
-            Console.Error.WriteLine("        administrators. That is deliberate — this token is");
-            Console.Error.WriteLine("        valid FROM THE NETWORK and does not expire.");
-            Console.Error.WriteLine("You   : " + Diagnosis.CurrentAccountName() + ", elevated: " + Diagnosis.ElevatedAsText());
-            Console.Error.WriteLine("Fix   : reopen the terminal with 'Run as administrator'.");
-            Console.Error.WriteLine();
-            Console.Error.WriteLine("Note  : to watch THIS machine you need no token at all.");
-            Console.Error.WriteLine("        The dashboard connects through the local channel.");
-            Console.Error.WriteLine("Detail: " + error.Message);
+            Console.Error.WriteLine("Why   : " + Diagnosis.DescribeRefusal(error));
+            Console.Error.WriteLine("Nothing was changed.");
+
+            foreach (string line in Diagnosis.DescribeWayOut(error))
+            {
+                Console.Error.WriteLine(line);
+            }
 
             return null;
         }
+        catch (Exception error) when (error is InvalidOperationException or UnauthorizedAccessException)
+        {
+            foreach (string line in Diagnosis.DescribeUnreadable(error, storePath, OperatingSystem.IsWindows()))
+            {
+                Console.Error.WriteLine(line);
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>Whether the keys in a store are made of characters a terminal will not act on.</summary>
+    /// <remarks>
+    /// A regular file of the right size and owner can still hold an escape sequence, and "share"
+    /// prints the token on the terminal of whoever is root: it can clear the screen, retitle the
+    /// window or rewrite the lines above. A real token is base64 and has none.
+    /// </remarks>
+    private static bool HoldsOnlyTokens(MachineCredentials credentials) =>
+        // The record's Current is not nullable, but the JSON "{}" gives it null all the same.
+        credentials.Current?.Any(char.IsControl) != true && credentials.Previous?.Any(char.IsControl) != true;
+
+    /// <summary>What <c>--now</c> does with an old store it cannot or will not read: it does not need it.</summary>
+    /// <param name="why">Why it was not read, for the operator.</param>
+    /// <returns>Placeholder credentials, which <see cref="Replacement"/> ignores.</returns>
+    private static MachineCredentials ReplaceWhatWasNotRead(string why)
+    {
+        Console.WriteLine("Note: the old store was not read, and will be replaced.");
+        Console.WriteLine("      " + StoreFile.Printable(why));
+
+        return MachineCredentials.Create();
+    }
+
+    private static MachineCredentials? RefuseWhatIsNotAToken(string storePath)
+    {
+        Console.Error.WriteLine("Refusing to read the machine token.");
+        Console.Error.WriteLine("Store : " + storePath);
+        Console.Error.WriteLine("Why   : the store holds something that is not a token: a character that a");
+        Console.Error.WriteLine("        terminal acts on, which is not printed here.");
+        Console.Error.WriteLine("Nothing was changed.");
+
+        if (!OperatingSystem.IsWindows())
+        {
+            Console.Error.WriteLine("Look  : sudo cat -v " + storePath);
+
+            foreach (string line in Diagnosis.RemovalAdvice)
+            {
+                Console.Error.WriteLine(line);
+            }
+        }
+
+        return null;
     }
 }

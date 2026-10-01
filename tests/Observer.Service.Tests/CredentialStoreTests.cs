@@ -86,6 +86,21 @@ public class CredentialStoreTests : IDisposable
     }
 
     [Fact]
+    public void TheMessageOfADamagedStoreCarriesNothingATerminalWouldActOn()
+    {
+        // The parser puts the NAME of a property in its message, unescaped, and the file is ASCII
+        // text that the service account may have written: an escape sequence that arrives as the
+        // name of a key with a syntax error after it reaches the terminal of whoever reads the
+        // message, and that can be root.
+        File.WriteAllText(StorePath, "{\"\\u001b[2J\\u001b]0;pwned\\u0007\": tru}");
+
+        InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => CredentialStore.Read(StorePath));
+
+        Assert.False(error.Message.Any(char.IsControl), "the message still carries a control character");
+        Assert.Contains("isn't valid JSON", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheStoreTextNamesTheKeysAndNoPassword()
     {
         // The file ends up in front of an administrator who is investigating: what it holds

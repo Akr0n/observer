@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
+using Observer.Service.Credentials;
 
 namespace Observer.Cli;
 
@@ -91,11 +92,12 @@ public static class Revocation
 
             string? path = document.RootElement.TryGetProperty("storePath", out JsonElement store)
                 && store.ValueKind == JsonValueKind.String
-                    ? store.GetString()
+                    ? Clean(store.GetString())
                     : null;
 
             DateTimeOffset? stamp =
                 document.RootElement.TryGetProperty("storeWrittenAt", out JsonElement written)
+                && written.ValueKind == JsonValueKind.String
                 && written.TryGetDateTimeOffset(out DateTimeOffset value)
                     ? value
                     : null;
@@ -255,7 +257,8 @@ public static class Revocation
 
             return document.RootElement.ValueKind == JsonValueKind.Object
                 && document.RootElement.TryGetProperty("detail", out JsonElement detail)
-                && detail.GetString() is { Length: > 0 } text
+                && detail.ValueKind == JsonValueKind.String
+                && Clean(detail.GetString()) is { Length: > 0 } text
                     ? text
                     : "it gave no reason.";
         }
@@ -264,4 +267,13 @@ public static class Revocation
             return "it gave no reason.";
         }
     }
+
+    /// <summary>A string the service said, with nothing in it that a terminal would act on.</summary>
+    /// <remarks>
+    /// The socket can be reached by the account the service runs as, and what comes back is
+    /// printed on the terminal of the person who ran this as root. An escape sequence can clear
+    /// the screen, retitle the window or rewrite the lines above, so each control character is
+    /// shown as a question mark.
+    /// </remarks>
+    private static string? Clean(string? text) => text is null ? null : StoreFile.Printable(text);
 }

@@ -162,6 +162,9 @@ public class RevocationTests
     [InlineData("[]")]
     [InlineData("{\"storeWrittenAt\":\"yesterday\"}")]
     [InlineData("{\"somethingElse\":1}")]
+    [InlineData("{\"storeWrittenAt\":5}")]
+    [InlineData("{\"storeWrittenAt\":{}}")]
+    [InlineData("{\"storeWrittenAt\":null,\"storePath\":7}")]
     public void AnAnswerThatCannotBeReadCarriesNothingRatherThanThrowing(string body)
     {
         Revocation.Adopted adopted = Revocation.Read(body);
@@ -179,6 +182,56 @@ public class RevocationTests
 
         Assert.Equal(Store, adopted.StorePath);
         Assert.Equal(Written, adopted.WrittenAt);
+    }
+
+    [Theory]
+    [InlineData("{\"detail\":5}")]
+    [InlineData("{\"detail\":{\"a\":1}}")]
+    [InlineData("{\"detail\":null}")]
+    public void AReasonThatIsNotTextIsNoReasonAndNotACrash(string body)
+    {
+        // This runs AFTER the store was rewritten: an exception here would replace the verdict on
+        // the old key with a stack trace.
+        RevocationVerdict verdict = Revocation.Judge(
+            new LocalChannelAnswer(HttpStatusCode.Conflict, body, Silent: false),
+            Store,
+            Written,
+            new Revocation.Adopted(null, null),
+            false);
+
+        Assert.Contains("it gave no reason", verdict.Headline, StringComparison.Ordinal);
+        Assert.Equal(1, verdict.ExitCode);
+    }
+
+    [Fact]
+    public void WhatTheServiceSaysIsNeverCarriedWithTheControlCharactersItHad()
+    {
+        // The socket can be reached by the account the service runs as, and whatever it answers is
+        // printed on the terminal of the person who ran this as root. A terminal acts on an escape
+        // sequence: it can clear the screen, retitle the window or rewrite the lines above.
+        const string hostile = "\\u001b[2J\\u001b]0;pwned\\u0007";
+        string body = "{\"storePath\":\"/etc/" + hostile + "x\",\"detail\":\"" + hostile + "failed\"}";
+
+        Revocation.Adopted adopted = Revocation.Read(body);
+
+        Assert.NotNull(adopted.StorePath);
+        Assert.False(adopted.StorePath.Any(char.IsControl), "the store path still carries a control character");
+        Assert.Contains("/etc/", adopted.StorePath, StringComparison.Ordinal);
+
+        RevocationVerdict conflict = Revocation.Judge(
+            new LocalChannelAnswer(HttpStatusCode.Conflict, body, Silent: false),
+            Store,
+            Written,
+            adopted,
+            false);
+
+        Assert.False(conflict.Headline.Any(char.IsControl), "the headline still carries a control character");
+        Assert.Contains("failed", conflict.Headline, StringComparison.Ordinal);
+
+        RevocationVerdict different = Revocation.Judge(
+            Answer(HttpStatusCode.OK), Store, Written, adopted, false);
+
+        Assert.False(different.Headline.Any(char.IsControl), "the headline still carries a control character");
     }
 
     [Fact]

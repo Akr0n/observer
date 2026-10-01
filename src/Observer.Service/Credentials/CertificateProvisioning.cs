@@ -107,13 +107,16 @@ public static class CertificateProvisioning
             return CreateEphemeral(machineName, now);
         }
         catch (InvalidOperationException error)
-            when (!runningAsService && error.InnerException is not CryptographicException)
+            when (!runningAsService
+                && error.InnerException is not CryptographicException
+                && error is not StoreNotSafeToReadException)
         {
             // The ephemeral fallback is for a store that cannot be MADE SAFE, not for a
             // certificate that is there and unreadable. That case must be told to whoever launches
             // the service by hand too: falling back silently would show them a service that
             // starts, a new fingerprint at every start, and no clue about the broken file sitting
-            // on their disk.
+            // on their disk. A certificate root refused to read (a link, a FIFO) is that case
+            // exactly: not a store that cannot be made safe, but a file somebody put there.
             return CreateEphemeral(machineName, now);
         }
     }
@@ -159,7 +162,7 @@ public static class CertificateProvisioning
 
         try
         {
-            content = File.ReadAllBytes(path);
+            content = StoreFile.ReadAllBytes(path);
         }
         catch (FileNotFoundException)
         {

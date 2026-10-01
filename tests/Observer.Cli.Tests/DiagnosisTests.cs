@@ -349,6 +349,113 @@ public class DiagnosisTests
     }
 
     [OnLinuxFact]
+    public void AFifoWhereTheStoreBelongsIsNamedAndNeverGetsAChown()
+    {
+        // What the read refuses, doctor says in the same terms: it is the command an operator
+        // runs to find out why share did not work, and "OK" or a chown would both be wrong.
+        string directory = Path.Combine(Path.GetTempPath(), "obs-fifo-" + Guid.NewGuid().ToString("N")[..10]);
+        Directory.CreateDirectory(directory);
+
+        try
+        {
+            string store = Path.Combine(directory, "credentials.json");
+            Tool.Run("mkfifo", store);
+
+            IReadOnlyList<string> lines = Diagnosis.DescribeOwnership(store);
+
+            Assert.StartsWith("NOT A PLAIN FILE", lines[0], StringComparison.Ordinal);
+            Assert.DoesNotContain(lines, line => line.Contains("chown", StringComparison.Ordinal));
+            Assert.All(lines.SkipLast(1), line => Assert.True(line.Length <= 62, line));
+            Assert.Equal("sudo ls -li " + store, lines[^1]);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [OnLinuxFact]
+    public void AStoreTooLargeToBeOneIsNamedAndNeverGetsAChown()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "obs-big-" + Guid.NewGuid().ToString("N")[..10]);
+        Directory.CreateDirectory(directory);
+
+        try
+        {
+            string store = Path.Combine(directory, "credentials.json");
+            // One byte more than the 64 KiB root will read: the number is pinned here on purpose.
+            File.WriteAllBytes(store, new byte[(64 * 1024) + 1]);
+
+            IReadOnlyList<string> lines = Diagnosis.DescribeOwnership(store);
+
+            Assert.StartsWith("TOO LARGE", lines[0], StringComparison.Ordinal);
+            Assert.DoesNotContain(lines, line => line.Contains("chown", StringComparison.Ordinal));
+            Assert.Equal("sudo ls -li " + store, lines[^1]);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [OnLinuxFact]
+    public void ASecondNameOfTheFolderOwnersOwnFileIsStillOk()
+    {
+        // The service's own file with a backup name next to it (cp -al) is not a trap: only a
+        // second name of a file that belongs to ANOTHER account is, and this is not one.
+        string directory = Path.Combine(Path.GetTempPath(), "obs-own-" + Guid.NewGuid().ToString("N")[..10]);
+        Directory.CreateDirectory(directory);
+
+        try
+        {
+            string store = Path.Combine(directory, "credentials.json");
+            File.WriteAllText(store, "{}");
+            Tool.Run("ln", store, Path.Combine(directory, "credentials.json.bak"));
+
+            Assert.StartsWith("OK", Diagnosis.DescribeOwnership(store)[0], StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [RootOnlyFact]
+    public void ASecondNameOfAFileOfAnotherAccountIsNamedAndNeverGetsAChown()
+    {
+        // Root's own file with a second name in a folder the service account owns. Without this
+        // verdict doctor reads "belongs to another account", prints a chown of the store's name,
+        // and a chown changes the INODE: it would hand root's file to the service account.
+        string directory = Path.Combine(Path.GetTempPath(), "obs-two-" + Guid.NewGuid().ToString("N")[..10]);
+        Directory.CreateDirectory(directory);
+        string rootsOwn = Path.Combine(Path.GetTempPath(), "obs-roots-" + Guid.NewGuid().ToString("N")[..10]);
+
+        try
+        {
+            File.WriteAllText(rootsOwn, "{}");
+
+            string store = Path.Combine(directory, "credentials.json");
+            Tool.Run("ln", rootsOwn, store);
+            Tool.Run("chown", "1655:1655", directory);
+
+            IReadOnlyList<string> lines = Diagnosis.DescribeOwnership(store);
+
+            Assert.StartsWith("NOT A PLAIN FILE", lines[0], StringComparison.Ordinal);
+            Assert.DoesNotContain(lines, line => line.Contains("chown", StringComparison.Ordinal));
+            Assert.Contains("sudo find / -xdev -samefile " + store, lines);
+            Assert.All(
+                lines.Where(line => !line.StartsWith("sudo ", StringComparison.Ordinal)),
+                line => Assert.True(line.Length <= 62, line));
+            Assert.Equal("sudo ls -li " + store, lines[^1]);
+        }
+        finally
+        {
+            File.Delete(rootsOwn);
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [OnLinuxFact]
     public void ARealStoreWrittenByThisAccountInItsOwnDirectoryIsOk()
     {
         // "uid 10" must not be taken for "uid 100": the number ends at a space or a comma.
