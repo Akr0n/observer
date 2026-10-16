@@ -59,12 +59,29 @@ public static class MetricFormatting
     /// </summary>
     public static double? Fraction(MetricValue value, MetricUnit? unit)
     {
-        if (value.Kind != MetricValueKind.Number || unit?.Symbol != "%")
+        if (value.Kind != MetricValueKind.Number)
         {
             return null;
         }
 
-        return Math.Clamp(value.Number / 100d, 0d, 1d);
+        if (unit?.Symbol == "%")
+        {
+            return Math.Clamp(value.Number / 100d, 0d, 1d);
+        }
+
+        if (unit?.Symbol == "B/s")
+        {
+            // Logarithmic scale for throughput: 0 B/s = 0%, 1 TB/s = 100%
+            // This makes the needle move meaningfully across different traffic levels
+            double bytesPerSecond = Math.Abs(value.Number);
+            if (bytesPerSecond <= 0) return 0;
+            if (bytesPerSecond >= 1e12) return 1;
+            
+            double logValue = Math.Log10(bytesPerSecond);
+            return Math.Clamp(logValue / 12d, 0, 1);
+        }
+
+        return null;
     }
 
     /// <summary>Formats a quantity of bytes with the binary prefixes.</summary>
