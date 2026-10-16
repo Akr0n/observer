@@ -341,7 +341,7 @@ not name its own cause.
 | `observer share` | yes | shows the machine token and the fingerprint, to configure ANOTHER computer |
 | `observer rotate-key` | yes | generates a new key; the previous one stays valid for another 24 hours, and the service uses the old one until it is restarted |
 | `observer rotate-key --now` | yes | for a key that has **leaked**: no previous key is kept, and the running service is told to adopt the new store immediately |
-| `observer doctor` | no | where the credential store is, how it is protected, and whether the local channel answers; on Linux also who owns the store file and its directory, with the commands that repair a file left to the wrong account (from an ordinary account the file's owner is out of reach: `sudo observer doctor`) |
+| `observer doctor` | no | where the credential store is, how it is protected, and whether the local channel answers; on Linux also who owns the store file and its directory, with the commands that repair a file left to the wrong account (from an ordinary account the file's owner is out of reach: `sudo observer doctor`); it also names a FIFO, a file with a second name or an oversized file where the store belongs, and offers no command for those |
 | `observer token set NAME` | no | keeps the token of ANOTHER machine; it reads it from standard input and does not show it |
 | `observer token forget NAME` | no | forgets that token |
 
@@ -437,7 +437,7 @@ cannot tell the colours apart, because in the light theme amber and red are the 
 the most common form of colour blindness. The colours are the status bar's, so a red mark means
 what a red bar means. Under the name, when there is a fault to report, you can also read **how
 long it has lasted** - "for 3 min", "for 2 h 10 min" - and the same phrase is in the tooltip; a
-rejected token, a different fingerprint or a service older than the dashboard are red at once. The machines you are not watching are
+rejected token or an incompatible version is red at once. The machines you are not watching are
 probed every fifteen seconds, all together and without holding up the gauges: a machine that is
 switched off costs an eight-second timeout, and the gauges must not pay for it. The tooltip on
 the row gives the reason.
@@ -457,8 +457,8 @@ and mixing them up costs an afternoon. For the first 10 seconds the bar stays ne
 a service that is still starting refuses connections too. A rejected token, a different
 fingerprint or a service older than the dashboard are red at once, because a minute later they
 will be exactly the same. That message can be **copied**, with the `Copy` button on the bar
-itself: a fingerprint mismatch prints both fingerprints in full, and nobody retypes those by
-hand. A row of the process list can be copied too, from the right-click menu, and it carries the PID
+itself: a fingerprint mismatch prints both fingerprints in full, and nobody retypes those by hand.
+A row of the process list can be copied too, from the right-click menu, and it carries the PID
 with it - which identifies the process when there are twelve called "chrome". The rest of the
 text is deliberately not selectable: selectable text takes the click to start a selection, and
 dragging over a gauge would open its panel instead of selecting the words.
@@ -507,7 +507,9 @@ channel.
 
 **If the service dies, it restarts by itself.** The MSI sets Windows' recovery actions: a
 restart after five seconds, on the first failure and on every later one, with the count reset
-after a day without failures. On Linux the systemd unit does it; it has had
+after a day without failures. That is meant for a process that crashes after it has started; a
+start that is REFUSED before the service connects, such as the credential-folder check described
+under *Packages*, was not retried when it was measured. On Linux the systemd unit does it; it has had
 `Restart=on-failure` since the first version. Before 0.14.1 the Windows side had none, and a
 process that died left the service stopped until the machine was restarted, and nothing
 reported it.
@@ -531,7 +533,7 @@ not - a foreign owner, or permissions that inherit from `ProgramData` (which let
 write) or name another account - and the directory is not empty, the service stops before touching
 anything and says why. An empty one that kept the permissions it inherited is replaced by a
 protected one and the service starts; one whose owner took SYSTEM out of its permissions cannot
-even be read by the service, and is refused like a non-empty one. Before
+even be read by the service, and is refused like a non-empty one (measured). Before
 0.24.1 the service repaired such a directory and then read the file it found there, so a local user
 could choose the machine's network token. Linux was never affected with the default path: `/etc`
 can be written only by root, and the package creates `/etc/observer` for the service's own account.
@@ -544,10 +546,17 @@ permissions, left by the service run by hand under any account but SYSTEM (eleva
 one that ran under a service account other than LocalSystem before an MSI upgrade re-registered it.
 A service-made folder gets there too if someone changes it - `takeown` without `/A` makes an
 individual account the owner, and an `icacls /grant` so that an account can read the token does the
-same to the permissions. You should find the reason in the Windows **Application** event log
-(source `.NET Runtime`, event 1026: the refusal ends the process before the service has a logger).
-The MSI starts the service and waits for it, so on such a machine an upgrade may stop with error
-1920, which does not name the cause, and roll back to the version that adopts. `observer doctor`
+same to the permissions. Starting the service (`sc start`) waits about 30 seconds and then fails
+with error 1053 (the System log says only that the service did not respond in time, events 7000 and
+7009): the reason is in the Windows **Application** event log (source `.NET Runtime`, event 1026:
+the refusal ends the process before the service has a logger), and it was in no other place that
+was looked at. With the recovery actions the MSI sets - restart after five seconds - applied by hand
+to a throwaway service, Windows did not retry the refused start in the roughly 40 seconds that were
+watched after the timeout, and the service stayed stopped. That was measured once, on one machine
+(Windows 11, Italian) and with a manual
+start; the start at boot of an automatic service was not tried. The MSI starts the service and
+waits for it, so on such a machine an upgrade may stop with error 1920 (not measured), which does
+not name the cause, and roll back to the version that adopts. `observer doctor`
 says which state the directory is in, but it judges as the account that runs it: a folder that same
 account made reads `PROTECTED` while the service still refuses it, so the refusal is what counts.
 

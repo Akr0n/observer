@@ -341,14 +341,8 @@
                         <!-- The grid decides the columns and the size of the cells: how many
                              fit at the minimum size, widened up to a maximum to fill the row.
                              No holes at the end of a row, and gauges as large as there is
-                             room for (see GaugeGrid).
-                             Horizontal scroll: when there are many gauges (e.g. multiple network
-                             interfaces), they extend in one row and the user scrolls sideways
-                             instead of seeing them wrap into multiple rows. -->
-                        <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                                      VerticalScrollBarVisibility="Disabled"
-                                      Margin="0,4,0,0">
-                            <ItemsControl ItemsSource="{Binding Gauges}">
+                             room for (see GaugeGrid). -->
+                        <ItemsControl ItemsSource="{Binding Gauges}" Margin="0,4,0,0">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <ctl:GaugeGrid />
@@ -388,7 +382,6 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                        </ScrollViewer>
 
                         <!-- The process panel, which opens by clicking a gauge. It is HERE,
                              under the gauges and above the history, and not in a separate
@@ -609,7 +602,8 @@
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:MetricRow">
                                                     <Grid ColumnDefinitions="*,Auto"
-                                                          Margin="0,4,0,0">
+                                                          Margin="0,4,0,0"
+                                                          IsVisible="{Binding !HasGauge}">
                                                         <TextBlock Grid.Column="0"
                                                                    Text="{Binding Label}"
                                                                    TextWrapping="Wrap"
