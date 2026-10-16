@@ -69,18 +69,6 @@ public static class MetricFormatting
             return Math.Clamp(value.Number / 100d, 0d, 1d);
         }
 
-        if (unit?.Symbol == "B/s")
-        {
-            // Logarithmic scale for throughput: 0 B/s = 0%, 1 TB/s = 100%
-            // This makes the needle move meaningfully across different traffic levels
-            double bytesPerSecond = Math.Abs(value.Number);
-            if (bytesPerSecond <= 0) return 0;
-            if (bytesPerSecond >= 1e12) return 1;
-            
-            double logValue = Math.Log10(bytesPerSecond);
-            return Math.Clamp(logValue / 12d, 0, 1);
-        }
-
         return null;
     }
 
