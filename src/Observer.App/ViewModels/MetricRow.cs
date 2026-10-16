@@ -228,7 +228,10 @@ public sealed partial class MetricGroup : ObservableObject
     }
 
     private void RefreshShowRows() =>
-        ShowRows = Rows.Any(row => !row.HasGauge);
+        // Network is a special case: its metrics are rates (B/s) that make sense both as gauges
+        // (quick visual scan at the top) and as text rows (detailed reading in Usage). All other
+        // collectors follow the original rule: show in Usage only if they have non-gauge rows.
+        ShowRows = CollectorId == "network" || Rows.Any(row => !row.HasGauge);
 
     private bool HasSameKeys(IReadOnlyList<MetricRowState> states)
     {

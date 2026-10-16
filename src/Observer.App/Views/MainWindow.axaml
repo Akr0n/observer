@@ -609,8 +609,7 @@
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:MetricRow">
                                                     <Grid ColumnDefinitions="*,Auto"
-                                                          Margin="0,4,0,0"
-                                                          IsVisible="{Binding !HasGauge}">
+                                                          Margin="0,4,0,0">
                                                         <TextBlock Grid.Column="0"
                                                                    Text="{Binding Label}"
                                                                    TextWrapping="Wrap"
