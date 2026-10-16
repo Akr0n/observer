@@ -42,6 +42,7 @@ The client can point at the service running on the same machine or on another on
 | Memory | the machine | used, available and total; "available" is an estimate when the system does not expose it directly, and it says so |
 | Disk space | a volume (`C:`, `/`) | used, free and total; a capacity of zero is "unknown", not "empty" |
 | Disk activity | a device (`Disk 0`, `sda`) | bytes read and written per second, and percentage of busy time |
+| Network traffic | an interface (`Ethernet`, `wlan0`) | bytes received and sent per second; the loopback interface is filtered out |
 
 Disk-activity instances are **devices**, not volumes, and deliberately do not line up with the
 space ones: a disk carries several volumes and a volume can span several disks, so attributing

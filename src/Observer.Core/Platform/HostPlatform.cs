@@ -1,6 +1,7 @@
 using Observer.Core.Metrics.Cpu;
 using Observer.Core.Metrics.Disk;
 using Observer.Core.Metrics.Memory;
+using Observer.Core.Metrics.Network;
 
 namespace Observer.Core.Platform;
 
@@ -171,6 +172,33 @@ public sealed class UnsupportedDiskActivityProvider : IDiskActivityProvider
 
     /// <inheritdoc />
     public bool TryRead(out IReadOnlyList<DiskActivityReading> readings)
+    {
+        readings = [];
+
+        return false;
+    }
+}
+
+
+/// <summary>Network port for a platform this program does not know how to measure.</summary>
+public sealed class UnsupportedNetworkProvider : INetworkInterfaceProvider
+{
+    /// <summary>Creates the port with the reason to show.</summary>
+    /// <param name="reason">Why nothing is measured here.</param>
+    public UnsupportedNetworkProvider(string reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        UnsupportedReason = reason;
+    }
+
+    /// <inheritdoc />
+    public bool IsSupported => false;
+
+    /// <inheritdoc />
+    public string? UnsupportedReason { get; }
+
+    /// <inheritdoc />
+    public bool TryRead(out IReadOnlyList<NetworkReading> readings)
     {
         readings = [];
 

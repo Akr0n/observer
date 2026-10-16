@@ -59,12 +59,17 @@ public static class MetricFormatting
     /// </summary>
     public static double? Fraction(MetricValue value, MetricUnit? unit)
     {
-        if (value.Kind != MetricValueKind.Number || unit?.Symbol != "%")
+        if (value.Kind != MetricValueKind.Number)
         {
             return null;
         }
 
-        return Math.Clamp(value.Number / 100d, 0d, 1d);
+        if (unit?.Symbol == "%")
+        {
+            return Math.Clamp(value.Number / 100d, 0d, 1d);
+        }
+
+        return null;
     }
 
     /// <summary>Formats a quantity of bytes with the binary prefixes.</summary>

@@ -1,6 +1,7 @@
 using Observer.Core.Metrics.Cpu;
 using Observer.Core.Metrics.Disk;
 using Observer.Core.Metrics.Memory;
+using Observer.Core.Metrics.Network;
 using Observer.Core.Units;
 
 namespace Observer.Core.Platform.Linux;
@@ -257,4 +258,60 @@ public sealed class LinuxDiskActivityProvider : IDiskActivityProvider
 
     private bool HasDeviceBehind(string name) =>
         reader.TryReadAllText($"/sys/block/{name}/device/uevent", out _);
+}
+
+
+/// <summary>
+/// /proc/net/dev adapter for network traffic.
+/// </summary>
+/// <remarks>
+/// The parser filters out loopback, which is the same machine talking to itself. Every other
+/// interface — Ethernet, Wi-Fi, VPN, tunnels — is kept, because the user wants to see it.
+/// </remarks>
+public sealed class LinuxNetworkProvider : INetworkInterfaceProvider
+{
+    private const string NetDevPath = "/proc/net/dev";
+
+    private readonly IFileTextReader reader;
+
+    /// <summary>Creates the adapter over the given reader.</summary>
+    /// <param name="reader">Where the system files are read from.</param>
+    public LinuxNetworkProvider(IFileTextReader reader)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+
+        this.reader = reader;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Always true, even outside Linux: the platform is a parameter of the composition and not a
+    /// reading of the environment, and that is how this branch is tested from the Windows runner.
+    /// </remarks>
+    public bool IsSupported => true;
+
+    /// <inheritdoc />
+    public string? UnsupportedReason => null;
+
+    /// <inheritdoc />
+    public bool TryRead(out IReadOnlyList<NetworkReading> readings)
+    {
+        if (!reader.TryReadAllText(NetDevPath, out string content))
+        {
+            readings = [];
+
+            return false;
+        }
+
+        List<NetworkReading> found = [];
+
+        foreach (NetDevLine line in ProcNetDevParser.Read(content))
+        {
+            found.Add(NetworkReading.Create(line.Interface, line.BytesReceived, line.BytesSent));
+        }
+
+        readings = found;
+
+        return true;
+    }
 }

@@ -343,45 +343,45 @@
                              No holes at the end of a row, and gauges as large as there is
                              room for (see GaugeGrid). -->
                         <ItemsControl ItemsSource="{Binding Gauges}" Margin="0,4,0,0">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <ctl:GaugeGrid />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:MetricRow">
-                                    <!-- The gauge sits inside a transparent button: CPU,
-                                         memory and disk activity open the process list, disk
-                                         space does not, and IsEnabled says so without
-                                         explaining.
-                                         A button and not a click handler on the control, so
-                                         it can be reached from the keyboard too. The name and
-                                         the value for the screen reader are here, because the
-                                         drawing on a DrawingContext does not exist for it.
-                                         Content aligned to Stretch: the gauge has no size of
-                                         its own, it takes the cell's. -->
-                                    <Button Classes="gauge"
-                                            Padding="0"
-                                            Background="Transparent"
-                                            BorderThickness="0"
-                                            HorizontalContentAlignment="Stretch"
-                                            VerticalContentAlignment="Stretch"
-                                            IsEnabled="{Binding CanShowProcesses}"
-                                            AutomationProperties.Name="{Binding Label}"
-                                            AutomationProperties.HelpText="{Binding Display}"
-                                            Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).OpenProcessesCommand}"
-                                            CommandParameter="{Binding}">
-                                        <ctl:Gauge Fraction="{Binding Fraction}"
-                                                   Display="{Binding Display}"
-                                                   Caption="{Binding Label}"
-                                                   TrackBrush="{DynamicResource ControlStrongFillColorDefaultBrush}"
-                                                   ValueBrush="{DynamicResource AccentFillColorDefaultBrush}"
-                                                   RedlineBrush="{DynamicResource SystemFillColorCriticalBrush}"
-                                                   NeedleBrush="{DynamicResource TextFillColorPrimaryBrush}" />
-                                    </Button>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <ctl:GaugeGrid />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:MetricRow">
+                                        <!-- The gauge sits inside a transparent button: CPU,
+                                             memory and disk activity open the process list, disk
+                                             space does not, and IsEnabled says so without
+                                             explaining.
+                                             A button and not a click handler on the control, so
+                                             it can be reached from the keyboard too. The name and
+                                             the value for the screen reader are here, because the
+                                             drawing on a DrawingContext does not exist for it.
+                                             Content aligned to Stretch: the gauge has no size of
+                                             its own, it takes the cell's. -->
+                                        <Button Classes="gauge"
+                                                Padding="0"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                HorizontalContentAlignment="Stretch"
+                                                VerticalContentAlignment="Stretch"
+                                                IsEnabled="{Binding CanShowProcesses}"
+                                                AutomationProperties.Name="{Binding Label}"
+                                                AutomationProperties.HelpText="{Binding Display}"
+                                                Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).OpenProcessesCommand}"
+                                                CommandParameter="{Binding}">
+                                            <ctl:Gauge Fraction="{Binding Fraction}"
+                                                       Display="{Binding Display}"
+                                                       Caption="{Binding Label}"
+                                                       TrackBrush="{DynamicResource ControlStrongFillColorDefaultBrush}"
+                                                       ValueBrush="{DynamicResource AccentFillColorDefaultBrush}"
+                                                       RedlineBrush="{DynamicResource SystemFillColorCriticalBrush}"
+                                                       NeedleBrush="{DynamicResource TextFillColorPrimaryBrush}" />
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
 
                         <!-- The process panel, which opens by clicking a gauge. It is HERE,
                              under the gauges and above the history, and not in a separate

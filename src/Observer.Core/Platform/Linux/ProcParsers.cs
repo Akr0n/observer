@@ -413,3 +413,84 @@ public static class ProcDiskStatsParser
     private static bool TryNumber(string text, out ulong value) =>
         ulong.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out value);
 }
+
+
+/// <summary>One line of /proc/net/dev, already converted into bytes.</summary>
+/// <param name="Interface">Name of the interface, for example <c>eth0</c> or <c>wlan0</c>.</param>
+/// <param name="BytesReceived">Bytes received since the interface came up.</param>
+/// <param name="BytesSent">Bytes sent since the interface came up.</param>
+public readonly record struct NetDevLine(
+    string Interface,
+    ulong BytesReceived,
+    ulong BytesSent);
+
+/// <summary>
+/// Parser for /proc/net/dev. Pure function like the others: it receives the content already
+/// read, so it runs identically on the Windows runner.
+/// </summary>
+/// <remarks>
+/// The format has two header lines, then one line per interface. Each line has the interface
+/// name followed by a colon, then 16 fields: 8 receive counters (bytes, packets, errs, drop,
+/// fifo, frame, compressed, multicast) and 8 transmit counters (bytes, packets, errs, drop,
+/// fifo, colls, carrier, compressed). We need only the bytes fields, which are the first of
+/// each group. The loopback interface is filtered out.
+/// </remarks>
+public static class ProcNetDevParser
+{
+    private const int BytesReceivedIndex = 0;
+    private const int BytesSentIndex = 8;
+    private const int MinFields = 16; // 16 counters: 8 receive + 8 transmit
+
+    /// <summary>Reads the usable lines, skipping the headers and loopback.</summary>
+    /// <param name="content">Content of /proc/net/dev.</param>
+    /// <returns>One line per recognized interface (excluding loopback).</returns>
+    public static IReadOnlyList<NetDevLine> Read(string content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+
+        List<NetDevLine> lines = [];
+
+        foreach (string line in content.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            // The first two lines are headers: "Inter-|..." and "face |...". They do not
+            // contain a colon, so they are skipped by the colon check below.
+            int colon = line.IndexOf(':');
+
+            if (colon < 0)
+            {
+                continue;
+            }
+
+            string interfaceName = line[..colon].Trim();
+
+            // Loopback is the same machine talking to itself. Including it would make a
+            // local-only chat look like network traffic, and the two must stay distinguishable.
+            if (string.Equals(interfaceName, "lo", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            string rest = line[(colon + 1)..].Trim();
+            string[] fields = rest.Split(
+                (char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (fields.Length < MinFields)
+            {
+                continue;
+            }
+
+            if (!TryNumber(fields[BytesReceivedIndex], out ulong bytesReceived)
+                || !TryNumber(fields[BytesSentIndex], out ulong bytesSent))
+            {
+                continue;
+            }
+
+            lines.Add(new NetDevLine(interfaceName, bytesReceived, bytesSent));
+        }
+
+        return lines;
+    }
+
+    private static bool TryNumber(string text, out ulong value) =>
+        ulong.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out value);
+}
