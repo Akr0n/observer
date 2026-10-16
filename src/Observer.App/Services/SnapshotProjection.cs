@@ -74,6 +74,7 @@ public static class SnapshotProjection
         ["cpu"] = "CPU",
         ["memory"] = "Memory",
         ["disk"] = "Disks",
+        ["network"] = "Network",
     };
 
     /// <summary>Builds the panels to show.</summary>

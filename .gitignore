@@ -496,6 +496,10 @@ appsettings.*.Local.json
 
 # Local instructions for agents (not public; Federico's decision, 2026-08-26)
 CLAUDE.md
+AGENTS.md
+
+# OpenCode local configuration
+.opencode/
 
 # The two files that carry a token live outside the repo - the machine-wide store under
 # ProgramData or /etc, the client configuration under LocalAppData - but if someone copies

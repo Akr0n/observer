@@ -3,6 +3,7 @@ using Observer.Core.Metrics;
 using Observer.Core.Metrics.Cpu;
 using Observer.Core.Metrics.Disk;
 using Observer.Core.Metrics.Memory;
+using Observer.Core.Metrics.Network;
 using Observer.Core.Platform;
 using Observer.Core.Platform.Linux;
 using Observer.Core.Platform.Windows;
@@ -36,25 +37,29 @@ public static class ObserverMetrics
         (ICpuTimesProvider cpu,
             IMemoryReadingProvider memory,
             IDiskReadingProvider disk,
-            IDiskActivityProvider diskActivity) = platform switch
+            IDiskActivityProvider diskActivity,
+            INetworkInterfaceProvider network) = platform switch
         {
             HostPlatform.Linux => (
                 new LinuxCpuTimesProvider(fileReader) as ICpuTimesProvider,
                 new LinuxMemoryReadingProvider(fileReader) as IMemoryReadingProvider,
                 new LinuxDiskReadingProvider(fileReader) as IDiskReadingProvider,
-                new LinuxDiskActivityProvider(fileReader) as IDiskActivityProvider),
+                new LinuxDiskActivityProvider(fileReader) as IDiskActivityProvider,
+                new LinuxNetworkProvider(fileReader) as INetworkInterfaceProvider),
 
             HostPlatform.Windows => (
                 new WindowsCpuTimesProvider(),
                 new WindowsMemoryReadingProvider() as IMemoryReadingProvider,
                 new WindowsDiskReadingProvider() as IDiskReadingProvider,
-                new WindowsDiskActivityProvider() as IDiskActivityProvider),
+                new WindowsDiskActivityProvider() as IDiskActivityProvider,
+                new WindowsNetworkProvider() as INetworkInterfaceProvider),
 
             _ => (
                 new UnsupportedCpuTimesProvider(unrecognized),
                 new UnsupportedMemoryReadingProvider(unrecognized),
                 new UnsupportedDiskReadingProvider(unrecognized),
-                new UnsupportedDiskActivityProvider(unrecognized)),
+                new UnsupportedDiskActivityProvider(unrecognized),
+                new UnsupportedNetworkProvider(unrecognized)),
         };
 
         // The order is the one in which the panels appear on screen: disk space before
@@ -65,6 +70,7 @@ public static class ObserverMetrics
             new MemoryCollector(memory),
             new DiskCollector(disk),
             new DiskActivityCollector(diskActivity),
+            new NetworkCollector(network),
         ];
     }
 
