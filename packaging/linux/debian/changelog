@@ -1,3 +1,34 @@
+observer (0.25.0) unstable; urgency=medium
+
+  * Network traffic monitoring. The dashboard now shows bytes received and
+    sent per second for each network interface, in the Usage panel as text
+    rows (like disk activity). On Windows, the collector uses the system's
+    NetworkInterface API and filters out virtual adapters, filter drivers
+    and the loopback interface. On Linux, it reads /proc/net/dev and
+    filters out the loopback interface. The loopback interface is filtered
+    because its traffic is internal to the machine and does not represent
+    network activity. Each interface is shown as two rows: "Network in"
+    (bytes received per second) and "Network out" (bytes sent per second),
+    with the interface name in parentheses. When an interface has no
+    traffic, the rows show "0 B/s". The collector samples every second and
+    computes the rate from the difference between consecutive samples, like
+    disk activity. On platforms where network interfaces cannot be read,
+    the collector reports itself as unsupported and the dashboard shows no
+    network rows.
+  * Network metrics appear as text rows in the Usage panel, not as gauges.
+    A rate (bytes per second) has no natural maximum, so a gauge would
+    suggest a limit that does not exist. The project philosophy is: "A
+    value that is not a fraction of a maximum is read, not glanced at".
+    Network and disk activity metrics follow this rule: they are read as
+    text, not glanced at as gauges.
+  * Three regression tests verify that bytes-per-second metrics do not
+    become gauges: Fraction_WithARateValue_ReturnsNull,
+    Fraction_WithAPercentage_ReturnsTheFraction, and
+    Fraction_WithBytes_ReturnsNull. These tests protect the project
+    philosophy and prevent the same bug from recurring.
+
+ -- Federico Cardinali <noreply@example.invalid>  Fri, 16 Oct 2026 12:00:00 +0200
+
 observer (0.24.5) unstable; urgency=medium
 
   * Linux only: "sudo observer share", "rotate-key" and "doctor" no longer
