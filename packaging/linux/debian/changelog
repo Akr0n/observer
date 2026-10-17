@@ -1,3 +1,28 @@
+observer (0.25.1) unstable; urgency=medium
+
+  * Less work every second, same screen. Three changes, none of which alters
+    what is measured or shown.
+  * The dashboard no longer rewrites rows whose text did not change. A steady
+    "0 B/s" or an idle CPU used to touch every binding once a second; now a
+    row whose label, value, gauge state and severity are identical is left
+    alone, and a panel recomputes its visibility only when it changes.
+  * Reading /proc/net/dev no longer allocates a string per counter. Only the
+    two byte counters are parsed; the remaining fields are counted to keep the
+    sixteen-field shape check. The only allocation per interface is its name.
+  * On Windows, enumerating the network adapters no longer happens every
+    second. The filtered adapter list is reused for thirty seconds and
+    invalidated at once by the operating system's own network-change
+    notification, so a cable pulled or a Wi-Fi dropped is picked up on the
+    next round. The per-second counters are still read live on every round.
+    A first enumeration that fails reads as a failure, not as a machine with
+    no interfaces.
+  * Five regression tests pin the new behaviour: an empty interface name and
+    a counter past the 64-bit range are skipped, DOS line endings parse, the
+    Windows provider answers consistently across two reads, and its
+    off-Windows branch stays a clean false.
+
+ -- Federico Cardinali <noreply@example.invalid>  Sat, 17 Oct 2026 12:00:00 +0200
+
 observer (0.25.0) unstable; urgency=medium
 
   * Network traffic monitoring. The dashboard now shows bytes received and
