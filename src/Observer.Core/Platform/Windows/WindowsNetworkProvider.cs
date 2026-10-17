@@ -47,11 +47,11 @@ public sealed class WindowsNetworkProvider : INetworkInterfaceProvider
     private DateTimeOffset lastRefresh = DateTimeOffset.MinValue;
     private bool cacheInitialized;
 
-    // Set by the OS network-change callbacks, read by the sampler. The sampler calls
-    // TryRead from its single loop (see MetricSamplingService), so no lock is taken here:
-    // if this provider is ever read from two threads at once, this flag and the three
-    // fields above need synchronising first.
-    private volatile bool refreshRequested;
+    // Set by the OS network-change callbacks, read by the sampler (0 = calm, 1 = refresh).
+    // The sampler calls TryRead from its single loop (see MetricSamplingService), so the
+    // int + Interlocked pair below is enough: if this provider is ever read from two
+    // threads at once, the three cache fields need a lock first.
+    private int refreshRequested;
 
     /// <summary>Creates the provider.</summary>
     /// <param name="timeProvider">The clock for the refresh interval, or null for the system one.</param>
@@ -59,13 +59,14 @@ public sealed class WindowsNetworkProvider : INetworkInterfaceProvider
     {
         clock = timeProvider ?? TimeProvider.System;
 
-        // One subscription per instance, and the instance lives as long as the service:
-        // the composition creates it once. Test doubles that construct many instances
-        // stay cheap because each handler only flips a flag on its own dead instance.
+        // One subscription per instance, and the composition creates the instance once, so
+        // in production there is exactly one handler. Each handler keeps its own instance
+        // reachable until process exit; the instances are tiny, and test doubles that
+        // construct many of them stay cheap because each handler only flips its own flag.
         if (OperatingSystem.IsWindows())
         {
-            NetworkChange.NetworkAddressChanged += (_, _) => refreshRequested = true;
-            NetworkChange.NetworkAvailabilityChanged += (_, _) => refreshRequested = true;
+            NetworkChange.NetworkAddressChanged += (_, _) => Interlocked.Exchange(ref refreshRequested, 1);
+            NetworkChange.NetworkAvailabilityChanged += (_, _) => Interlocked.Exchange(ref refreshRequested, 1);
         }
     }
 
@@ -93,10 +94,28 @@ public sealed class WindowsNetworkProvider : INetworkInterfaceProvider
 
         DateTimeOffset now = clock.GetUtcNow();
 
-        if (!cacheInitialized || refreshRequested || now - lastRefresh >= ListRefreshInterval)
+        // Consumed atomically: an event arriving during the refresh below sets the flag
+        // again instead of being lost in the reset.
+        bool eventRefresh = Interlocked.Exchange(ref refreshRequested, 0) != 0;
+
+        if (!cacheInitialized || eventRefresh || now - lastRefresh >= ListRefreshInterval)
         {
-            RefreshCache(now);
-            refreshRequested = false;
+            // A failed enumeration keeps the previous list AND the event request, so the
+            // next round retries promptly instead of waiting out the interval.
+            if (!RefreshCache(now) && eventRefresh)
+            {
+                Interlocked.Exchange(ref refreshRequested, 1);
+            }
+        }
+
+        if (!cacheInitialized)
+        {
+            // The very first enumeration failed: that is "I could not read", not "this
+            // machine has no interfaces". Returning true with an empty list here would
+            // make the collector publish Ok + "no interface", masking the failure.
+            readings = [];
+
+            return false;
         }
 
         List<NetworkReading> found = new(cache.Count);
@@ -107,6 +126,7 @@ public sealed class WindowsNetworkProvider : INetworkInterfaceProvider
             // OperationalStatus when the NetworkInterface instance is created. An adapter
             // that went down after the refresh is caught because the OS notification
             // above already invalidated the list, not because this property moved.
+            // Kept as a defensive second net for a refresh that raced the event.
             if (cached.Adapter.OperationalStatus != OperationalStatus.Up)
             {
                 continue;
@@ -138,7 +158,9 @@ public sealed class WindowsNetworkProvider : INetworkInterfaceProvider
         return true;
     }
 
-    private void RefreshCache(DateTimeOffset now)
+    /// <summary>Rebuilds the cached adapter list.</summary>
+    /// <returns>True when the enumeration succeeded (even with zero usable adapters).</returns>
+    private bool RefreshCache(DateTimeOffset now)
     {
         NetworkInterface[] interfaces;
 
@@ -151,7 +173,7 @@ public sealed class WindowsNetworkProvider : INetworkInterfaceProvider
             // Keep the previous list: a failed enumeration must not wipe known adapters.
             // lastRefresh is left alone so the next round retries instead of waiting out
             // the interval on an empty or stale list.
-            return;
+            return false;
         }
 
         List<CachedInterface> next = new(interfaces.Length);
@@ -202,6 +224,8 @@ public sealed class WindowsNetworkProvider : INetworkInterfaceProvider
         cache = next;
         lastRefresh = now;
         cacheInitialized = true;
+
+        return true;
     }
 
     private sealed record CachedInterface(NetworkInterface Adapter, string DisplayName);
