@@ -116,6 +116,24 @@ public sealed partial class MetricRow : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(state);
 
+        // The generated setters already skip notifications when the value is equal, but they
+        // still cost a call each: five per row per second across ~20 rows. A steady "0 B/s"
+        // or an idle CPU would otherwise churn the binding pipeline for nothing. Bailing out
+        // here is observably identical: every field below is compared before it is written.
+        // Contract: every observable field assigned below MUST appear in this condition.
+        // Adding a field to Update without adding it here would silently skip its updates.
+        bool sameGauge = HasGauge == state.Fraction.HasValue;
+        bool sameFraction = !state.Fraction.HasValue || Fraction == state.Fraction.Value;
+
+        if (string.Equals(Label, state.Label, StringComparison.Ordinal)
+            && string.Equals(Display, state.Display, StringComparison.Ordinal)
+            && sameGauge
+            && sameFraction
+            && Severity == state.Severity)
+        {
+            return;
+        }
+
         Label = state.Label;
         Display = state.Display;
         HasGauge = state.Fraction.HasValue;
@@ -227,8 +245,18 @@ public sealed partial class MetricGroup : ObservableObject
         RefreshShowRows();
     }
 
-    private void RefreshShowRows() =>
-        ShowRows = Rows.Any(row => !row.HasGauge);
+    private void RefreshShowRows()
+    {
+        // The Any() scan itself runs every second regardless; the guard only avoids a
+        // redundant setter call when the panel's visibility did not change. Cheap either
+        // way, kept so a steady screen does not even touch the property.
+        bool show = Rows.Any(row => !row.HasGauge);
+
+        if (show != ShowRows)
+        {
+            ShowRows = show;
+        }
+    }
 
     private bool HasSameKeys(IReadOnlyList<MetricRowState> states)
     {
