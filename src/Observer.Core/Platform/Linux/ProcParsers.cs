@@ -444,13 +444,18 @@ public static class ProcNetDevParser
     /// <summary>Reads the usable lines, skipping the headers and loopback.</summary>
     /// <param name="content">Content of /proc/net/dev.</param>
     /// <returns>One line per recognized interface (excluding loopback).</returns>
+    /// <remarks>
+    /// Span-based on purpose: the previous split allocated one string per counter (16 per
+    /// interface) plus the array, every second. Only the two byte counters are parsed; the
+    /// rest is counted to preserve the 16-field shape check, without allocating.
+    /// </remarks>
     public static IReadOnlyList<NetDevLine> Read(string content)
     {
         ArgumentNullException.ThrowIfNull(content);
 
         List<NetDevLine> lines = [];
 
-        foreach (string line in content.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        foreach (ReadOnlySpan<char> line in content.AsSpan().EnumerateLines())
         {
             // The first two lines are headers: "Inter-|..." and "face |...". They do not
             // contain a colon, so they are skipped by the colon check below.
@@ -461,36 +466,86 @@ public static class ProcNetDevParser
                 continue;
             }
 
-            string interfaceName = line[..colon].Trim();
+            ReadOnlySpan<char> name = line[..colon].Trim();
+
+            if (name.IsEmpty)
+            {
+                continue;
+            }
 
             // Loopback is the same machine talking to itself. Including it would make a
             // local-only chat look like network traffic, and the two must stay distinguishable.
-            if (string.Equals(interfaceName, "lo", StringComparison.Ordinal))
+            if (name.Equals("lo", StringComparison.Ordinal))
             {
                 continue;
             }
 
-            string rest = line[(colon + 1)..].Trim();
-            string[] fields = rest.Split(
-                (char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-            if (fields.Length < MinFields)
+            if (!TryParseCounters(line[(colon + 1)..], out ulong bytesReceived, out ulong bytesSent))
             {
                 continue;
             }
 
-            if (!TryNumber(fields[BytesReceivedIndex], out ulong bytesReceived)
-                || !TryNumber(fields[BytesSentIndex], out ulong bytesSent))
-            {
-                continue;
-            }
-
-            lines.Add(new NetDevLine(interfaceName, bytesReceived, bytesSent));
+            lines.Add(new NetDevLine(name.ToString(), bytesReceived, bytesSent));
         }
 
         return lines;
     }
 
-    private static bool TryNumber(string text, out ulong value) =>
-        ulong.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out value);
+    private static bool TryParseCounters(ReadOnlySpan<char> rest, out ulong bytesReceived, out ulong bytesSent)
+    {
+        bytesReceived = 0UL;
+        bytesSent = 0UL;
+
+        int fieldIndex = 0;
+        int position = 0;
+        bool haveReceived = false;
+        bool haveSent = false;
+
+        while (position < rest.Length)
+        {
+            while (position < rest.Length && char.IsWhiteSpace(rest[position]))
+            {
+                position++;
+            }
+
+            if (position >= rest.Length)
+            {
+                break;
+            }
+
+            int start = position;
+
+            while (position < rest.Length && !char.IsWhiteSpace(rest[position]))
+            {
+                position++;
+            }
+
+            ReadOnlySpan<char> token = rest[start..position];
+
+            if (fieldIndex == BytesReceivedIndex)
+            {
+                if (!ulong.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out bytesReceived))
+                {
+                    return false;
+                }
+
+                haveReceived = true;
+            }
+            else if (fieldIndex == BytesSentIndex)
+            {
+                if (!ulong.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out bytesSent))
+                {
+                    return false;
+                }
+
+                haveSent = true;
+            }
+
+            fieldIndex++;
+        }
+
+        // Same shape rule as before: fewer than 16 counters is not a readings line.
+        // The two values above are only kept when the line is complete.
+        return haveReceived && haveSent && fieldIndex >= MinFields;
+    }
 }

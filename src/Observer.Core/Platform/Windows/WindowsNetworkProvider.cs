@@ -24,6 +24,27 @@ namespace Observer.Core.Platform.Windows;
 /// </remarks>
 public sealed class WindowsNetworkProvider : INetworkInterfaceProvider
 {
+    /// <summary>
+    /// How long the filtered adapter list is reused. Enumerating adapters hits the IP Helper
+    /// API and the registry every time; the per-second counters are still read live on every
+    /// round, only the discovery is cached. A new adapter appears with up to this delay, and
+    /// a removed one is pruned on the next refresh. An adapter that goes down is skipped
+    /// immediately via the live <see cref="OperationalStatus"/> check, not at refresh time.
+    /// </summary>
+    private static readonly TimeSpan ListRefreshInterval = TimeSpan.FromSeconds(30);
+
+    private readonly TimeProvider clock;
+    private List<CachedInterface> cache = [];
+    private DateTimeOffset lastRefresh = DateTimeOffset.MinValue;
+    private bool cacheInitialized;
+
+    /// <summary>Creates the provider.</summary>
+    /// <param name="timeProvider">The clock for the refresh interval, or null for the system one.</param>
+    public WindowsNetworkProvider(TimeProvider? timeProvider = null)
+    {
+        clock = timeProvider ?? TimeProvider.System;
+    }
+
     /// <inheritdoc />
     /// <remarks>
     /// Always true, even outside Windows: the platform is a parameter of the composition, not a
@@ -46,6 +67,52 @@ public sealed class WindowsNetworkProvider : INetworkInterfaceProvider
             return false;
         }
 
+        DateTimeOffset now = clock.GetUtcNow();
+
+        if (!cacheInitialized || now - lastRefresh >= ListRefreshInterval)
+        {
+            RefreshCache(now);
+        }
+
+        List<NetworkReading> found = new(cache.Count);
+
+        foreach (CachedInterface cached in cache)
+        {
+            // Live check, not the status at refresh time: an adapter that went down after
+            // the refresh must read as disconnected (skipped), not as idle zeros.
+            if (cached.Adapter.OperationalStatus != OperationalStatus.Up)
+            {
+                continue;
+            }
+
+            IPInterfaceStatistics stats;
+
+            try
+            {
+                stats = cached.Adapter.GetIPStatistics();
+            }
+            catch (NetworkInformationException)
+            {
+                // One interface that cannot be read does not bring the others down.
+                // It stays in the cache until the next refresh prunes it if gone.
+                continue;
+            }
+
+            found.Add(NetworkReading.Create(
+                cached.DisplayName,
+                (ulong)Math.Max(0, stats.BytesReceived),
+                (ulong)Math.Max(0, stats.BytesSent)));
+        }
+
+        readings = found;
+
+        // Zero interfaces is not a READ failure: it is an answer, and the collector can tell
+        // it apart from "I could not read".
+        return true;
+    }
+
+    private void RefreshCache(DateTimeOffset now)
+    {
         NetworkInterface[] interfaces;
 
         try
@@ -54,12 +121,13 @@ public sealed class WindowsNetworkProvider : INetworkInterfaceProvider
         }
         catch (NetworkInformationException)
         {
-            readings = [];
-
-            return false;
+            // Keep the previous list: a failed enumeration must not wipe known adapters.
+            // lastRefresh is left alone so the next round retries instead of waiting out
+            // the interval on an empty or stale list.
+            return;
         }
 
-        List<NetworkReading> found = [];
+        List<CachedInterface> next = new(interfaces.Length);
 
         foreach (NetworkInterface nic in interfaces)
         {
@@ -101,30 +169,15 @@ public sealed class WindowsNetworkProvider : INetworkInterfaceProvider
                 continue;
             }
 
-            IPInterfaceStatistics stats;
-
-            try
-            {
-                stats = nic.GetIPStatistics();
-            }
-            catch (NetworkInformationException)
-            {
-                // One interface that cannot be read does not bring the others down.
-                continue;
-            }
-
-            found.Add(NetworkReading.Create(
-                name,
-                (ulong)Math.Max(0, stats.BytesReceived),
-                (ulong)Math.Max(0, stats.BytesSent)));
+            next.Add(new CachedInterface(nic, name));
         }
 
-        readings = found;
-
-        // Zero interfaces is not a READ failure: it is an answer, and the collector can tell
-        // it apart from "I could not read".
-        return true;
+        cache = next;
+        lastRefresh = now;
+        cacheInitialized = true;
     }
+
+    private sealed record CachedInterface(NetworkInterface Adapter, string DisplayName);
 
     /// <summary>
     /// Checks whether the interface name belongs to a virtual adapter or a filter driver.
@@ -135,18 +188,18 @@ public sealed class WindowsNetworkProvider : INetworkInterfaceProvider
     {
         // Filter drivers append suffixes like "-WFP Native MAC Layer LightWeight Filter-0000"
         // or "-QoS Packet Scheduler-0000" to the base interface name.
-        if (name.Contains("-WFP") ||
-            name.Contains("-QoS") ||
-            name.Contains("Filter Driver") ||
-            name.Contains("-Virtual") ||
-            name.Contains("Filter-0000"))
+        if (name.Contains("-WFP", StringComparison.Ordinal) ||
+            name.Contains("-QoS", StringComparison.Ordinal) ||
+            name.Contains("Filter Driver", StringComparison.Ordinal) ||
+            name.Contains("-Virtual", StringComparison.Ordinal) ||
+            name.Contains("Filter-0000", StringComparison.Ordinal))
         {
             return true;
         }
 
         // Virtual adapters: Hyper-V virtual switches, WAN Miniport (tunnel endpoints), etc.
-        if (name.Contains("Hyper-V") ||
-            name.Contains("WAN Miniport"))
+        if (name.Contains("Hyper-V", StringComparison.Ordinal) ||
+            name.Contains("WAN Miniport", StringComparison.Ordinal))
         {
             return true;
         }

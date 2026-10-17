@@ -116,6 +116,22 @@ public sealed partial class MetricRow : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(state);
 
+        // The generated setters already skip notifications when the value is equal, but they
+        // still cost a call each: five per row per second across ~20 rows. A steady "0 B/s"
+        // or an idle CPU would otherwise churn the binding pipeline for nothing. Bailing out
+        // here is observably identical: every field below is compared before it is written.
+        bool sameGauge = HasGauge == state.Fraction.HasValue;
+        bool sameFraction = !state.Fraction.HasValue || Fraction == state.Fraction.Value;
+
+        if (string.Equals(Label, state.Label, StringComparison.Ordinal)
+            && string.Equals(Display, state.Display, StringComparison.Ordinal)
+            && sameGauge
+            && sameFraction
+            && Severity == state.Severity)
+        {
+            return;
+        }
+
         Label = state.Label;
         Display = state.Display;
         HasGauge = state.Fraction.HasValue;
@@ -227,8 +243,18 @@ public sealed partial class MetricGroup : ObservableObject
         RefreshShowRows();
     }
 
-    private void RefreshShowRows() =>
-        ShowRows = Rows.Any(row => !row.HasGauge);
+    private void RefreshShowRows()
+    {
+        // Guarded for the same reason as MetricRow.Update: the generated setter already
+        // skips equal values, but computing Any() every second across every group to write
+        // the same bool back is wasted work on a steady screen.
+        bool show = Rows.Any(row => !row.HasGauge);
+
+        if (show != ShowRows)
+        {
+            ShowRows = show;
+        }
+    }
 
     private bool HasSameKeys(IReadOnlyList<MetricRowState> states)
     {
