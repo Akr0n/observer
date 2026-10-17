@@ -229,4 +229,58 @@ public class ProcNetDevParserTests
         Assert.Equal(543210987UL, wifi.BytesReceived);
         Assert.Equal(123456789UL, wifi.BytesSent);
     }
+
+    [Fact]
+    public void Read_EmptyInterfaceName_IsSkipped()
+    {
+        // A line with no name before the colon is not an interface: keeping it would
+        // publish a row with an empty label that no panel could explain.
+        var content = """
+            Inter-|   Receive                                                |  Transmit
+             face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+                      : 1000000   10000    0    0    0     0          0         0   500000    5000    0    0    0     0       0          0
+              eth0: 2000000   20000    0    0    0     0          0         0  1000000   10000    0    0    0     0       0          0
+            """;
+
+        var result = ProcNetDevParser.Read(content);
+
+        Assert.Single(result);
+        Assert.Equal("eth0", result[0].Interface);
+    }
+
+    [Fact]
+    public void Read_CounterBeyondUlongMax_IsSkipped()
+    {
+        // One past ulong.MaxValue is not a counter but a corrupt or wrapped read:
+        // publishing it would show a huge and plausible number.
+        var content = """
+            Inter-|   Receive                                                |  Transmit
+             face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+              eth0: 18446744073709551616   10000    0    0    0     0          0         0   500000    5000    0    0    0     0       0          0
+              eth1: 2000000   20000    0    0    0     0          0         0  1000000   10000    0    0    0     0       0          0
+            """;
+
+        var result = ProcNetDevParser.Read(content);
+
+        Assert.Single(result);
+        Assert.Equal("eth1", result[0].Interface);
+    }
+
+    [Fact]
+    public void Read_CrLfLineEndings_AreParsed()
+    {
+        // Files copied from a Windows share or read in text mode can carry \r\n:
+        // the readings must not depend on which newline the content arrived with.
+        var content =
+            "Inter-|   Receive                                                |  Transmit\r\n" +
+            " face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\r\n" +
+            "  eth0: 1000000   10000    0    0    0     0          0         0   500000    5000    0    0    0     0       0          0\r\n";
+
+        var result = ProcNetDevParser.Read(content);
+
+        Assert.Single(result);
+        Assert.Equal("eth0", result[0].Interface);
+        Assert.Equal(1000000UL, result[0].BytesReceived);
+        Assert.Equal(500000UL, result[0].BytesSent);
+    }
 }

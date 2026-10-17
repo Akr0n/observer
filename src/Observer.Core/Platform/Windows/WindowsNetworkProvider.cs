@@ -27,10 +27,19 @@ public sealed class WindowsNetworkProvider : INetworkInterfaceProvider
     /// <summary>
     /// How long the filtered adapter list is reused. Enumerating adapters hits the IP Helper
     /// API and the registry every time; the per-second counters are still read live on every
-    /// round, only the discovery is cached. A new adapter appears with up to this delay, and
-    /// a removed one is pruned on the next refresh. An adapter that goes down is skipped
-    /// immediately via the live <see cref="OperationalStatus"/> check, not at refresh time.
+    /// round, only the discovery is cached.
     /// </summary>
+    /// <remarks>
+    /// Two bounds, and both are deliberate. The steady one is the interval below: a new
+    /// adapter appears with up to this delay, and a removed one is pruned on the next
+    /// refresh. The prompt one is the operating system's own notification: address and
+    /// availability changes invalidate the list at once, so a cable pulled or a Wi-Fi
+    /// dropped is picked up on the next round instead of at the next interval. The
+    /// <see cref="OperationalStatus"/> of a cached adapter is the snapshot taken at
+    /// refresh time (the runtime caches it per <c>NetworkInterface</c> instance), not a
+    /// live reading — the promptness for the down case comes from the invalidation above,
+    /// not from re-reading the property.
+    /// </remarks>
     private static readonly TimeSpan ListRefreshInterval = TimeSpan.FromSeconds(30);
 
     private readonly TimeProvider clock;
@@ -38,11 +47,26 @@ public sealed class WindowsNetworkProvider : INetworkInterfaceProvider
     private DateTimeOffset lastRefresh = DateTimeOffset.MinValue;
     private bool cacheInitialized;
 
+    // Set by the OS network-change callbacks, read by the sampler. The sampler calls
+    // TryRead from its single loop (see MetricSamplingService), so no lock is taken here:
+    // if this provider is ever read from two threads at once, this flag and the three
+    // fields above need synchronising first.
+    private volatile bool refreshRequested;
+
     /// <summary>Creates the provider.</summary>
     /// <param name="timeProvider">The clock for the refresh interval, or null for the system one.</param>
     public WindowsNetworkProvider(TimeProvider? timeProvider = null)
     {
         clock = timeProvider ?? TimeProvider.System;
+
+        // One subscription per instance, and the instance lives as long as the service:
+        // the composition creates it once. Test doubles that construct many instances
+        // stay cheap because each handler only flips a flag on its own dead instance.
+        if (OperatingSystem.IsWindows())
+        {
+            NetworkChange.NetworkAddressChanged += (_, _) => refreshRequested = true;
+            NetworkChange.NetworkAvailabilityChanged += (_, _) => refreshRequested = true;
+        }
     }
 
     /// <inheritdoc />
@@ -69,17 +93,20 @@ public sealed class WindowsNetworkProvider : INetworkInterfaceProvider
 
         DateTimeOffset now = clock.GetUtcNow();
 
-        if (!cacheInitialized || now - lastRefresh >= ListRefreshInterval)
+        if (!cacheInitialized || refreshRequested || now - lastRefresh >= ListRefreshInterval)
         {
             RefreshCache(now);
+            refreshRequested = false;
         }
 
         List<NetworkReading> found = new(cache.Count);
 
         foreach (CachedInterface cached in cache)
         {
-            // Live check, not the status at refresh time: an adapter that went down after
-            // the refresh must read as disconnected (skipped), not as idle zeros.
+            // Refresh-time snapshot, not a live reading: the runtime captures
+            // OperationalStatus when the NetworkInterface instance is created. An adapter
+            // that went down after the refresh is caught because the OS notification
+            // above already invalidated the list, not because this property moved.
             if (cached.Adapter.OperationalStatus != OperationalStatus.Up)
             {
                 continue;

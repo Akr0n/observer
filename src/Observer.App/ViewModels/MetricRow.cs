@@ -120,6 +120,8 @@ public sealed partial class MetricRow : ObservableObject
         // still cost a call each: five per row per second across ~20 rows. A steady "0 B/s"
         // or an idle CPU would otherwise churn the binding pipeline for nothing. Bailing out
         // here is observably identical: every field below is compared before it is written.
+        // Contract: every observable field assigned below MUST appear in this condition.
+        // Adding a field to Update without adding it here would silently skip its updates.
         bool sameGauge = HasGauge == state.Fraction.HasValue;
         bool sameFraction = !state.Fraction.HasValue || Fraction == state.Fraction.Value;
 
@@ -245,9 +247,9 @@ public sealed partial class MetricGroup : ObservableObject
 
     private void RefreshShowRows()
     {
-        // Guarded for the same reason as MetricRow.Update: the generated setter already
-        // skips equal values, but computing Any() every second across every group to write
-        // the same bool back is wasted work on a steady screen.
+        // The Any() scan itself runs every second regardless; the guard only avoids a
+        // redundant setter call when the panel's visibility did not change. Cheap either
+        // way, kept so a steady screen does not even touch the property.
         bool show = Rows.Any(row => !row.HasGauge);
 
         if (show != ShowRows)
