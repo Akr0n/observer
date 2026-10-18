@@ -202,9 +202,9 @@ public static class SnapshotProjection
 
             // The key holds collectorId|metricId|instance: the middle piece is what is needed
             // to find the descriptor again, and so the unit.
-            string[] parts = rows[i].Key.Split('|');
-            string symbol = parts.Length > 1 ? catalog.Find(parts[1])?.Unit.Symbol ?? string.Empty : string.Empty;
-            string qualifier = string.IsNullOrEmpty(symbol) ? parts.ElementAtOrDefault(1) ?? "?" : symbol;
+            string metricId = MetricIdOf(rows[i]);
+            string symbol = catalog.Find(metricId)?.Unit.Symbol ?? string.Empty;
+            string qualifier = string.IsNullOrEmpty(symbol) ? (metricId.Length > 0 ? metricId : "?") : symbol;
 
             rows[i] = rows[i] with { Label = rows[i].Label + " (" + qualifier + ")" };
         }
