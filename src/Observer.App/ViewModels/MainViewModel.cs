@@ -625,11 +625,10 @@ public sealed partial class MainViewModel : ViewModelBase
 
     /// <summary>How to add a machine, with the path of the file to write.</summary>
     public string MachineListHint { get; } =
-        "Only this machine so far. To watch another one, run \"observer share\" on it and add a " +
-        "name, its address (https://HOST:5058/) and the fingerprint it prints to " +
-        MachineDirectory.FilePath + ". Then keep that machine's token on this computer with " +
-        "\"observer token set NAME\", using the same name, and reopen this window. The token " +
-        "never goes in the file.";
+        "Only this machine for now. On the other one run \"observer share\", then add its " +
+        "name, address (https://HOST:5058/) and fingerprint to " +
+        MachineDirectory.FilePath + ". Save its token with " +
+        "\"observer token set NAME\", using the same name, and reopen this window. Tokens are never stored in the file.";
 
     /// <summary>The machine currently being watched.</summary>
     [ObservableProperty]
