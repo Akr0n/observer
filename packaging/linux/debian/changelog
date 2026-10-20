@@ -1,3 +1,12 @@
+observer (0.25.3) unstable; urgency=medium
+
+  * Tidier sidebar in the dashboard. The machine name is centered on its
+    status dot, the faulted-state diamond is sized to match the dot, and
+    the hint on adding another machine is a titled footnote with shorter
+    wording. Nothing measured changes.
+
+ -- Federico Cardinali <noreply@example.invalid>  Tue, 20 Oct 2026 12:00:00 +0200
+
 observer (0.25.2) unstable; urgency=medium
 
   * Readability in the dashboard's snapshot projection. Disambiguate reuses

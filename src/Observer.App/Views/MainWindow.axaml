@@ -219,13 +219,22 @@
                 <!-- The problems go UNDER the list, not into a log: a badly configured machine
                      that simply does not appear is indistinguishable from one that was never
                      added, and whoever looks for it would not know what to fix. -->
-                <TextBlock DockPanel.Dock="Bottom"
-                           Text="{Binding MachineListHint}"
-                           IsVisible="{Binding ShowMachineListHint}"
-                           Theme="{StaticResource CaptionTextBlockStyle}"
-                           Classes="secondary"
-                           TextWrapping="Wrap"
-                           Margin="0,12,0,0" />
+                <StackPanel DockPanel.Dock="Bottom"
+                            IsVisible="{Binding ShowMachineListHint}"
+                            Margin="0,12,0,0"
+                            Spacing="4">
+                    <!-- A hairline above the hint: without it the help text sits directly
+                         under the list and reads as a leftover, not as a footnote. -->
+                    <Border Height="1"
+                            Background="{DynamicResource CardStrokeColorDefaultBrush}" />
+                    <TextBlock Text="Watch another machine"
+                               Theme="{StaticResource CaptionTextBlockStyle}"
+                               FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding MachineListHint}"
+                               Theme="{StaticResource CaptionTextBlockStyle}"
+                               Classes="secondary"
+                               TextWrapping="Wrap" />
+                </StackPanel>
 
                 <ItemsControl DockPanel.Dock="Bottom"
                               ItemsSource="{Binding MachineListProblems}"
@@ -287,14 +296,16 @@
                                              Classes.warning="{Binding IsWarning}"
                                              IsVisible="{Binding !IsFaulted}" />
                                     <Rectangle Classes="faulted"
-                                               Width="7"
-                                               Height="7"
+                                               Width="8"
+                                               Height="8"
                                                RenderTransform="rotate(45deg)"
+                                               RenderTransformOrigin="50%,50%"
                                                IsVisible="{Binding IsFaulted}" />
                                 </Panel>
                                 <TextBlock Grid.Row="0"
                                            Grid.Column="1"
                                            Text="{Binding Name}"
+                                           VerticalAlignment="Center"
                                            TextWrapping="Wrap" />
                                 <!-- A line under the name that says one thing at a time: how
                                      long the fault has lasted, or - when the machine
